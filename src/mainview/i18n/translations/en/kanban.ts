@@ -581,6 +581,12 @@ const kanban = {
 	"task.scheduledMessageTooltip": "Scheduled message — click for options",
 	"task.sendNow": "Send now",
 	"task.sendNowFailed": "Failed to send message: {error}",
+	"task.heldMessages_one": "{count} waiting",
+	"task.heldMessages_other": "{count} waiting",
+	"task.heldMessagesTooltip_one": "{count} message waits until the agent's prompt is answered",
+	"task.heldMessagesTooltip_other": "{count} messages wait until the agent's prompt is answered",
+	"task.heldMessagesHint": "Nothing is typed into a pane while the agent shows a permission menu or a question. Send now only if you see no prompt there.",
+	"task.heldMessagesSendFailed": "Failed to send the waiting messages: {error}",
 
 	// Pipeline
 	"pipeline.current": "current",

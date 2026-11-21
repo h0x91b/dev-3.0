@@ -55,6 +55,15 @@
  *    invert while a release is typing: its leftovers rejoin the hold only afterwards.
  *    A claim counts as delivered only once the hook acknowledges it; otherwise it is
  *    held again ({@link AGENT_MESSAGE_HOOK_ACK_TIMEOUT_MS}).
+ *  - A pane showing an interactive prompt — a permission menu, a plan approval, a
+ *    question picker — gets NOTHING typed into it (issue #2342): a digit picks a row and
+ *    the Enter approves what is highlighted. Its messages wait, in order and with no
+ *    ceiling, retried every quiet window, and go out one quiet window after the prompt
+ *    closes. The gate sits in the release itself, so the user's own Enter (which may be
+ *    the one that answered the picker) cannot push them into the next prompt either.
+ *    Only the agent's hooks, the pane dying, or the user's "send now" open the gate
+ *    ({@link sendHeldAgentMessagesNow}); a hook claim is not gated — no tool runs while
+ *    its agent is in a prompt.
  *  - In-memory and deliberately not persisted. If the app dies inside the window the
  *    message is LOST, and nothing is left in the input box either. Accepted; see
  *    `decisions/2026/08/23/hold-the-agent-message-not-just-its-enter.md`.
@@ -72,6 +81,7 @@ import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
 	AGENT_MESSAGE_HOLD_IDLE_MS,
 } from "../shared/agent-message-hold-timing";
+import { agentPromptLedger } from "./agent-prompt-ledger";
 import { createLogger } from "./logger";
 
 const log = createLogger("agent-message-hold");
@@ -233,6 +243,8 @@ interface Hold {
 	stranded: HeldDelivery[] | null;
 	/** The last release found the pane in copy mode; retry on the quiet window, not the ceiling. */
 	modeDeferred: boolean;
+	/** The pane shows a prompt: nothing is typed, the quiet window repeats, no ceiling. */
+	promptHeld: boolean;
 }
 
 const holds = new Map<string, Hold>();
@@ -247,6 +259,16 @@ export function agentMessageHoldKey(backend: "tmux" | "native", taskId: string, 
 
 function taskOfKey(key: string): string | undefined {
 	return key.split(":")[1];
+}
+
+/** The pane id a hold key names; a pane id may itself contain a colon. */
+function paneOfKey(key: string): string {
+	return key.split(":").slice(2).join(":");
+}
+
+function promptOpenFor(key: string): boolean {
+	const task = taskOfKey(key);
+	return task !== undefined && agentPromptLedger.isPromptOpen(task, paneOfKey(key));
 }
 
 /** Whether the user typed into this task's terminals at or after `at`. */
@@ -267,7 +289,7 @@ function humanWaitMs(key: string, now: number): number {
 
 function delayFor(key: string, hold: Hold, now: number): number {
 	// A spent ceiling would turn a scrolled-up pane into a zero-delay retry loop.
-	const quiet = hold.modeDeferred
+	const quiet = hold.modeDeferred || hold.promptHeld
 		? AGENT_MESSAGE_HOLD_IDLE_MS
 		: Math.max(0, Math.min(AGENT_MESSAGE_HOLD_IDLE_MS, hold.firstAt + AGENT_MESSAGE_HOLD_CEILING_MS - now));
 	// The user's typing outranks the ceiling: his window has no deadline behind it.
@@ -341,6 +363,7 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 		context,
 		stranded: null,
 		modeDeferred: false,
+		promptHeld: false,
 	};
 	hold.deliveries.push({
 		deliver: message.deliver,
@@ -355,6 +378,7 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 	hold.report = message.report;
 	hold.batch = message.batch;
 	hold.context = context;
+	if (!hold.stranded && promptOpenFor(key)) hold.promptHeld = true;
 	holds.set(key, hold);
 	const delay = rearm(key, hold, now);
 	log.info("agent message held", {
@@ -363,8 +387,18 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 		heldForMs: String(now - hold.firstAt),
 		waiting: String(hold.deliveries.length),
 		humanHeld: String(humanWaitMs(key, now) > 0),
+		promptHeld: String(hold.promptHeld),
 	});
+	publishPromptHeldCount(taskOfKey(key));
 	return delay;
+}
+
+/**
+ * Whether the message just held for this pane waits behind an open prompt — the
+ * sender's verdict, so it neither resends nor assumes it was ignored.
+ */
+export function agentMessageHeldBehindPrompt(key: string): boolean {
+	return holds.get(key)?.promptHeld === true;
 }
 
 /**
@@ -499,6 +533,7 @@ export async function claimHeldAgentMessagesForHook(key: string, budgetChars: nu
 		if (hold.timer) clearTimeout(hold.timer);
 		holds.delete(key);
 	}
+	if (hold.promptHeld) publishPromptHeldCount(taskOfKey(key));
 	const kept: HeldDelivery[] = [];
 	for (const delivery of taken) {
 		let refusal: string | null = null;
@@ -571,7 +606,7 @@ function restoreUnacknowledgedClaim(claimId: string): void {
 		if (!current.stranded) rearm(pending.key, current, now);
 		return;
 	}
-	const restored: Hold = { ...pending.hold, timer: null, firstAt: now, deliveries: pending.deliveries, stranded: null, modeDeferred: false };
+	const restored: Hold = { ...pending.hold, timer: null, firstAt: now, deliveries: pending.deliveries, stranded: null, modeDeferred: false, promptHeld: false };
 	holds.set(pending.key, restored);
 	rearm(pending.key, restored, now);
 }
@@ -629,7 +664,7 @@ function requeue(
 		rearm(key, fresh, now);
 		return;
 	}
-	const next: Hold = { ...from, timer: null, firstAt: now, deliveries, ...carry };
+	const next: Hold = { ...from, timer: null, firstAt: now, deliveries, promptHeld: false, ...carry };
 	holds.set(key, next);
 	rearm(key, next, now);
 }
@@ -693,7 +728,30 @@ async function planRelease(hold: Hold): Promise<{ going: HeldDelivery[]; waiting
 async function release(key: string, hold: Hold): Promise<void> {
 	// A newer hold may already own this pane; only the current one may release.
 	if (holds.get(key) !== hold || hold.stranded) return;
+	// A hold that waited behind a prompt asks first whether its pane still exists: a dead
+	// pane fires no closing hook, and Send now must not type into a dead terminal.
+	const promptOpen = promptOpenFor(key);
+	if (promptOpen || hold.promptHeld) {
+		const gone = await paneGoneBehindPrompt(key, hold);
+		if (holds.get(key) !== hold || hold.stranded) return;
+		if (gone) {
+			dropGoneHold(key, hold);
+			return;
+		}
+	}
+	if (promptOpen && promptOpenFor(key)) {
+		if (!hold.promptHeld) log.info("held agent message waits: the agent is showing a prompt", hold.context);
+		hold.promptHeld = true;
+		rearm(key, hold, Date.now());
+		publishPromptHeldCount(taskOfKey(key));
+		return;
+	}
+	if (holds.get(key) !== hold || hold.stranded) return;
 	holds.delete(key);
+	if (hold.promptHeld) {
+		hold.promptHeld = false;
+		publishPromptHeldCount(taskOfKey(key));
+	}
 	if (hold.timer) clearTimeout(hold.timer);
 
 	await dropUnverified(hold);
@@ -772,6 +830,109 @@ async function release(key: string, hold: Hold): Promise<void> {
 	}
 }
 
+/**
+ * A gated release still asks whether the pane exists: a pane that died with a prompt
+ * open fires no closing hook, and its messages must end (reported) instead of waiting
+ * forever. Not knowing is not "gone".
+ */
+async function paneGoneBehindPrompt(key: string, hold: Hold): Promise<boolean> {
+	if (!hold.alive) return false;
+	let alive = true;
+	try {
+		alive = await hold.alive();
+	} catch (err) {
+		log.warn("held agent message pane probe failed", { ...hold.context, error: String(err) });
+	}
+	if (alive) return false;
+	const task = taskOfKey(key);
+	if (task) agentPromptLedger.closePane(task, paneOfKey(key));
+	return true;
+}
+
+/** The pane died behind a prompt: its messages end here, said out loud, never typed. */
+function dropGoneHold(key: string, hold: Hold): void {
+	holds.delete(key);
+	if (hold.timer) clearTimeout(hold.timer);
+	log.warn("held agent messages dropped: the pane is gone", { ...hold.context, waiting: String(hold.deliveries.length) });
+	report(hold, {
+		kind: "dropped",
+		messages: messageCount(hold.deliveries),
+		why: "the agent pane is gone",
+		paths: batchPaths(hold.deliveries),
+	});
+	publishPromptHeldCount(taskOfKey(key));
+}
+
+/** How many messages wait behind an open prompt in this task's panes. */
+export function promptHeldAgentMessageCount(taskId: string): number {
+	let count = 0;
+	for (const [key, hold] of holds) {
+		if (hold.promptHeld && taskOfKey(key) === taskId) count += messageCount(hold.deliveries);
+	}
+	return count;
+}
+
+/** Told whenever a task's count of messages waiting behind a prompt changes. */
+export type PromptHeldCountListener = (taskId: string, count: number) => void;
+
+const promptHeldCountListeners = new Set<PromptHeldCountListener>();
+const publishedPromptHeldCounts = new Map<string, number>();
+
+export function onPromptHeldAgentMessageCount(listener: PromptHeldCountListener): () => void {
+	promptHeldCountListeners.add(listener);
+	return () => promptHeldCountListeners.delete(listener);
+}
+
+/** Every task with messages waiting behind a prompt, for a view that just opened. */
+export function promptHeldAgentMessageCounts(): Record<string, number> {
+	return Object.fromEntries(publishedPromptHeldCounts);
+}
+
+function publishPromptHeldCount(taskId: string | undefined): void {
+	if (!taskId) return;
+	const count = promptHeldAgentMessageCount(taskId);
+	if ((publishedPromptHeldCounts.get(taskId) ?? 0) === count) return;
+	if (count === 0) publishedPromptHeldCounts.delete(taskId);
+	else publishedPromptHeldCounts.set(taskId, count);
+	for (const listener of promptHeldCountListeners) {
+		try {
+			listener(taskId, count);
+		} catch (err) {
+			log.warn("held message count listener failed", { taskId: taskId.slice(0, 8), error: String(err) });
+		}
+	}
+}
+
+/**
+ * The last prompt in a pane closed: its waiting messages go out one quiet window from
+ * now, so the user sees his answer land before anything else is typed.
+ */
+agentPromptLedger.onPromptClosed((taskId, paneId) => {
+	const now = Date.now();
+	for (const [key, hold] of holds) {
+		if (!hold.promptHeld || hold.stranded || taskOfKey(key) !== taskId || paneOfKey(key) !== paneId) continue;
+		const delay = rearm(key, hold, now);
+		log.info("prompt closed; held agent messages go out after the quiet window", { ...hold.context, delayMs: String(delay) });
+	}
+});
+
+/**
+ * The user says the agent shows no prompt ("send now" on the waiting badge): forget the
+ * open prompts of every pane holding this task's messages, and deliver them now.
+ * Returns how many messages were released.
+ */
+export function sendHeldAgentMessagesNow(taskId: string): number {
+	let released = 0;
+	for (const [key, hold] of [...holds]) {
+		if (!hold.promptHeld || hold.stranded || taskOfKey(key) !== taskId) continue;
+		agentPromptLedger.closePane(taskId, paneOfKey(key));
+		released += messageCount(hold.deliveries);
+		log.info("held agent messages sent by the user's send-now", hold.context);
+		void release(key, hold);
+	}
+	return released;
+}
+
 /** Take out every message whose `verify` refuses this pane now, and say so for each one. */
 async function dropUnverified(hold: Hold): Promise<void> {
 	const kept: HeldDelivery[] = [];
@@ -832,6 +993,7 @@ export function pendingAgentMessageHoldCount(): number {
 export function resetAgentMessageHolds(): void {
 	for (const hold of holds.values()) if (hold.timer) clearTimeout(hold.timer);
 	holds.clear();
+	publishedPromptHeldCounts.clear();
 	for (const pending of pendingHookClaims.values()) clearTimeout(pending.timer);
 	pendingHookClaims.clear();
 	lastHumanInputAt.clear();

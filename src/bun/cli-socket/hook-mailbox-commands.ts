@@ -6,6 +6,8 @@ import {
 	claimHeldAgentMessagesForHook,
 	pendingAgentMessageHoldCount,
 } from "../agent-message-hold";
+import { agentPromptLedger } from "../agent-prompt-ledger";
+import { claudeToolInput } from "./claude-prompt-hook-commands";
 import { log, type Handler } from "./shared";
 import { taskHandlers } from "./task-commands";
 import { resolveTaskFromParams } from "./task-resolution";
@@ -46,6 +48,11 @@ export const hookMailboxHandlers: Record<string, Handler> = {
 		} catch (err) {
 			out.moveError = err instanceof Error ? err.message : String(err);
 			log.warn("Claude PostToolUse status move failed", { taskId: String(params.taskId).slice(0, 8), error: out.moveError });
+		}
+		// The call this hook reports on was allowed or answered: its prompt is gone.
+		if (typeof params.toolUseId === "string") {
+			const input = claudeToolInput(taskId ?? String(params.taskId), params);
+			if (input) agentPromptLedger.claudePostToolUse(input);
 		}
 		const paneId = typeof params.paneId === "string" ? params.paneId : "";
 		// Nothing held anywhere is the common case, and it costs no task lookup.

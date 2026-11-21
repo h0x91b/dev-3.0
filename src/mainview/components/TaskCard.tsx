@@ -52,6 +52,7 @@ import { useMobile } from "../hooks/useMobile";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
+import HeldMessagesChip from "./HeldMessagesChip";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import { taskCardAgent } from "../utils/taskCardAgent";
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
@@ -711,6 +712,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	if (!isTodo) {
 		timeSignals.push(
 			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" />,
+			<HeldMessagesChip key="held" taskId={task.id} placement="up" />,
 		);
 	}
 	const variantDots = (

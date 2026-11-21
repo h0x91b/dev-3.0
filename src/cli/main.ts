@@ -53,6 +53,7 @@ import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudePreTool } from "./commands/claude-pre-tool";
 import { handleClaudePostTool } from "./commands/claude-post-tool";
+import { handleClaudePermission } from "./commands/claude-permission";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeClaim } from "./commands/claude-claim";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
@@ -385,6 +386,10 @@ async function main(): Promise<void> {
 	}
 	if (command === "hook" && subcommand === "claude-pre-tool") {
 		return await handleClaudePreTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
+	if (command === "hook" && subcommand === "claude-permission") {
+		// A prompt is on screen: Has Questions, and nothing typed into that pane.
+		return await handleClaudePermission(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-post-tool") {
 		// Status move plus the hook mailbox, in one request per tool call.

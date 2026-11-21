@@ -96,6 +96,7 @@ import { boardViewsHandlers } from "./rpc-handlers/board-views";
 import { extensionsHandlers } from "./rpc-handlers/extensions";
 import { epicsHandlers } from "./rpc-handlers/epics";
 import { secretHandlers } from "./rpc-handlers/secrets";
+import { heldAgentMessageHandlers } from "./rpc-handlers/held-agent-messages";
 
 export const handlers = {
 	...secretHandlers,
@@ -128,4 +129,5 @@ export const handlers = {
 	...boardViewsHandlers,
 	...extensionsHandlers,
 	...epicsHandlers,
+	...heldAgentMessageHandlers,
 };
