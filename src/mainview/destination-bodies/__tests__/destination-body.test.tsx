@@ -19,6 +19,10 @@ vi.mock("../../components/ProductivityStatsView", () => ({
 	default: ({ canGoBack }: DestinationBodyProps["stats"]) => <div data-testid="stats-view">{`back:${canGoBack}`}</div>,
 }));
 
+vi.mock("../../components/Changelog", () => ({
+	default: ({ canGoBack }: DestinationBodyProps["changelog"]) => <div data-testid="changelog-view">{`back:${canGoBack}`}</div>,
+}));
+
 const SESSIONS_PROPS: DestinationBodyProps["sessions"] = { projectId: "p1", projectName: "dev-3.0", onOpenTask: () => {} };
 
 async function settle(): Promise<void> {
@@ -58,7 +62,7 @@ describe("DestinationBody", () => {
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
-	it("refuses a body that asks for another destination's props", () => {
+	it("refuses a body that asks for another destination's props, or renders outside any host", () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		const WrongBody = () => <div>{String(useDestinationProps("sessions"))}</div>;
 		expect(() =>
@@ -68,7 +72,21 @@ describe("DestinationBody", () => {
 				</DestinationPropsContext.Provider>,
 			),
 		).toThrow("sessions body rendered inside the stats <DestinationBody>");
+		expect(() => render(<WrongBody />)).toThrow("sessions body rendered outside any <DestinationBody>");
 		errors.mockRestore();
+	});
+
+	it("draws the changelog body from the slot with the host's props", async () => {
+		applyBuiltinPlugins([], [BUILTIN_DESTINATION_BODIES_PLUGIN]);
+		await settle();
+		expect(getDestinationBodyRegistry().listRegion("changelog").map((entry) => entry.def.id)).toEqual(["builtin:changelog"]);
+		render(
+			<I18nProvider>
+				<DestinationBody destination="changelog" props={{ navigate: () => {}, goBack: () => {}, canGoBack: false }} />
+			</I18nProvider>,
+		);
+		expect(screen.getByTestId("changelog-view").textContent).toBe("back:false");
+		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
 	it("draws the built-in before any body has registered", () => {

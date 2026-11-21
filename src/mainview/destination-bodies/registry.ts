@@ -20,11 +20,15 @@ export interface DestinationBodyProps {
 		projectName: string | null;
 		onOpenTask: (taskId: string, projectId: string) => void;
 	};
-	stats: {
-		navigate: (route: Route) => void;
-		goBack: () => void;
-		canGoBack: boolean;
-	};
+	stats: BackNavigationProps;
+	changelog: BackNavigationProps;
+}
+
+/** A destination that navigates on and offers its own back arrow. */
+interface BackNavigationProps {
+	navigate: (route: Route) => void;
+	goBack: () => void;
+	canGoBack: boolean;
 }
 
 export type DestinationId = keyof DestinationBodyProps;
