@@ -26,7 +26,8 @@ import { buildChannelTitlePrefix } from "../shared/update-channel";
 import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
-import { startBoardPlugins } from "./plugins/runtime";
+import { startPlugins } from "./plugins/runtime";
+import { BUILTIN_BOARD_VIEWS } from "./board-views/builtins";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -165,7 +166,7 @@ async function bootstrap() {
 	}
 
 	// The board-view runtime (Cordis root + built-in views) is up before the first board renders.
-	startBoardPlugins();
+	startPlugins(BUILTIN_BOARD_VIEWS);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in

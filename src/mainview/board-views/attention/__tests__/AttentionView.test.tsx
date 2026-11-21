@@ -5,7 +5,8 @@ import { ATTENTION_VIEW_ID, defaultBoardViewState, withLayout, withViewType } fr
 import { I18nProvider } from "../../../i18n";
 import { api } from "../../../rpc";
 import BoardHost from "../../BoardHost";
-import { getBoardViewRegistry, resetAppRootForTests, startBoardViews } from "../../../plugins/root";
+import { installIntoAppRoot, resetAppRootForTests } from "../../../plugins/root";
+import { getBoardViewRegistry } from "../../registry";
 import { installKanbanView } from "../../kanban";
 import { CordisContext } from "../../../plugins/react";
 import { resetBoardViewStateCacheForTests } from "../../useBoardViewState";
@@ -76,7 +77,7 @@ function bucketSeqs(id: string): number[] {
 
 function renderAttentionBoard(navigate = vi.fn(), state = withViewType(defaultBoardViewState(), "wide", ATTENTION_VIEW_ID)) {
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(state);
-	startBoardViews([installKanbanView, installAttentionView]);
+	installIntoAppRoot([installKanbanView, installAttentionView]);
 	render(
 		<I18nProvider>
 			<BoardHost project={project} tasks={tasks} dispatch={vi.fn()} navigate={navigate}
