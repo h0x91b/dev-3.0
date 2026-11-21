@@ -11,13 +11,16 @@ and the app header stay host-owned; only what renders under the header is the sl
   `region` names the destination it fills. `DestinationBodyProps` maps each destination to what the host passes.
 - `DestinationBody.tsx` renders a destination through `<SlotHost>`, the board-view precedent: the built-in is the
   fallback (same component type, so the hand-over keeps state), a crash shows it under the inline notice. Props
-  travel by React context (`useDestinationProps`), because a slot component only receives `ctx`.
+  travel by React context with their destination (`useDestinationProps` throws on a mismatch), because a slot
+  component only receives `ctx`.
 - With the built-in as the only option there is no chooser and nothing is persisted (bible §5.12, Verdict 1); the
   requested id is always the built-in's. Choice storage per form factor arrives with the first second option.
 - Destinations move one PR at a time; each adds its key to `DestinationBodyProps` and its built-in to
   `BUILTIN_DESTINATION_BODIES`.
 
 ## Risks
+- A throwing built-in is its own fallback: the boundary re-renders it under the "built-in one is shown" notice,
+  it throws again and the error escapes to the parent boundary — the board-view precedent, no regression.
 - Built-in bodies read internals (hooks, `api`): the recorded tech debt shared with every slot.
 - `DestinationBodyProps` carries App callbacks (`onOpenTask`); it must not become the public contract as is — an
   opened slot needs `ctx.*` services instead.

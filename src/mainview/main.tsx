@@ -171,7 +171,8 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	// The plugin runtime (Cordis root + built-in views, settings sections, project settings tabs and header items) is up before the first render.
+	// The plugin runtime (Cordis root + built-in board views, settings sections, project settings tabs, header items,
+	// commands, task menu rows and destination bodies) is up before the first render.
 	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN, BUILTIN_COMMANDS_PLUGIN, BUILTIN_TASK_MENU_PLUGIN, BUILTIN_DESTINATION_BODIES_PLUGIN]);
 
 	debugLog("boot", "[main] Rendering React app...");

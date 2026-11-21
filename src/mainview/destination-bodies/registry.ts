@@ -1,4 +1,5 @@
 import type { Context } from "cordis";
+import type { Route } from "../state";
 import { defineAppSlot } from "../plugins/root";
 import type { ReplaceSlotItem } from "../plugins/SlotHost";
 import { SlotRegistry } from "../plugins/slot-registry";
@@ -18,6 +19,11 @@ export interface DestinationBodyProps {
 		projectId: string | null;
 		projectName: string | null;
 		onOpenTask: (taskId: string, projectId: string) => void;
+	};
+	stats: {
+		navigate: (route: Route) => void;
+		goBack: () => void;
+		canGoBack: boolean;
 	};
 }
 

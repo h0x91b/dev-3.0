@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useT } from "../i18n";
 import { getAppRoot } from "../plugins/root";
 import { SlotComponent, SlotHost } from "../plugins/SlotHost";
@@ -17,7 +17,7 @@ export function DestinationBody<D extends DestinationId>({ destination, props }:
 	const builtin = BUILTIN_DESTINATION_BODIES[destination];
 	const active = entries.find((entry) => entry.def.id === builtin.id);
 	return (
-		<DestinationPropsContext.Provider value={props}>
+		<DestinationPropsContext.Provider value={useMemo(() => ({ destination, props }), [destination, props])}>
 			<SlotHost
 				slot="destinationBodies"
 				requestedId={builtin.id}

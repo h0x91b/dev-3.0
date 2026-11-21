@@ -1,5 +1,6 @@
 import type { Context, Fiber } from "cordis";
 import type { ComponentType } from "react";
+import ProductivityStatsView from "../components/ProductivityStatsView";
 import SessionsScreen from "../components/SessionsScreen";
 import type { BuiltinPlugin } from "../plugins/runtime";
 import { useDestinationProps } from "./props";
@@ -11,9 +12,14 @@ function SessionsBody() {
 	return <SessionsScreen {...useDestinationProps("sessions")} />;
 }
 
+function StatsBody() {
+	return <ProductivityStatsView {...useDestinationProps("stats")} />;
+}
+
 /** Each destination's own body: registered as its slot item, and its undisableable fallback. */
 export const BUILTIN_DESTINATION_BODIES: { readonly [D in DestinationId]: { id: string; component: ComponentType<{ ctx: Context }> } } = {
 	sessions: { id: "builtin:sessions", component: SessionsBody },
+	stats: { id: "builtin:stats", component: StatsBody },
 };
 
 const DESTINATION_BODIES_BUILTIN_ID = "builtin:destination-bodies";
