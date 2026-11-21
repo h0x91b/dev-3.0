@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import type { Context } from "cordis";
+import { getAppRoot } from "../../plugins/root";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import CommandPaletteModal from "../CommandPaletteModal";
@@ -59,6 +61,36 @@ describe("CommandPaletteModal", () => {
 		const { onClose } = renderModal();
 		await user.keyboard("{Escape}");
 		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("[dispose] drops a plugin's command from the open palette when the plugin unloads", async () => {
+		const user = userEvent.setup();
+		const fiber = getAppRoot().plugin({
+			name: "leaving-commands",
+			inject: ["commands"],
+			apply(ctx: Context) {
+				ctx.commands.register({ id: "leaving:probe", order: 999, labelKey: "command.boardView", labelVars: { name: "Zebra probe" }, category: "nav", scope: "always", run: () => {} });
+			},
+		});
+		try {
+			await act(async () => {
+				await fiber;
+			});
+			renderModal();
+			await user.type(screen.getByRole("textbox"), "Zebra probe");
+			expect(screen.getAllByRole("option")).toHaveLength(1);
+			await act(async () => {
+				await fiber.dispose();
+			});
+			expect(screen.queryAllByRole("option")).toHaveLength(0);
+			expect(screen.getByRole("dialog")).toBeInTheDocument();
+			await user.clear(screen.getByRole("textbox"));
+			await user.type(screen.getByRole("textbox"), "Theme: light");
+			expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+		} finally {
+			// This file shares one root across tests: a failed assertion must not leak the probe.
+			await fiber.dispose();
+		}
 	});
 
 	it("shows an empty state when nothing matches", async () => {

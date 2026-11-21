@@ -115,6 +115,33 @@ describe("terminal companion slot", () => {
 		errors.mockRestore();
 	});
 
+	it("[dispose] goes back to the built-in explorer around the terminal when the plugin holding the companion unloads", async () => {
+		function LeavingCompanion() {
+			return <div data-testid="leaving-companion">{useTerminalCompanionProps().children}</div>;
+		}
+		const fiber = getAppRoot().plugin({
+			name: "leaving-companion",
+			inject: ["terminalCompanion"],
+			apply(ctx: Context) {
+				ctx.terminalCompanion.register({ id: FILE_EXPLORER_COMPANION_ID, component: LeavingCompanion });
+			},
+		});
+		await settle();
+		render(<Pane taskId="t1" />);
+		expect(screen.getByTestId("leaving-companion")).toBeTruthy();
+		expect(screen.getByTestId("terminal")).toBeTruthy();
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryByTestId("leaving-companion")).toBeNull();
+		expect(screen.getByTestId("explorer").textContent).toBe("t1");
+		expect(screen.getByTestId("terminal")).toBeTruthy();
+		// Any companion swap remounts the terminal once (known limit, an opening-track precondition):
+		// decisions/2026/11/21/terminal-companion-slot.md, Risks. Fixing it should make this 1.
+		expect(terminalMounts.count).toBe(2);
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
 	it("falls back from a crashing replacement to the built-in, noticed inside the explorer column until dismissed", async () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		const Boom = () => {

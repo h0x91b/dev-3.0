@@ -148,6 +148,31 @@ describe("TaskMarkers", () => {
 		errors.mockRestore();
 	});
 
+	it("[dispose] takes a plugin's markers off every card when the plugin unloads, keeping the built-ins", async () => {
+		await installTaskMarkerBuiltins();
+		const fiber = getAppRoot().plugin({
+			name: "leaving-marker",
+			inject: ["taskMarkers"],
+			apply(ctx: Context) {
+				ctx.taskMarkers.register(marker("builtin:leaving"));
+			},
+		});
+		await settle();
+		render(
+			<I18nProvider>
+				<TaskMarkersProvider>
+					{["t1", "t2", "t3"].map((id) => <TaskMarkers key={id} task={task({ id, terminalBackend: "native" })} surface="card" />)}
+				</TaskMarkersProvider>
+			</I18nProvider>,
+		);
+		expect(screen.getAllByTestId("marker-builtin:leaving")).toHaveLength(3);
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryAllByTestId("marker-builtin:leaving")).toHaveLength(0);
+		expect(screen.getAllByTestId("task-card-native-backend")).toHaveLength(3);
+	});
+
 	it("subscribes to the registry once, however many cards render, and follows it", async () => {
 		const registry = getTaskMarkerRegistry();
 		const subscribe = vi.spyOn(registry, "subscribe");

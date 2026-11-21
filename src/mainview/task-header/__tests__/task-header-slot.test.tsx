@@ -179,4 +179,29 @@ describe("taskHeader slot", () => {
 		expect(error.mock.calls.some((call) => String(call[0]).includes("builtin:status.crash-segment-test crashed"))).toBe(true);
 		error.mockRestore();
 	});
+
+	it("[dispose] removes a plugin's items from every bar when the plugin unloads, leaving the built-ins", async () => {
+		const Probe = ({ placement }: { placement: string }) => <span data-testid={`probe-${placement}`}>probe</span>;
+		const fiber: Fiber = getAppRoot().plugin({
+			name: "leaving-items",
+			inject: ["taskHeader"],
+			apply(ctx: Context) {
+				ctx.taskHeader.register({ id: "builtin:git.leaving-test", region: "git", order: -1, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:status.leaving-test", region: "status", order: -1, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:git.leaving-action-test", region: "git.actions", order: 25, component: Probe });
+			},
+		});
+		await act(async () => {
+			await fiber;
+		});
+		renderRegions();
+		expect(screen.getAllByTestId("probe-inline")).toHaveLength(3);
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryAllByTestId(/^probe-/)).toHaveLength(0);
+		expect(screen.getByTestId("diff-summary-badge")).toBeInTheDocument();
+		expect(screen.getByTestId("branch-chip")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Push" })).toBeInTheDocument();
+	});
 });

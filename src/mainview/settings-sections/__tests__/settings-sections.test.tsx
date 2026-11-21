@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import type { Context } from "cordis";
 import { I18nProvider } from "../../i18n";
 import en from "../../i18n/translations/en";
@@ -7,7 +7,8 @@ import type { SlotEntry } from "../../plugins/slot-registry";
 import { filterSettingsEntries, SETTINGS_CATEGORIES, SETTINGS_ENTRIES, type SettingsEntry } from "../../settings-registry";
 import { BUILTIN_SETTINGS_SECTIONS_PLUGIN } from "../builtins";
 import { getSettingsSectionsRegistry, type SettingsSectionItem } from "../registry";
-import { SettingsCategoryPage } from "../SettingsCategoryPage";
+import { SettingsCategoryPage, useRegisteredSettingsSections } from "../SettingsCategoryPage";
+import { getAppRoot } from "../../plugins/root";
 
 vi.mock("../../rpc", () => ({ isElectrobun: false, api: { request: {} } }));
 
@@ -123,5 +124,41 @@ describe("SettingsCategoryPage", () => {
 		);
 		expect(screen.queryByRole("alert")).toBeNull();
 		expect(screen.getByText("before")).toBeInTheDocument();
+	});
+});
+
+describe("settingsSections dispose", () => {
+	// GlobalSettings and ProjectSettings wire the page exactly like this: the live registry into the page.
+	function LivePage() {
+		return <SettingsCategoryPage region="projectSettings.global" sections={useRegisteredSettingsSections()} />;
+	}
+
+	it("[dispose] removes a plugin's section from the open page when the plugin unloads, keeping the rest", async () => {
+		const register = (name: string, id: string, text: string) =>
+			getAppRoot().plugin({
+				name,
+				inject: ["settingsSections"],
+				apply(ctx: Context) {
+					ctx.settingsSections.register({ id, region: "projectSettings.global", order: 0, entries: [], component: () => <p>{text}</p> });
+				},
+			});
+		const staying = register("staying-section", "staying:section", "stays");
+		const leaving = register("leaving-section", "leaving:section", "leaves");
+		try {
+			await act(async () => {
+				await Promise.all([staying, leaving]);
+			});
+			render(<I18nProvider><LivePage /></I18nProvider>);
+			expect(screen.getByText("leaves")).toBeInTheDocument();
+			await act(async () => {
+				await leaving.dispose();
+			});
+			expect(screen.queryByText("leaves")).toBeNull();
+			expect(screen.getByText("stays")).toBeInTheDocument();
+			expect(screen.queryByRole("alert")).toBeNull();
+		} finally {
+			// This file shares one root across tests: a failed assertion must not leak the probes.
+			await Promise.all([staying.dispose(), leaving.dispose()]);
+		}
 	});
 });

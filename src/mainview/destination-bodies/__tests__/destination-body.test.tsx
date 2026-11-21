@@ -147,6 +147,25 @@ describe("DestinationBody", () => {
 		errors.mockRestore();
 	});
 
+	it.each(DESTINATIONS)("[dispose] goes back to the %s built-in, with no notice, when the plugin holding the body unloads", async (destination) => {
+		const fiber = getAppRoot().plugin({
+			name: "leaving-body",
+			inject: ["destinationBodies"],
+			apply(ctx: Context) {
+				ctx.destinationBodies.register({ id: BUILTIN_DESTINATION_BODIES[destination].id, region: destination, component: () => <div data-testid="leaving-body" /> });
+			},
+		});
+		await settle();
+		renderBody(destination);
+		expect(screen.getByTestId("leaving-body")).toBeTruthy();
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryByTestId("leaving-body")).toBeNull();
+		expect(JSON.parse(screen.getByTestId(`body-${destination}-data`).textContent ?? "")).toEqual(CASES[destination].data);
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
 	it("refuses a body that asks for another destination's props, or renders outside any host", () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		const WrongBody = () => <div>{String(useDestinationProps("sessions"))}</div>;
