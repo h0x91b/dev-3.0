@@ -14,7 +14,7 @@ import BoardLoadFailed from "./BoardLoadFailed";
 import { useRpcStatus } from "../hooks/useDiagnostics";
 import TaskHeader from "./TaskHeader";
 import SplitLayout from "./SplitLayout";
-import ActiveTasksSidebar from "./ActiveTasksSidebar";
+import { Sidebar } from "../sidebar/Sidebar";
 import { useState } from "react";
 import { useT } from "../i18n";
 import TaskWorkspacePane from "./TaskWorkspacePane";
@@ -393,7 +393,7 @@ function ProjectView({
 				)}
 				<SplitLayout
 					kanbanContent={
-						<ActiveTasksSidebar
+						<Sidebar
 							project={project}
 							spaceId={spaceId}
 							tasks={currentTasks}
