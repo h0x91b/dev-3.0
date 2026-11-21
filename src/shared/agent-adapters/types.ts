@@ -163,4 +163,10 @@ export interface AgentAdapter {
 	 * run. Null when the CLI has no known quit command and only the kill remains.
 	 */
 	exitProgram(): readonly PaneInputStage[] | null;
+
+	/**
+	 * A prompt submitted while the agent is busy waits in a follow-up queue until the turn
+	 * ends, and one more Enter on the empty input steers it into the running turn instead.
+	 */
+	readonly enterSteersQueuedPrompt?: boolean;
 }

@@ -147,6 +147,16 @@ describe("sendPromptToNativeAgentPane — this process owns the lease", () => {
 		expect(forwardToOwner).not.toHaveBeenCalled();
 	});
 
+	it("adds a second carriage return for Cursor, which steers its queued follow-up into the turn", async () => {
+		const { terminal, writes } = fakeTerminal("writer");
+		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+		const cursor = { paneId: NATIVE_AGENT_PANE_ID, agentCmd: "agent", sessionId: null, agentId: null, configId: null };
+
+		await sendPromptToNativeAgentPane(task({ sessionState: { panes: [cursor] } } as Partial<Task>), "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS * 3);
+		expect(writes).toEqual(["check CI", "\r", "\r"]);
+	});
+
 	it("writes NOTHING until the quiet window closes, then both texts and one CR", async () => {
 		const { terminal, writes } = fakeTerminal("writer");
 		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);

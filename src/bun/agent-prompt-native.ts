@@ -35,7 +35,7 @@ import type { Task } from "../shared/types";
 import { utf8Length } from "../shared/pane-input";
 import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-prompt-delivery";
 import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../shared/agent-message-hold-timing";
-import { scheduleAgentPromptSubmit } from "./agent-prompt";
+import { scheduleAgentPromptSubmit, scheduleQueuedPromptSteer } from "./agent-prompt";
 import { agentMessageHoldKey, holdAgentMessage, type HeldMessageBatch } from "./agent-message-hold";
 import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-prompt-claims";
 import { createLogger } from "./logger";
@@ -125,6 +125,11 @@ function nativeBatch(terminal: NativeTaskTerminal, task: Task): (texts: string[]
 	};
 }
 
+function submitNative(terminal: NativeTaskTerminal, paneId: string, task?: Task): void {
+	terminal.write(SUBMIT_KEY);
+	if (task) scheduleQueuedPromptSteer(task, paneId, () => terminal.write(SUBMIT_KEY));
+}
+
 function performNativeDelivery(
 	terminal: NativeTaskTerminal,
 	taskId: string,
@@ -136,7 +141,7 @@ function performNativeDelivery(
 ): AgentPromptDelivery {
 	if (!hold) {
 		terminal.write(prompt);
-		scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId });
+		scheduleAgentPromptSubmit(() => submitNative(terminal, paneId, task), { paneId });
 		return wroteUnconfirmed();
 	}
 	const delayMs = holdAgentMessage(
@@ -158,7 +163,7 @@ function performNativeDelivery(
 			// The same gap a hand-off leaves: a CR written straight after the last paste
 			// is read as part of it, and the burst never gets submitted.
 			submit: () => {
-				scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId });
+				scheduleAgentPromptSubmit(() => submitNative(terminal, paneId, task), { paneId });
 				return "landed";
 			},
 		},
