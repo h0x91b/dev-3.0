@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { api } from "../rpc";
 import {
 	activeSavedView,
 	defaultBoardViewState,
+	namedSavedViews,
+	namedViewModified,
 	withLayout,
+	withNamedViewAdded,
+	withNamedViewApplied,
+	withNamedViewRenamed,
+	withNamedViewUpdated,
+	withoutNamedView,
 	withViewType,
 	type BoardFormFactor,
 	type BoardRef,
 	type BoardViewState,
+	type SavedBoardView,
 } from "../../shared/board-view-state";
 
 export interface BoardViewStateHandle {
@@ -15,6 +23,20 @@ export interface BoardViewStateHandle {
 	layout: (viewId: string) => unknown;
 	setLayout: (viewId: string, layout: unknown) => void;
 	setViewType: (viewType: string) => void;
+	/** Named presets of this board, shared by both form factors. */
+	namedViews: readonly SavedBoardView[];
+	/** The named view last applied in this form factor this session, if it still exists. */
+	appliedNamedId: string | null;
+	/** True when the board no longer shows what the applied named view holds. */
+	appliedNamedModified: (query: string) => boolean;
+	saveNamed: (name: string, query: string) => void;
+	/** Loads the view type and layouts and returns the query the caller must set. */
+	applyNamed: (id: string) => string | null;
+	updateNamed: (id: string, query: string) => void;
+	renameNamed: (id: string, name: string) => void;
+	deleteNamed: (id: string) => void;
+	/** Leaves the applied named view; the board keeps what it shows. */
+	clearApplied: () => void;
 }
 
 // Survives remounts within a session, so returning to a board shows its view at
@@ -32,6 +54,9 @@ const savesInFlight = new Map<string, number>();
 // Counts reads per board: a result lands only if no newer read has started since.
 const readGenerations = new Map<string, number>();
 const listeners = new Set<() => void>();
+// Which named view each board × form factor last applied. Session memory, like the
+// board query it travels with, so a fresh launch never claims a filter it does not show.
+const appliedNamed = new Map<string, string>();
 
 /** Lets a silent (lost) request stop holding the board hidden; the transport itself waits 6 minutes. */
 export const VIEW_STATE_READ_TIMEOUT_MS = 3_000;
@@ -47,6 +72,7 @@ export function resetBoardViewStateCacheForTests(): void {
 	editCounts.clear();
 	savesInFlight.clear();
 	readGenerations.clear();
+	appliedNamed.clear();
 }
 
 function notify(): void {
@@ -161,5 +187,52 @@ export function useBoardViewState(board: BoardRef, formFactor: BoardFormFactor):
 			activeSavedView(state, formFactor).viewType === viewType ? state : withViewType(state, formFactor, viewType)),
 		[update, formFactor],
 	);
-	return { viewType: view.viewType, layout, setLayout, setViewType };
+	const appliedKey = `${key}:${formFactor}`;
+	const namedViews = useMemo(() => namedSavedViews(state), [state]);
+	const appliedId = useSyncExternalStore(subscribe, () => appliedNamed.get(appliedKey));
+	const appliedNamedId = appliedId && namedViews.some((named) => named.id === appliedId) ? appliedId : null;
+	const setApplied = useCallback((id: string | null) => {
+		if (id) appliedNamed.set(appliedKey, id);
+		else appliedNamed.delete(appliedKey);
+		notify();
+	}, [appliedKey]);
+
+	const clearApplied = useCallback(() => {
+		if (appliedNamed.has(appliedKey)) setApplied(null);
+	}, [appliedKey, setApplied]);
+	const appliedNamedModified = useCallback(
+		(query: string) => !!appliedNamedId && namedViewModified(state, formFactor, appliedNamedId, query),
+		[state, formFactor, appliedNamedId],
+	);
+	const saveNamed = useCallback((name: string, query: string) => {
+		let created: string | null = null;
+		update((current) => {
+			const next = withNamedViewAdded(current, formFactor, name, query);
+			created = next.id;
+			return next.state;
+		});
+		if (created) setApplied(created);
+	}, [update, formFactor, setApplied]);
+	const applyNamed = useCallback((id: string) => {
+		const named = namedSavedViews(stateRef.current).find((candidate) => candidate.id === id);
+		if (!named) return null;
+		update((current) => withNamedViewApplied(current, formFactor, id));
+		setApplied(id);
+		return named.query;
+	}, [update, formFactor, setApplied]);
+	const updateNamed = useCallback(
+		(id: string, query: string) => update((current) => withNamedViewUpdated(current, formFactor, id, query)),
+		[update, formFactor],
+	);
+	const renameNamed = useCallback((id: string, name: string) => update((current) => withNamedViewRenamed(current, id, name)), [update]);
+	const deleteNamed = useCallback((id: string) => {
+		update((current) => withoutNamedView(current, id));
+		if (appliedNamed.get(appliedKey) === id) setApplied(null);
+	}, [update, appliedKey, setApplied]);
+
+	return {
+		viewType: view.viewType, layout, setLayout, setViewType,
+		namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed,
+		clearApplied,
+	};
 }

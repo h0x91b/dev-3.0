@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
 import type { DevServerSummary, GlobalSettings, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { getBoardColumns, laneKey } from "../../shared/types";
 import { ATTENTION_VIEW_ID, KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
@@ -33,9 +33,11 @@ import { getAppRoot } from "../plugins/root";
 import { SlotComponent, SlotHost } from "../plugins/SlotHost";
 import { useRegisteredBoardViews } from "./react";
 import { useBoardFilter } from "./useBoardFilter";
-import { useBoardViewState } from "./useBoardViewState";
+import { useBoardViewState, type BoardViewStateHandle } from "./useBoardViewState";
+import { SavedViewNameModal } from "./SavedViewNameModal";
+import { confirm } from "../confirm";
 import { useBoardActions } from "./useBoardActions";
-import { BoardViewOptionsButton, BoardViewSwitcher } from "./BoardViewChrome";
+import { BoardViewOptionsButton, BoardViewSwitcher, type SavedViewsSwitcherProps } from "./BoardViewChrome";
 import { KanbanView } from "./kanban";
 import { TREE_VIEW_ID } from "./tree/TreeView";
 import { READABLE_GUTTER } from "./readable-width";
@@ -134,6 +136,52 @@ function useBoardViewCommands(boardKey: string, offered: readonly RegisteredBoar
 		return true;
 	}), []);
 	useEffect(flushPendingBoardViewCommand, [offered]);
+}
+
+/** The switcher's saved-view callbacks plus the name dialog they open. */
+function useSavedViewActions(viewState: BoardViewStateHandle, query: string, setQuery: (query: string) => void): {
+	switcher: SavedViewsSwitcherProps;
+	dialog: ReactNode;
+} {
+	const t = useT();
+	const [naming, setNaming] = useState<{ mode: "new" } | { mode: "rename"; id: string } | null>(null);
+	const { namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed } = viewState;
+	const nameOf = (id: string) => namedViews.find((view) => view.id === id)?.name ?? "";
+
+	const apply = (id: string) => {
+		const savedQuery = applyNamed(id);
+		if (savedQuery !== null) setQuery(savedQuery);
+	};
+	const switcher: SavedViewsSwitcherProps = {
+		named: namedViews.map((view) => ({ id: view.id, name: view.name ?? "" })),
+		appliedId: appliedNamedId,
+		modified: appliedNamedModified(query),
+		onApply: apply,
+		onSave: () => setNaming({ mode: "new" }),
+		onUpdate: (id) => updateNamed(id, query),
+		onRevert: apply,
+		onRename: (id) => setNaming({ mode: "rename", id }),
+		onDelete: (id) => {
+			const name = nameOf(id);
+			void confirm({
+				title: t("boardView.saved.deleteTitle"),
+				message: t("boardView.saved.deleteMessage", { name }),
+				confirmLabel: t("boardView.saved.deleteConfirm"),
+				danger: true,
+			}).then((ok) => { if (ok) deleteNamed(id); });
+		},
+	};
+	const renamingId = naming?.mode === "rename" ? naming.id : null;
+	const dialog = naming ? (
+		<SavedViewNameModal
+			mode={naming.mode}
+			initialName={renamingId ? nameOf(renamingId) : ""}
+			takenNames={namedViews.filter((view) => view.id !== renamingId).map((view) => view.name ?? "")}
+			onSubmit={(name) => (renamingId ? renameNamed(renamingId, name) : saveNamed(name, query))}
+			onClose={() => setNaming(null)}
+		/>
+	) : null;
+	return { switcher, dialog };
 }
 
 export function resetPreviousBoardViewsForTests(): void {
@@ -344,19 +392,22 @@ function BoardHost(props: BoardHostProps) {
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
 	const kanbanFallback = <SlotComponent ctx={root} component={KanbanView} />;
 
-	const { setViewType } = viewState;
+	const { setViewType, clearApplied } = viewState;
 	const pickView = useCallback((viewId: string) => {
+		// Picking a view type leaves the applied saved view: the switcher then shows that view type.
+		clearApplied();
 		setViewType(viewId);
 		// Telemetry rule 1: a built-in id or `third_party`, never an extension's id or name.
 		trackEvent("board_view_selected", { view: boardViewTelemetryId(viewId) });
-	}, [setViewType]);
+	}, [setViewType, clearApplied]);
 	useBoardViewCommands(`${boardRef.kind}:${boardRef.id}`, offered, active?.def.id, pickView);
 	const manageViews = useCallback(() => {
 		window.dispatchEvent(new CustomEvent<OpenSettingsSectionDetail>(OPEN_SETTINGS_SECTION_EVENT, { detail: "extensions" }));
 	}, []);
-	const showSwitcher = !simplified && offered.length > 1;
+	const savedViews = useSavedViewActions(viewState, filter.query, filter.setQuery);
+	const showSwitcher = !simplified && (offered.length > 1 || viewState.namedViews.length > 0);
 	const switcher = showSwitcher && active ? (
-		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} />
+		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} saved={savedViews.switcher} />
 	) : null;
 	const leading = (
 		<>
@@ -426,6 +477,7 @@ function BoardHost(props: BoardHostProps) {
 				/>
 			)}
 			{overlay}
+			{savedViews.dialog}
 			{editDraftTask && (
 				<CreateTaskModal
 					project={projectOf(editDraftTask)}

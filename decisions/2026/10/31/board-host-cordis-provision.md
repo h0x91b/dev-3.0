@@ -1,5 +1,7 @@
 # Board host: how `ctx.board` and the view registry live in Cordis
 
+Partly superseded on 2026-11-21 by `decisions/2026/11/21/named-saved-views-are-presets.md`: named saved views now store a query; the working view a slot shows still writes `""`.
+
 Partly superseded on 2026-11-01 by `decisions/2026/11/01/kanban-board-view-on-the-contract.md`: the Kanban adapter and `LegacyKanbanBridge` are gone; the contract gained `TaskCard`, column actions and preferences.
 
 ## Context

@@ -1,9 +1,9 @@
 /**
  * The on-disk shape of one board's board-view state (`board-views.json`).
  *
- * The format is already a list of saved views (spec D21): v1 keeps exactly one,
- * implicit, and both form-factor slots point at it. Named saved views later add
- * entries to the list without a migration.
+ * A list of saved views (spec D21). Slots always point at an unnamed working view;
+ * named views are presets beside them that the user applies and updates explicitly.
+ * See decisions/2026/11/21/named-saved-views-are-presets.md.
  */
 
 export type BoardKind = "project" | "space";
@@ -17,7 +17,7 @@ export interface BoardRef {
 
 export interface SavedBoardView {
 	id: string;
-	/** `null` for the implicit default view; named saved views come later. */
+	/** `null` for a working view a slot shows; a string for a named preset. */
 	name: string | null;
 	viewType: string;
 	query: string;
@@ -69,11 +69,14 @@ export function normalizeBoardViewState(value: unknown): BoardViewState {
 		? value.savedViews.map(normalizeSavedView).filter((view): view is SavedBoardView => view !== null)
 		: [];
 	if (savedViews.length === 0) return defaultBoardViewState();
-	const ids = new Set(savedViews.map((view) => view.id));
+	// A slot shows a working view, never a named preset: re-add one if a hand edit left none.
+	if (!savedViews.some((view) => view.name === null)) savedViews.unshift(defaultBoardViewState().savedViews[0]);
+	const working = savedViews.filter((view) => view.name === null);
+	const workingIds = new Set(working.map((view) => view.id));
 	const slots = isRecord(value.slots) ? value.slots : {};
 	const slotFor = (formFactor: BoardFormFactor) => {
 		const id = slots[formFactor];
-		return typeof id === "string" && ids.has(id) ? id : savedViews[0].id;
+		return typeof id === "string" && workingIds.has(id) ? id : working[0].id;
 	};
 	return { version: 1, slots: { wide: slotFor("wide"), narrow: slotFor("narrow") }, savedViews };
 }
@@ -116,6 +119,85 @@ export function withLayout(
 	layout: unknown,
 ): BoardViewState {
 	return updateActive(state, formFactor, (view) => ({ ...view, layouts: { ...view.layouts, [viewType]: layout } }));
+}
+
+/** The named presets, in the order the user saved them. */
+export function namedSavedViews(state: BoardViewState): SavedBoardView[] {
+	return state.savedViews.filter((view) => view.name !== null);
+}
+
+/** Longest name a saved view keeps; the switcher truncates long ones anyway. */
+export const SAVED_VIEW_NAME_MAX = 60;
+
+export function cleanSavedViewName(name: string): string {
+	return name.trim().replace(/\s+/g, " ").slice(0, SAVED_VIEW_NAME_MAX);
+}
+
+function nextNamedViewId(state: BoardViewState): string {
+	const taken = new Set(state.savedViews.map((view) => view.id));
+	for (let n = 1; ; n++) if (!taken.has(`sv-named-${n}`)) return `sv-named-${n}`;
+}
+
+function cloneLayouts(layouts: Record<string, unknown>): Record<string, unknown> {
+	return JSON.parse(JSON.stringify(layouts)) as Record<string, unknown>;
+}
+
+/** Saves what a form factor shows, plus the board query, as a new named view. */
+export function withNamedViewAdded(
+	state: BoardViewState,
+	formFactor: BoardFormFactor,
+	name: string,
+	query: string,
+): { state: BoardViewState; id: string } {
+	const active = activeSavedView(state, formFactor);
+	const id = nextNamedViewId(state);
+	const view: SavedBoardView = { id, name: cleanSavedViewName(name), viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) };
+	return { state: { ...state, savedViews: [...state.savedViews, view] }, id };
+}
+
+function mapNamed(state: BoardViewState, id: string, update: (view: SavedBoardView) => SavedBoardView): BoardViewState {
+	if (!state.savedViews.some((view) => view.id === id && view.name !== null)) return state;
+	return { ...state, savedViews: state.savedViews.map((view) => (view.id === id ? update(view) : view)) };
+}
+
+/** Overwrites a named view with what the form factor shows now. */
+export function withNamedViewUpdated(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): BoardViewState {
+	const active = activeSavedView(state, formFactor);
+	return mapNamed(state, id, (view) => ({ ...view, viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) }));
+}
+
+export function withNamedViewRenamed(state: BoardViewState, id: string, name: string): BoardViewState {
+	const clean = cleanSavedViewName(name);
+	if (!clean) return state;
+	return mapNamed(state, id, (view) => ({ ...view, name: clean }));
+}
+
+export function withoutNamedView(state: BoardViewState, id: string): BoardViewState {
+	if (!state.savedViews.some((view) => view.id === id && view.name !== null)) return state;
+	return { ...state, savedViews: state.savedViews.filter((view) => view.id !== id) };
+}
+
+/**
+ * Loads a named view's view type and layouts into the form factor's working view.
+ * The query is the caller's to apply: the board query lives in memory, not here.
+ */
+export function withNamedViewApplied(state: BoardViewState, formFactor: BoardFormFactor, id: string): BoardViewState {
+	const named = state.savedViews.find((view) => view.id === id && view.name !== null);
+	if (!named) return state;
+	return updateActive(state, formFactor, (view) => ({
+		...view,
+		viewType: named.viewType,
+		layouts: { ...view.layouts, ...cloneLayouts(named.layouts) },
+	}));
+}
+
+/** True when the form factor no longer shows what the named view holds: its view type, that view's layout, or the query. */
+export function namedViewModified(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): boolean {
+	const named = state.savedViews.find((view) => view.id === id && view.name !== null);
+	if (!named) return false;
+	const active = activeSavedView(state, formFactor);
+	if (active.viewType !== named.viewType || query.trim() !== named.query) return true;
+	return JSON.stringify(active.layouts[named.viewType] ?? null) !== JSON.stringify(named.layouts[named.viewType] ?? null);
 }
 
 /** A space id becomes a file name, so only the generated `sp_<uuid>` alphabet is accepted. */

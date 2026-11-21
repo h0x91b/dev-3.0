@@ -256,7 +256,7 @@ ux_architecture:
       evidence: ["src/mainview/components/AppMenuBar.tsx", "src/shared/application-menu.ts", "src/mainview/menuRouter.ts (BROWSER_HANDLED_ACTIONS)", "src/mainview/App.tsx (browser-only mount)"]
     board_view_host:
       purpose: "A project/space board: shared filter row + the active board view + ctx.board (bible §5.11)."
-      allowed: ["view_switch", "manage_views_to_settings_extensions", "view_options", "shared_filter", "lineage_filter_notice"]
+      allowed: ["view_switch", "saved_view_pick_save_update_revert_rename_delete", "manage_views_to_settings_extensions", "view_options", "shared_filter", "lineage_filter_notice"]
       forbidden: ["global_destination", "route_state", "back_forward_history"]
       entry_points: ["filter-row Select (hidden with 1 view / Simplified Mode)", "V 1–9 / V V chord", "command_palette Board view: X", "application_menu.View > Board View (built-ins)"]
       status: "observed"
