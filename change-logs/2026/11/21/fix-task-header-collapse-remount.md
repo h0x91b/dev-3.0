@@ -1,0 +1,1 @@
+Collapsing or expanding the task header no longer remounts its bars and their controls, and the header no longer builds hidden narrow-layout and details JSX on every render, which brings its render time back below what it was before the header moved onto its slot.
