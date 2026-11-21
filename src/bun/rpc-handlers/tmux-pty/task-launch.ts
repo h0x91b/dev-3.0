@@ -439,6 +439,8 @@ async function launchTaskPtyOnce(
 	clearSetupExitCode(task.id);
 
 	const resumeFresh = resume && !!opts?.freshSessionId;
+	// A never-started relaunch has no conversation to stay with, so it routes its account like a first launch.
+	const routesAccount = !resume || !!opts?.freshWithTaskPrompt;
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
 		taskDescription: resumeFresh && !opts?.freshWithTaskPrompt ? "" : task.description,
@@ -482,7 +484,7 @@ async function launchTaskPtyOnce(
 			...(opts?.projectLogin ? { projectLogin: true } : {}),
 		};
 		let freshSessionId: string | null = null;
-		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
+		if (routesAccount && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
 		}
 
@@ -579,7 +581,7 @@ async function launchTaskPtyOnce(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: resume && !staleAccountDropped && !projectLoginKept ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+				accountId: !routesAccount && !staleAccountDropped && !projectLoginKept ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,

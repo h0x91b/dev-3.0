@@ -136,6 +136,18 @@ describe("first launch ended before a conversation was created", () => {
 		});
 	});
 
+	it("asks Auto again when the failed launch ran on Auto's pick", async () => {
+		arrange({ launchFailure: failure(), accountId: "acct-old", accountPick: { reason: { code: "lowest-short", short: 90, nextShort: 95 }, at: "2026-11-19T10:00:00Z" } } as Partial<Task>);
+		await resumeTaskSession("t1");
+		expect(launchOpts()).toMatchObject({ accountId: "auto", freshWithTaskPrompt: true });
+	});
+
+	it("keeps an explicitly chosen account rather than re-routing it", async () => {
+		arrange({ launchFailure: failure(), accountId: "acct-other", accountPick: { reason: { code: "lowest-short", short: 90, nextShort: 95 }, at: "2026-11-19T10:00:00Z" } } as Partial<Task>);
+		await resumeTaskSession("t1");
+		expect(launchOpts().accountId).toBe("acct-old");
+	});
+
 	it("persists an account override on the task, like any resume", async () => {
 		arrange({ launchFailure: failure() });
 		await resumeTaskSession("t1", { accountId: "acct-new" });

@@ -5,7 +5,7 @@ import * as pty from "../../pty-server";
 import { ptyWsUrl } from "../../pty-server-access";
 import * as agents from "../../agents";
 import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
-import { isAutoAccountId } from "../../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, isAutoAccountId } from "../../../shared/agent-accounts";
 import { chooseTaskCodexConversations, claimCodexChoices } from "../../codex-task-selection";
 import { getAgentAdapter } from "../../../shared/agent-adapters/registry";
 import { agentKey } from "../../../shared/agent-adapters/families";
@@ -424,6 +424,9 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	const main = panes[0];
 	const mainResume = targets[0].sessionId;
 	const mainFreshSessionId = targets[0].mode === "fresh-session" ? crypto.randomUUID() : undefined;
+	// Start again re-asks Auto when the failed launch ran on Auto's pick, instead of retrying that same account.
+	const mainRanOnAutoPick = !!task.accountPick && main.accountId != null && main.accountId === task.accountId;
+	const mainAccountRequest = switchesAccount(main, 0) ? accountOverride : mainNeverStarted && mainRanOnAutoPick ? AUTO_ACCOUNT_ID : main.accountId;
 	const mainAccountId = await launchTaskPty(
 		resolvedProject,
 		task,
@@ -432,7 +435,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId, freshWithTaskPrompt: mainNeverStarted || undefined },
+		{ sessionId: mainResume ?? undefined, accountId: mainAccountRequest, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId, freshWithTaskPrompt: mainNeverStarted || undefined },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	// Start Fresh and reconnect read the task's account, so a switch must not revert there.
