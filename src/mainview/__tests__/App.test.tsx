@@ -3236,6 +3236,26 @@ describe("App keyboard shortcuts", () => {
 			});
 		});
 
+		it("opens a task that is not running as its board card (#2347)", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(dlProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t2", projectId: "p2", archived: true },
+				}));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-detail-id", "t2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
+			});
+		});
+
 		it("opens a project board from an openDeepLink event", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(dlProjects);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({

@@ -1,6 +1,6 @@
 import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
-import type { DeepLinkNav } from "../../shared/deep-link";
+import { taskDeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
 import * as labelOps from "../board-operations/labels";
@@ -645,7 +645,7 @@ export const taskHandlers: Record<string, Handler> = {
 	 */
 	"task.open": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const nav: DeepLinkNav = { kind: "task", taskId: task.id, projectId: project.id };
+		const nav = taskDeepLinkNav(task.id, project.id, task.status);
 		if (process.env.DEV3_HEADLESS !== "1") {
 			const { focusFocusedWindow, getWindowCount, openNewWindow } = await import("../window-manager");
 			if (getWindowCount() === 0) {
