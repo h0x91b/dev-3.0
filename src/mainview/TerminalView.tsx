@@ -65,14 +65,11 @@ import { readHostClipboardImage, shouldReadHostClipboardImage } from "./utils/ho
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
 import { spaceDroppedPaths } from "./terminal-drop-spacing";
-import { createFilePathLinkProvider, type FilePathLinkProvider } from "./terminal-file-links";
-import { createDeepLinkProvider, type DeepLinkProvider } from "./terminal-deep-links";
-import { createOsc8Tracker, createOsc8LinkProvider } from "./terminal-osc8-links";
+import { createOsc8Tracker } from "./terminal-osc8-links";
 import { cellFromMouseEvent } from "./terminal-cell-hit";
-import { installOsc8HoverTooltip, type Osc8HoverHandle } from "./terminal-osc8-hover";
-import { installFilePathUnderlines, sharedScanLinks, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
-import { activateTerminalPath, activateOsc8Uri, activateDeepLinkUri } from "./terminal-path-open";
-import { installTouchLinkTap, osc8TouchLink, plainUrlAt, type TouchLink, type TouchLinkSource } from "./terminal-touch-links";
+import { installFilePathUnderlines, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
+import { installTerminalLinks, type TerminalLinksHandle } from "./terminal-links/host";
+import { installTouchLinkTap, type TouchLink } from "./terminal-touch-links";
 import TerminalLinkSheet from "./components/TerminalLinkSheet";
 import { isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
@@ -81,7 +78,6 @@ import { isFinalPtyCloseCode, PTY_WS_CLOSE } from "../shared/pty-ws-close-codes"
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "./terminal-themes";
 import { installTerminalRefHover, type TerminalRefHover } from "./terminal-ref-hover";
 import { TaskRefFloatingPreview } from "./components/TaskRefPreviewCard";
-import { parseRefUri } from "../shared/task-refs";
 
 /**
  * What ghostty is told: the user's size, narrowed to the reference font's cell if
@@ -777,9 +773,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		let refitTimer: ReturnType<typeof setTimeout> | null = null;
 		let mouseCleanup: (() => void) | undefined;
 		let linkUnderlines: FilePathUnderlinesHandle | null = null;
-		let osc8Hover: Osc8HoverHandle | null = null;
-		let filePathLinks: FilePathLinkProvider | null = null;
-		let deepLinks: DeepLinkProvider | null = null;
+		let terminalLinks: TerminalLinksHandle | null = null;
 		// URI capture for OSC 8 hyperlinks — the wasm terminal never exposes a
 		// link's URI back to JS, so it is remembered from the raw PTY stream.
 		const osc8Tracker = createOsc8Tracker();
@@ -962,101 +956,36 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				logDiagnostic("render-guard", "info", "render guard installed", { cols: term.cols, rows: term.rows });
 			}
 
-			// File paths in output become Cmd/Ctrl+Click links; open behavior is
-			// the "File path click action" global setting. The overlay draws a
-			// persistent underline under every resolved link so paths read as
-			// links without hovering.
-			filePathLinks = createFilePathLinkProvider({
-				term,
-				resolvePaths: async (paths) =>
-					(await api.request.resolveTerminalPaths({ taskId, projectId, paths })).resolved,
-				onActivate: (resolved, _event, line) => {
-					void activateTerminalPath(resolved, tRef.current, line, taskId);
-				},
-				onResolutionsChanged: () => linkUnderlines?.requestRedraw(),
-			});
-			term.registerLinkProvider(filePathLinks);
-			// OSC 8 hyperlinks (agents wrap markdown links in them). ghostty-web
-			// underlines them on hover by itself but cannot recover the URI from
-			// wasm, so this provider resolves it via the stream tracker.
-			const osc8Provider = createOsc8LinkProvider({
-				getLine: (y) => term.buffer.active.getLine(y) ?? undefined,
-				isRowWrapped: (y) => {
-					// ghostty-web reports every scrollback row as unwrapped; return
-					// "unknown" there so the provider still stitches scrolled links.
-					const scrollback = Math.max(0, term.buffer.active.length - term.rows);
-					if (y < scrollback) return undefined;
-					return term.buffer.active.getLine(y)?.isWrapped;
-				},
-				uriFor: osc8Tracker.uriFor,
-				cellFromEvent: (event) => cellFromMouseEvent(term, event),
-				onActivate: (uri) => {
-					void activateOsc8Uri(uri, { t: tRef.current, taskId, projectId });
-				},
-			});
-			term.registerLinkProvider(osc8Provider);
-			// Bare `dev3://…` links an agent printed: ghostty's URL regex knows no
-			// custom scheme, so nothing else would make them clickable.
-			deepLinks = createDeepLinkProvider({
-				term,
-				onActivate: (uri) => {
-					void activateDeepLinkUri(uri, { t: tRef.current, taskId, projectId });
-				},
-			});
-			term.registerLinkProvider(deepLinks);
-			// Label and destination are independent in OSC 8 — show the resolved
-			// target on hover so a mismatch is visible before the click.
-			osc8Hover = installOsc8HoverTooltip({
+			// Every link kind (file paths, OSC 8, `dev3://`, tap-only plain URLs) comes from the
+			// `terminalLinks` slot; the host keeps their order and isolates a throwing provider.
+			// The overlay draws a persistent underline under every resolved path and deep link.
+			terminalLinks = installTerminalLinks({
 				term,
 				container: containerRef.current,
-				linkAt: osc8Provider.linkAt,
+				taskId,
+				projectId,
+				t: () => tRef.current,
+				osc8UriFor: osc8Tracker.uriFor,
+				requestUnderlineRedraw: () => linkUnderlines?.requestRedraw(),
 			});
+			const links = terminalLinks;
 			// `<seq:N>` / `<pr:N>` under the mouse feed the floating preview card.
 			termSubs.push(installTerminalRefHover({
 				term,
 				container: containerRef.current,
-				refAt: (y, x) => {
-					const plain = deepLinks?.linkAt(y, x);
-					if (plain && parseRefUri(plain)) return plain;
-					const osc8 = osc8Provider.linkAt(y, x)?.uri;
-					return osc8 && parseRefUri(osc8) ? osc8 : undefined;
-				},
+				refAt: links.refAt,
 				onChange: setRefHover,
 			}));
 			linkUnderlines = installFilePathUnderlines({
 				term,
 				container: containerRef.current,
-				// Deep links get the same persistent underline as file paths — both
-				// are in-app targets the user should see without hunting for them.
-				linksForRows: sharedScanLinks(term, [filePathLinks, deepLinks]),
+				linksForRows: links.underlinesForRows,
 			});
-			// Touch has no Cmd/Ctrl, so every provider above is a dead link on a
-			// phone: a tap on any of them opens the Open / Copy sheet instead. Same
-			// activations as the modifier click, in the same precedence.
-			const linkCtx = () => ({ t: tRef.current, taskId, projectId });
-			const touchLinkSources: TouchLinkSource[] = [
-				(y, x) => {
-					const hit = osc8Provider.linkAt(y, x);
-					return hit && osc8TouchLink(hit.uri, () => void activateOsc8Uri(hit.uri, linkCtx()));
-				},
-				(y, x) => {
-					const uri = deepLinks?.linkAt(y, x);
-					return uri ? { kind: "app", target: uri, open: () => void activateDeepLinkUri(uri, linkCtx()) } : undefined;
-				},
-				(y, x) => {
-					const url = plainUrlAt(term.buffer.active.getLine(y) ?? undefined, x);
-					return url ? { kind: "web", target: url, open: () => void window.open(url, "_blank", "noopener,noreferrer") } : undefined;
-				},
-				(y, x) => {
-					const hit = filePathLinks?.linkAt(y, x);
-					return hit
-						? { kind: "file", target: hit.target.path, open: () => void activateTerminalPath(hit.target, tRef.current, hit.line, taskId) }
-						: undefined;
-				},
-			];
+			// Touch has no Cmd/Ctrl, so every link is dead on a phone: a tap on one opens the
+			// Open / Copy sheet instead, with the same activation as the modifier click.
 			termSubs.push(installTouchLinkTap({
 				container: containerRef.current,
-				sources: touchLinkSources,
+				sources: [links.touchLinkAt],
 				cellAt: (point) => cellFromMouseEvent(term, point),
 				onLink: setTouchLink,
 			}));
@@ -2334,11 +2263,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 			mouseCleanup?.();
 			linkUnderlines?.dispose();
 			linkUnderlines = null;
-			osc8Hover?.dispose();
-			osc8Hover = null;
-			filePathLinks?.dispose();
-			deepLinks?.dispose?.();
-			filePathLinks = null;
+			terminalLinks?.dispose();
+			terminalLinks = null;
 			osc8Tracker.dispose();
 			nativeSelectionClipboardCleanup?.();
 			// Dispose terminal event subscriptions (onData, onResize) before

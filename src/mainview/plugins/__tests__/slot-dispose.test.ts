@@ -20,6 +20,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	taskMenu: "task-menu/__tests__/task-menu-slot.test.tsx",
 	taskPanels: "task-panels/__tests__/task-panels.test.tsx",
 	terminalCompanion: "terminal-companion/__tests__/terminal-companion.test.tsx",
+	terminalLinks: "terminal-links/__tests__/terminal-links.test.ts",
 };
 
 const MAINVIEW = resolve(__dirname, "../..");
