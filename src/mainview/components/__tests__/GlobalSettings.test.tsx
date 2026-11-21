@@ -8,6 +8,10 @@ import { toast } from "../../toast";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
 import type { SettingsEntryAnchor } from "../../settings-registry";
+import type { Context } from "cordis";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { getAppRoot } from "../../plugins/root";
+import { BUILTIN_SETTINGS_SECTIONS_PLUGIN } from "../../settings-sections/builtins";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -185,6 +189,7 @@ async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerI
 }
 
 describe("GlobalSettings", () => {
+	beforeAll(() => applyBuiltinPlugins([], [BUILTIN_SETTINGS_SECTIONS_PLUGIN]));
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
@@ -1029,6 +1034,86 @@ describe("GlobalSettings", () => {
 
 			expect(document.getElementById("settings-category-title")).toHaveTextContent("System");
 			expect(screen.getByText("Token-saving proxy (experimental)")).toBeInTheDocument();
+		});
+	});
+
+	describe("deep links through the sections slot", () => {
+		// One anchor per category, from its LAST section, so a link past the first section still lands.
+		const LINKS: [SettingsSectionId, SettingsEntryAnchor][] = [
+			["appearance", "simplify-mode"],
+			["tasks", "epics"],
+			["notifications", "watch-by-default"],
+			["keyboard", "digits-follow-spaces"],
+			["terminal", "terminal-shell-prompt"],
+			["agents", "claude-mods"],
+			["accounts", "agent-accounts"],
+			["models", "model-catalog"],
+			["extensions", "extensions-kill-switch"],
+			["workspace", "external-apps"],
+			["system", "developer-tools"],
+		];
+		let scrolled: Element[] = [];
+		let original: PropertyDescriptor | undefined;
+		beforeEach(() => {
+			// An earlier test switches Simplified Mode on, which hides the Keyboard category.
+			setHiddenControlsForTests([]);
+			scrolled = [];
+			original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+			Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+				configurable: true,
+				value(this: Element) {
+					scrolled.push(this);
+				},
+			});
+		});
+		afterEach(() => {
+			if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+			else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+		});
+
+		it.each(LINKS)("route.section %s + route.anchor %s scrolls to that section", async (section, anchor) => {
+			setupMocks();
+			renderGlobalSettings(section, anchor);
+			await waitForLoad();
+			await waitFor(() => expect(scrolled.map((el) => el.getAttribute("data-settings-entry"))).toContain(anchor));
+		});
+
+		// OPEN_SETTINGS_SECTION_EVENT becomes a new route (App.tsx); the open page follows it.
+		it.each(LINKS)("an already open page follows a new route to %s / %s", async (section, anchor) => {
+			setupMocks();
+			const view = renderGlobalSettings(section === "appearance" ? "system" : "appearance");
+			await waitForLoad();
+			view.rerender(
+				<I18nProvider>
+					<GlobalSettings section={section} anchor={anchor} />
+				</I18nProvider>,
+			);
+			await waitFor(() => expect(scrolled.map((el) => el.getAttribute("data-settings-entry"))).toContain(anchor));
+		});
+	});
+
+	describe("a section that throws", () => {
+		it("leaves a notice in its place and the rest of the category page working", async () => {
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			function Broken(): never {
+				throw new Error("boom");
+			}
+			const fiber = getAppRoot().plugin({
+				name: "test:broken-section",
+				inject: ["settingsSections"],
+				apply(ctx: Context) {
+					ctx.settingsSections.register({ id: "builtin:broken", region: "models", order: -1, entries: [], component: Broken });
+				},
+			});
+			try {
+				setupMocks();
+				renderGlobalSettings("models");
+				await waitForLoad();
+				expect(screen.getByRole("alert")).toHaveTextContent("This section could not be shown.");
+				expect(document.querySelector('[data-settings-entry="model-catalog"]')).not.toBeNull();
+			} finally {
+				await fiber.dispose();
+			}
 		});
 	});
 
