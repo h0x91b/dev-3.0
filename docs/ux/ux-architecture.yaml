@@ -263,6 +263,14 @@ ux_architecture:
       entry_points: ["filter-row Select (hidden with 1 view / Simplified Mode)", "V 1–9 / V V chord", "command_palette Board view: X", "application_menu.View > Board View (built-ins)"]
       status: "observed"
       evidence: ["board-views/BoardHost.tsx", "board-views/BoardViewChrome.tsx", "board-views/view-commands.ts"]
+    plugin_slots:
+      purpose: "Cordis slots under every surface (bible §5.12); built-ins first, extensions later per kind."
+      replace: ["board_view", "sidebar", "home_body", "destination_bodies"]
+      contribute: ["task_header (regions = §5.1 bars)", "settings_sections (fixed categories)", "commands", "task_menu", "task_dock_panels", "card_sidebar_marker"]
+      allowed: ["add_item", "add_settings_section", "user_layout"]
+      forbidden: ["extension_replaces_or_hides_builtin", "extension_settings_category", "extension_route_or_destination", "global_header_contribution", "breadcrumb_contribution", "card_inline_strip_contribution", "native_menu_contribution", "native_or_window_dialog", "replace_app_shell", "replace_terminal_renderer", "customize_toolbar_button", "item_without_region"]
+      status: "proposed"
+      evidence: ["decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md"]
     kanban_board:
       purpose: "The builtin:kanban board view and the fallback for any failed view: columns by status, task cards, drag-to-move, per-column add."
       allowed: ["object_card", "create_in_column", "drag_move", "column_config"]
@@ -337,6 +345,7 @@ ux_architecture:
         rationale: "Wide desktop width is used instead of stacking more rows; the panel has a hard height budget (MAX_RATIO=0.33). One bar = one action domain. Panel chrome is not a bar."
         per_bar_visible_budget: 4
         overflow_rule: "If a domain bar exceeds 4 visible, promote it to its own dedicated row before widening past budget."
+        registry: "proposed: bars = task_header slot regions; host overflow to a per-region More"
         bars:
           context:
             position: "row1.left"
