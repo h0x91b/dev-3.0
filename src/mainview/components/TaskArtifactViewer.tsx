@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LiveArtifact, SharedArtifact, Task, TaskStatus } from "../../shared/types";
 import { isLiveViewerEntry, liveViewerEntry } from "../../shared/live-artifact";
@@ -22,7 +22,6 @@ import FindBar, { type FindBarHandle } from "./FindBar";
 import ArtifactVersionPicker from "./ArtifactVersionPicker";
 import ArtifactFrame, { type ArtifactFrameHandle } from "./ArtifactFrame";
 import { registerOverlayLayer } from "../utils/overlay-layers";
-import { getArtifactDock, subscribeArtifactDock } from "../utils/artifact-dock";
 import { artifactViewerClosed, artifactViewerOpened } from "../artifact-activity";
 import { setArtifactThemeMode, useArtifactThemeMode } from "../artifact-theme-prefs";
 import { assetFileName, downloadBase64, parseDataUrl } from "../utils/downloadBytes";
@@ -30,7 +29,9 @@ import { assetFileName, downloadBase64, parseDataUrl } from "../utils/downloadBy
 interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
 	initialIndex: number;
-	/** The route left this viewer's task: stay mounted, show nothing (see docstring). */
+	/** The element to dock into, or null for the popup (see docstring). */
+	dock?: HTMLElement | null;
+	/** Docked but not on screen (its task left the route, or another dock tab is in front): stay mounted, show nothing. */
 	offscreen?: boolean;
 	onClose: () => void;
 	/** Required: an artifact with no addressable task has nowhere to send. */
@@ -81,13 +82,14 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  * One viewer for artifacts an agent surfaced via `dev3 show-artifact`, in two
  * intentional presentations — same chrome, same document, same channel:
  *
- *  - **Docked panel** (default). Its tab in the task dock publishes a slot through
- *    `utils/artifact-dock`; the viewer portals into it and renders in flow, to
- *    the right of the task terminal, at the width the dock owns.
+ *  - **Docked panel** (default). The viewer is the task dock's built-in artifact
+ *    panel (`task-panels/artifact-panel.tsx`), which hands it `dock`; it portals
+ *    into it and renders in flow, to the right of the task terminal, at the
+ *    width the dock owns.
  *  - **Popup** (`openArtifactsInPopup`, and wherever no dock exists — the
  *    archived-task modal, a toast for a task that is not on screen, narrow
- *    viewports). The lightbox `TaskImageViewer` uses: a centred card over a
- *    scrim, ~90% of the viewport.
+ *    viewports, immersive). The lightbox `TaskImageViewer` uses: a centred card
+ *    over a scrim, ~90% of the viewport, portalled to `body`.
  *  - **Offscreen** (`offscreen`). A docked panel whose task the route has left.
  *    It renders inside a `hidden` wrapper rather than falling back to the popup,
  *    which used to drop a centred artifact over an unrelated board on every task
@@ -106,7 +108,7 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  * terminal — never for the docked panel, where the terminal is legitimately
  * visible beside it.
  */
-export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initialIndex, offscreen = false, onClose, taskId, taskStatus, projectId, task, live }: TaskArtifactViewerProps) {
+export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initialIndex, dock = null, offscreen = false, onClose, taskId, taskStatus, projectId, task, live }: TaskArtifactViewerProps) {
 	const t = useT();
 	// Keyed on what changes the document, not on the record's identity: every task
 	// update hands over a fresh `live` object, and re-composing on each one would
@@ -122,10 +124,6 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
 	const [error, setError] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
-	// The pane's docking slot, or null when there is none to dock into. Read as
-	// external state so flipping the preference re-hosts THIS viewer instead of
-	// mounting a second one.
-	const dock = useSyncExternalStore(subscribeArtifactDock, getArtifactDock, () => null);
 	// Modal = covers the task and owns the keyboard. Docked-and-not-fullscreen is
 	// the one presentation that does not — nor is a hidden one, which must own no
 	// key, no overlay layer and no terminal blanking while it waits.
@@ -878,16 +876,17 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 	// but out of the layout and out of the accessibility tree.
 	if (offscreen) return <div hidden data-testid="artifact-viewer-offscreen">{card}</div>;
 
-	// The dock is the pane's own element, so the panel renders inside the
-	// workspace layout while this component stays mounted under App.
+	// The dock is the panel's own element, so the viewer renders inside the
+	// workspace layout; a flip between dock and popup re-hosts this same instance.
 	if (dock) return createPortal(card, dock);
 
-	return (
+	return createPortal(
 		<div
 			className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/60 outline-none ${fullscreen ? "p-0" : "px-[5vw] py-[5vh]"}`}
 			onClick={onClose}
 		>
 			{card}
-		</div>
+		</div>,
+		document.body,
 	);
 }

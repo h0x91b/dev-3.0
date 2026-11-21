@@ -1,22 +1,25 @@
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import type { Task } from "../../shared/types";
 import { useT } from "../i18n";
 import { createPortal } from "react-dom";
 import { CordisContext } from "../plugins/react";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
 import type { SlotEntry } from "../plugins/slot-registry";
 import { isBuiltinItem } from "../plugins/SlotItems";
-import { closeTaskPanel, getTaskDocks, resolveActiveTab, getTaskDockSeat, getTaskDockSeatsVersion, subscribeTaskDocks } from "./dock-store";
+import { closeTaskPanel, dockedPanelIds, getTaskDocks, resolveActiveTab, getTaskDockSeat, getTaskDockSeatsVersion, subscribeTaskDocks } from "./dock-store";
 import { getTaskPanelsRegistry, type TaskPanelDef, type TaskPanelPresentation } from "./registry";
 
-function presentationOf(taskId: string, panelId: string, active: string | null): { presentation: TaskPanelPresentation; seat: HTMLElement | null } {
+function presentationOf(taskId: string, panelId: string, active: string | null, floating: boolean): { presentation: TaskPanelPresentation; seat: HTMLElement | null } {
+	if (floating) return { presentation: "floating", seat: null };
 	const seat = getTaskDockSeat(taskId);
 	if (seat === undefined) return { presentation: "offscreen", seat: null };
 	if (seat === null) return { presentation: "undocked", seat: null };
 	return { presentation: active === panelId ? "docked" : "inactive", seat };
 }
 
-function PanelInstance({ taskId, entry, presentation, seat, parking }: {
+function PanelInstance({ taskId, task, entry, presentation, seat, parking }: {
 	taskId: string;
+	task: Task | undefined;
 	entry: SlotEntry<TaskPanelDef>;
 	presentation: TaskPanelPresentation;
 	seat: HTMLElement | null;
@@ -42,7 +45,7 @@ function PanelInstance({ taskId, entry, presentation, seat, parking }: {
 	return createPortal(
 		<SlotErrorBoundary slot="taskPanels" resetKey={panelId} fallback={() => (isBuiltinItem(panelId) ? <PanelCrashed /> : <DropPanel taskId={taskId} panelId={panelId} />)}>
 			<CordisContext.Provider value={entry.ctx}>
-				<Component ctx={entry.ctx} taskId={taskId} presentation={presentation} close={() => closeTaskPanel(taskId, panelId)} />
+				<Component ctx={entry.ctx} taskId={taskId} task={task} presentation={presentation} close={() => closeTaskPanel(taskId, panelId)} />
 			</CordisContext.Provider>
 		</SlotErrorBoundary>,
 		host,
@@ -70,7 +73,7 @@ function DropPanel({ taskId, panelId }: { taskId: string; panelId: string }) {
  * workspace pane only offers a seat (`TaskDock`); a panel whose task has no seat
  * waits hidden in the parking lot, still mounted.
  */
-export default function TaskPanelInstances() {
+export default function TaskPanelInstances({ tasks }: { tasks: readonly Task[] }) {
 	const registry = getTaskPanelsRegistry();
 	const entries = useSyncExternalStore(registry.subscribe, registry.list);
 	const docks = useSyncExternalStore(subscribeTaskDocks, getTaskDocks);
@@ -88,13 +91,14 @@ export default function TaskPanelInstances() {
 	const byId = new Map(entries.map((entry) => [entry.def.id, entry]));
 	const instances = [];
 	for (const [taskId, dock] of docks) {
-		const active = resolveActiveTab(taskId, dock.open.filter((id) => byId.has(id)), dock.active);
+		const active = resolveActiveTab(taskId, dockedPanelIds(dock).filter((id) => byId.has(id)), dock.active);
+		const task = tasks.find((candidate) => candidate.id === taskId);
 		for (const panelId of dock.open) {
 			const entry = byId.get(panelId);
 			if (!entry) continue;
-			const { presentation, seat } = presentationOf(taskId, panelId, active);
+			const { presentation, seat } = presentationOf(taskId, panelId, active, dock.floating.includes(panelId));
 			instances.push(
-				<PanelInstance key={`${taskId}\u0000${panelId}`} taskId={taskId} entry={entry} presentation={presentation} seat={seat} parking={parking} />,
+				<PanelInstance key={`${taskId}\u0000${panelId}`} taskId={taskId} task={task} entry={entry} presentation={presentation} seat={seat} parking={parking} />,
 			);
 		}
 	}

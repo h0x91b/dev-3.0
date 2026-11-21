@@ -34,7 +34,7 @@ async function registerPanels(ids: string[]) {
 function Screen({ taskId, covered = false, canDock = true }: { taskId: string | null; covered?: boolean; canDock?: boolean }) {
 	return (
 		<I18nProvider>
-			<TaskPanelInstances />
+			<TaskPanelInstances tasks={[]} />
 			{taskId && <div className="flex"><TaskDock taskId={taskId} covered={covered} canDock={canDock} /></div>}
 		</I18nProvider>
 	);
@@ -49,7 +49,7 @@ describe("dock store", () => {
 	it("opens behind the active tab unless asked to activate, and closes back to the remembered pick", () => {
 		openTaskPanel("t1", "ext:a");
 		openTaskPanel("t1", "ext:b", { activate: false });
-		expect(getTaskDock("t1")).toEqual({ open: ["ext:a", "ext:b"], active: "ext:a" });
+		expect(getTaskDock("t1")).toEqual({ open: ["ext:a", "ext:b"], active: "ext:a", floating: [] });
 		openTaskPanel("t1", "ext:c");
 		expect(getTaskDock("t1").active).toBe("ext:c");
 		activateTaskPanel("t1", "ext:b");
@@ -57,7 +57,7 @@ describe("dock store", () => {
 		expect(getTaskDock("t1").active).toBe("ext:b");
 		closeTaskPanel("t1", "ext:a");
 		closeTaskPanel("t1", "ext:b");
-		expect(getTaskDock("t1")).toEqual({ open: [], active: null });
+		expect(getTaskDock("t1")).toEqual({ open: [], active: null, floating: [] });
 	});
 
 	it("remembers the picked tab per task across a reload of the docks", async () => {
@@ -125,7 +125,7 @@ describe("task dock", () => {
 			openTaskPanel("t1", "ext:b");
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Close b" }));
-		expect(getTaskDock("t1")).toEqual({ open: ["ext:a"], active: "ext:a" });
+		expect(getTaskDock("t1")).toEqual({ open: ["ext:a"], active: "ext:a", floating: [] });
 	});
 
 	it("keeps an extension panel's state across a task switch and back", async () => {

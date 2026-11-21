@@ -1,13 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskWorkspacePane from "../TaskWorkspacePane";
-import { getArtifactDock } from "../../utils/artifact-dock";
+import { showArtifactViewer } from "../../task-panels/artifact-panel";
 import TaskPanelInstances from "../../task-panels/TaskPanelInstances";
 import { installTaskPanelBuiltins } from "../../task-panels/__tests__/install-builtins";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { exitCopyModeAllPanes: vi.fn(() => Promise.resolve()) } },
+	api: { request: {
+		exitCopyModeAllPanes: vi.fn(() => Promise.resolve()),
+		readArtifactContent: vi.fn(() => Promise.resolve({ html: "<p>hi</p>", assets: [], downloadKind: "html" })),
+		getTaskReview: vi.fn(() => Promise.resolve(null)),
+	} },
 	isElectrobun: false,
 }));
 
@@ -51,7 +55,7 @@ const task: Task = {
 function renderPane(props: Partial<React.ComponentProps<typeof TaskWorkspacePane>> = {}) {
 	return render(
 		<I18nProvider>
-			<TaskPanelInstances />
+			<TaskPanelInstances tasks={[task]} />
 			<TaskWorkspacePane
 				projectId="p1"
 				taskId="t1"
@@ -88,18 +92,29 @@ function forceNarrow(narrow: boolean) {
 beforeEach(installTaskPanelBuiltins);
 afterEach(() => forceNarrow(false));
 
+function openArtifact() {
+	act(() => showArtifactViewer({
+		taskId: "t1",
+		projectId: "p1",
+		index: 0,
+		artifacts: [{ id: "a1", kind: "html", title: "Report", name: "a1.html", storedPath: "/wt/a1.html", originalPath: "/tmp/a1.html", bytes: 1, createdAt: 1, assets: [] }],
+	}));
+}
+
 describe("TaskWorkspacePane artifact dock", () => {
-	it("publishes no dock when no artifact wants one", () => {
+	it("shows no dock when no artifact is open", () => {
 		renderPane();
-		expect(screen.queryByTestId("artifact-dock")).toBeNull();
+		expect(screen.queryByTestId("task-dock")).toBeNull();
 		expect(screen.queryByRole("separator")).toBeNull();
-		expect(getArtifactDock()).toBeNull();
+		expect(screen.queryByTestId("artifact-viewer")).toBeNull();
 	});
 
-	it("renders the panel slot with its resize handle and publishes the dock", () => {
-		renderPane({ dockArtifact: true });
-		const slot = screen.getByTestId("artifact-dock");
-		expect(getArtifactDock()).toBe(slot);
+	it("docks the open artifact beside the terminal, behind its resize handle", async () => {
+		renderPane();
+		openArtifact();
+		const viewer = await screen.findByTestId("artifact-viewer");
+		expect(viewer).toHaveAttribute("data-presentation", "docked");
+		expect(screen.getByTestId("task-dock")).toContainElement(viewer);
 		const handle = screen.getByRole("separator");
 		expect(handle).toHaveAttribute("aria-orientation", "vertical");
 		expect(handle).toHaveAttribute("tabindex", "0");
@@ -107,23 +122,36 @@ describe("TaskWorkspacePane artifact dock", () => {
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 	});
 
-	it("takes the dock back on unmount, so the viewer falls back to the popup", () => {
-		const { unmount } = renderPane({ dockArtifact: true });
-		expect(getArtifactDock()).not.toBeNull();
-		unmount();
-		expect(getArtifactDock()).toBeNull();
+	it("waits offscreen, still mounted, when the pane goes away", async () => {
+		const { rerender } = renderPane();
+		openArtifact();
+		await screen.findByTestId("artifact-viewer");
+		rerender(<I18nProvider><TaskPanelInstances tasks={[task]} /></I18nProvider>);
+		expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-presentation", "offscreen");
 	});
 
-	it("refuses to dock on a narrow viewport — the popup is the compact presentation", () => {
+	it("refuses to dock on a narrow viewport — the popup is the compact presentation", async () => {
 		forceNarrow(true);
-		renderPane({ dockArtifact: true });
-		expect(screen.queryByTestId("artifact-dock")).toBeNull();
-		expect(getArtifactDock()).toBeNull();
+		renderPane();
+		openArtifact();
+		const viewer = await screen.findByTestId("artifact-viewer");
+		expect(screen.queryByTestId("task-dock")).toBeNull();
+		expect(viewer).toHaveAttribute("data-presentation", "popup");
 	});
 
-	it("refuses to dock while the inline diff owns the surface", () => {
-		renderPane({ dockArtifact: true, inlineDiffRequest: { mode: "branch", compareLabel: "origin/main" } });
-		expect(screen.queryByTestId("artifact-dock")).toBeNull();
-		expect(getArtifactDock()).toBeNull();
+	it("pops up in immersive fullscreen, which keeps the dock out", async () => {
+		renderPane({ immersive: true });
+		openArtifact();
+		const viewer = await screen.findByTestId("artifact-viewer");
+		expect(screen.queryByTestId("task-dock")).toBeNull();
+		expect(viewer).toHaveAttribute("data-presentation", "popup");
+	});
+
+	it("waits offscreen while the inline diff owns the surface", async () => {
+		renderPane({ inlineDiffRequest: { mode: "branch", compareLabel: "origin/main" } });
+		openArtifact();
+		const viewer = await screen.findByTestId("artifact-viewer");
+		expect(screen.queryByTestId("task-dock")).toBeNull();
+		expect(viewer).toHaveAttribute("data-presentation", "offscreen");
 	});
 });

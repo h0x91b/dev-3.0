@@ -1,5 +1,7 @@
 # Task dock panels on an internal `taskPanels` slot
 
+Superseded in part on 2026-11-21 by `decisions/2026/11/21/artifact-viewer-dock-panel.md`: the artifact bridge is gone — the viewer is the artifact panel itself.
+
 ## Context
 Plan item 5.1 (`decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`): the right-hand dock of the task workspace held exactly one thing, the artifact viewer, through `utils/artifact-dock.ts` — App mounts the viewer, the pane only offers it an element. Bible §5.12/§9 wants one dock for many panels: one tab strip, four visible tabs, then "More". Internal first: built-ins only, no manifest kind, no public service, no version bump.
 

@@ -1,0 +1,1 @@
+The artifact viewer is now the task dock's built-in panel instead of App-owned state: it docks, floats as the popup under the preference or from a paneless surface, waits hidden off its task, and a newly shown artifact comes to the front of the dock. In immersive fullscreen it now shows as the popup instead of disappearing.

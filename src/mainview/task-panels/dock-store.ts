@@ -1,9 +1,14 @@
 import { useSyncExternalStore } from "react";
 
-/** One task's dock: which panels are open (in opening order) and which tab is in front. */
+/**
+ * One task's dock: which panels are open (in opening order) and which tab is in front.
+ * A `floating` panel is open but not in the dock: it has no tab and draws itself as a
+ * lightbox (the artifact viewer under the popup preference, or opened from a paneless surface).
+ */
 export interface TaskDockState {
 	open: readonly string[];
 	active: string | null;
+	floating: readonly string[];
 }
 
 /**
@@ -18,7 +23,7 @@ interface Seat {
 
 const ACTIVE_KEY = "dev3-task-dock-active";
 const MAX_REMEMBERED = 200;
-const EMPTY: TaskDockState = { open: [], active: null };
+const EMPTY: TaskDockState = { open: [], active: null, floating: [] };
 
 const docks = new Map<string, TaskDockState>();
 const seats = new Map<string, Seat>();
@@ -83,31 +88,40 @@ export function getTaskDocks(): ReadonlyMap<string, TaskDockState> {
  * Opens a panel's tab for a task. `activate` brings it to the front; otherwise it
  * goes in front only when the user last picked it here, or nothing else is open.
  */
-export function openTaskPanel(taskId: string, panelId: string, { activate = true }: { activate?: boolean } = {}): void {
+export function openTaskPanel(taskId: string, panelId: string, { activate = true, floating = false }: { activate?: boolean; floating?: boolean } = {}): void {
 	const dock = getTaskDock(taskId);
 	const open = dock.open.includes(panelId) ? dock.open : [...dock.open, panelId];
+	const wasFloating = dock.floating.includes(panelId);
+	const floats = floating === wasFloating ? dock.floating : floating ? [...dock.floating, panelId] : dock.floating.filter((id) => id !== panelId);
 	let active = dock.active;
-	if (activate || active === null || readRemembered()[taskId] === panelId) active = panelId;
-	if (open === dock.open && active === dock.active) return;
-	setDock(taskId, { open, active });
+	if (floating) {
+		if (active === panelId) active = null;
+	} else if (activate || active === null || readRemembered()[taskId] === panelId) {
+		active = panelId;
+	}
+	if (open === dock.open && active === dock.active && floats === dock.floating) return;
+	setDock(taskId, { open, active, floating: floats });
+}
+
+/** The open panels that sit in the dock as tabs: every open one that is not floating. */
+export function dockedPanelIds(dock: TaskDockState): readonly string[] {
+	return dock.floating.length === 0 ? dock.open : dock.open.filter((id) => !dock.floating.includes(id));
 }
 
 export function closeTaskPanel(taskId: string, panelId: string): void {
 	const dock = getTaskDock(taskId);
 	if (!dock.open.includes(panelId)) return;
 	const open = dock.open.filter((id) => id !== panelId);
+	const floating = dock.floating.filter((id) => id !== panelId);
 	let active = dock.active;
-	if (active === panelId) {
-		const remembered = readRemembered()[taskId];
-		active = remembered && open.includes(remembered) ? remembered : (open[open.length - 1] ?? null);
-	}
-	setDock(taskId, { open, active });
+	if (active === panelId) active = resolveActiveTab(taskId, open.filter((id) => !floating.includes(id)), null);
+	setDock(taskId, { open, active, floating });
 }
 
 /** The user picked a tab: it goes in front and is remembered for this task. */
 export function activateTaskPanel(taskId: string, panelId: string): void {
 	const dock = getTaskDock(taskId);
-	if (!dock.open.includes(panelId)) return;
+	if (!dock.open.includes(panelId) || dock.floating.includes(panelId)) return;
 	remember(taskId, panelId);
 	if (dock.active !== panelId) setDock(taskId, { ...dock, active: panelId });
 }
