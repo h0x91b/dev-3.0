@@ -740,6 +740,8 @@ const common = {
 	"taskRef.previewMore_one": "{count} más",
 	"taskRef.previewMore_other": "{count} más",
 	"slots.more": "Más",
+	"destinationBody.crashed": "Esta pantalla no se pudo cargar, así que se muestra la integrada.",
+	"destinationBody.extensionFailed": "La extensión {name} no se cargó, así que se muestra la pantalla integrada.",
 };
 
 export default common;

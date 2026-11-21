@@ -739,6 +739,8 @@ const common = {
 	"taskRef.previewMore_one": "+{count} more",
 	"taskRef.previewMore_other": "+{count} more",
 	"slots.more": "More",
+	"destinationBody.crashed": "This screen failed to load, so the built-in one is shown.",
+	"destinationBody.extensionFailed": "The {name} extension failed to load, so the built-in screen is shown.",
 } as const;
 
 export default common;
