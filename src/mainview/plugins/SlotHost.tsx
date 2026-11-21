@@ -56,7 +56,7 @@ function SlotNotice({ children, action, compact }: { children: ReactNode; action
 		>
 			<span>{children}</span>
 			{action && (
-				<button type="button" onClick={action.onClick} className="ml-auto shrink-0 underline underline-offset-2 hover:text-fg">
+				<button type="button" onClick={action.onClick} className="ml-auto shrink-0 rounded-md underline underline-offset-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
 					{action.label}
 				</button>
 			)}

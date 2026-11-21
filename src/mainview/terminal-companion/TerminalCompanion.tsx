@@ -15,16 +15,19 @@ export function TerminalCompanion(props: TerminalCompanionProps) {
 	const registry = getTerminalCompanionRegistry();
 	const entries = useSyncExternalStore(registry.subscribe, registry.list);
 	const active = entries.find((entry) => entry.def.id === FILE_EXPLORER_COMPANION_ID);
-	const resetKey = active?.def.id ?? "";
+	// A new terminal folder is a retry, as for the explorer's own boundary.
+	const resetKey = `${active?.def.id ?? ""}#${props.projectId}/${props.taskId ?? ""}`;
 	const [dismissedFor, setDismissedFor] = useState<string | null>(null);
 	const dismiss = () => setDismissedFor(resetKey);
+	// Only a crashed replacement earns the notice: the built-in crashing is not a fallback to itself.
+	const replacementCrashed = active !== undefined && active.def.component !== FileExplorerCompanion;
 	const builtin = <SlotComponent ctx={getAppRoot()} component={FileExplorerCompanion} />;
 	return (
 		<TerminalCompanionPropsContext.Provider value={props}>
 			<SlotErrorBoundary
 				slot="terminalCompanion"
 				resetKey={resetKey}
-				fallback={() => <ReplacementCrashedContext.Provider value={dismissedFor === resetKey ? null : dismiss}>{builtin}</ReplacementCrashedContext.Provider>}
+				fallback={() => <ReplacementCrashedContext.Provider value={replacementCrashed && dismissedFor !== resetKey ? dismiss : null}>{builtin}</ReplacementCrashedContext.Provider>}
 			>
 				{/* Until the built-ins register, the fallback renders as the same component type,
 				    so the hand-over keeps the terminal mounted. */}
