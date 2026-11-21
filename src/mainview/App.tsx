@@ -4195,6 +4195,7 @@ function App() {
 						spaceId={route.spaceId}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
+						taskSnapshots={state.taskSnapshots}
 						dispatch={dispatch}
 						route={state.route}
 						navigate={navigate}
