@@ -6,8 +6,8 @@ import type { Context, Fiber } from "cordis";
 import { KANBAN_VIEW_ID } from "../../shared/board-view-state";
 import { extensionViewId, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
 import { api } from "../rpc";
-import { BUILTIN_BOARD_VIEWS, type BuiltinBoardView } from "./builtins";
-import { getBoardRoot, getBoardViewRegistry } from "./root";
+import { BUILTIN_BOARD_VIEWS, type BuiltinBoardView } from "../board-views/builtins";
+import { getAppRoot, getBoardViewRegistry } from "./root";
 
 /**
  * The board-view plugin runtime: which built-ins run, and the third-party
@@ -79,7 +79,7 @@ function cacheDisabledBuiltins(ids: readonly string[]): void {
 
 /** Runs each built-in unless the user switched it off. Kanban always runs (D16). */
 export function applyBuiltinBoardViews(disabled: readonly string[], builtins: readonly BuiltinBoardView[] = BUILTIN_BOARD_VIEWS): void {
-	const root = getBoardRoot();
+	const root = getAppRoot();
 	for (const builtin of builtins) {
 		const run = builtin.id === KANBAN_VIEW_ID || !disabled.includes(builtin.id);
 		const fiber = builtinFibers.get(builtin.id);
@@ -172,7 +172,7 @@ async function loadExtension(ext: InstalledExtension): Promise<void> {
 		if (!isPlugin(mod.default)) throw new Error("index.js must default-export a Cordis plugin");
 		loadingExtension = ext.id;
 		refusals.delete(ext.id);
-		const fiber = getBoardRoot().plugin(mod.default as Parameters<Context["plugin"]>[0]);
+		const fiber = getAppRoot().plugin(mod.default as Parameters<Context["plugin"]>[0]);
 		extensionFibers.set(ext.id, { fiber, declared });
 		// `plugin()` hands back a thenable wrapper; the fiber a plugin's context points at is
 		// what it resolves to, so ownership checks can only start once it has.

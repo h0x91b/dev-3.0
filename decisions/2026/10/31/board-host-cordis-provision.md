@@ -20,7 +20,7 @@ to the calling plugin. Verified at runtime in Chromium and WebKit 26 from a Vite
 
 ## Decision
 
-- `getBoardRoot()` (`src/mainview/board-views/root.ts`) creates the one root `Context` and constructs
+- `getAppRoot()` (`src/mainview/plugins/root.ts`) creates the one root `Context` and constructs
   `BoardViewRegistry` (a `Service`) with it, so the registry exists synchronously.
 - `BoardService` is a plain class the host provides with `root.provide("board", …)` in a layout effect and
   disposes on unmount; the view renders only after the provision. It reads a `BoardModel` the host rewrites

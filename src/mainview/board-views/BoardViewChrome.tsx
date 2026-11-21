@@ -4,7 +4,7 @@ import type { Context } from "cordis";
 import Select from "../components/Select";
 import { useT, type TranslationKey } from "../i18n";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
-import { CordisContext } from "./react";
+import { CordisContext } from "../plugins/react";
 import type { RegisteredBoardView } from "./registry";
 
 /** Built-ins label themselves with an i18n key; an extension's label is plain text. */

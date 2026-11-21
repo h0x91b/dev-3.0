@@ -26,7 +26,7 @@ import { buildChannelTitlePrefix } from "../shared/update-channel";
 import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
-import { startBoardPlugins } from "./board-views/plugins";
+import { startBoardPlugins } from "./plugins/runtime";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides

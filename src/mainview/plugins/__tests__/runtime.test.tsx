@@ -2,7 +2,7 @@ import { waitFor } from "@testing-library/react";
 import type { Context } from "cordis";
 import type { ExtensionsOverview, InstalledExtension } from "../../../shared/extensions";
 import { api } from "../../rpc";
-import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests } from "../root";
+import { getAppRoot, getBoardViewRegistry, resetAppRootForTests } from "../root";
 import {
 	applyBuiltinBoardViews,
 	failedExtensionForView,
@@ -12,8 +12,8 @@ import {
 	restartWithExtensionsOff,
 	startBoardPlugins,
 	syncBoardPlugins,
-} from "../plugins";
-import type { BuiltinBoardView } from "../builtins";
+} from "../runtime";
+import type { BuiltinBoardView } from "../../board-views/builtins";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { listExtensions: vi.fn(), getExtensionSource: vi.fn(), setExtensionsEnabled: vi.fn() } },
@@ -57,7 +57,7 @@ function ids(): string[] {
 }
 
 beforeEach(() => {
-	resetBoardRootForTests();
+	resetAppRootForTests();
 	resetBoardPluginsForTests();
 	modules = {};
 	vi.mocked(api.request.getExtensionSource).mockClear();
@@ -74,7 +74,7 @@ beforeEach(() => {
 		return { default: modules[sources.get(url)!] };
 	});
 	// A board on screen, so plugins that inject `board` start.
-	getBoardRoot().provide("board", {} as never);
+	getAppRoot().provide("board", {} as never);
 });
 
 describe("built-in board views", () => {

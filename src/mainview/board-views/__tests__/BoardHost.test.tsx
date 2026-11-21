@@ -8,7 +8,7 @@ import { api } from "../../rpc";
 import { trackEvent } from "../../analytics";
 import { setHiddenControlsForTests } from "../../hidden-controls";
 import BoardHost from "../BoardHost";
-import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from "../root";
+import { getAppRoot, getBoardViewRegistry, resetAppRootForTests, startBoardViews } from "../../plugins/root";
 import { installKanbanView } from "../kanban";
 import { installTreeView, TREE_VIEW_ID } from "../tree";
 import { installTableView } from "../table";
@@ -23,7 +23,7 @@ import { setStreamerMode } from "../../streamer-mode";
 import { isBoardMounted, resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPreviousBoardViewsForTests } from "../BoardHost";
 import { toast } from "../../toast";
-import { resetBoardPluginsForTests, setExtensionLoadForTests } from "../plugins";
+import { resetBoardPluginsForTests, setExtensionLoadForTests } from "../../plugins/runtime";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import { READABLE_GUTTER } from "../readable-width";
 
@@ -107,7 +107,7 @@ function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispat
 }
 
 function registerView(id: string, opts: { supportsNarrow?: boolean; component?: React.ComponentType<{ ctx: Context }> } = {}) {
-	getBoardRoot().plugin({
+	getAppRoot().plugin({
 		name: id,
 		inject: ["board", "boardViews"],
 		apply(ctx: Context) {
@@ -122,7 +122,7 @@ function registerView(id: string, opts: { supportsNarrow?: boolean; component?: 
 }
 
 beforeEach(() => {
-	resetBoardRootForTests();
+	resetAppRootForTests();
 	resetBoardViewStateCacheForTests();
 	resetTaskVisibilityForTests();
 	vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "all" });
@@ -142,8 +142,8 @@ describe("BoardHost", () => {
 		renderHost({ strict: true });
 		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-total", "2");
 		await waitFor(() => expect(getBoardViewRegistry().list().map((v) => v.def.id)).toEqual(["builtin:kanban"]));
-		expect(getBoardRoot().board.scope).toEqual({ kind: "project", id: "p1", projectIds: ["p1"] });
-		expect(getBoardRoot().board.tasks().map((t) => t.id)).toEqual(["t1", "t2"]);
+		expect(getAppRoot().board.scope).toEqual({ kind: "project", id: "p1", projectIds: ["p1"] });
+		expect(getAppRoot().board.tasks().map((t) => t.id)).toEqual(["t1", "t2"]);
 	});
 
 	it("renders Kanban before any plugin has registered, once the saved visibility has settled", async () => {
@@ -157,8 +157,8 @@ describe("BoardHost", () => {
 		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-total", "2");
-		expect(getBoardRoot().board.query).toBe("beta");
-		expect(getBoardRoot().board.matches(tasks[0], "alpha")).toBe(true);
+		expect(getAppRoot().board.query).toBe("beta");
+		expect(getAppRoot().board.matches(tasks[0], "alpha")).toBe(true);
 	});
 
 	it("hides completed and cancelled tasks from tasks() under Active, keeping scopeTasks() whole", async () => {
@@ -176,9 +176,9 @@ describe("BoardHost", () => {
 	it("exposes the Active | All choice through ctx.board.visibility()", async () => {
 		renderHost();
 		await screen.findByTestId("kanban");
-		expect(getBoardRoot().board.visibility()).toBe("all");
+		expect(getAppRoot().board.visibility()).toBe("all");
 		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
-		expect(getBoardRoot().board.visibility()).toBe("active");
+		expect(getAppRoot().board.visibility()).toBe("active");
 	});
 
 	it("tells how many finished tasks a search hides under Active, and Show all reveals them", async () => {
@@ -206,9 +206,9 @@ describe("BoardHost", () => {
 			vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
 			renderHost();
 			await waitFor(() => expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true"));
-			await waitFor(() => expect(getBoardRoot().board.visibility()).toBe("active"));
+			await waitFor(() => expect(getAppRoot().board.visibility()).toBe("active"));
 			fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
-			await waitFor(() => expect(getBoardRoot().board.query).toBe("beta"));
+			await waitFor(() => expect(getAppRoot().board.query).toBe("beta"));
 			if (expected) expect(await screen.findByTestId("hidden-by-visibility-notice")).toBeInTheDocument();
 			else {
 				await screen.findByTestId("attention-view");
@@ -413,7 +413,7 @@ describe("BoardHost", () => {
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(1));
 		unmount();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(0));
-		expect(getBoardRoot().get("board")).toBeUndefined();
+		expect(getAppRoot().get("board")).toBeUndefined();
 	});
 
 	it("creates a label project-wide and hands it back; a failure rejects", async () => {
@@ -421,19 +421,19 @@ describe("BoardHost", () => {
 		renderHost({ dispatch });
 		const label = { id: "l1", name: "Ops", color: "#fff" };
 		vi.mocked(api.request.createLabel).mockResolvedValueOnce(label);
-		await expect(getBoardRoot().board.createLabel("p1", "Ops")).resolves.toEqual(label);
+		await expect(getAppRoot().board.createLabel("p1", "Ops")).resolves.toEqual(label);
 		expect(api.request.createLabel).toHaveBeenCalledWith({ projectId: "p1", name: "Ops" });
 		expect(dispatch).toHaveBeenCalledWith({ type: "updateProject", project: { ...project, labels: [label] } });
 
 		vi.mocked(api.request.createLabel).mockRejectedValueOnce(new Error("nope"));
-		await expect(getBoardRoot().board.createLabel("p1", "Ops")).rejects.toThrow("nope");
-		await expect(getBoardRoot().board.createLabel("elsewhere", "Ops")).rejects.toThrow(/not on this board/);
+		await expect(getAppRoot().board.createLabel("p1", "Ops")).rejects.toThrow("nope");
+		await expect(getAppRoot().board.createLabel("elsewhere", "Ops")).rejects.toThrow(/not on this board/);
 	});
 	it("lists the config's lanes by default and adds occupied hidden built-ins on request", () => {
 		const ops: Project = { ...project, kind: "virtual" };
 		renderHost({ project: ops, tasks: [makeTask("t1", "alpha", { status: "review-by-ai" })] });
 		const statuses = (opts?: { includeOccupied?: boolean }) =>
-			getBoardRoot().board.columns(opts).flatMap((slot) => (slot.type === "builtin" ? [slot.status] : []));
+			getAppRoot().board.columns(opts).flatMap((slot) => (slot.type === "builtin" ? [slot.status] : []));
 		expect(statuses()).not.toContain("review-by-ai");
 		expect(statuses({ includeOccupied: true })).toContain("review-by-ai");
 	});
@@ -445,17 +445,17 @@ describe("BoardHost", () => {
 		const secret = { ...project, id: "p9", name: "Secret", sensitive: true };
 		const parent = { id: "x1", projectId: "p9", projectName: "Secret", seq: 77, variantIndex: null, status: "in-progress", title: "Hidden plan" };
 		renderHost({ allProjects: [project, secret] });
-		expect(getBoardRoot().board.lineageNode("x1")).toBeNull();
+		expect(getAppRoot().board.lineageNode("x1")).toBeNull();
 		await waitFor(() => expect(resolveIndex).toBeTypeOf("function"));
-		expect(getBoardRoot().board.lineageNode("x1")).toBeNull();
+		expect(getAppRoot().board.lineageNode("x1")).toBeNull();
 		await act(async () => {
 			resolveIndex!({ nodes: [parent], edges: [] });
 		});
-		await waitFor(() => expect(getBoardRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, title: "Hidden plan" }));
-		expect(getBoardRoot().board.lineageNode("gone")).toBe("deleted");
+		await waitFor(() => expect(getAppRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, title: "Hidden plan" }));
+		expect(getAppRoot().board.lineageNode("gone")).toBe("deleted");
 		act(() => setStreamerMode(true));
 		try {
-			expect(getBoardRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, projectName: "Secret", title: null });
+			expect(getAppRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, projectName: "Secret", title: null });
 		} finally {
 			act(() => setStreamerMode(false));
 		}
@@ -469,7 +469,7 @@ describe("BoardHost", () => {
 		];
 		vi.mocked(api.request.getEpics).mockResolvedValueOnce({ version: 1, epics });
 		renderHost();
-		await waitFor(() => expect(getBoardRoot().board.epics()).toEqual(epics));
+		await waitFor(() => expect(getAppRoot().board.epics()).toEqual(epics));
 	});
 
 	it("hands views the real task card through ctx.board.TaskCard", async () => {
@@ -489,7 +489,7 @@ describe("BoardHost", () => {
 		renderHost({ dispatch });
 		const moving = vi.fn();
 		vi.mocked(api.request.moveTaskToCustomColumn).mockRejectedValueOnce(new Error("nope"));
-		await act(() => getBoardRoot().board.moveTask("t1", { customColumnId: "col-a" }, { onMovingChange: moving }));
+		await act(() => getAppRoot().board.moveTask("t1", { customColumnId: "col-a" }, { onMovingChange: moving }));
 		expect(dispatch).toHaveBeenNthCalledWith(1, { type: "updateTask", task: { ...tasks[0], customColumnId: "col-a" } });
 		expect(dispatch).toHaveBeenLastCalledWith({ type: "updateTask", task: tasks[0] });
 		expect(moving.mock.calls).toEqual([[true], [false]]);
@@ -498,24 +498,24 @@ describe("BoardHost", () => {
 	it("reorders a project board's columns and refuses column edits on a space board", async () => {
 		const dispatch = vi.fn();
 		const { unmount } = renderHost({ dispatch });
-		await act(() => getBoardRoot().board.reorderColumns(["completed", "todo"]));
+		await act(() => getAppRoot().board.reorderColumns(["completed", "todo"]));
 		expect(api.request.reorderColumns).toHaveBeenCalledWith({ projectId: "p1", columnOrder: ["completed", "todo"] });
 		expect(dispatch).toHaveBeenCalledWith({ type: "updateProject", project: { ...project, customColumns: [], columnOrder: ["completed", "todo"] } });
 		unmount();
 
 		const space = { id: "s1", name: "Space", projectIds: ["p1"] } as unknown as Space;
 		renderHost({ space });
-		await expect(getBoardRoot().board.reorderColumns(["todo"])).rejects.toThrow(/space board/);
-		await expect(getBoardRoot().board.createColumn()).rejects.toThrow(/space board/);
+		await expect(getAppRoot().board.reorderColumns(["todo"])).rejects.toThrow(/space board/);
+		await expect(getAppRoot().board.createColumn()).rejects.toThrow(/space board/);
 	});
 
 	it("follows the settings push for the sort order", async () => {
 		renderHost();
-		await waitFor(() => expect(getBoardRoot().board.preferences().taskSortOrder).toBe("oldest-first"));
+		await waitFor(() => expect(getAppRoot().board.preferences().taskSortOrder).toBe("oldest-first"));
 		act(() => {
 			window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", { detail: { taskSortOrder: "newest-first", tipsDisabled: true } }));
 		});
-		expect(getBoardRoot().board.preferences()).toEqual({ taskSortOrder: "newest-first", tipsDisabled: true });
+		expect(getAppRoot().board.preferences()).toEqual({ taskSortOrder: "newest-first", tipsDisabled: true });
 	});
 	it("creates a column once even when the project push lands before the RPC returns", async () => {
 		const dispatch = vi.fn();
@@ -531,7 +531,7 @@ describe("BoardHost", () => {
 			act(() => rerender(host(pushed)));
 			return column;
 		});
-		await expect(getBoardRoot().board.createColumn()).resolves.toBe("col-new");
+		await expect(getAppRoot().board.createColumn()).resolves.toBe("col-new");
 		const reorders = vi.mocked(api.request.reorderColumns).mock.calls;
 		const order: string[] = reorders[reorders.length - 1][0].columnOrder;
 		expect(order.filter((id) => id === "col-new")).toHaveLength(1);

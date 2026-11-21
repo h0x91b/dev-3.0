@@ -14,7 +14,7 @@ import {
 	subscribeBoardPlugins,
 	syncBoardPlugins,
 	type ExtensionLoadState,
-} from "../../board-views/plugins";
+} from "../../plugins/runtime";
 import ExtensionConsentModal, { type ExtensionConsentRequest } from "./ExtensionConsentModal";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
