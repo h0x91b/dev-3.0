@@ -2,12 +2,12 @@ import { waitFor } from "@testing-library/react";
 import type { Context } from "cordis";
 import type { ExtensionsOverview, InstalledExtension } from "../../../shared/extensions";
 import { api } from "../../rpc";
-import { defineAppSlot, getAppRoot, resetAppRootForTests } from "../root";
+import { defineAppSlot, getAppRoot } from "../root";
 import { SlotRegistry } from "../slot-registry";
 import { getBoardViewRegistry } from "../../board-views/registry";
 import {
 	applyBuiltinPlugins,
-	failedExtensionForView,
+	failedExtensionForItem,
 	getPluginsSnapshot,
 	resetPluginsForTests,
 	setExtensionImporterForTests,
@@ -68,7 +68,6 @@ function ids(): string[] {
 }
 
 beforeEach(() => {
-	resetAppRootForTests();
 	resetPluginsForTests();
 	modules = {};
 	vi.mocked(api.request.getExtensionSource).mockClear();
@@ -100,10 +99,13 @@ describe("built-in board views", () => {
 
 	it("ignores a cached disabled list naming a built-in that cannot be disabled", async () => {
 		localStorage.setItem("dev3-disabled-board-views", JSON.stringify(["builtin:kanban", "builtin:table"]));
-		vi.mocked(api.request.listExtensions).mockReturnValue(new Promise(() => {}));
-		startPlugins(builtins.map(({ required: _required, ...builtin }) => builtin));
-		await waitFor(() => expect(ids()).toEqual(["builtin:kanban"]));
-		localStorage.removeItem("dev3-disabled-board-views");
+		try {
+			vi.mocked(api.request.listExtensions).mockReturnValue(new Promise(() => {}));
+			startPlugins(builtins);
+			await waitFor(() => expect(ids()).toEqual(["builtin:kanban"]));
+		} finally {
+			localStorage.removeItem("dev3-disabled-board-views");
+		}
 	});
 
 	it("never disposes Kanban, whatever the disabled list says", async () => {
@@ -159,7 +161,7 @@ describe("extension loader", () => {
 		await waitFor(() => expect(getPluginsSnapshot().loads["sneaky"]?.state).toBe("failed"));
 		await waitFor(() => expect(ids().filter((id) => id.startsWith("sneaky:"))).toEqual([]));
 		expect(errors.mock.calls.some((call) => String(call[0]).includes("[extensions] sneaky failed to load") && String(call[0]).includes("sneaky:extra"))).toBe(true);
-		expect(failedExtensionForView(getPluginsSnapshot(), "sneaky:declared")).toBe("sneaky");
+		expect(failedExtensionForItem(getPluginsSnapshot(), "sneaky:declared")).toBe("sneaky");
 	});
 
 	it("unloads an extension that registers an undeclared item into any other slot", async () => {
@@ -183,10 +185,10 @@ describe("extension loader", () => {
 			overview: overview([extension("focus-list", ["focus"])]),
 			loads: { "focus-list": { state: "failed" as const, error: "x" }, ok: { state: "loaded" as const } },
 		};
-		expect(failedExtensionForView(state, "focus-list:focus")).toBe("focus-list");
-		expect(failedExtensionForView(state, "ok:main")).toBeNull();
-		expect(failedExtensionForView(state, "builtin:table")).toBeNull();
-		expect(failedExtensionForView(state, "nocolon")).toBeNull();
+		expect(failedExtensionForItem(state, "focus-list:focus")).toBe("focus-list");
+		expect(failedExtensionForItem(state, "ok:main")).toBeNull();
+		expect(failedExtensionForItem(state, "builtin:table")).toBeNull();
+		expect(failedExtensionForItem(state, "nocolon")).toBeNull();
 	});
 
 	it("marks a bundle without a plugin default export as failed", async () => {

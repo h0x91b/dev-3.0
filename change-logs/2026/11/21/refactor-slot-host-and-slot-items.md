@@ -1,0 +1,1 @@
+The board's fallback, crash notice and failed-extension notice now come from a reusable `<SlotHost>` (`src/mainview/plugins/SlotHost.tsx`), and a new `<SlotItems>` renders contribution slots in order with a per-item error boundary, `when()` filtering and an overflow "More" menu that can fold by container width. No behaviour change; `<SlotItems>` has no consumer yet.

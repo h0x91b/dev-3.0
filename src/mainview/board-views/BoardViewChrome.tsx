@@ -1,6 +1,5 @@
-import { Component, useEffect, useLayoutEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Context } from "cordis";
 import Select from "../components/Select";
 import { useT, type TranslationKey } from "../i18n";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
@@ -122,46 +121,5 @@ function OptionsPopover({ anchor, triggerRef, onDismiss, children }: {
 			{children}
 		</div>,
 		document.body,
-	);
-}
-
-interface BoundaryProps {
-	/** A new view id resets the boundary: the user picking another view is a retry. */
-	viewId: string;
-	fallback: (error: Error) => ReactNode;
-	children: ReactNode;
-}
-
-/**
- * Around the active view. A crashing view falls back to Kanban with a notice,
- * and the saved choice stays as it is (spec §4.1): one bad render must not
- * rewrite the user's preference.
- */
-export class BoardViewErrorBoundary extends Component<BoundaryProps, { error: Error | null; viewId: string }> {
-	state = { error: null as Error | null, viewId: this.props.viewId };
-
-	static getDerivedStateFromError(error: Error) {
-		return { error };
-	}
-
-	static getDerivedStateFromProps(props: BoundaryProps, state: { error: Error | null; viewId: string }) {
-		return props.viewId === state.viewId ? null : { error: null, viewId: props.viewId };
-	}
-
-	componentDidCatch(error: Error, info: ErrorInfo) {
-		console.error(`[board-views] view ${this.props.viewId} crashed:`, error, info.componentStack);
-	}
-
-	render() {
-		return this.state.error ? this.props.fallback(this.state.error) : this.props.children;
-	}
-}
-
-/** One view, rendered under the context of the plugin that registered it. */
-export function BoardViewSlot({ ctx, component: View }: { ctx: Context; component: React.ComponentType<{ ctx: Context }> }) {
-	return (
-		<CordisContext.Provider value={ctx}>
-			<View ctx={ctx} />
-		</CordisContext.Provider>
 	);
 }
