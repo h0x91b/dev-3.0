@@ -94,9 +94,39 @@ export const LEGACY_SETTINGS_CATEGORY_MAP: Record<
 	developer: "system",
 };
 
+/**
+ * The built-in sections of Global Settings, in page order within each category.
+ * Each registers into the `settingsSections` slot; its entries are the rows naming it.
+ */
+export const BUILTIN_SETTINGS_SECTIONS = [
+	{ id: "appearance", category: "appearance" },
+	{ id: "behavior", category: "tasks" },
+	{ id: "epics", category: "tasks" },
+	{ id: "notifications", category: "notifications" },
+	{ id: "keyboard", category: "keyboard" },
+	{ id: "terminal", category: "terminal" },
+	{ id: "agents", category: "agents" },
+	{ id: "agent-rate-limit", category: "agents" },
+	{ id: "agent-env-defaults", category: "agents" },
+	{ id: "claude-mods", category: "agents" },
+	{ id: "accounts", category: "accounts" },
+	{ id: "models", category: "models" },
+	{ id: "extensions", category: "extensions" },
+	{ id: "workspace", category: "workspace" },
+	{ id: "system", category: "system" },
+	{ id: "telemetry", category: "system" },
+	{ id: "pxpipe-proxy", category: "system" },
+	{ id: "advanced-experience", category: "system" },
+	{ id: "developer-tools", category: "system" },
+] as const satisfies readonly { readonly id: string; readonly category: SettingsCategoryId }[];
+
+export type BuiltinSettingsSectionId = (typeof BUILTIN_SETTINGS_SECTIONS)[number]["id"];
+
 export type SettingsEntry = {
 	readonly id: string;
 	readonly category: SettingsCategoryId;
+	/** The built-in section that renders this row; its category must match. */
+	readonly section: BuiltinSettingsSectionId;
 	readonly titleKey: TranslationKey;
 	readonly descriptionKey: TranslationKey;
 	readonly anchor?: string;
@@ -113,6 +143,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "theme",
 		category: "appearance",
+		section: "appearance",
 		titleKey: "settings.theme",
 		descriptionKey: "settings.themeDesc",
 		anchor: "theme",
@@ -122,6 +153,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "language",
 		category: "appearance",
+		section: "appearance",
 		titleKey: "settings.language",
 		descriptionKey: "settings.languageDesc",
 		anchor: "language",
@@ -130,6 +162,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "zoom",
 		category: "appearance",
+		section: "appearance",
 		titleKey: "settings.zoom",
 		descriptionKey: "settings.zoomDesc",
 		anchor: "zoom",
@@ -138,6 +171,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "streamer-mode",
 		category: "appearance",
+		section: "appearance",
 		titleKey: "settings.streamerMode",
 		descriptionKey: "settings.streamerModeDesc",
 		anchor: "streamer-mode",
@@ -146,6 +180,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "task-sort-order",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.taskSortOrder",
 		descriptionKey: "settings.taskSortOrderDesc",
 		anchor: "task-sort-order",
@@ -155,6 +190,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "task-open-mode",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.taskOpenMode",
 		descriptionKey: "settings.taskOpenModeDesc",
 		anchor: "task-open-mode",
@@ -164,6 +200,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "artifact-popup",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.artifactPopup",
 		descriptionKey: "settings.artifactPopupDesc",
 		anchor: "artifact-popup",
@@ -173,6 +210,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "artifact-template",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.artifactTemplate",
 		descriptionKey: "settings.artifactTemplateDesc",
 		anchor: "artifact-template",
@@ -182,6 +220,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "default-diff-view",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.defaultDiffViewMode",
 		descriptionKey: "settings.defaultDiffViewModeDesc",
 		anchor: "default-diff-view",
@@ -191,6 +230,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "watch-by-default",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.watchByDefault",
 		descriptionKey: "settings.watchByDefaultDesc",
 		anchor: "watch-by-default",
@@ -200,6 +240,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "suggest-completing-after-merge",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.suggestCompletingTasksAfterMerge",
 		descriptionKey: "settings.suggestCompletingTasksAfterMergeDesc",
 		anchor: "suggest-completing-after-merge",
@@ -209,6 +250,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "completion-offer-style",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.completionOfferStyle",
 		descriptionKey: "settings.completionOfferStyleDesc",
 		anchor: "completion-offer-style",
@@ -218,6 +260,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "agent-launch-auto-approve",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.agentLaunchAutoApprove",
 		descriptionKey: "settings.agentLaunchAutoApproveDesc",
 		anchor: "agent-launch-auto-approve",
@@ -227,6 +270,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "epics",
 		category: "tasks",
+		section: "epics",
 		titleKey: "epic.settingsTitle",
 		descriptionKey: "epic.settingsDesc",
 		anchor: "epics",
@@ -235,6 +279,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "auto-hibernate",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.autoHibernate",
 		descriptionKey: "settings.autoHibernateDesc",
 		anchor: "auto-hibernate",
@@ -244,6 +289,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "auto-hibernate-confirm",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.autoHibernateConfirmAfter",
 		descriptionKey: "settings.autoHibernateWarning",
 		anchor: "auto-hibernate",
@@ -253,6 +299,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "pr-origin-task-link",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.prOriginTaskLink",
 		descriptionKey: "settings.prOriginTaskLinkDesc",
 		anchor: "pr-origin-task-link",
@@ -262,6 +309,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "task-complete-sound",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.taskCompleteSound",
 		descriptionKey: "settings.taskCompleteSoundDesc",
 		anchor: "task-complete-sound",
@@ -271,6 +319,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "task-questions-sound",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.taskQuestionsSound",
 		descriptionKey: "settings.taskQuestionsSoundDesc",
 		anchor: "task-questions-sound",
@@ -280,6 +329,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "task-review-sound",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.taskReviewSound",
 		descriptionKey: "settings.taskReviewSoundDesc",
 		anchor: "task-review-sound",
@@ -289,6 +339,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "focus-mode",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.focusMode",
 		descriptionKey: "settings.focusModeDesc",
 		anchor: "focus-mode",
@@ -298,6 +349,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "review-mode-prompt",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.reviewModePrompt",
 		descriptionKey: "settings.reviewModePromptDesc",
 		anchor: "review-mode-prompt",
@@ -307,6 +359,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "coordinator-prompt",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.coordinatorPrompt",
 		descriptionKey: "settings.coordinatorPromptDesc",
 		anchor: "coordinator-prompt",
@@ -316,6 +369,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "tips",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.tipsSection",
 		descriptionKey: "settings.tipsDesc",
 		anchor: "tips",
@@ -325,6 +379,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "auto-open-images",
 		category: "tasks",
+		section: "behavior",
 		titleKey: "settings.autoOpenImages",
 		descriptionKey: "settings.autoOpenImagesDesc",
 		anchor: "auto-open-images",
@@ -333,6 +388,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "app-shortcuts",
 		category: "keyboard",
+		section: "keyboard",
 		titleKey: "settings.appShortcuts",
 		descriptionKey: "settings.appShortcutsDesc",
 		anchor: "app-shortcuts",
@@ -342,6 +398,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "digits-follow-spaces",
 		category: "keyboard",
+		section: "keyboard",
 		titleKey: "settings.digitsFollowSpaces",
 		descriptionKey: "settings.digitsFollowSpacesDesc",
 		anchor: "digits-follow-spaces",
@@ -351,6 +408,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-backend-new-tasks",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.terminalBackend",
 		descriptionKey: "settings.terminalBackendDesc",
 		anchor: "terminal-backend",
@@ -359,6 +417,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-dim-inactive-panes",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.dimInactivePanes",
 		descriptionKey: "settings.dimInactivePanesDesc",
 		anchor: "terminal-dim-inactive-panes",
@@ -368,6 +427,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-pane-titles",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.paneTitles",
 		descriptionKey: "settings.paneTitlesDesc",
 		anchor: "terminal-pane-titles",
@@ -377,6 +437,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-confirm-close-pane",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.confirmClosePane",
 		descriptionKey: "settings.confirmClosePaneDesc",
 		anchor: "terminal-confirm-close-pane",
@@ -386,6 +447,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-shell",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.terminalShell",
 		descriptionKey: "settings.terminalShellDesc",
 		anchor: "terminal-shell",
@@ -395,6 +457,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-shell-prompt",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.shellPrompt",
 		descriptionKey: "settings.shellPromptDesc",
 		anchor: "terminal-shell-prompt",
@@ -404,6 +467,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-path-open-mode",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.terminalPathOpenMode",
 		descriptionKey: "settings.terminalPathOpenModeDesc",
 		anchor: "terminal-path-open-mode",
@@ -413,6 +477,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-font",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.terminalFont",
 		descriptionKey: "settings.terminalFontDesc",
 		anchor: "terminal-font",
@@ -421,6 +486,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-font-size",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.terminalFontSize",
 		descriptionKey: "settings.terminalFontSizeDesc",
 		anchor: "terminal-font-size",
@@ -429,6 +495,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "terminal-scroll-speed",
 		category: "terminal",
+		section: "terminal",
 		titleKey: "settings.scrollSpeed",
 		descriptionKey: "settings.scrollSpeedDesc",
 		anchor: "terminal-scroll-speed",
@@ -437,6 +504,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "default-agent",
 		category: "agents",
+		section: "agents",
 		titleKey: "settings.defaultAgent",
 		descriptionKey: "settings.defaultAgentDesc",
 		anchor: "default-agent",
@@ -446,6 +514,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "default-config",
 		category: "agents",
+		section: "agents",
 		titleKey: "settings.defaultConfig",
 		descriptionKey: "settings.defaultConfigDesc",
 		anchor: "default-agent",
@@ -455,6 +524,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "coordinator-agent",
 		category: "agents",
+		section: "agents",
 		titleKey: "settings.coordinatorAgent",
 		descriptionKey: "settings.coordinatorAgentDesc",
 		anchor: "coordinator-agent",
@@ -464,6 +534,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "coordinator-config",
 		category: "agents",
+		section: "agents",
 		titleKey: "settings.coordinatorAgent",
 		descriptionKey: "settings.coordinatorAgentDesc",
 		anchor: "coordinator-agent",
@@ -473,6 +544,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "agents-editor",
 		category: "agents",
+		section: "agents",
 		titleKey: "settings.agents",
 		descriptionKey: "settings.agentsDesc",
 		anchor: "agents-editor",
@@ -481,6 +553,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "rate-limit-tracking",
 		category: "agents",
+		section: "agent-rate-limit",
 		titleKey: "settings.rateLimitTracking",
 		descriptionKey: "settings.rateLimitTrackingDesc",
 		anchor: "rate-limit-tracking",
@@ -490,6 +563,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "project-claude-folder",
 		category: "agents",
+		section: "agent-env-defaults",
 		titleKey: "settings.projectClaudeFolder",
 		descriptionKey: "settings.projectClaudeFolderDesc",
 		anchor: "project-claude-folder",
@@ -498,6 +572,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "agent-env-defaults",
 		category: "agents",
+		section: "agent-env-defaults",
 		titleKey: "settings.agentEnvDefaults",
 		descriptionKey: "settings.agentEnvDefaultsDesc",
 		anchor: "agent-env-defaults",
@@ -507,6 +582,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "claude-mods",
 		category: "agents",
+		section: "claude-mods",
 		titleKey: "settings.claudeMods",
 		descriptionKey: "settings.claudeModsDesc",
 		anchor: "claude-mods",
@@ -515,6 +591,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "agent-accounts",
 		category: "accounts",
+		section: "accounts",
 		titleKey: "settings.agentAccounts",
 		descriptionKey: "settings.agentAccountsDesc",
 		anchor: "agent-accounts",
@@ -523,6 +600,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "api-profiles",
 		category: "accounts",
+		section: "accounts",
 		titleKey: "settings.accountsAddApi",
 		descriptionKey: "settings.accountsApiProfilesDesc",
 		anchor: "agent-accounts",
@@ -531,6 +609,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "clone-directory",
 		category: "workspace",
+		section: "workspace",
 		titleKey: "settings.cloneBaseDir",
 		descriptionKey: "settings.cloneBaseDirDesc",
 		anchor: "clone-directory",
@@ -540,6 +619,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "external-apps",
 		category: "workspace",
+		section: "workspace",
 		titleKey: "settings.externalApps",
 		descriptionKey: "settings.externalAppsDesc",
 		anchor: "external-apps",
@@ -549,6 +629,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "update-channel",
 		category: "system",
+		section: "system",
 		titleKey: "settings.updateChannel",
 		descriptionKey: "settings.updateChannelDesc",
 		anchor: "update-channel",
@@ -558,6 +639,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "remote-tunnel",
 		category: "system",
+		section: "system",
 		titleKey: "settings.remoteTunnel",
 		descriptionKey: "settings.remoteTunnelDesc",
 		anchor: "remote-tunnel",
@@ -567,6 +649,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "static-access-code",
 		category: "system",
+		section: "system",
 		titleKey: "settings.staticAccessCode",
 		descriptionKey: "settings.staticAccessCodeDesc",
 		anchor: "static-access-code",
@@ -576,6 +659,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "remote-port",
 		category: "system",
+		section: "system",
 		titleKey: "settings.remotePort",
 		descriptionKey: "settings.remotePortDesc",
 		anchor: "remote-port",
@@ -585,6 +669,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "remote-silent-update",
 		category: "system",
+		section: "system",
 		titleKey: "settings.remoteSilentUpdate",
 		descriptionKey: "settings.remoteSilentUpdateDesc",
 		anchor: "remote-silent-update",
@@ -594,6 +679,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "prevent-sleep",
 		category: "system",
+		section: "system",
 		titleKey: "settings.preventSleep",
 		descriptionKey: "settings.preventSleepDesc",
 		anchor: "prevent-sleep",
@@ -603,6 +689,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "resource-levels",
 		category: "system",
+		section: "system",
 		titleKey: "settings.resourceLevels",
 		descriptionKey: "settings.resourceLevelsDesc",
 		anchor: "resource-levels",
@@ -612,6 +699,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "confirm-before-quit",
 		category: "system",
+		section: "system",
 		titleKey: "settings.confirmBeforeQuit",
 		descriptionKey: "settings.confirmBeforeQuitDesc",
 		anchor: "confirm-before-quit",
@@ -621,6 +709,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "lean-agent-protocol",
 		category: "agents",
+		section: "agents",
 		titleKey: "settings.leanAgentProtocol",
 		descriptionKey: "settings.leanAgentProtocolDesc",
 		anchor: "lean-agent-protocol",
@@ -630,6 +719,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "auto-cleanup-task-history",
 		category: "system",
+		section: "system",
 		titleKey: "settings.autoCleanupTaskHistory",
 		descriptionKey: "settings.autoCleanupTaskHistoryDesc",
 		anchor: "auto-cleanup-task-history",
@@ -639,6 +729,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "log-retention",
 		category: "system",
+		section: "system",
 		titleKey: "settings.logRetention",
 		descriptionKey: "settings.logRetentionDesc",
 		anchor: "log-retention",
@@ -648,6 +739,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "browser-notifications",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.browserNotifications",
 		descriptionKey: "settings.browserNotificationsDesc",
 		anchor: "browser-notifications",
@@ -656,6 +748,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "push-notifications",
 		category: "notifications",
+		section: "notifications",
 		titleKey: "settings.pushNotifications",
 		descriptionKey: "settings.pushNotificationsDesc",
 		anchor: "push-notifications",
@@ -664,6 +757,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "model-catalog",
 		category: "models",
+		section: "models",
 		titleKey: "catalog.section",
 		descriptionKey: "catalog.sectionDesc",
 		anchor: "model-catalog",
@@ -672,6 +766,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "extensions-kill-switch",
 		category: "extensions",
+		section: "extensions",
 		titleKey: "extensions.killSwitch",
 		descriptionKey: "extensions.killSwitchDesc",
 		anchor: "extensions-kill-switch",
@@ -680,6 +775,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "board-view-builtins",
 		category: "extensions",
+		section: "extensions",
 		titleKey: "extensions.builtinsTitle",
 		descriptionKey: "extensions.builtinsDesc",
 		anchor: "board-view-builtins",
@@ -688,6 +784,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "extensions-installed",
 		category: "extensions",
+		section: "extensions",
 		titleKey: "extensions.installedTitle",
 		descriptionKey: "extensions.installedDesc",
 		anchor: "extensions-installed",
@@ -696,6 +793,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "token-saving-proxy",
 		category: "system",
+		section: "pxpipe-proxy",
 		titleKey: "settings.pxpipeSection",
 		descriptionKey: "settings.pxpipeSectionDesc",
 		anchor: "token-saving-proxy",
@@ -705,6 +803,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "simplify-mode",
 		category: "appearance",
+		section: "appearance",
 		titleKey: "settings.simplifyMode",
 		descriptionKey: "settings.simplifyModeDesc",
 		anchor: "simplify-mode",
@@ -714,6 +813,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "experimental-terminal-bidi",
 		category: "system",
+		section: "advanced-experience",
 		titleKey: "settings.terminalBidi",
 		descriptionKey: "settings.terminalBidiDesc",
 		anchor: "experimental-terminal-bidi",
@@ -723,6 +823,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "experimental-agent-traffic",
 		category: "system",
+		section: "advanced-experience",
 		titleKey: "settings.agentTraffic",
 		descriptionKey: "settings.agentTrafficDesc",
 		anchor: "experimental-agent-traffic",
@@ -732,6 +833,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "freeze-diagnostics",
 		category: "system",
+		section: "advanced-experience",
 		titleKey: "settings.freezeDiagnostics",
 		descriptionKey: "settings.freezeDiagnosticsDesc",
 		anchor: "freeze-diagnostics",
@@ -741,6 +843,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "telemetry",
 		category: "system",
+		section: "telemetry",
 		titleKey: "settings.telemetry",
 		descriptionKey: "settings.telemetryDesc",
 		anchor: "telemetry",
@@ -750,6 +853,7 @@ export const SETTINGS_ENTRIES = [
 	{
 		id: "developer-tools",
 		category: "system",
+		section: "developer-tools",
 		titleKey: "settings.devTools",
 		descriptionKey: "settings.devToolsDesc",
 		anchor: "developer-tools",
@@ -902,6 +1006,16 @@ type UnlistedGlobalSettingsField = Exclude<
 	(typeof GLOBAL_SETTINGS_FIELDS)[number]
 >;
 
+type CategoryOfSection<Section> = Extract<(typeof BUILTIN_SETTINGS_SECTIONS)[number], { id: Section }>["category"];
+type MisplacedSettingsEntry = (typeof SETTINGS_ENTRIES)[number] extends infer Entry
+	? Entry extends { readonly id: infer Id extends string; readonly category: infer Category; readonly section: infer Section }
+		? Category extends CategoryOfSection<Section> ? never : Id
+		: never
+	: never;
+
+/** Compile-time guard: a row lives in a section of its own category. */
+export const SETTINGS_SECTION_INTEGRITY: Record<MisplacedSettingsEntry, never> = {};
+
 /** Compile-time guards: adding a GlobalSettings field requires registry disposition. */
 export const SETTINGS_REGISTRY_INTEGRITY: Record<MissingGlobalSettingsField, never> = {};
 export const GLOBAL_SETTINGS_FIELDS_INTEGRITY: Record<UnlistedGlobalSettingsField, never> = {};
@@ -921,13 +1035,20 @@ export function normalizeSettingsCategoryId(
 	);
 }
 
+/** The rows a built-in section owns, in registry order. */
+export function settingsEntriesOfSection(section: BuiltinSettingsSectionId): readonly SettingsEntry[] {
+	return SETTINGS_ENTRIES.filter((entry) => entry.section === section);
+}
+
+/** Matches `query` against `entries` — the settings page passes what the sections slot holds. */
 export function filterSettingsEntries(
 	query: string,
 	localizedText: (key: TranslationKey) => string,
+	entries: readonly SettingsEntry[] = SETTINGS_ENTRIES,
 ): readonly SettingsEntry[] {
 	const normalized = query.trim().toLocaleLowerCase();
-	if (!normalized) return SETTINGS_ENTRIES;
-	return SETTINGS_ENTRIES.filter((entry) => {
+	if (!normalized) return entries;
+	return entries.filter((entry) => {
 		const haystack = `${localizedText(entry.titleKey)} ${localizedText(entry.descriptionKey)}`
 			.toLocaleLowerCase();
 		return haystack.includes(normalized);

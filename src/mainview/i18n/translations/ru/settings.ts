@@ -45,6 +45,7 @@ const settings = {
 	"settings.searchClear": "Очистить поиск",
 	"settings.searchResults": "Результаты поиска",
 	"settings.searchNoResults": "Подходящих настроек нет.",
+	"settings.sectionCrashed": "Этот раздел не удалось показать. Остальные настройки работают.",
 	"settings.searchResultCategory": "Категория: {category}",
 	"settings.categoryBack": "Назад к категориям",
 	"settings.on": "Вкл.",

@@ -432,11 +432,11 @@ Evidence: `board-views/`, `keymap.ts` `board-view`, `application-menu.ts`.
 
 ### 5.12 Plugin slots — `Proposed`
 
-Surfaces become Cordis slots. **Internal first:** every surface moves with built-ins only; extensions get slots only after that, one kind at a time. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
+Surfaces become Cordis slots. **Internal first:** every surface moves with built-ins; then extensions get slots, kind by kind. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
 
-- **Replace slot:** one body at a time behind a chooser shaped like §5.11's (per-slot "Manage…" label). The built-in is the undisableable fallback; a crash renders it under an inline danger notice, keeping the saved choice. Board view now; sidebar, home and destination bodies later; the destination stays.
-- **Contribution slot:** a host-owned surface collecting items — task header (§5.1), settings sections, ⇧⌘P commands, task menu, dock panels, card/sidebar marker. The host owns chrome, order (user layout → built-ins → extensions) and budget; a failed contributor's items vanish (reason on its Extensions row, never inline).
-- **Extensions are add-only:** never replace, hide or displace a built-in item, region or section; no new settings category. Header items start in overflow; settings sections sit under a muted "From <name>" label; task-menu items in one trailing "Extensions" group. Every action header item is also a palette command (extensions' unbound).
+- **Replace slot:** one body at a time behind a chooser shaped like §5.11's (per-slot "Manage…" label). The built-in is the undisableable fallback; a crash renders it under an inline danger notice, keeping the choice. Board view now; sidebar, home and destination bodies later; the destination stays.
+- **Contribution slot:** host-owned items: task header (§5.1), settings sections, ⇧⌘P commands, task menu, dock panels, card/sidebar marker. The host owns chrome, order (user layout → built-ins → extensions) and budget; a failed contributor's items vanish (reason on its Extensions row, never inline); only a crashed built-in settings section shows an inline notice.
+- **Extensions are add-only:** never replace, hide or displace a built-in item, region or section; no new settings category. Header items start in overflow; settings sections sit under a "From <name>" label; task-menu items in one trailing "Extensions" group. Every action header item is also a palette command (extensions' unbound).
 - **Not slots:** app shell (header, breadcrumbs, layout), terminal renderer, native menu, `Route` destinations, the card inline strip. Dialogs only via `ctx.ui`.
 - **Settings → Extensions:** kill switch → Built-in (by slot) → Installed (per-kind toggles, load state, failure reason); search above ~12 rows.
 

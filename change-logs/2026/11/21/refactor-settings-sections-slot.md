@@ -1,0 +1,1 @@
+Global Settings now renders each category page from an internal `settingsSections` plugin slot instead of a hard-coded switch; every built-in section, its order, its search rows and its deep links are unchanged, and a section that crashes now leaves a notice in its place instead of taking the whole Settings screen down.

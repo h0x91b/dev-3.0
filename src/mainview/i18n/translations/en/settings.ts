@@ -45,6 +45,7 @@ const settings = {
 	"settings.searchClear": "Clear search",
 	"settings.searchResults": "Search results",
 	"settings.searchNoResults": "No settings match your search.",
+	"settings.sectionCrashed": "This section could not be shown. The rest of Settings still works.",
 	"settings.searchResultCategory": "Category: {category}",
 	"settings.categoryBack": "Back to categories",
 	"settings.on": "On",

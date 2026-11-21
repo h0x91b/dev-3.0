@@ -123,7 +123,14 @@ renderer stay host-owned. Each move keeps behaviour identical.
 **Progress.** The internal foundations are in `src/mainview/plugins/`: the app root (`root.ts`, slots declared
 with `defineAppSlot`), the generic `SlotRegistry` (`slot-registry.ts`; board views run on it), the runtime that
 guards every slot (`runtime.ts`), `<SlotHost>` for replace slots (the board uses it) and `<SlotItems>` for
-contribution slots (no consumer yet). The public `contributes` generalisation (plan item 0.4) waits for the opening track.
+contribution slots. Global Settings renders through the internal `settingsSections` slot
+(`src/mainview/settings-sections/`, `decisions/2026/11/21/settings-sections-slot.md`; built-ins only). The public
+`contributes` generalisation (plan item 0.4) waits for the opening track.
+
+**Opening-track preconditions.** Before any contribution slot opens to extensions:
+- A render crash of an extension's item must be reported into that extension's failure state, so its Extensions
+  row shows the reason (today the item only vanishes).
+- A page-shaped slot (settings sections) must place built-ins before extensions by origin, not by numeric `order` alone.
 
 ## Tech debt
 

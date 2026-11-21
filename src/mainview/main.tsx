@@ -28,6 +28,7 @@ import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
 import { startPlugins } from "./plugins/runtime";
 import { BUILTIN_BOARD_VIEWS } from "./board-views/builtins";
+import { BUILTIN_SETTINGS_SECTIONS_PLUGIN } from "./settings-sections/builtins";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -165,8 +166,8 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	// The board-view runtime (Cordis root + built-in views) is up before the first board renders.
-	startPlugins(BUILTIN_BOARD_VIEWS);
+	// The plugin runtime (Cordis root + built-in views and settings sections) is up before the first render.
+	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN]);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
