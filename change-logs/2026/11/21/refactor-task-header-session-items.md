@@ -1,0 +1,1 @@
+The task header's session bar (Find bugs, + Agent, Send later, Hibernate, scheduled messages, tmux pane controls) now renders as individual built-in items on the internal task header slot; on the phone actions sheet, Find bugs, + Agent and Hibernate now form one session section after the runtime rows.

@@ -4721,6 +4721,26 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			expect(at("Hibernate")).toBe(rows.length - 1);
 		});
 
+		it("draws the session rows as one section after the runtime rows, in the session bar's order", async () => {
+			const sheet = await openSheet(makeTask({
+				sharedArtifacts: [{
+					id: "artifact-1",
+					kind: "html",
+					title: "Report",
+					name: "report.html",
+					storedPath: "/tmp/shared-artifacts/artifact-1/report.html",
+					originalPath: "/tmp/report.html",
+					bytes: 10,
+					createdAt: 1,
+					assets: [],
+				}],
+			}));
+			const group = within(sheet).getByTestId("task-actions-fullscreen").closest(".touch-actions") as HTMLElement;
+			const ids = Array.from(group.querySelectorAll("button")).map((button) => button.dataset.testid ?? button.textContent ?? "");
+			const tail = ids.slice(ids.findIndex((id) => id.includes("Artifacts")));
+			expect(tail).toEqual([expect.stringContaining("Artifacts"), "task-actions-bug-hunters", "task-actions-spawn-agent", "task-actions-hibernate"]);
+		});
+
 		it("opens the image viewer and closes the actions sheet", async () => {
 			const openImage = vi.fn();
 			window.addEventListener("dev3:openImageViewer", openImage);
@@ -5128,6 +5148,26 @@ describe("hibernate button", () => {
 		});
 
 		expect(mockedApi.request.hibernateTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+	});
+
+	it("hides on desktop, then runs the same flow from the restore control", async () => {
+		mockedConfirm.mockResolvedValue(true);
+		const task = makeTask();
+		mockedApi.request.hibernateTask.mockResolvedValue({ task: { ...task, hibernated: true }, freedRssBytes: null });
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: ["hibernate"] });
+		try {
+			await act(async () => {
+				renderPanel(task);
+			});
+			expect(screen.queryByTestId("task-hibernate-button")).not.toBeInTheDocument();
+			fireEvent.click(screen.getByLabelText("Show hidden controls"));
+			await act(async () => {
+				fireEvent.click(screen.getByRole("menuitem", { name: "Hibernate" }));
+			});
+			expect(mockedApi.request.hibernateTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		} finally {
+			syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: [] });
+		}
 	});
 
 	it("warns about the extra agents when the task runs more than one pane", async () => {

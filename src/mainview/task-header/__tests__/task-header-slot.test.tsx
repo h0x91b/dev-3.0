@@ -7,6 +7,7 @@ import type { Project, Task } from "../../../shared/types";
 import type { TaskBranchStatusController } from "../../components/task-info-panel/useTaskBranchStatus";
 import { BUILTIN_TASK_HEADER_PLUGIN, LEGACY_REGIONS, legacyClusterId } from "../builtins";
 import { RUNTIME_ITEMS } from "../builtin-runtime";
+import { SESSION_ITEMS, type TaskSessionController } from "../builtin-session";
 import { BUILTIN_GIT_ITEMS } from "../builtin-git";
 import { getTaskHeaderRegistry, TASK_HEADER_REGIONS } from "../registry";
 import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters, type LegacyRegion } from "../scope";
@@ -31,7 +32,7 @@ const git = {
 
 function clusters(surface: "bar" | "sheet"): LegacyClusters {
 	const make = (region: LegacyRegion) => ({ [surface]: <span data-testid={`legacy-${region}-${surface}`}>{region}</span> });
-	return { status: make("status"), session: make("session") };
+	return { status: make("status") };
 }
 
 function renderRegions(legacy: LegacyClusters, surface: "bar" | "sheet" = "bar") {
@@ -43,11 +44,12 @@ function renderRegions(legacy: LegacyClusters, surface: "bar" | "sheet" = "bar")
 					legacy,
 					layout: { compact: false, tight: false, collapsed: true, narrow: false },
 					git,
+					session: {} as TaskSessionController,
 					closeSheet: vi.fn(),
 				}}
 			>
-				{/* The runtime items have their own suite (builtin-runtime.test.tsx). */}
-				{TASK_HEADER_REGIONS.filter((region) => region !== "runtime").map((region) => (
+				{/* The runtime and session items have their own suites (builtin-runtime/-session.test.tsx). */}
+				{TASK_HEADER_REGIONS.filter((region) => region !== "runtime" && region !== "session").map((region) => (
 					<div key={region} data-testid={`bar-${region}`}>
 						<TaskHeaderRegionItems region={region} surface={surface} />
 					</div>
@@ -81,11 +83,18 @@ describe("taskHeader slot", () => {
 			"builtin:git.commit", "builtin:git.rebase", "builtin:git.push", "builtin:git.pr", "builtin:git.auto-pr",
 			"builtin:git.merge", "builtin:git.refresh",
 		]);
-		expect(registry.list()).toHaveLength(LEGACY_REGIONS.length + BUILTIN_GIT_ITEMS.length + RUNTIME_ITEMS.length);
+		expect(registry.list()).toHaveLength(LEGACY_REGIONS.length + BUILTIN_GIT_ITEMS.length + RUNTIME_ITEMS.length + SESSION_ITEMS.length);
 	});
 
 	it("gives the Runtime bar its own items, in bar order, and no legacy cluster", () => {
 		expect(getTaskHeaderRegistry().listRegion("runtime").map((entry) => entry.def.id)).toEqual(RUNTIME_ITEMS.map((def) => def.id));
+	});
+
+	it("gives the Session bar its own items, in bar order, and no legacy cluster", () => {
+		expect(getTaskHeaderRegistry().listRegion("session").map((entry) => entry.def.id)).toEqual([
+			"builtin:session.bug-hunters", "builtin:session.spawn-agent", "builtin:session.send-later",
+			"builtin:session.hibernate", "builtin:session.scheduled-messages", "builtin:session.pane-controls",
+		]);
 	});
 
 	it("renders each legacy region's cluster inside its own bar, for the surface asked", () => {
@@ -115,12 +124,11 @@ describe("taskHeader slot", () => {
 	});
 
 	it("renders the sheet form on the narrow sheet, and nothing for a region without one", () => {
-		const legacy = clusters("sheet");
-		legacy.session = {};
-		renderRegions(legacy, "sheet");
+		renderRegions({ status: {} }, "sheet");
+		expect(screen.queryByTestId("legacy-status-sheet")).toBeNull();
+		expect(screen.getByTestId("bar-status").textContent).toBe("");
+		renderRegions(clusters("sheet"), "sheet");
 		expect(screen.getByTestId("legacy-status-sheet")).toBeInTheDocument();
-		expect(screen.queryByText("session")).toBeNull();
-		expect(screen.getByTestId("bar-session").textContent).toBe("");
 	});
 
 	it("lays the region out as children of the host's bar (display: contents)", () => {

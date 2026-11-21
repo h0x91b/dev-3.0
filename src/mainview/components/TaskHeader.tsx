@@ -10,7 +10,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, resolveTaskCompareBaseBranch, taskCompletionOwner, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, resolveTaskCompareBaseBranch, taskCompletionOwner } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -25,10 +25,6 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import PipelineRing, { CompleteCheckIcon } from "./PipelineRing";
 import PipelineDropdown from "./PipelineDropdown";
-import SpawnAgentModal from "./SpawnAgentModal";
-import ScheduleMessageModal from "./ScheduleMessageModal";
-import ScheduledMessagesChip from "./ScheduledMessagesChip";
-import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
@@ -39,19 +35,14 @@ import {
 	WatchingIcon,
 	WatchIcon,
 	CompletionOwnerIcon,
-	FindBugsIcon,
-	AddAgentIcon,
 	WorktreeSettingsIcon,
 	FullscreenEnterIcon,
 	FullscreenExitIcon,
 	PanelChevronIcon,
 	PanelLeftIcon,
-	SendLaterIcon,
-	HibernateIcon,
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskNotesOverlay from "./TaskNotesOverlay";
-import TaskPaneControls from "./task-info-panel/TaskPaneControls";
 import TerminalShortcutsButton from "./task-info-panel/TerminalShortcutsButton";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
@@ -60,13 +51,14 @@ import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useCompact } from "../utils/useCompact";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { useIsControlHidden, useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
+import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { restoreControl } from "../hidden-controls";
 import HideableControl from "./HideableControl";
 import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { TASK_HEADER_REGIONS } from "../task-header/registry";
 import { taskHasGitBar } from "../task-header/builtin-git";
+import { useTaskSessionController } from "../task-header/builtin-session";
 import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters } from "../task-header/scope";
 import { SHEET_ROW_CLASS } from "../task-header/sheet-row";
 import BottomSheet from "./BottomSheet";
@@ -107,14 +99,6 @@ const MAX_RATIO = 0.33;
 const TIGHT_PANEL_WIDTH = 1280;
 
 /** Trailing "opens something" affordance for a mobile action row. */
-function ChevronRightIcon() {
-	return (
-		<svg className="h-4 w-4 shrink-0 text-fg-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-		</svg>
-	);
-}
-
 const LS_COLLAPSED = "dev3-panel-collapsed";
 const LS_HEIGHT = "dev3-panel-height";
 
@@ -158,13 +142,7 @@ function TaskHeaderFrame({
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// Per-control hiding (§5.10) — each of these can be individually hidden
 	// (right-click "Hide") and restored from the panel's one restore control.
-	const spawnAgentHidden = useIsControlHidden("spawn-agent");
-	const bugHuntersHidden = useIsControlHidden("bug-hunters");
-	const hibernateHidden = useIsControlHidden("hibernate");
-	const scheduledMessageHidden = useIsControlHidden("scheduled-message");
-	const tmuxPaneControlsHidden = useIsControlHidden("tmux-pane-controls");
 	const diffIncludeTestsHidden = useIsControlHidden("diff-include-tests");
-	const simplified = useIsSimplifyViewApplied();
 	const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -174,10 +152,6 @@ function TaskHeaderFrame({
 	const [statusMenuVisible, setStatusMenuVisible] = useState(false);
 	const [movingStatus, setMovingStatus] = useState(false);
 	const [quickCompleting, setQuickCompleting] = useState(false);
-	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
-	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
-	const [hibernating, setHibernating] = useState(false);
-	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
 	const [notesOverlayOpen, setNotesOverlayOpen] = useState(false);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const [diffFilesHover, setDiffFilesHover] = useState(false);
@@ -276,6 +250,9 @@ function TaskHeaderFrame({
 		isTaskActive,
 		enabled: hasGit,
 	});
+	// The session bar's dialogs and hibernation, shared by its items, its sheet rows and
+	// the restore control (chrome).
+	const session = useTaskSessionController({ task, project, dispatch });
 	const variantMembers = task.groupId
 		? tasks.filter((candidate) => candidate.groupId === task.groupId)
 		: [];
@@ -1011,56 +988,6 @@ function TaskHeaderFrame({
 		</BottomSheet>
 	);
 
-	const spawnAgentButton = isTaskActive && task.worktreePath && !spawnAgentHidden ? (
-		<HideableControl id="spawn-agent">
-			<Tooltip content={t("tmux.spawnExtraAgentDesc")} detail={t("ttip.infoPanel.spawnAgent")}>
-				<button
-					onClick={() => setSpawnModalOpen(true)}
-					className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
-					aria-label={t("tmux.spawnExtraAgentDesc")}
-				>
-					<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
-					{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
-	) : null;
-
-	// "Send later" — queue a message to this task's live agent (session action).
-	// Same live-agent gate as spawn: an active task with a worktree/session.
-	// Compact label ("Later") keeps the session bar tight; the full "Send later"
-	// stays in the tooltip/aria. The pending queue renders in the adjacent chip.
-	async function handleHibernate() {
-		// Confirmed, unlike every other reversible action: killing the session is
-		// the one part hibernation cannot undo. Extra agent panes come back only
-		// through "Wake and resume agent"; a plain-shell wake starts none of them.
-		const paneCount = task.sessionState?.panes?.length ?? 0;
-		const confirmed = await confirm({
-			title: t("task.hibernateConfirmTitle"),
-			message: paneCount > 1
-				? `${t("task.hibernateConfirmBody")}\n\n${t("task.hibernateConfirmMulti", { count: String(paneCount) })}`
-				: t("task.hibernateConfirmBody"),
-			confirmLabel: t("task.hibernateConfirmCta"),
-			danger: true,
-			info: { title: task.title },
-		});
-		if (!confirmed) return;
-		setHibernating(true);
-		try {
-			const { task: updated, freedRssBytes } = await api.request.hibernateTask({ taskId: task.id, projectId: project.id });
-			dispatch({ type: "updateTask", task: updated });
-			// "about": the reading comes from the resource monitor's last poll, which
-			// can be up to one poll interval older than the kill.
-			toast.success(freedRssBytes
-				? t("task.hibernatedToastMem", { mem: formatBytes(freedRssBytes) })
-				: t("task.hibernatedToast"), { taskId: task.id });
-		} catch (err) {
-			toast.error(t("task.hibernateFailed", { error: String(err) }), { taskId: task.id });
-		} finally {
-			setHibernating(false);
-		}
-	}
-
 	// Take responsibility for a reviewed branch's config. The user is allowed to do
 	// this — it is their machine — but they must be told what starts running, in
 	// plain words, before they do. Warned, never refused.
@@ -1082,82 +1009,16 @@ function TaskHeaderFrame({
 		}
 	}
 
-	const sendLaterButton = isTaskActive && task.worktreePath && !scheduledMessageHidden ? (
-		<HideableControl id="scheduled-message">
-			<Tooltip content={t("task.sendLater")} detail={t("task.sendLaterHint")}>
-				<button
-					onClick={() => setScheduleMsgOpen(true)}
-					className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
-					aria-label={t("task.sendLater")}
-				>
-					<SendLaterIcon className="w-[1.05rem] h-[1.05rem]" />
-					{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("task.sendLaterShort")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
-	) : null;
-
-	// Park the task: kill the agent, its tmux session and the dev server, keep the
-	// worktree. Session-domain, so it lives in this bar next to the other
-	// agent-session controls — never on the board card (a hibernated card is inert
-	// by design, and waking must be an explicit act inside the task).
-	// Amber, not danger: red in this app means "destroys something you cannot get
-	// back". It is the only coloured button left in this bar, and the skull is its
-	// one filled glyph on purpose — it has to stop the eye before the tooltip
-	// explains that the worktree survives.
-	const canHibernate = isTaskActive && !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown;
-	const hibernateButton = canHibernate && !hibernateHidden ? (
-		<HideableControl id="hibernate">
-			<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
-				<button
-					data-testid="task-hibernate-button"
-					onClick={handleHibernate}
-					disabled={hibernating}
-					className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
-					aria-label={t("task.hibernate")}
-				>
-					{hibernating ? (
-						<span className="w-[1.05rem] h-[1.05rem] animate-spin rounded-full border-2 border-warning/30 border-t-warning" />
-					) : (
-						<HibernateIcon className="w-[1.05rem] h-[1.05rem]" />
-					)}
-					{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("task.hibernateShort")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
-	) : null;
-
-	// Pending scheduled-message queue for this task's session (open-task view of
-	// the same chip shown on the board card). Opens downward under the bar.
-	const scheduledMessagesChip = isTaskActive && task.worktreePath ? (
-		<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
-	) : null;
-
-	const bugHuntersButton = taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !bugHuntersHidden ? (
-		<HideableControl id="bug-hunters">
-			<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
-				<button
-					onClick={() => setBugHuntersOpen(true)}
-					className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
-					aria-label={t("bugHunters.buttonTooltip")}
-				>
-					<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
-					{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
-	) : null;
-
 	// Entries for the panel's one restore control (PanelRestoreControl filters
 	// to whichever of these are actually hidden right now, and groups them by
 	// bar). Row click runs the same action the visible control would; the
 	// three multi-action surfaces (pane layout, scripts, dev-server setup)
 	// have no single atomic action, so their row restores instead.
 	const panelHideableEntries: PanelHideableEntry[] = [
-		{ id: "spawn-agent", label: t("tmux.spawnExtraAgent"), onRun: () => setSpawnModalOpen(true) },
-		{ id: "bug-hunters", label: t("bugHunters.buttonLabel"), onRun: () => setBugHuntersOpen(true) },
-		{ id: "hibernate", label: t("task.hibernateShort"), onRun: () => { void handleHibernate(); } },
-		{ id: "scheduled-message", label: t("task.sendLaterShort"), onRun: () => setScheduleMsgOpen(true) },
+		{ id: "spawn-agent", label: t("tmux.spawnExtraAgent"), onRun: session.openSpawnAgent },
+		{ id: "bug-hunters", label: t("bugHunters.buttonLabel"), onRun: session.openBugHunters },
+		{ id: "hibernate", label: t("task.hibernateShort"), onRun: () => { void session.hibernate(); } },
+		{ id: "scheduled-message", label: t("task.sendLaterShort"), onRun: session.openScheduleMessage },
 		{ id: "tmux-pane-controls", label: t("infoPanel.paneControlsLabel"), onRun: () => restoreControl("tmux-pane-controls") },
 		{ id: "scripts-runner", label: t("infoPanel.scriptsRunnerLabel"), onRun: () => restoreControl("scripts-runner") },
 		{ id: "setup-dev-server", label: t("header.setupDevServer"), onRun: () => restoreControl("setup-dev-server") },
@@ -1517,50 +1378,11 @@ function TaskHeaderFrame({
 					<span className="text-xs font-mono text-fg-3 tabular-nums">{visibleDiffFiles}</span>
 				</button>
 			)}
-
-			{/* Simplified Mode applies (Settings can turn it off on a phone);
-			    personal hiding does not — the phone has no restore control. */}
-			{isTaskActive && task.worktreePath && !simplified && (
-				<button type="button" data-testid="task-actions-spawn-agent" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
-					<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
-					<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
-					<ChevronRightIcon />
-				</button>
-			)}
-
-			{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !simplified && (
-				<button type="button" data-testid="task-actions-bug-hunters" onClick={() => setBugHuntersOpen(true)} className={SHEET_ROW_CLASS}>
-					<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
-					<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
-					<ChevronRightIcon />
-				</button>
-			)}
-		</>
-	);
-	const narrowSheetSessionCluster = () => (
-		<>
-			{/* Last in the group: the one row that stops the session. */}
-			{canHibernate && !simplified && (
-				<button
-					type="button"
-					data-testid="task-actions-hibernate"
-					disabled={hibernating}
-					onClick={() => {
-						setActionsSheetOpen(false);
-						void handleHibernate();
-					}}
-					className={`${SHEET_ROW_CLASS} disabled:opacity-50`}
-				>
-					<HibernateIcon className="h-5 w-5 shrink-0 text-warning-strong" />
-					<span className="flex-1 text-sm font-medium">{t("task.hibernate")}</span>
-				</button>
-			)}
 		</>
 	);
 	const legacyClusters: LegacyClusters = narrow
 		? {
 			status: { bar: narrowBarStatusCluster(), sheet: narrowSheetStatusCluster() },
-			session: { sheet: narrowSheetSessionCluster() },
 		}
 		: {
 			status: {
@@ -1576,29 +1398,13 @@ function TaskHeaderFrame({
 					</>
 				),
 			},
-			session: {
-				bar: (
-					<>
-						{bugHuntersButton}
-						{spawnAgentButton}
-						{sendLaterButton}
-						{hibernateButton}
-						{scheduledMessagesChip}
-						{!tmuxPaneControlsHidden && (
-							<HideableControl id="tmux-pane-controls">
-								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-								<TaskPaneControls taskId={task.id} compact={tight} />
-							</HideableControl>
-						)}
-					</>
-				),
-			},
 		};
 	const headerValue = {
 		scope: { task, project, dispatch, navigate },
 		legacy: legacyClusters,
 		layout: { compact, tight, collapsed, narrow },
 		git,
+		session,
 		onOpenInlineDiff,
 		closeSheet: () => setActionsSheetOpen(false),
 	};
@@ -1671,18 +1477,7 @@ function TaskHeaderFrame({
 						</div>
 					</BottomSheet>
 
-					{spawnModalOpen && createPortal(
-						<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
-						document.body,
-					)}
-					{scheduleMsgOpen && createPortal(
-						<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
-						document.body,
-					)}
-					{bugHuntersOpen && createPortal(
-						<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
-						document.body,
-					)}
+					{session.dialogs}
 					{notesOverlayOpen && (
 						<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
 					)}
@@ -1756,20 +1551,7 @@ function TaskHeaderFrame({
 					)}
 				</div>
 
-				{spawnModalOpen && createPortal(
-					<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
-					document.body,
-				)}
-
-				{bugHuntersOpen && createPortal(
-					<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
-					document.body,
-				)}
-
-				{scheduleMsgOpen && createPortal(
-					<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
-					document.body,
-				)}
+				{session.dialogs}
 
 				{notesOverlayOpen && (
 					<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />

@@ -1,4 +1,4 @@
-> Partly superseded on 2026-11-21 by `decisions/2026/11/21/task-header-runtime-items.md` (and `task-header-git-items`): no longer true are "one legacy cluster per region" (git and runtime have real items) and "the status cluster's sheet form carries the runtime rows" (they are the runtime items' sheet form; the host owns the sheet's action group).
+> Partly superseded on 2026-11-21 by `decisions/2026/11/21/task-header-runtime-items.md` (and `task-header-git-items`, `task-header-session-items`): no longer true are "one legacy cluster per region" (git, runtime and session have real items) and "the status cluster's sheet form carries the runtime rows" (they are the runtime items' sheet form; the host owns the sheet's action group).
 
 # Task header: a four-region slot, starting with one legacy cluster per bar
 

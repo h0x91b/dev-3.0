@@ -156,7 +156,7 @@ The inspector header (`TaskHeader.tsx`, both collapsed and expanded states) is a
 | Bar | Position | Domain | Contents | Evidence |
 |---|---|---|---|---|
 | Context | row 1, left | task identity & lifecycle | variant switcher (conditional, leading), watch toggle, status dropdown, diff-summary badge, include-tests toggle, label strip | `TaskHeader.tsx` (row 1 left cluster) |
-| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls, send message later (scheduled agent message) | `TaskHeader.tsx` (row 1 right cluster), `TaskTmuxControls.tsx` |
+| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls, send message later (scheduled agent message) | `task-header/builtin-session.tsx`, `TaskPaneControls.tsx` |
 | Git | row 2, left | branch & PR | branch chip, changes summary, git actions, PR | `task-header/builtin-git.tsx` |
 | Runtime & access | row 2, right | project runtime outputs + access to them | open-in, scripts, dev server, ports, separate conditional Images and Artifacts controls (count>0 only); ports/resources also render as detail in the expanded body | `task-info-panel/TaskOpenIn.tsx`, `TaskSharedImages.tsx`, `TaskArtifacts.tsx` |
 
