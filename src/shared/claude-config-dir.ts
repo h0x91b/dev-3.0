@@ -5,7 +5,7 @@
  * Anything dev3 writes for Claude must follow the same rule, or it lands in a
  * directory the agent never reads (`decisions/2026/10/01/claude-config-dir-everywhere.md`).
  */
-import { isAbsolute, join, resolve } from "node:path";
+import path, { join } from "node:path";
 import { ENV_UNSET } from "./agent-accounts";
 
 export interface ClaudeConfigLocation {
@@ -18,15 +18,23 @@ export interface ClaudeConfigLocation {
 }
 
 /**
- * `~` expanded and trailing slashes dropped, so one dir has one spelling (registry, prune).
- * A relative value is resolved against `cwd` - the agent's cwd, which is what Claude uses.
+ * `~` expanded, separators normalized and trailing ones dropped, so one dir has one
+ * spelling (registry, prune). A relative value is resolved against `cwd` - the agent's
+ * cwd, which is what Claude uses. `pathApi` exists so tests can exercise Windows rules.
  */
-function normalizeDir(raw: string | undefined, home: string, cwd?: string): string | null {
+export function normalizeClaudeConfigDir(
+	raw: string | undefined,
+	home: string,
+	cwd?: string,
+	pathApi: typeof path.posix = path,
+): string | null {
 	const trimmed = raw?.trim();
 	if (!trimmed) return null;
-	let expanded = trimmed === "~" || trimmed.startsWith("~/") ? home + trimmed.slice(1) : trimmed;
-	if (cwd && !isAbsolute(expanded)) expanded = resolve(cwd, expanded);
-	return expanded.length > 1 ? expanded.replace(/\/+$/, "") : expanded;
+	const homeRelative = trimmed === "~" || trimmed.startsWith("~/") || trimmed.startsWith(`~${pathApi.sep}`);
+	let expanded = homeRelative ? home + trimmed.slice(1) : trimmed;
+	expanded = cwd && !pathApi.isAbsolute(expanded) ? pathApi.resolve(cwd, expanded) : pathApi.normalize(expanded);
+	const root = pathApi.parse(expanded).root;
+	return expanded.length > root.length && expanded.endsWith(pathApi.sep) ? expanded.slice(0, -1) : expanded;
 }
 
 /** Resolve the config location from the env the agent will actually see, running in `cwd`. */
@@ -35,7 +43,7 @@ export function claudeConfigLocation(
 	home: string,
 	cwd?: string,
 ): ClaudeConfigLocation {
-	const pinnedDir = normalizeDir(env.CLAUDE_CONFIG_DIR, home, cwd);
+	const pinnedDir = normalizeClaudeConfigDir(env.CLAUDE_CONFIG_DIR, home, cwd);
 	if (pinnedDir) return { dir: pinnedDir, claudeJson: join(pinnedDir, ".claude.json"), pinned: true };
 	return { dir: join(home, ".claude"), claudeJson: join(home, ".claude.json"), pinned: false };
 }
