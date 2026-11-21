@@ -102,6 +102,36 @@ describe("qualifyRefsFor", () => {
 		expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
 	});
 
+	it("qualifies bare refs written in prose", () => {
+		expect(qualifyRefsFor("Source (seq:60 split it); see pr:7.", PROJECT, OTHER))
+			.toBe("Source (seq:a1c9fe4e/60 split it); see pr:a1c9fe4e/7.");
+		expect(qualifyRefsFor("SEQ:3 first\nthen seq:4", PROJECT, OTHER)).toBe("seq:a1c9fe4e/3 first\nthen seq:a1c9fe4e/4");
+	});
+
+	it("keeps a bare ref that is a CLI argument, in code or after a flag", () => {
+		for (const text of [
+			"run `dev3 note add --task seq:4 hi`",
+			"```\ndev3 task show seq:4\n```",
+			"```sh\nseq:4 in an unterminated fence",
+			"dev3 task show seq:4",
+			"dev3 task update seq:4 --title x",
+			"dev3 task create --depends-on seq:3,seq:4",
+			"dev3 task update --start-after=seq:4",
+		]) expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
+	});
+
+	it("qualifies prose next to a CLI argument on the same line, and only the prose", () => {
+		expect(qualifyRefsFor("seq:3 waits; run `dev3 task show seq:3`", PROJECT, OTHER))
+			.toBe("seq:a1c9fe4e/3 waits; run `dev3 task show seq:3`");
+		expect(qualifyRefsFor("--task seq:3 then see seq:5", PROJECT, OTHER))
+			.toBe("--task seq:3 then see seq:a1c9fe4e/5");
+	});
+
+	it("is idempotent", () => {
+		const once = qualifyRefsFor("seq:1, <seq:2> and pr:3", PROJECT, OTHER);
+		expect(qualifyRefsFor(once, PROJECT, OTHER)).toBe(once);
+	});
+
 	it("changes nothing on the same project or when the writer's project is unknown", () => {
 		expect(qualifyRefsFor("<seq:12>", PROJECT, PROJECT)).toBe("<seq:12>");
 		expect(qualifyRefsFor("<seq:12>", undefined, OTHER)).toBe("<seq:12>");

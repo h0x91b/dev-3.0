@@ -2300,6 +2300,30 @@ describe("task.create", () => {
 			expect(vi.mocked(createTask).mock.calls[0]![0]).not.toHaveProperty("origin");
 		});
 
+		it("gives refs written from another board that board's project", async () => {
+			wireBoards();
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => makeTask({ status: "todo", ...change }));
+			await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Follow up seq:60",
+				description: "Source (seq:60 split it). See <pr:7>; run `dev3 task show seq:60` or dev3 note add --task seq:60 x",
+				sourceTaskId: "parent-0",
+			}));
+			expect(vi.mocked(createTask).mock.calls[0]![0].description)
+				.toBe("Source (seq:proj-2/60 split it). See <pr:proj-2/7>; run `dev3 task show seq:60` or dev3 note add --task seq:60 x");
+			expect(vi.mocked(data.updateTask).mock.calls[0]![2]).toMatchObject({ customTitle: "Follow up seq:proj-2/60" });
+		});
+
+		it("keeps refs as written when the creator sits on the same board or is unknown", async () => {
+			wireBoards();
+			const sibling = makeTask({ id: "sibling-0000-1111-2222-333333333333", projectId: "proj-1", seq: 5 });
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [parent] : [sibling]));
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "A", description: "see seq:60", sourceTaskId: "sibling-0" }));
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "B", description: "see seq:60" }));
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "C", description: "see seq:60", sourceTaskId: "gone-123" }));
+			expect(vi.mocked(createTask).mock.calls.map((c) => c[0].description)).toEqual(["see seq:60", "see seq:60", "see seq:60"]);
+		});
+
 		it("task.show resolves the parent, and reports a deleted one as null", async () => {
 			wireBoards();
 			const child = makeTask({ id: "child-11-1111-2222-3333-444444444444", origin: { kind: "task", taskId: parent.id, projectId: "proj-2" } });
@@ -3952,6 +3976,24 @@ describe("task.update", () => {
 		expect(resp.ok).toBe(true);
 		const call = vi.mocked(data.updateTask).mock.calls[0][2];
 		expect(call.customTitle).toBeNull();
+	});
+
+	it("qualifies refs in a description written from a task on another board", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "Mine" });
+		const writer = makeTask({ id: "writer-00-1111-2222-333333333333", projectId: "proj-2", seq: 9 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project, makeProject({ id: "proj-2", name: "Other" })]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [task]));
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...task, ...change }));
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "blocked on seq:60", sourceTaskId: writer.id }));
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "blocked on seq:60", sourceTaskId: task.id }));
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "blocked on seq:60" }));
+		expect(vi.mocked(data.updateTask).mock.calls.map((c) => c[2].description))
+			.toEqual(["blocked on seq:proj-2/60", "blocked on seq:60", "blocked on seq:60"]);
 	});
 
 	it("does not recompute auto-title from description when task has customTitle", async () => {

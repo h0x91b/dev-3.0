@@ -170,19 +170,44 @@ export function formatTaskRefFor(seq: number, projectId: string, readerProjectId
 	return formatTaskRef(seq, readerProjectId && readerProjectId === projectId ? undefined : projectId);
 }
 
+// Markdown code: a fenced block (unterminated runs to the end) or an inline span.
+const CODE_REGEX = /```[\s\S]*?(?:```|$)|`[^`\n]*`/g;
+// What sits right before a bare `seq:N` that is a CLI argument: a flag
+// (`--task seq:4`, `--depends-on seq:3,seq:4`) or a positional id (`dev3 task show seq:4`).
+const CLI_ARG_BEFORE_REGEX = /(?:--[a-z][\w-]*[ =](?:(?:seq|pr):\d+,)*|(?:^|\s)dev3(?:\s+[a-z][\w-]*){1,2}\s+)$/i;
+
+function codeRanges(text: string): [number, number][] {
+	return [...text.matchAll(CODE_REGEX)].map((m) => [m.index, m.index + m[0].length]);
+}
+
+/** A bare `seq:N` the reader would run as a command, where a qualifier would break it. */
+function isCliHandle(text: string, start: number, code: [number, number][]): boolean {
+	if (code.some(([from, to]) => start >= from && start < to)) return true;
+	const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+	return CLI_ARG_BEFORE_REGEX.test(text.slice(lineStart, start));
+}
+
 /**
  * Text written on `writerProjectId`, as a reader on another project must see it:
- * each bracketed `<seq:N>` / `<pr:N>` gains the writer's project. A bare `seq:N`
- * stays as written — it is the CLI's `--task` handle, and a qualifier would break the command.
+ * each unqualified `<seq:N>` / `<pr:N>`, and each bare `seq:N` / `pr:N` in prose,
+ * gains the writer's project and keeps its form (`seq:N` becomes `seq:a1c9fe4e/N`). A bare one used as a CLI argument stays as written
+ * (inside markdown code, after a `--flag`, or as `dev3 <cmd> <sub>`'s positional id),
+ * because a qualifier would break the command.
  */
 export function qualifyRefsFor(text: string, writerProjectId: string | undefined, readerProjectId: string | undefined): string {
 	if (!writerProjectId || writerProjectId === readerProjectId) return text;
 	const project = projectRefQualifier(writerProjectId);
+	const refs = findRefsInText(text);
+	const code = refs.some((r) => !r.raw.startsWith("<")) ? codeRanges(text) : [];
 	let out = "";
 	let cursor = 0;
-	for (const { ref, raw, start, end } of findRefsInText(text)) {
-		if (ref.project || !raw.startsWith("<")) continue;
-		out += text.slice(cursor, start) + formatRef({ ...ref, project });
+	for (const { ref, raw, start, end } of refs) {
+		if (ref.project) continue;
+		const bracketed = raw.startsWith("<");
+		if (!bracketed && isCliHandle(text, start, code)) continue;
+		// Keep the writer's form: a title renders as plain text, where brackets show.
+		const qualified = { ...ref, project };
+		out += text.slice(cursor, start) + (bracketed ? formatRef(qualified) : refUri(qualified));
 		cursor = end;
 	}
 	return cursor === 0 ? text : out + text.slice(cursor);

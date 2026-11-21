@@ -1,6 +1,7 @@
 import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import { taskDeepLinkNav } from "../../shared/deep-link";
+import { qualifyRefsFor } from "../../shared/task-refs";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
 import * as labelOps from "../board-operations/labels";
@@ -88,6 +89,18 @@ async function resolveCreator(params: Record<string, unknown>): Promise<{ origin
 	}
 	log.warn("Creator task not found; recording the user as origin", { sourceId });
 	return { creator: null };
+}
+
+/** The project of the task the CLI ran in, when it can be found. */
+async function sourceTaskProjectId(params: Record<string, unknown>): Promise<string | undefined> {
+	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceId) return undefined;
+	try {
+		return (await resolveTaskAcrossProjects(sourceId))?.project.id;
+	} catch (err) {
+		log.warn("Source task lookup failed; refs stay as written", { sourceId, error: String(err) });
+		return undefined;
+	}
 }
 
 /** `--start-after` as validated input, resolved before anything is written. */
@@ -306,10 +319,8 @@ export const taskHandlers: Record<string, Handler> = {
 
 	"task.create": async (params) => {
 		const projectId = params.projectId as string;
-		const title = params.title as string;
-		const description = (params.description as string | undefined)?.trim() || "";
 		if (!projectId) throw new Error("projectId is required");
-		if (!title) throw new Error("title is required");
+		if (!params.title) throw new Error("title is required");
 		const prRef = typeof params.pr === "string" ? params.pr : undefined;
 		const branchRef = typeof params.branch === "string" ? params.branch : undefined;
 		const ownWorktree = params.ownWorktree === true;
@@ -339,6 +350,12 @@ export const taskHandlers: Record<string, Handler> = {
 		const startAfterRefusal = startAfter && prerequisiteRefusal(startAfter.prereq, startAfter.until, await data.loadTasks(project));
 		if (startAfterRefusal) throw new Error(startAfterRefusal);
 		const dependsOn = await readDependencyRefs(params.dependsOn, "--depends-on", project);
+		const { origin, creator } = await resolveCreator(params);
+		// A task written from another board names that board's tasks: give its bare
+		// refs the writer's project, or they would resolve on this board.
+		const writerProjectId = origin?.kind === "task" ? origin.projectId : undefined;
+		const title = qualifyRefsFor(params.title as string, writerProjectId, project.id);
+		const description = qualifyRefsFor((params.description as string | undefined)?.trim() || "", writerProjectId, project.id);
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -350,7 +367,6 @@ export const taskHandlers: Record<string, Handler> = {
 		// The GUI's own creation handler — never a parallel path. It owns
 		// foreignCode, and the CLI reached feature parity by calling it rather than
 		// by copying it.
-		const { origin, creator } = await resolveCreator(params);
 		const epicId = await epicForNewTask({ epic: params.epic, noEpic: params.noEpic, creator });
 		const task = await createTask({
 			projectId: project.id,
@@ -458,10 +474,13 @@ export const taskHandlers: Record<string, Handler> = {
 		}
 		// Empty string (--title "") is an explicit reset. A user-edited title is guarded
 		// inside the operation: refused for an agent unless --force.
+		const writerProjectId = params.title !== undefined || params.description !== undefined
+			? await sourceTaskProjectId(params)
+			: undefined;
 		if (params.title !== undefined) {
-			change.title = { value: (params.title as string) || null, force: Boolean(params.force) };
+			change.title = { value: qualifyRefsFor(params.title as string, writerProjectId, project.id) || null, force: Boolean(params.force) };
 		}
-		if (params.description !== undefined) change.description = params.description as string;
+		if (params.description !== undefined) change.description = qualifyRefsFor(params.description as string, writerProjectId, project.id);
 		// Task type and the preamble in the description move together, always — in the
 		// same write. The preset prompt is frozen into the description at creation, so
 		// flipping the field alone would produce a task the data calls a coordinator while
