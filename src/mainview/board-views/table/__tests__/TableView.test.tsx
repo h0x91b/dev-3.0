@@ -5,7 +5,7 @@ import { I18nProvider } from "../../../i18n";
 import { BoardService, type BoardActions, type BoardAllActions, type BoardModel } from "../../board-service";
 import { BoardViewSlot } from "../../BoardViewChrome";
 import { BoardViewRegistry } from "../../registry";
-import "../../root";
+import "../../../plugins/root";
 import { installTableView, TABLE_VIEW_ID } from "..";
 import { TableOptions } from "../TableOptions";
 import { COORDINATOR_ROW } from "../../zebra";

@@ -5,8 +5,8 @@ import { EXTENSION_AUTHOR_GUIDE_URL } from "../../../../shared/extensions";
 import { api } from "../../../rpc";
 import { openFolderPicker } from "../../../folder-picker";
 import { isRemote } from "../../../utils/platform";
-import { resetBoardPluginsForTests } from "../../../board-views/plugins";
-import { resetBoardRootForTests } from "../../../board-views/root";
+import { resetBoardPluginsForTests } from "../../../plugins/runtime";
+import { resetAppRootForTests } from "../../../plugins/root";
 import ExtensionsSettingsSection from "../ExtensionsSettingsSection";
 
 vi.mock("../../../rpc", () => ({
@@ -42,7 +42,7 @@ function overview(patch: Partial<ExtensionsOverview> = {}): ExtensionsOverview {
 }
 
 beforeEach(() => {
-	resetBoardRootForTests();
+	resetAppRootForTests();
 	resetBoardPluginsForTests();
 	vi.mocked(isRemote).mockReturnValue(false);
 	vi.mocked(api.request.listExtensions).mockResolvedValue(overview());

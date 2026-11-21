@@ -1,6 +1,6 @@
 import { Context } from "cordis";
-import type { BoardService } from "./board-service";
-import { BoardViewRegistry } from "./registry";
+import type { BoardService } from "../board-views/board-service";
+import { BoardViewRegistry } from "../board-views/registry";
 
 // Declaration merging is the whole plugin API (D7): plugin authors get typed
 // `ctx.board` / `ctx.boardViews` on the raw Cordis Context, no dev3 facade.
@@ -22,7 +22,7 @@ let registry: BoardViewRegistry | null = null;
  * `Service` provides itself synchronously, so a board can mount on the very
  * first frame without waiting for anything.
  */
-export function getBoardRoot(): Context {
+export function getAppRoot(): Context {
 	if (!root) {
 		root = new Context();
 		registry = new BoardViewRegistry(root);
@@ -31,18 +31,18 @@ export function getBoardRoot(): Context {
 }
 
 export function getBoardViewRegistry(): BoardViewRegistry {
-	getBoardRoot();
+	getAppRoot();
 	return registry!;
 }
 
 /** Load the built-in views into the root. Called once at renderer start. */
 export function startBoardViews(builtins: ReadonlyArray<(ctx: Context) => unknown>): Context {
-	const ctx = getBoardRoot();
+	const ctx = getAppRoot();
 	for (const install of builtins) install(ctx);
 	return ctx;
 }
 
-export function resetBoardRootForTests(): void {
+export function resetAppRootForTests(): void {
 	root = null;
 	registry = null;
 }

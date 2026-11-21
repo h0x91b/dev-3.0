@@ -5,9 +5,9 @@ import { ATTENTION_VIEW_ID, defaultBoardViewState, withLayout, withViewType } fr
 import { I18nProvider } from "../../../i18n";
 import { api } from "../../../rpc";
 import BoardHost from "../../BoardHost";
-import { getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from "../../root";
+import { getBoardViewRegistry, resetAppRootForTests, startBoardViews } from "../../../plugins/root";
 import { installKanbanView } from "../../kanban";
-import { CordisContext } from "../../react";
+import { CordisContext } from "../../../plugins/react";
 import { resetBoardViewStateCacheForTests } from "../../useBoardViewState";
 import { resetTaskVisibilityForTests } from "../../useTaskVisibility";
 import type { BoardService } from "../../board-service";
@@ -87,7 +87,7 @@ function renderAttentionBoard(navigate = vi.fn(), state = withViewType(defaultBo
 }
 
 beforeEach(() => {
-	resetBoardRootForTests();
+	resetAppRootForTests();
 	resetBoardViewStateCacheForTests();
 	resetTaskVisibilityForTests();
 	vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "all" });
