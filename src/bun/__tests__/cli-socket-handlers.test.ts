@@ -3996,6 +3996,23 @@ describe("task.update", () => {
 			.toEqual(["blocked on seq:proj-2/60", "blocked on seq:60", "blocked on seq:60"]);
 	});
 
+	it("leaves the target board's own refs alone when another board's agent edits its description", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "Mine", description: "Goal.\nAfter seq:3 lands." });
+		const writer = makeTask({ id: "writer-00-1111-2222-333333333333", projectId: "proj-2", seq: 9 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project, makeProject({ id: "proj-2", name: "Other" })]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [task]));
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...task, ...change }));
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: "proj-1", description: "Goal.\nAfter seq:3 lands.\nAlso waits on seq:60.", sourceTaskId: writer.id,
+		}));
+		expect(vi.mocked(data.updateTask).mock.calls[0]![2].description).toBe("Goal.\nAfter seq:3 lands.\nAlso waits on seq:proj-2/60.");
+	});
+
 	it("does not recompute auto-title from description when task has customTitle", async () => {
 		const project = makeProject();
 		const task = makeTask({ customTitle: "My custom title" });

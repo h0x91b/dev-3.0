@@ -1,7 +1,7 @@
 import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import { taskDeepLinkNav } from "../../shared/deep-link";
-import { qualifyRefsFor } from "../../shared/task-refs";
+import { qualifyEditedRefsFor, qualifyRefsFor } from "../../shared/task-refs";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
 import * as labelOps from "../board-operations/labels";
@@ -478,9 +478,9 @@ export const taskHandlers: Record<string, Handler> = {
 			? await sourceTaskProjectId(params)
 			: undefined;
 		if (params.title !== undefined) {
-			change.title = { value: qualifyRefsFor(params.title as string, writerProjectId, project.id) || null, force: Boolean(params.force) };
+			change.title = { value: qualifyEditedRefsFor(params.title as string, task.customTitle, writerProjectId, project.id) || null, force: Boolean(params.force) };
 		}
-		if (params.description !== undefined) change.description = qualifyRefsFor(params.description as string, writerProjectId, project.id);
+		if (params.description !== undefined) change.description = qualifyEditedRefsFor(params.description as string, task.description, writerProjectId, project.id);
 		// Task type and the preamble in the description move together, always — in the
 		// same write. The preset prompt is frozen into the description at creation, so
 		// flipping the field alone would produce a task the data calls a coordinator while

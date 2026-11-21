@@ -7,13 +7,15 @@ An agent on board A ran `dev3 task create --project B` for many boards and wrote
 ## 2. Decision
 
 - `qualifyRefsFor` (`src/shared/task-refs.ts`) gives the writer's project to each unqualified ref, bracketed or bare, and keeps its form: `seq:60` becomes `seq:a1c9fe4e/60`, because a card title renders as plain text, where `<...>` would show. A bare ref stays as written when it is a CLI argument: inside markdown code (inline or fenced), after a `--flag` (`--task seq:4`, `--depends-on seq:3,seq:4`), or as the positional id of `dev3 <command> <sub>`.
-- `task.create` (`src/bun/cli-socket/task-commands.ts`) qualifies the title and description against the creator task's project (`origin.projectId`). `task.update` does the same for a new title or description, and the CLI now sends `sourceTaskId` with `--title` / `--description`.
+- `task.create` (`src/bun/cli-socket/task-commands.ts`) qualifies the title and description against the creator task's project (`origin.projectId`). `task.update` does the same for a new title or description through `qualifyEditedRefsFor`, which keeps every line already in the old text: an agent on board A that reads board B's description and writes it back must not turn B's own `seq:3` into A's. The CLI now sends `sourceTaskId` with `--title` / `--description`.
 - Agent messages pick up the wider rule through the same function.
 
 ## 3. Risks
 
 - A command written in plain prose without code formatting, such as "then run dev3 note add seq:4", is recognised only in the forms above. Another shape gets a qualifier, and the reader's command fails loudly. Before, it silently hit the wrong board's task.
-- A bare ref in markdown code stays bare, so in a cross-board description a ref written as `` `seq:60` `` still links to the reader's board.
+- A bare ref in markdown code stays bare, so in a cross-board description a ref written as `` `seq:60` `` still links to the reader's board. A double-backtick span (` ``seq:4`` `) is read as prose and qualified.
+- The positional-id pattern also matches prose that starts with "dev3 <word> <word>", such as "the dev3 board lists seq:4". That ref stays bare, which is the old behavior.
+- In an edit, a line the writer changed is qualified as a whole, so a target-board ref on the same line gains the writer's project too.
 - A create or update with no source task (a plain shell, the GUI) has no writer project, so its text is stored as written.
 
 ## 4. Alternatives considered

@@ -2792,7 +2792,7 @@ describe("--start-after", () => {
 		await handleTask("update", args([], { task: "seq:44", project: "proj-002", description: "see seq:60" }), SOCKET, CTX);
 		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.update", expect.objectContaining({ description: "see seq:60", sourceTaskId: CTX.taskId }));
 		await handleTask("update", args([], { task: "seq:44", priority: "P2" }), SOCKET, CTX);
-		expect(mockSend.mock.calls.at(-1)![2]).not.toHaveProperty("sourceTaskId");
+		expect(mockSend.mock.calls[mockSend.mock.calls.length - 1]![2]).not.toHaveProperty("sourceTaskId");
 	});
 
 	it("task update --no-start-after is a standalone update", async () => {

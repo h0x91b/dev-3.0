@@ -7,6 +7,7 @@ import {
 	normalizeTaskArg,
 	parseRefUri,
 	projectMatchesQualifier,
+	qualifyEditedRefsFor,
 	qualifyRefsFor,
 	refUri,
 } from "../../shared/task-refs";
@@ -117,6 +118,12 @@ describe("qualifyRefsFor", () => {
 			"dev3 task update seq:4 --title x",
 			"dev3 task create --depends-on seq:3,seq:4",
 			"dev3 task update --start-after=seq:4",
+			"~/.dev3.0/bin/dev3 task show seq:4",
+			"dev3 note add --task \"seq:4\" x",
+			"dev3 task create --depends-on 'seq:3,seq:4'",
+			"dev3 note add --task  seq:4 x",
+			"dev3 task create --depends-on seq:3, seq:4",
+			"text\r\n--task seq:4\r\n",
 		]) expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
 	});
 
@@ -125,6 +132,15 @@ describe("qualifyRefsFor", () => {
 			.toBe("seq:a1c9fe4e/3 waits; run `dev3 task show seq:3`");
 		expect(qualifyRefsFor("--task seq:3 then see seq:5", PROJECT, OTHER))
 			.toBe("--task seq:3 then see seq:a1c9fe4e/5");
+	});
+
+	it("reads a stray fence mid-line as text, and an unterminated one at a line start as code", () => {
+		expect(qualifyRefsFor("use ``` for code; see seq:4", PROJECT, OTHER)).toBe("use ``` for code; see seq:a1c9fe4e/4");
+		expect(qualifyRefsFor("seq:3\n```\nseq:4", PROJECT, OTHER)).toBe("seq:a1c9fe4e/3\n```\nseq:4");
+	});
+
+	it("looks back a bounded distance for a flag", () => {
+		expect(qualifyRefsFor(`--task ${"x ".repeat(150)}seq:4`, PROJECT, OTHER)).toBe(`--task ${"x ".repeat(150)}seq:a1c9fe4e/4`);
 	});
 
 	it("is idempotent", () => {
@@ -136,6 +152,22 @@ describe("qualifyRefsFor", () => {
 		expect(qualifyRefsFor("<seq:12>", PROJECT, PROJECT)).toBe("<seq:12>");
 		expect(qualifyRefsFor("<seq:12>", undefined, OTHER)).toBe("<seq:12>");
 		expect(qualifyRefsFor("no refs here", PROJECT, OTHER)).toBe("no refs here");
+	});
+});
+
+describe("qualifyEditedRefsFor", () => {
+	const OTHER = "bbbbbbbb-1111-2222-3333-444455556666";
+
+	it("keeps lines the writer read back and qualifies only the lines it added", () => {
+		const previous = "Goal: ship it.\nAfter seq:3 lands.";
+		expect(qualifyEditedRefsFor(`${previous}\nAlso see seq:7.`, previous, PROJECT, OTHER))
+			.toBe("Goal: ship it.\nAfter seq:3 lands.\nAlso see seq:a1c9fe4e/7.");
+	});
+
+	it("qualifies everything when there was no previous text, and nothing on the same project", () => {
+		expect(qualifyEditedRefsFor("see seq:3", null, PROJECT, OTHER)).toBe("see seq:a1c9fe4e/3");
+		expect(qualifyEditedRefsFor("see seq:3", "", PROJECT, OTHER)).toBe("see seq:a1c9fe4e/3");
+		expect(qualifyEditedRefsFor("see seq:3", "old", PROJECT, PROJECT)).toBe("see seq:3");
 	});
 });
 
