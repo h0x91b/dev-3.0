@@ -15,7 +15,7 @@ runs the bun suites under Node, so `Bun.semver` is unavailable there.
 ## Decision
 
 - **Transport**: the renderer fetches the bundle text over RPC (`getExtensionSource`), which serves desktop and remote
-  alike, and imports it from a `blob:` URL (`board-views/plugins.ts`). No new HTTP route, no auth surface.
+  alike, and imports it from a `blob:` URL (`plugins/runtime.ts`). No new HTTP route, no auth surface.
 - **Shared modules**: a static import map in `index.html` sends `react`, `react/jsx-runtime`, `react-dom` and
   `cordis` to `public/ext-shared/*.js` shims that re-export `globalThis.__dev3SharedModules`. Static, because a
   dynamically inserted import map is ignored once modules have loaded on older WebKit. The export lists are

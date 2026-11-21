@@ -19,7 +19,7 @@
          standalone display mode counts as installed. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Board-view extensions import bare "react"/"react-dom"/"cordis"; this map hands them
-         the host's own copies through public/ext-shared shims (plugins/runtime.ts). -->
+         the host's own copies through the public/ext-shared/* shims, which read what plugins/runtime.ts publishes. -->
     <script type="importmap">
       {
         "imports": {
