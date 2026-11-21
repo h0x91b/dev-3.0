@@ -10,10 +10,11 @@
  * Isolation: registry state, host images and logs live in a tmpdir, never `~/.dev3.0/`.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../native-terminal-multipane/paths";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -34,7 +35,7 @@ async function main(): Promise<void> {
 		await import("../native-task-panes")
 			.then((m) => m.stopNativeTaskPanes(TASK_ID))
 			.catch(() => undefined);
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 }
 

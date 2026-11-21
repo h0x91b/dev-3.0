@@ -12,13 +12,14 @@
  * Run: bun run test:ownership-e2e   (POSIX only — the scanners shell out)
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { clearProcessInfoCache, getDescendantPids, getLsofOutput } from "../../port-scanner";
 import { spawn } from "../../spawn";
 import { collectOwnershipSnapshot } from "../collector";
 import { verifiedClaim } from "../contract";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -143,7 +144,7 @@ async function run(): Promise<void> {
 		check(afterExit.resources?.rss === 0, "the dead tree costs nothing");
 	} finally {
 		for (const pid of roots) await killTree(pid);
-		rmSync(workDir, { recursive: true, force: true });
+		removeTempTree(workDir);
 	}
 }
 

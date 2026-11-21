@@ -2,7 +2,7 @@
 /** Real-runtime proof for abrupt native-session host termination (seq 1236).
  * The crash phase force-kills the recorded host PID instead of asking it to stop. */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ import { cleanupStale, list, start, status, stop } from "../registry";
 import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
 import { sendUntilObserved, SHELL_WARMUP_PROBE, SINGLE_SHOT_WAIT } from "./command-roundtrip";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -279,7 +280,7 @@ async function run(): Promise<void> {
 				// already gone
 			}
 		}
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 }
 
