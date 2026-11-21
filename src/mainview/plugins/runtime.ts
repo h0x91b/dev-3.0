@@ -3,7 +3,7 @@ import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDom from "react-dom";
 import * as Cordis from "cordis";
 import type { Context, Fiber } from "cordis";
-import { extensionViewId, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
+import { extensionViewId, TOGGLEABLE_BUILTIN_VIEWS, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
 import { api } from "../rpc";
 import { getAppRoot, observeAppSlots } from "./root";
 import type { SlotItem, SlotRegistry } from "./slot-registry";
@@ -23,6 +23,7 @@ export interface BuiltinPlugin {
 
 /** `FiberState.FAILED` — an ambient const enum, so not readable under isolatedModules. */
 const FIBER_FAILED = 3;
+const TOGGLEABLE: ReadonlySet<string> = new Set(TOGGLEABLE_BUILTIN_VIEWS);
 // Persisted key; its board-era name stays, renaming it would forget every user's toggles.
 const DISABLED_BUILTINS_KEY = "dev3-disabled-board-views";
 const SKIP_EXTENSIONS_ONCE_KEY = "dev3-extensions-skip-once";
@@ -72,7 +73,8 @@ export function getPluginsSnapshot(): RuntimeSnapshot {
 function readCachedDisabledBuiltins(): string[] {
 	try {
 		const raw = JSON.parse(localStorage.getItem(DISABLED_BUILTINS_KEY) ?? "[]");
-		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+		// Same filter as the host's state file: a stale or edited cache can never disable a required built-in.
+		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && TOGGLEABLE.has(id)) : [];
 	} catch {
 		return [];
 	}

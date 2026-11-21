@@ -98,6 +98,14 @@ describe("built-in board views", () => {
 		await waitFor(() => expect(ids()).toEqual(["builtin:kanban", "builtin:table"]));
 	});
 
+	it("ignores a cached disabled list naming a built-in that cannot be disabled", async () => {
+		localStorage.setItem("dev3-disabled-board-views", JSON.stringify(["builtin:kanban", "builtin:table"]));
+		vi.mocked(api.request.listExtensions).mockReturnValue(new Promise(() => {}));
+		startPlugins(builtins.map(({ required: _required, ...builtin }) => builtin));
+		await waitFor(() => expect(ids()).toEqual(["builtin:kanban"]));
+		localStorage.removeItem("dev3-disabled-board-views");
+	});
+
 	it("never disposes Kanban, whatever the disabled list says", async () => {
 		applyBuiltinPlugins(["builtin:kanban", "builtin:table"], builtins);
 		await waitFor(() => expect(ids()).toEqual(["builtin:kanban"]));
