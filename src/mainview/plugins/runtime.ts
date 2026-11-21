@@ -74,6 +74,7 @@ function readCachedDisabledBuiltins(): string[] {
 	try {
 		const raw = JSON.parse(localStorage.getItem(DISABLED_BUILTINS_KEY) ?? "[]");
 		// A stale or edited cache can only name built-ins the user may switch off, never a required one.
+		// The host filters by TOGGLEABLE_BUILTIN_VIEWS; board-views/__tests__/builtins.test.ts keeps the two in step.
 		const toggleable = new Set(builtinPlugins.filter((builtin) => !builtin.required).map((builtin) => builtin.id));
 		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && toggleable.has(id)) : [];
 	} catch {

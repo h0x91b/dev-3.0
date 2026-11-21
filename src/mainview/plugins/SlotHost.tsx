@@ -40,7 +40,7 @@ export class SlotErrorBoundary extends Component<BoundaryProps, { error: Error |
 	}
 
 	componentDidCatch(error: Error, info: ErrorInfo) {
-		console.error(`[slots] ${this.props.slot} item ${this.props.resetKey} crashed:`, error, info.componentStack);
+		console.error(`[slots] ${this.props.slot} item ${this.props.resetKey || "(fallback)"} crashed:`, error, info.componentStack);
 	}
 
 	render() {

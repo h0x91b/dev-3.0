@@ -3,7 +3,15 @@ import { useRef } from "react";
 import { Context, type Fiber } from "cordis";
 import { I18nProvider } from "../../i18n";
 import { SlotRegistry } from "../slot-registry";
-import { foldBudget, SlotItems, useFoldBudget, type ContributionSlotItem, type SlotItemProps } from "../SlotItems";
+import {
+	foldBudget,
+	placeSlotItems,
+	SlotItems,
+	useFoldBudget,
+	type ContributionSlotItem,
+	type SlotItemProps,
+	type SlotUserLayout,
+} from "../SlotItems";
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
 
@@ -18,11 +26,12 @@ declare module "cordis" {
 	}
 }
 
+/** Inline: a plain button. In More: a proper menu row. */
 function Button({ label }: { label: string }) {
 	return function ItemButton({ placement }: SlotItemProps) {
 		return placement === "inline"
 			? <button type="button">{label}</button>
-			: <button type="button" role="menuitem">{label} (menu)</button>;
+			: <button type="button" role="menuitem">{label}</button>;
 	};
 }
 
@@ -45,67 +54,46 @@ async function plugin(name: string, items: Array<Partial<Item> & { id: string }>
 	return await act(async () => await fiber);
 }
 
-function renderItems(props: { scope?: Scope; budget?: number; region?: string } = {}) {
-	const ui = (p: typeof props) => (
+interface Props {
+	scope?: Scope;
+	budget?: number;
+	region?: string;
+	layout?: SlotUserLayout;
+}
+
+function renderItems(props: Props = {}) {
+	const ui = (p: Props) => (
 		<I18nProvider>
-			<SlotItems registry={registry} scope={p.scope ?? { hasPr: false }} budget={p.budget} region={p.region} />
+			<SlotItems registry={registry} scope={p.scope ?? { hasPr: false }} budget={p.budget} region={p.region} layout={p.layout} />
 		</I18nProvider>
 	);
 	const result = render(ui(props));
-	return { ...result, rerenderWith: (next: typeof props) => result.rerender(ui(next)) };
+	return { ...result, rerenderWith: (next: Props) => result.rerender(ui(next)) };
 }
 
+/** Labels drawn in the bar (the More trigger has no text). */
 const inlineLabels = () => screen.queryAllByRole("button").map((b) => b.textContent).filter((text) => text !== "");
+const more = () => screen.getByRole("button", { name: "More" });
+const menuLabels = () => screen.getAllByRole("menuitem").map((row) => row.textContent);
 
-describe("SlotItems", () => {
-	it("renders items by order, ties in registration order", async () => {
-		await plugin("p", [{ id: "c", order: 5 }, { id: "a" }, { id: "b", order: -1 }, { id: "d", order: 5 }]);
+describe("SlotItems: order and lifecycle", () => {
+	it("renders built-ins by order, ties in registration order", async () => {
+		await plugin("p", [{ id: "builtin:c", order: 5 }, { id: "builtin:a" }, { id: "builtin:b", order: -1 }, { id: "builtin:d", order: 5 }]);
 		renderItems();
-		expect(inlineLabels()).toEqual(["b", "a", "c", "d"]);
+		expect(inlineLabels()).toEqual(["builtin:b", "builtin:a", "builtin:c", "builtin:d"]);
 	});
 
 	it("shows one region only when asked", async () => {
-		await plugin("p", [{ id: "l", region: "left" }, { id: "r", region: "right" }]);
+		await plugin("p", [{ id: "builtin:l", region: "left" }, { id: "builtin:r", region: "right" }]);
 		renderItems({ region: "right" });
-		expect(inlineLabels()).toEqual(["r"]);
+		expect(inlineLabels()).toEqual(["builtin:r"]);
 	});
 
 	it("picks up items registered after mount", async () => {
 		renderItems();
 		expect(inlineLabels()).toEqual([]);
-		await plugin("late", [{ id: "late" }]);
-		expect(inlineLabels()).toEqual(["late"]);
-	});
-
-	it("puts items past the budget under More, rendered as menu rows, and closes after a row acts", async () => {
-		await plugin("p", [{ id: "one" }, { id: "two" }, { id: "three" }, { id: "four" }]);
-		renderItems({ budget: 2 });
-		const more = screen.getByRole("button", { name: "More" });
-		expect(screen.getByRole("button", { name: "one" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "two" })).toBeTruthy();
-		expect(screen.queryByText("three")).toBeNull();
-		expect(more.getAttribute("aria-expanded")).toBe("false");
-
-		fireEvent.click(more);
-		const menu = screen.getByRole("menu");
-		expect(more.getAttribute("aria-expanded")).toBe("true");
-		expect(Array.from(menu.querySelectorAll('[role="menuitem"]')).map((row) => row.textContent)).toEqual(["three (menu)", "four (menu)"]);
-
-		fireEvent.click(screen.getByRole("menuitem", { name: "three (menu)" }));
-		expect(screen.queryByRole("menu")).toBeNull();
-	});
-
-	it("shows no More button when everything fits", async () => {
-		await plugin("p", [{ id: "one" }, { id: "two" }]);
-		renderItems({ budget: 2 });
-		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
-	});
-
-	it("folds everything under More with a zero budget", async () => {
-		await plugin("p", [{ id: "one" }]);
-		renderItems({ budget: 0 });
-		expect(screen.queryByRole("button", { name: "one" })).toBeNull();
-		expect(screen.getByRole("button", { name: "More" })).toBeTruthy();
+		await plugin("late", [{ id: "builtin:late" }]);
+		expect(inlineLabels()).toEqual(["builtin:late"]);
 	});
 
 	it("isolates a crashing item: its neighbours still render", async () => {
@@ -113,46 +101,150 @@ describe("SlotItems", () => {
 		const Boom = () => {
 			throw new Error("boom");
 		};
-		await plugin("good", [{ id: "before", order: 1 }, { id: "after", order: 3 }]);
-		await plugin("bad", [{ id: "bad:item", order: 2, component: Boom }]);
+		await plugin("good", [{ id: "builtin:before", order: 1 }, { id: "builtin:after", order: 3 }]);
+		await plugin("bad", [{ id: "builtin:bad", order: 2, component: Boom }]);
 		renderItems();
-		expect(inlineLabels()).toEqual(["before", "after"]);
-		expect(errors.mock.calls.some((call) => String(call[0]).includes("bad:item"))).toBe(true);
+		expect(inlineLabels()).toEqual(["builtin:before", "builtin:after"]);
+		expect(errors.mock.calls.some((call) => String(call[0]).includes("builtin:bad"))).toBe(true);
 		errors.mockRestore();
 	});
 
 	it("re-evaluates when() as the scope changes, and hides an item whose when() throws", async () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		await plugin("p", [
-			{ id: "always" },
-			{ id: "pr", when: (scope) => scope.hasPr },
-			{ id: "broken", when: () => { throw new Error("nope"); } },
+			{ id: "builtin:always" },
+			{ id: "builtin:pr", when: (scope) => scope.hasPr },
+			{ id: "builtin:broken", when: () => { throw new Error("nope"); } },
 		]);
 		const { rerenderWith } = renderItems({ scope: { hasPr: false } });
-		expect(inlineLabels()).toEqual(["always"]);
+		expect(inlineLabels()).toEqual(["builtin:always"]);
 		rerenderWith({ scope: { hasPr: true } });
-		expect(inlineLabels()).toEqual(["always", "pr"]);
+		expect(inlineLabels()).toEqual(["builtin:always", "builtin:pr"]);
 		rerenderWith({ scope: { hasPr: false } });
-		expect(inlineLabels()).toEqual(["always"]);
+		expect(inlineLabels()).toEqual(["builtin:always"]);
 		errors.mockRestore();
 	});
 
-	it("counts the budget after when(), so a hidden item frees its slot", async () => {
-		await plugin("p", [{ id: "hidden", when: () => false }, { id: "one" }, { id: "two" }]);
-		renderItems({ budget: 2 });
-		expect(inlineLabels()).toEqual(["one", "two"]);
-		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
-	});
-
 	it("removes a plugin's items when the plugin is disposed", async () => {
-		const fiber = await plugin("gone", [{ id: "gone" }]);
-		await plugin("stays", [{ id: "stays" }]);
+		const fiber = await plugin("gone", [{ id: "builtin:gone" }]);
+		await plugin("stays", [{ id: "builtin:stays" }]);
 		renderItems();
-		expect(inlineLabels()).toEqual(["gone", "stays"]);
+		expect(inlineLabels()).toEqual(["builtin:gone", "builtin:stays"]);
 		await act(async () => {
 			await fiber.dispose();
 		});
-		await waitFor(() => expect(inlineLabels()).toEqual(["stays"]));
+		await waitFor(() => expect(inlineLabels()).toEqual(["builtin:stays"]));
+	});
+});
+
+describe("SlotItems: placement by origin (bible §5.1, §5.12)", () => {
+	it("never budgets or folds a built-in, even past the budget", async () => {
+		await plugin("p", [{ id: "builtin:1" }, { id: "builtin:2" }, { id: "builtin:3" }, { id: "builtin:4" }, { id: "builtin:5" }]);
+		renderItems({ budget: 2 });
+		expect(inlineLabels()).toEqual(["builtin:1", "builtin:2", "builtin:3", "builtin:4", "builtin:5"]);
+		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+	});
+
+	it("starts extension items in More", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		renderItems();
+		expect(inlineLabels()).toEqual(["builtin:a"]);
+		fireEvent.click(more());
+		expect(menuLabels()).toEqual(["ext:x"]);
+	});
+
+	it("brings a pinned extension item into the bar, after the built-ins, within the room they leave", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }, { id: "builtin:b" }]);
+		await plugin("ext", [{ id: "ext:x" }, { id: "ext:y" }, { id: "ext:z" }]);
+		renderItems({ budget: 3, layout: { pinned: ["ext:x", "ext:y"] } });
+		expect(inlineLabels()).toEqual(["builtin:a", "builtin:b", "ext:x"]);
+		fireEvent.click(more());
+		expect(menuLabels()).toEqual(["ext:y", "ext:z"]);
+	});
+
+	it("puts anything the user sent to More there, built-ins included, and honours the user's order", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }, { id: "builtin:b" }, { id: "builtin:c" }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		renderItems({ layout: { overflow: ["builtin:b"], pinned: ["ext:x"], order: ["ext:x", "builtin:c"] } });
+		expect(inlineLabels()).toEqual(["ext:x", "builtin:c", "builtin:a"]);
+		fireEvent.click(more());
+		expect(menuLabels()).toEqual(["builtin:b"]);
+	});
+
+	it("counts the room after when(), so a hidden built-in frees it", async () => {
+		await plugin("builtins", [{ id: "builtin:hidden", when: () => false }, { id: "builtin:a" }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		renderItems({ budget: 2, layout: { pinned: ["ext:x"] } });
+		expect(inlineLabels()).toEqual(["builtin:a", "ext:x"]);
+		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+	});
+
+	it("places by origin in the pure helper too", () => {
+		const e = (id: string) => ({ def: { id } });
+		const { inline, overflow } = placeSlotItems([e("ext:1"), e("builtin:a"), e("ext:2")], { pinned: ["ext:2"] }, 1);
+		expect(inline.map((x) => x.def.id)).toEqual(["builtin:a"]);
+		expect(overflow.map((x) => x.def.id)).toEqual(["ext:1", "ext:2"]);
+	});
+});
+
+describe("SlotItems: the More menu", () => {
+	beforeEach(async () => {
+		await plugin("builtins", [{ id: "builtin:a" }]);
+		await plugin("ext", [{ id: "ext:one" }, { id: "ext:two" }, { id: "ext:three" }]);
+	});
+
+	it("is a menu: focus lands on the first row, arrows/Home/End move, Escape returns to the trigger", () => {
+		renderItems();
+		const trigger = more();
+		expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+		expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+		fireEvent.click(trigger);
+		const menu = screen.getByRole("menu");
+		expect(trigger.getAttribute("aria-expanded")).toBe("true");
+		expect(document.activeElement?.textContent).toBe("ext:one");
+
+		fireEvent.keyDown(menu, { key: "ArrowDown" });
+		expect(document.activeElement?.textContent).toBe("ext:two");
+		fireEvent.keyDown(menu, { key: "End" });
+		expect(document.activeElement?.textContent).toBe("ext:three");
+		fireEvent.keyDown(menu, { key: "ArrowDown" });
+		expect(document.activeElement?.textContent).toBe("ext:one");
+		fireEvent.keyDown(menu, { key: "ArrowUp" });
+		expect(document.activeElement?.textContent).toBe("ext:three");
+		fireEvent.keyDown(menu, { key: "Home" });
+		expect(document.activeElement?.textContent).toBe("ext:one");
+
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	it("opens from the keyboard with ArrowDown on the trigger", () => {
+		renderItems();
+		fireEvent.keyDown(more(), { key: "ArrowDown" });
+		expect(screen.getByRole("menu")).toBeTruthy();
+		expect(document.activeElement?.textContent).toBe("ext:one");
+	});
+
+	it("closes after a row acts and gives focus back to the trigger", () => {
+		renderItems();
+		fireEvent.click(more());
+		const row = screen.getByRole("menuitem", { name: "ext:two" });
+		row.focus();
+		fireEvent.click(row);
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(document.activeElement).toBe(more());
+	});
+
+	it("warns when an item renders no menuitem in More", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		await plugin("lazy", [{ id: "ext:plain", component: () => <span>plain</span> }]);
+		renderItems();
+		fireEvent.click(more());
+		expect(warn.mock.calls.some((call) => String(call[0]).includes("ext:plain"))).toBe(true);
+		warn.mockRestore();
 	});
 });
 
@@ -177,19 +269,20 @@ describe("folding by container width", () => {
 			disconnect() {}
 		} as unknown as typeof ResizeObserver;
 		const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
-
-		function Probe() {
-			const ref = useRef<HTMLDivElement>(null);
-			const budget = useFoldBudget(ref, { itemWidth: 100, reserve: 40, max: 5 });
-			return <div ref={ref} data-testid="probe">{String(budget)}</div>;
+		try {
+			function Probe() {
+				const ref = useRef<HTMLDivElement>(null);
+				const budget = useFoldBudget(ref, { itemWidth: 100, reserve: 40, max: 5 });
+				return <div ref={ref} data-testid="probe">{String(budget)}</div>;
+			}
+			render(<Probe />);
+			expect(screen.getByTestId("probe").textContent).toBe("3");
+			width = 150;
+			act(() => notify!());
+			expect(screen.getByTestId("probe").textContent).toBe("1");
+		} finally {
+			clientWidth.mockRestore();
+			globalThis.ResizeObserver = original;
 		}
-		render(<Probe />);
-		expect(screen.getByTestId("probe").textContent).toBe("3");
-		width = 150;
-		act(() => notify!());
-		expect(screen.getByTestId("probe").textContent).toBe("1");
-
-		clientWidth.mockRestore();
-		globalThis.ResizeObserver = original;
 	});
 });
