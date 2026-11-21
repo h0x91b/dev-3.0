@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /** Real-runtime two-client writer/observer lifecycle proof (seq 1237). */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { NativeSessionClient } from "../client";
@@ -11,6 +11,7 @@ import type { ErrorMessage } from "../protocol";
 import { readRecord } from "../record";
 import { start, stop } from "../registry";
 import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -435,7 +436,7 @@ async function run(): Promise<void> {
 			// best-effort cleanup
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort cleanup
 		}

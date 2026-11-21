@@ -10,12 +10,13 @@
  * Run: bun run test:launch-handoff-e2e
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startCliListener, type CliListener } from "../cli-listener";
 import { LAUNCH_ACTIVATE_METHOD, decideLaunchActivation, handOffToRunningInstance, requestOverUnixSocket } from "../launch-handoff";
 import type { CliRequest, CliResponse } from "../../shared/types";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 const BUNDLE = "/opt/dev3/Resources/app/views";
 
@@ -98,7 +99,7 @@ async function run(): Promise<void> {
 		for (const listener of listeners) {
 			try { listener.stop(); } catch { /* already stopped */ }
 		}
-		rmSync(socketsDir, { recursive: true, force: true });
+		removeTempTree(socketsDir);
 	}
 }
 

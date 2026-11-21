@@ -8,7 +8,7 @@
  * tears everything down. Never touches tmux (proved by a PATH shim sentinel).
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import { ObserverMutationError } from "../errors";
 import { directionalFocusTarget } from "../focus-mapping";
 import { NATIVE_MULTIPANE_DIR_ENV, coordinatorRecordFile, paneSessionId } from "../paths";
 import { readMultipaneRecord } from "../record";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -280,7 +281,7 @@ async function run(): Promise<void> {
 			// best-effort cleanup
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort cleanup
 		}

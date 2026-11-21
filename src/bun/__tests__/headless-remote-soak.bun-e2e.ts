@@ -16,9 +16,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
 const SOAK_MS = Number(process.env.DEV3_SOAK_MS ?? 16 * 60 * 1000);
@@ -120,7 +121,7 @@ try {
 	try {
 		console.log(`[soak] remote log tail:\n${readFileSync(resolve(home, ".dev3.0/remote/remote.log"), "utf8").split("\n").slice(-5).join("\n")}`);
 	} catch { /* no log written — the checks above already say so */ }
-	rmSync(home, { recursive: true, force: true });
+	removeTempTree(home);
 }
 
 if (failures.length > 0) {
