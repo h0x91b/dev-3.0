@@ -1,0 +1,1 @@
+Windows E2E checks no longer fail after passing because Windows was still holding their temp folder: cleanup now retries a locked folder for up to ~5 seconds and still fails if the lock outlasts that.

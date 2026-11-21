@@ -27,13 +27,14 @@
  * Scope: additive test-only proof. No production behaviour changes.
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "../../spawn";
 import { isProcessAlive } from "../process-identity";
 import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -189,7 +190,7 @@ async function run(): Promise<void> {
 		// Stop the detached host from a clean process, then drop the temp root.
 		spawnSync([process.execPath, controllerEntry, "stop", sessionId], { env: childEnv, stdout: "pipe", stderr: "pipe" });
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch { /* best effort */ }
 	}
 }

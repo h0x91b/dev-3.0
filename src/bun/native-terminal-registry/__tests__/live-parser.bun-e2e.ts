@@ -24,7 +24,7 @@
  *   • tmux is never invoked (PATH-shim sentinel stays absent).
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { spawn } from "../../spawn";
@@ -42,6 +42,7 @@ import {
 	NATIVE_SESSION_LAUNCH_ENV,
 } from "../shell-launch";
 import { readStreamTap } from "../stream-tap";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -382,7 +383,7 @@ async function run(): Promise<void> {
 			// already gone
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}
