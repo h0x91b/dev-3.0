@@ -302,7 +302,7 @@ export default function TaskContextMenu({
 					<div ref={setAnchorEl} className="fixed h-0 w-0" style={{ top: anchorPos.y, left: anchorPos.x }} />,
 					document.body,
 				)}
-			{sheetItem?.submenu && <GuardedSubmenu id={sheetItem.id} render={() => sheetItem.submenu!.sheet(scope, { ...pick, anchorEl, anchorPos })} />}
+			{sheetItem?.submenu && <GuardedSubmenu id={sheetItem.id} onCrash={closeSheet} render={() => sheetItem.submenu!.sheet(scope, { ...pick, anchorEl, anchorPos })} />}
 			{/* Portalled: the sidebar column clips a modal rendered in place. */}
 			{detailOpen &&
 				createPortal(
@@ -413,10 +413,16 @@ function SubmenuContent({ render }: { render: () => ReactNode }) {
 	return <>{render()}</>;
 }
 
+/** Runs `onCrash` once the fallback is on screen: never a state update during render. */
+function CrashedSubmenu({ onCrash }: { onCrash?: () => void }) {
+	useEffect(() => onCrash?.(), [onCrash]);
+	return null;
+}
+
 /** One item's submenu; a crash leaves it empty (logged) instead of taking the menu and its host down. */
-function GuardedSubmenu({ id, render }: { id: string; render: () => ReactNode }) {
+function GuardedSubmenu({ id, render, onCrash }: { id: string; render: () => ReactNode; onCrash?: () => void }) {
 	return (
-		<SlotErrorBoundary slot="taskMenu" resetKey={id} fallback={() => null}>
+		<SlotErrorBoundary slot="taskMenu" resetKey={id} fallback={() => <CrashedSubmenu onCrash={onCrash} />}>
 			<SubmenuContent render={render} />
 		</SlotErrorBoundary>
 	);

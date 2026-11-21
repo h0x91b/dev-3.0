@@ -145,6 +145,8 @@ replace slot (`src/mainview/terminal-companion/`, `decisions/2026/11/21/terminal
 - A render crash of an extension's item must be reported into that extension's failure state, so its Extensions
   row shows the reason (today the item only vanishes).
 - A page-shaped slot (settings sections) must place built-ins before extensions by origin, not by numeric `order` alone.
+- Before `taskMenu` opens, a crashed submenu should show the one-line slot notice instead of an empty flyout
+  (today it falls back to nothing, logged; a crashed phone sheet just closes).
 - Before `terminalCompanion` opens, the terminal must survive a companion swap (load, unload or crash); for example the
   host owns the terminal node and portals it into the companion. Today any swap remounts it: the PTY survives, but
   client scroll, selection and focus are lost (`decisions/2026/11/21/terminal-companion-slot.md`).

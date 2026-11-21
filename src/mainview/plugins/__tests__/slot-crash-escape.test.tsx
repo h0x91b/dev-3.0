@@ -2,7 +2,8 @@ import type { MockInstance } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { Context } from "cordis";
-import { Component, type ReactNode } from "react";
+import { Component, useEffect, type ReactNode } from "react";
+import type { ILink, ILinkProvider, Terminal } from "ghostty-web";
 import type { Project, Task } from "../../../shared/types";
 import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
 import { I18nProvider } from "../../i18n";
@@ -39,6 +40,8 @@ import { getTaskDock, openTaskPanel, resetTaskDocksForTests } from "../../task-p
 import { FILE_EXPLORER_COMPANION_ID } from "../../terminal-companion/builtins";
 import { TerminalCompanion } from "../../terminal-companion/TerminalCompanion";
 import { _resetFileExplorerPrefs, setFileExplorerMode } from "../../file-explorer-prefs";
+import { installTerminalLinks, type TerminalLinksHandle } from "../../terminal-links/host";
+import type { TerminalLinkInstance } from "../../terminal-links/registry";
 import { importAppSlots } from "./app-slots";
 
 vi.mock("../../rpc", () => ({
@@ -137,6 +140,35 @@ function LiveSettingsPage() {
 }
 
 const settingsSection = (id: string, component: () => ReactNode) => ({ id, region: "projectSettings.global" as const, order: 0, entries: [], component });
+
+/** A terminal that installs the `terminalLinks` slot on mount, as TerminalView does. */
+let links: TerminalLinksHandle | null = null;
+let linkProvider: ILinkProvider | null = null;
+
+function LinkTerminal() {
+	useEffect(() => {
+		const term = {
+			registerLinkProvider: (provider: ILinkProvider) => {
+				linkProvider = provider;
+			},
+			buffer: { active: { getLine: () => undefined, length: 0 } },
+			rows: 24,
+		} as unknown as Terminal;
+		const env = { term, container: document.createElement("div"), taskId: "t1", projectId: "p1", t: () => ((key: string) => key) as never, osc8UriFor: () => undefined, requestUnderlineRedraw: () => {} };
+		links = installTerminalLinks(env);
+		return () => links?.dispose();
+	}, []);
+	return <div data-testid="terminal" />;
+}
+
+const linksAt = () => new Promise<string[] | undefined>((resolve) => linkProvider!.provideLinks(0, (found) => resolve(found?.map((l) => l.text))));
+const fineLink: ILink = { text: "fine", range: { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }, activate: () => {} };
+const fineLinks: TerminalLinkInstance = {
+	provider: { provideLinks: (_y, callback) => callback([fineLink]) },
+	underlines: () => [{ start: { x: 0, y: 3 }, end: { x: 2, y: 3 } }],
+	touchAt: () => ({ kind: "web", target: "https://fine", open: () => {} }) as never,
+	refAt: () => "dev3://seq/1",
+};
 
 const CASES: CrashCase[] = [
 	{
@@ -344,6 +376,45 @@ const CASES: CrashCase[] = [
 			expect(getTaskDock("t1").open).toEqual(["fine:panel"]);
 		},
 		logs: callback === "title" ? "title() of task panel crash:panel threw" : "crash:panel",
+	})),
+	...(["create", "provideLinks", "underlines", "touchAt", "refAt", "dispose"] as const).map((callback): CrashCase => ({
+		slot: "terminalLinks",
+		callback,
+		contribute(ctx) {
+			const crash: TerminalLinkInstance = {
+				provider: { provideLinks: (_y, cb) => (callback === "provideLinks" ? boom() : cb(undefined)) },
+				underlines: callback === "underlines" ? boom : () => [],
+				touchAt: callback === "touchAt" ? boom : () => undefined,
+				refAt: callback === "refAt" ? boom : () => undefined,
+				dispose: callback === "dispose" ? boom : () => {},
+			};
+			ctx.terminalLinks.register({ id: "crash:links", order: 1, create: () => (callback === "create" ? boom() : crash) });
+			ctx.terminalLinks.register({ id: "fine:links", order: 2, create: () => fineLinks });
+		},
+		render() {
+			mount(<LinkTerminal />);
+		},
+		async interact() {
+			// Twice each: a broken provider is logged once per callback, not once per call.
+			for (let round = 0; round < 2; round++) {
+				await linksAt();
+				links!.underlinesForRows([3]);
+				links!.touchLinkAt(0, 0);
+				links!.refAt(0, 0);
+			}
+			// A slot change rebuilds every provider, disposing the old instances.
+			if (callback === "dispose") getAppRoot().plugin({ name: "late-links", inject: ["terminalLinks"], apply: (c: Context) => void c.terminalLinks.register({ id: "late:links", order: 3, create: () => ({}) }) });
+			await settle();
+		},
+		async alive() {
+			expect(screen.getByTestId("terminal")).toBeInTheDocument();
+			expect(await linksAt()).toEqual(["fine"]);
+			expect(links!.underlinesForRows([3])).toEqual([{ start: { x: 0, y: 3 }, end: { x: 2, y: 3 } }]);
+			expect(links!.touchLinkAt(0, 0)).toMatchObject({ target: "https://fine" });
+			expect(links!.refAt(0, 0)).toBe("dev3://seq/1");
+			expect(logged(`[terminalLinks] crash:links ${callback} failed`)).toHaveLength(1);
+		},
+		logs: `[terminalLinks] crash:links ${callback} failed`,
 	})),
 	{
 		slot: "terminalCompanion",
