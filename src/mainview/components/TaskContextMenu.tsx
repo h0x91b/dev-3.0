@@ -64,6 +64,8 @@ function resolveRow(item: TaskMenuItem, scope: TaskMenuScope): MenuRow | null {
 	}
 }
 
+const NO_SUBSCRIPTION = () => () => {};
+
 /**
  * Built-in items land in their own group, in `TASK_MENU_GROUPS` order. Anything
  * else goes into one trailing group the host owns, never interleaved with
@@ -100,9 +102,10 @@ export default function TaskContextMenu({
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const registry = getTaskMenuRegistry();
-	const entries = useSyncExternalStore(registry.subscribe, registry.list);
 	/** The item whose phone surface the sheet handed off to, if any. */
 	const [sheet, setSheet] = useState<string | null>(null);
+	// Every card and sidebar row keeps a closed menu mounted: only an open one listens to the slot.
+	const entries = useSyncExternalStore(pos || sheet ? registry.subscribe : NO_SUBSCRIPTION, registry.list);
 	const [flyout, setFlyout] = useState<string | null>(null);
 	// A flyout opened from the keyboard takes focus; one opened by hover leaves it be.
 	const [flyoutByKey, setFlyoutByKey] = useState(false);

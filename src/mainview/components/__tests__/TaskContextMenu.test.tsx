@@ -44,6 +44,9 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { getTaskMenuRegistry } from "../../task-menu/registry";
+import { getAppRoot } from "../../plugins/root";
+import type { Context } from "cordis";
 
 // The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
 beforeEach(installTaskMenuBuiltins);
@@ -350,6 +353,28 @@ describe("TaskContextMenu", () => {
 
 // R1 (Seq 2003 review 2003-010): "Move to → Agent is Working" on a To Do card must
 // open the launch dialog; a bare moveTask is refused by the lifecycle.
+describe("TaskContextMenu slot subscription", () => {
+	it("listens to the taskMenu slot only while open, however many closed menus are mounted", async () => {
+		const subscribe = vi.spyOn(getTaskMenuRegistry(), "subscribe");
+		const ui = (open: number | null) => (
+			<I18nProvider>
+				{Array.from({ length: 50 }, (_, i) => (
+					<TaskContextMenu key={i} task={makeTask({ id: `t${i}` })} project={project} dispatch={vi.fn()} pos={open === i ? { x: 0, y: 0 } : null} onClose={vi.fn()} onOpenTask={vi.fn()} testId={`menu-${i}`} />
+				))}
+			</I18nProvider>
+		);
+		const { rerender } = render(ui(null));
+		expect(subscribe).not.toHaveBeenCalled();
+		// A row registered while every menu was closed still shows when one opens.
+		getAppRoot().plugin({ name: "late-row", inject: ["taskMenu"], apply: (ctx: Context) => void ctx.taskMenu.register({ id: "late:row", region: "open", label: () => "Late row", run: () => {} }) });
+		await waitFor(() => expect(getTaskMenuRegistry().get("late:row")).toBeTruthy());
+		rerender(ui(7));
+		expect(subscribe).toHaveBeenCalledTimes(1);
+		expect(within(screen.getByTestId("menu-7")).getByText("Late row")).toBeInTheDocument();
+		subscribe.mockRestore();
+	});
+});
+
 describe("TaskContextMenu → start a To Do card", () => {
 	it("hands the start to the launch dialog, sending no moveTask", async () => {
 		const { LAUNCH_REQUESTED_EVENT } = await import("../../utils/moveTaskToStatus");
