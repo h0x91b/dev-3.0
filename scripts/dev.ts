@@ -16,6 +16,7 @@ import electrobunConfig from "../electrobun.config";
 import { WORKER_ENTRIES } from "./build-cli";
 import { binaryCacheLayout, restoreElectrobunBinaries, storeElectrobunBinaries } from "./electrobun-binary-cache";
 import { type QaScopeMode, qaScopeResetHint, qaScopeRoot, seedQaScope, stopQaScopeTmux } from "./qa-scope";
+import { stripPowerShell7ModulePathsInPlace } from "./windows-powershell-env";
 
 /** Lazy: `import.meta.dir` is a Bun-runtime value, absent when tests import this. */
 function repoRoot(): string {
@@ -272,6 +273,8 @@ function main(): void {
 	if (reason) console.log(`[dev] headless (${reason}): serving the UI through dev3 remote, not a desktop window`);
 	// Only the desktop shell runs electrobun; a fresh worktree has none of its binaries.
 	const binaryCache = shell === "desktop" ? binaryCacheLayout(repoRoot()) : null;
+	// Same environment scripts/electrobun.ts gives every other electrobun run.
+	if (shell === "desktop") stripPowerShell7ModulePathsInPlace("dev");
 	if (binaryCache) {
 		const restored = restoreElectrobunBinaries(binaryCache, electrobunConfig.build.bunVersion);
 		if (restored.length > 0) console.log(`[dev] electrobun binaries restored from ${binaryCache.cacheRoot}: ${restored.join(", ")}`);

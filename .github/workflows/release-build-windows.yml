@@ -136,7 +136,7 @@ jobs:
           bun scripts/generate-changelog.ts
           bunx vite build
           bun run build:cli
-          bunx electrobun build --env=${{ inputs.channel }}
+          bun scripts/electrobun.ts build --env=${{ inputs.channel }}
 
       - name: Debug build output
         if: always()
