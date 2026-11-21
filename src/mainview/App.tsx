@@ -65,6 +65,7 @@ import {
 import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
 import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import { isControlHidden, syncHiddenControlsFromGlobalSettings } from "./hidden-controls";
+import { syncTaskHeaderLayout } from "./task-header/layout";
 import { useIsControlHidden } from "./hooks/useIsControlHidden";
 import { syncGlobalSettingsCache } from "./global-settings-cache";
 import { DEFAULT_GLOBAL_SETTINGS } from "./components/global-settings/utils";
@@ -1942,6 +1943,7 @@ function App() {
 		// The cache is a save base, so it never holds the pre-load placeholder.
 		if (settingsLoaded) syncGlobalSettingsCache(globalSettings);
 		syncHiddenControlsFromGlobalSettings(globalSettings);
+		syncTaskHeaderLayout(globalSettings.taskHeaderLayout);
 	}, [globalSettings, settingsLoaded]);
 
 	useEffect(() => {

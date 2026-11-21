@@ -42,6 +42,7 @@ vi.mock("../../rpc", () => ({
 			renameTask: vi.fn(),
 			getPortAllocations: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskSortOrder: "oldest-first", updateChannel: "stable" }),
+			saveGlobalSettings: vi.fn().mockResolvedValue(undefined),
 			getAvailableApps: vi.fn().mockResolvedValue([
 				{ id: "finder", name: "Finder", macAppName: "Finder" },
 				{ id: "text-mate", name: "TextMate", macAppName: "TextMate" },
@@ -84,7 +85,9 @@ import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import { openFolderPicker } from "../../folder-picker";
-import { syncHiddenControlsFromGlobalSettings } from "../../hidden-controls";
+import { setHiddenControlsForTests, syncHiddenControlsFromGlobalSettings } from "../../hidden-controls";
+import { setTaskHeaderLayoutForTests, syncTaskHeaderLayout } from "../../task-header/layout";
+import { syncGlobalSettingsCache } from "../../global-settings-cache";
 
 vi.mock("../../folder-picker", () => ({
 	openFolderPicker: vi.fn(),
@@ -5193,5 +5196,192 @@ describe("hibernate button", () => {
 		});
 
 		expect(mockedConfirm.mock.calls[0][0].message).toContain("2 agents");
+	});
+});
+
+describe("task header user layout", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
+		mockedApi.request.prepareMergeCompletionPrompt.mockResolvedValue({ shouldPrompt: false, fingerprint: null });
+		mockedApi.request.getResolvedProject.mockResolvedValue(project);
+		syncGlobalSettingsCache({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskSortOrder: "oldest-first", updateChannel: "stable" });
+		setHiddenControlsForTests([]);
+		setTaskHeaderLayoutForTests({});
+	});
+
+	afterEach(() => {
+		setHiddenControlsForTests([]);
+		setTaskHeaderLayoutForTests({});
+	});
+
+	/** The items drawn in one desktop bar, left to right, by registry id. */
+	function drawn(region: string): string[] {
+		const bar = document.querySelector(`[data-slot="taskHeader"][data-region="${region}"]`)!;
+		return Array.from(bar.querySelectorAll<HTMLElement>(":scope > [data-slot-item]"))
+			.filter((frame) => frame.firstChild)
+			.map((frame) => frame.dataset.slotItem!);
+	}
+
+	async function render() {
+		await act(async () => {
+			renderPanel(makeTask());
+		});
+	}
+
+	function openItemMenu(name: string) {
+		fireEvent.contextMenu(screen.getByRole("button", { name }), { clientX: 10, clientY: 10 });
+		return screen.getByRole("menu");
+	}
+
+	async function choose(name: string) {
+		await act(async () => {
+			fireEvent.click(screen.getByRole("menuitem", { name }));
+		});
+	}
+
+	function lastSave() {
+		const calls = mockedApi.request.saveGlobalSettings.mock.calls;
+		return calls[calls.length - 1][0];
+	}
+
+	function savedOrder(region: string): string[] {
+		return lastSave().taskHeaderLayout?.order?.[region] ?? [];
+	}
+
+	it("offers move, More, swap and hide on a bar item", async () => {
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: ["builtin:session.bug-hunters"] });
+		await render();
+		const menu = openItemMenu("Hibernate");
+		expect(within(menu).getAllByRole("menuitem").map((row) => row.textContent)).toEqual([
+			"Move left", "Move right", "Move to More", "Use instead of…›", "Hide",
+		]);
+		expect(menu).toHaveAccessibleName("Hibernate");
+	});
+
+	it("moves an item left among what is drawn, and the order survives a reload", async () => {
+		await render();
+		const before = drawn("session");
+		const at = before.indexOf("builtin:session.hibernate");
+		openItemMenu("Hibernate");
+		await choose("Move left");
+		const after = drawn("session");
+		expect(after.indexOf("builtin:session.hibernate")).toBe(at - 1);
+		const saved = lastSave();
+		expect(savedOrder("session")).toContain("builtin:session.hibernate");
+
+		cleanupAndReload(saved);
+		await render();
+		expect(drawn("session")).toEqual(after);
+	});
+
+	function cleanupAndReload(saved: { taskHeaderLayout?: object; hiddenControls?: string[]; personalHiddenControls?: string[]; simplifiedMode?: boolean }) {
+		document.body.innerHTML = "";
+		setTaskHeaderLayoutForTests({});
+		setHiddenControlsForTests([]);
+		syncTaskHeaderLayout(saved.taskHeaderLayout);
+		syncHiddenControlsFromGlobalSettings(saved);
+	}
+
+	it("sends an item to More and shows it in the bar again from there", async () => {
+		await render();
+		openItemMenu("Hibernate");
+		await choose("Move to More");
+		expect(drawn("session")).not.toContain("builtin:session.hibernate");
+		expect(lastSave().taskHeaderLayout).toEqual({ overflow: ["builtin:session.hibernate"], pinned: undefined });
+
+		fireEvent.click(screen.getByRole("button", { name: "More" }));
+		// A built-in in More keeps its bar form, its first control the menu row's focus.
+		const row = within(screen.getByRole("menu")).getByRole("button", { name: "Hibernate" });
+		expect(row).toHaveFocus();
+		fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+		expect(screen.getAllByRole("menuitem").map((row) => row.textContent)).toEqual(["Show in bar", "Hide"]);
+		await choose("Show in bar");
+		expect(drawn("session")).toContain("builtin:session.hibernate");
+		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+	});
+
+	it("uses a hidden item instead of a drawn one in one step and one write", async () => {
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: ["builtin:session.bug-hunters"] });
+		await render();
+		const at = drawn("session").indexOf("builtin:session.hibernate");
+		openItemMenu("Hibernate");
+		await choose("Use instead of…");
+		expect(screen.getAllByRole("menuitem").map((row) => row.textContent)).toEqual(["‹Back", "Find bugs"]);
+		mockedApi.request.saveGlobalSettings.mockClear();
+		await choose("Find bugs");
+
+		expect(drawn("session")).not.toContain("builtin:session.hibernate");
+		expect(drawn("session").indexOf("builtin:session.bug-hunters")).toBe(at);
+		expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledOnce();
+		const saved = lastSave();
+		expect(saved.personalHiddenControls).toEqual(["builtin:session.hibernate"]);
+		expect(savedOrder("session").indexOf("builtin:session.bug-hunters")).toBeLessThan(savedOrder("session").indexOf("builtin:session.hibernate"));
+	});
+
+	it("hides an item; the restore control lists it under its bar and brings it back", async () => {
+		await render();
+		openItemMenu("Push");
+		await choose("Hide");
+		expect(screen.queryByRole("button", { name: "Push" })).toBeNull();
+		fireEvent.click(screen.getByLabelText("Show hidden controls"));
+		expect(screen.getByRole("group", { name: "Git" })).toBeInTheDocument();
+		await act(async () => {
+			fireEvent.click(screen.getByLabelText("Restore Push"));
+		});
+		expect(screen.getByRole("button", { name: "Push" })).toBeInTheDocument();
+	});
+
+	it("never offers the menu on chrome: fullscreen, collapse, worktree settings, help", async () => {
+		await render();
+		for (const name of ["Full screen", "Expand panel", "Worktree Config"]) {
+			fireEvent.contextMenu(screen.getByRole("button", { name }), { clientX: 10, clientY: 10 });
+			expect(screen.queryByRole("menu")).toBeNull();
+		}
+		expect(document.querySelectorAll("[data-slot-item] [aria-label='Full screen']")).toHaveLength(0);
+	});
+
+	it("is keyboard-driven: the menu key opens it on the focused item, arrows move, Escape returns focus", async () => {
+		await render();
+		const hibernate = screen.getByRole("button", { name: "Hibernate" });
+		hibernate.focus();
+		fireEvent.contextMenu(hibernate, { clientX: 0, clientY: 0 });
+		const rows = within(screen.getByRole("menu")).getAllByRole("menuitem");
+		expect(rows[0]).toHaveFocus();
+		fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+		expect(rows[1]).toHaveFocus();
+		fireEvent.keyDown(rows[1], { key: "Escape" });
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(hibernate).toHaveFocus();
+	});
+
+	it("gives touch a restore path: the narrow sheet lists hidden items as rows that bring them back", async () => {
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: ["builtin:git.push"] });
+		mockViewport(390);
+		try {
+			await render();
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			const section = screen.getByTestId("task-actions-hidden-items");
+			expect(section.querySelector(".touch-actions")).not.toBeNull();
+			await act(async () => {
+				fireEvent.click(within(section).getByRole("button", { name: "Restore Push" }));
+			});
+			expect(lastSave().personalHiddenControls).toEqual([]);
+			expect(screen.queryByTestId("task-actions-hidden-items")).toBeNull();
+		} finally {
+			mockViewport(1920);
+		}
+	});
+
+	it("applies the Simplify View preset through the same registry ids", async () => {
+		syncHiddenControlsFromGlobalSettings({ simplifiedMode: true, personalHiddenControls: [] });
+		await render();
+		for (const id of ["builtin:session.bug-hunters", "builtin:session.spawn-agent", "builtin:session.send-later", "builtin:session.hibernate", "builtin:session.pane-controls"]) {
+			expect(drawn("session")).not.toContain(id);
+		}
+		expect(drawn("runtime")).not.toContain("builtin:runtime.scripts");
 	});
 });

@@ -1,9 +1,8 @@
 import type { ComponentType } from "react";
 import { ACTIVE_STATUSES, taskUsesWorktree } from "../../shared/types";
 import { useT } from "../i18n";
-import { useIsControlHidden, useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
-import type { HideableControlId } from "../hideable-controls";
-import HideableControl from "../components/HideableControl";
+import { useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
+import type { TranslationKey } from "../i18n";
 import Tooltip from "../components/Tooltip";
 import ScheduledMessagesChip from "../components/ScheduledMessagesChip";
 import TaskPaneControls from "../components/task-info-panel/TaskPaneControls";
@@ -16,7 +15,7 @@ import { SHEET_ROW_CLASS } from "./sheet-row";
 /**
  * The Session/Agent bar (bible §5.1, panel 3) as built-in items. The dialogs these items
  * open have one owner, the header (`useTaskSessionController`), because the panel's
- * restore control (chrome) opens them too. ⚙ worktree settings, restore, help and
+ * restore control (chrome) opens them too. Hiding and moving them is the host's. ⚙ worktree settings, restore, help and
  * shortcuts stay host chrome.
  */
 
@@ -43,13 +42,6 @@ function useOnDesktopBar(): boolean {
 	return surface === "bar" && !layout.narrow;
 }
 
-/** On the desktop bar and not hidden by the user (right-click "Hide", bible §5.10). */
-function useShownOnDesktopBar(id: HideableControlId): boolean {
-	const onBar = useOnDesktopBar();
-	const hidden = useIsControlHidden(id);
-	return onBar && !hidden;
-}
-
 /** Simplified Mode applies on the sheet; personal hiding does not, the phone has no restore control. */
 function useOnSheet(): boolean {
 	const surface = useTaskHeaderSurface();
@@ -74,7 +66,7 @@ function ChevronRightIcon() {
 function BugHuntersItem() {
 	const t = useT();
 	const { layout, session } = useTaskHeaderInternals();
-	const onBar = useShownOnDesktopBar("bug-hunters");
+	const onBar = useOnDesktopBar();
 	const onSheet = useOnSheet();
 	if (onSheet) {
 		return (
@@ -87,21 +79,19 @@ function BugHuntersItem() {
 	}
 	if (!onBar) return null;
 	return (
-		<HideableControl id="bug-hunters">
-			<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
-				<button onClick={session.openBugHunters} className={BAR_BUTTON_CLASS} aria-label={t("bugHunters.buttonTooltip")}>
-					<FindBugsIcon className={BAR_ICON_CLASS} />
-					{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("bugHunters.buttonLabel")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
+		<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
+			<button onClick={session.openBugHunters} className={BAR_BUTTON_CLASS} aria-label={t("bugHunters.buttonTooltip")}>
+				<FindBugsIcon className={BAR_ICON_CLASS} />
+				{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("bugHunters.buttonLabel")}</span>}
+			</button>
+		</Tooltip>
 	);
 }
 
 function SpawnAgentItem() {
 	const t = useT();
 	const { layout, session } = useTaskHeaderInternals();
-	const onBar = useShownOnDesktopBar("spawn-agent");
+	const onBar = useOnDesktopBar();
 	const onSheet = useOnSheet();
 	if (onSheet) {
 		return (
@@ -114,14 +104,12 @@ function SpawnAgentItem() {
 	}
 	if (!onBar) return null;
 	return (
-		<HideableControl id="spawn-agent">
-			<Tooltip content={t("tmux.spawnExtraAgentDesc")} detail={t("ttip.infoPanel.spawnAgent")}>
-				<button onClick={session.openSpawnAgent} className={BAR_BUTTON_CLASS} aria-label={t("tmux.spawnExtraAgentDesc")}>
-					<AddAgentIcon className={BAR_ICON_CLASS} />
-					{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("tmux.spawnExtraAgent")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
+		<Tooltip content={t("tmux.spawnExtraAgentDesc")} detail={t("ttip.infoPanel.spawnAgent")}>
+			<button onClick={session.openSpawnAgent} className={BAR_BUTTON_CLASS} aria-label={t("tmux.spawnExtraAgentDesc")}>
+				<AddAgentIcon className={BAR_ICON_CLASS} />
+				{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("tmux.spawnExtraAgent")}</span>}
+			</button>
+		</Tooltip>
 	);
 }
 
@@ -129,16 +117,14 @@ function SpawnAgentItem() {
 function SendLaterItem() {
 	const t = useT();
 	const { layout, session } = useTaskHeaderInternals();
-	if (!useShownOnDesktopBar("scheduled-message")) return null;
+	if (!useOnDesktopBar()) return null;
 	return (
-		<HideableControl id="scheduled-message">
-			<Tooltip content={t("task.sendLater")} detail={t("task.sendLaterHint")}>
-				<button onClick={session.openScheduleMessage} className={BAR_BUTTON_CLASS} aria-label={t("task.sendLater")}>
-					<SendLaterIcon className={BAR_ICON_CLASS} />
-					{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("task.sendLaterShort")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
+		<Tooltip content={t("task.sendLater")} detail={t("task.sendLaterHint")}>
+			<button onClick={session.openScheduleMessage} className={BAR_BUTTON_CLASS} aria-label={t("task.sendLater")}>
+				<SendLaterIcon className={BAR_ICON_CLASS} />
+				{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("task.sendLaterShort")}</span>}
+			</button>
+		</Tooltip>
 	);
 }
 
@@ -150,7 +136,7 @@ function SendLaterItem() {
 function HibernateItem() {
 	const t = useT();
 	const { layout, session, closeSheet } = useTaskHeaderInternals();
-	const onBar = useShownOnDesktopBar("hibernate");
+	const onBar = useOnDesktopBar();
 	const onSheet = useOnSheet();
 	if (onSheet) {
 		return (
@@ -171,24 +157,22 @@ function HibernateItem() {
 	}
 	if (!onBar) return null;
 	return (
-		<HideableControl id="hibernate">
-			<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
-				<button
-					data-testid="task-hibernate-button"
-					onClick={session.hibernate}
-					disabled={session.hibernating}
-					className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
-					aria-label={t("task.hibernate")}
-				>
-					{session.hibernating ? (
-						<span className="w-[1.05rem] h-[1.05rem] animate-spin rounded-full border-2 border-warning/30 border-t-warning" />
-					) : (
-						<HibernateIcon className={BAR_ICON_CLASS} />
-					)}
-					{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("task.hibernateShort")}</span>}
-				</button>
-			</Tooltip>
-		</HideableControl>
+		<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
+			<button
+				data-testid="task-hibernate-button"
+				onClick={session.hibernate}
+				disabled={session.hibernating}
+				className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
+				aria-label={t("task.hibernate")}
+			>
+				{session.hibernating ? (
+					<span className="w-[1.05rem] h-[1.05rem] animate-spin rounded-full border-2 border-warning/30 border-t-warning" />
+				) : (
+					<HibernateIcon className={BAR_ICON_CLASS} />
+				)}
+				{!layout.compact && <span className={BAR_LABEL_CLASS}>{t("task.hibernateShort")}</span>}
+			</button>
+		</Tooltip>
 	);
 }
 
@@ -202,17 +186,17 @@ function ScheduledMessagesItem() {
 function PaneControlsItem() {
 	const { task } = useTaskHeaderScope();
 	const { layout } = useTaskHeaderInternals();
-	if (!useShownOnDesktopBar("tmux-pane-controls")) return null;
+	if (!useOnDesktopBar()) return null;
 	return (
-		<HideableControl id="tmux-pane-controls">
+		<>
 			<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 			<TaskPaneControls taskId={task.id} compact={layout.tight} />
-		</HideableControl>
+		</>
 	);
 }
 
 function item(id: string, component: ComponentType<SlotItemProps>, when?: TaskHeaderItem["when"]): TaskHeaderItem {
-	return { id: `builtin:session.${id}`, region: "session", component, when };
+	return { id: `builtin:session.${id}`, region: "session", label: `taskHeaderItem.session.${id}` as TranslationKey, component, when };
 }
 
 /** The session bar, left to right; the narrow sheet's session section reads the same order. */

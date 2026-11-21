@@ -8,7 +8,7 @@ Step 3.3 of the GUI-on-Cordis migration splits the Session/Agent bar (bible §5.
 
 ## Decision
 
-`src/mainview/task-header/builtin-session.tsx` defines `SESSION_ITEMS` (`builtin:session.*`), registered in bar order in place of the session legacy cluster. The live-session gates are `when` predicates. Each item keeps its `HideableControl` and per-control hide check exactly as before; generalising hide/restore to every item is 3.6.
+`src/mainview/task-header/builtin-session.tsx` defines `SESSION_ITEMS` (`builtin:session.*`), registered in bar order in place of the session legacy cluster. The live-session gates are `when` predicates. Hiding was per item here until 3.6 moved it to the host (`task-header-user-layout`): items no longer wrap themselves in `HideableControl`.
 - The cross-bar state is one controller, `useTaskSessionController`, called once by `TaskHeader` and passed through the internal header context (`TaskHeaderInternals.session`), like the git branch status. Items, sheet rows and the restore control all call it, and the header renders its `dialogs` once.
 - ⚙ worktree settings, restore, help and shortcuts stay host chrome, outside the region.
 - On the narrow sheet, Find bugs, + Agent and Hibernate are the session items' sheet form. They now form one session section after the runtime rows, in the bar's order (Find bugs before + Agent), as bible §12.6 asks ("the bars' actions become sheet sections"). Hibernate stays last.

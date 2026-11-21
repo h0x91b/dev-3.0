@@ -27,14 +27,12 @@ import { useViewportClamp } from "../../hooks/useViewportClamp";
 import { RescanIcon } from "../HeaderIcons";
 import { PlayIcon, SetupArrowIcon } from "../TaskIcons";
 import { useReducedMotion } from "../../utils/useReducedMotion";
-import { useResolvedTaskProject } from "./useResolvedTaskProject";
 import RemoteBetaWarning from "./RemoteBetaWarning";
 import Tooltip from "../Tooltip";
-import { useIsControlHidden } from "../../hooks/useIsControlHidden";
-import HideableControl from "../HideableControl";
 
 interface TaskDevServerProps {
 	task: Task;
+	/** The task's resolved project (`useResolvedTaskProject`): its dev servers decide the control. */
 	project: Project;
 	isTaskActive: boolean;
 	/** Icon-only rendering for a bar that is short on width. */
@@ -332,16 +330,11 @@ function DevServerList({ position, servers, status, busy, onStart, onStop, onRes
 export default function TaskDevServer({ task, project, isTaskActive, compact = false }: TaskDevServerProps) {
 	const t = useT();
 	const reducedMotion = useReducedMotion();
-	const resolvedProject = useResolvedTaskProject(task, project);
 	// The declared servers come from the same resolver the backend uses, so the
 	// button can never disagree with what a start would actually do.
-	const declaredServers = resolveDevServers(resolvedProject).servers;
+	const declaredServers = resolveDevServers(project).servers;
 	const hasDevScript = declaredServers.length > 0;
 	const multiServer = declaredServers.length > 1;
-	// The "setup-dev-server" control (§5.10) covers only the prompt shown for a
-	// project with no dev script configured yet; a project that already has one
-	// keeps the real running control — hiding never touches that toggle.
-	const setupDevServerHidden = useIsControlHidden("setup-dev-server");
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
 	const devServerHintRef = useRef<HTMLDivElement>(null);
 	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
@@ -699,11 +692,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		devServerIcon = <SetupArrowIcon className="w-[1.125rem] h-[1.125rem]" />;
 	}
 
-	// All hooks above have already run — safe to bail on JSX only. Only the
-	// no-devScript prompt is hideable; the real running control never is.
-	if (setupDevServerHidden && !hasDevScript) return null;
-
-	const content = (
+	return (
 		<>
 			<Tooltip content={devServerTitle} detail={devServerDetail}>
 				<button
@@ -795,6 +784,4 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			)}
 		</>
 	);
-
-	return hasDevScript ? content : <HideableControl id="setup-dev-server">{content}</HideableControl>;
 }

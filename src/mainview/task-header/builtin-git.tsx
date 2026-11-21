@@ -4,7 +4,7 @@ import type { Context } from "cordis";
 import type { Project, Task, TaskPRBadgeInfo } from "../../shared/types";
 import { taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
-import { useT } from "../i18n";
+import { useT, type TranslationKey } from "../i18n";
 import { useViewportClamp } from "../hooks/useViewportClamp";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import { useReviewedPrBackfill } from "../hooks/useReviewedPrBackfill";
@@ -953,7 +953,8 @@ function RefreshItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
 	const { git } = useTaskHeaderInternals();
-	if (surface === "sheet" || !useCanRunGitActions()) return null;
+	const canRun = useCanRunGitActions();
+	if (surface === "sheet" || !canRun) return null;
 	return (
 		<GitActionTooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")} disabled={git.refreshingStatus}>
 			<button
@@ -994,7 +995,7 @@ function item(
 	component: ComponentType<SlotItemProps>,
 	when: (scope: TaskHeaderScope) => boolean,
 ): TaskHeaderItem {
-	return { id: `builtin:git.${id}`, region, order, component, when };
+	return { id: `builtin:git.${id}`, region, label: `taskHeaderItem.git.${id}` as TranslationKey, order, component, when };
 }
 
 /** In bar order; the sheet reads the same order. */

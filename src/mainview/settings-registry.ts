@@ -873,6 +873,8 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"hiddenControls",
 	"personalHiddenControls",
 	"simplifiedModeSource",
+	// Arranged on the task header itself (right-click an item), not a settings row.
+	"taskHeaderLayout",
 	"resolvedTheme",
 	// Machine identity for analytics, not a preference — read-only in Debug -> Feature Flags.
 	"analyticsDistinctId",
@@ -932,6 +934,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"personalHiddenControls",
 	"simplifiedModeSource",
 	"simplifiedMode",
+	"taskHeaderLayout",
 	"experimentalAgentTraffic",
 	"freezeDiagnosticsEnabled",
 	"agentTrafficExperiment",

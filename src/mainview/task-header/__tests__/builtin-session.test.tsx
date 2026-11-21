@@ -40,7 +40,7 @@ function renderSession({ task = baseTask, layout = DESKTOP, surface = "bar" as T
 				value={{
 					scope: { task, project, dispatch: vi.fn(), navigate: vi.fn() },
 					layout,
-					isTaskActive: ACTIVE_STATUSES.includes(task.status),
+					isTaskActive: ACTIVE_STATUSES.includes(task.status), resolvedProject: project,
 					git: {} as TaskBranchStatusController,
 					session,
 					closeSheet,
@@ -149,7 +149,7 @@ describe("session items", () => {
 				name: "crashing-session-item",
 				inject: ["taskHeader"],
 				apply(ctx: Context) {
-					ctx.taskHeader.register({ id: "builtin:session.crash-test", region: "session", order: -1, component: Crash });
+					ctx.taskHeader.register({ id: "builtin:session.crash-test", region: "session", label: "taskHeaderItem.status.watch", order: -1, component: Crash });
 				},
 			});
 		});

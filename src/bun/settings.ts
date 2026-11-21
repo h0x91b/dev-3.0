@@ -23,7 +23,7 @@ import {
 export function hostPublishesCanary(): boolean {
 	return canaryPublishesFor(hostOsName(process.platform), process.arch);
 }
-import { normalizeSimplifiedInterface, SIMPLIFY_VIEW_PRESET_IDS } from "../shared/simplified-interface";
+import { normalizeSimplifiedInterface } from "../shared/simplified-interface";
 import { resolveNeedsYouSoundToggles } from "../shared/task-sound-statuses";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
@@ -80,6 +80,25 @@ function sanitizeHiddenControls(raw: unknown): string[] | undefined {
 	if (!Array.isArray(raw)) return undefined;
 	const ids = [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0))];
 	return ids.length > 0 ? ids : undefined;
+}
+
+/** Shape-checked; ids stay opaque (an extension's item may not be loaded yet). Empty ⇒ undefined. */
+function sanitizeTaskHeaderLayout(raw: unknown): GlobalSettings["taskHeaderLayout"] {
+	if (!raw || typeof raw !== "object") return undefined;
+	const value = raw as Record<string, unknown>;
+	const order: Record<string, string[]> = {};
+	if (value.order && typeof value.order === "object") {
+		for (const [region, ids] of Object.entries(value.order as Record<string, unknown>)) {
+			const clean = sanitizeHiddenControls(ids);
+			if (clean) order[region] = clean;
+		}
+	}
+	const layout = {
+		order: Object.keys(order).length > 0 ? order : undefined,
+		overflow: sanitizeHiddenControls(value.overflow),
+		pinned: sanitizeHiddenControls(value.pinned),
+	};
+	return layout.order || layout.overflow || layout.pinned ? layout : undefined;
 }
 
 /**
@@ -293,6 +312,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			simplifiedMode: typeof d.simplifiedMode === "boolean" ? d.simplifiedMode : undefined,
 		}),
 		simplifiedModeSource: d.simplifiedModeSource === "fresh" ? "fresh" : "existing",
+		taskHeaderLayout: sanitizeTaskHeaderLayout(d.taskHeaderLayout),
 		// Default-on beta toggle — both booleans are stored, because an explicit
 		// false is the user opting out and must not collapse into "never chose".
 		experimentalAgentTraffic:
@@ -332,10 +352,8 @@ function missingSettingsDefaults(): GlobalSettings {
 	const fresh = !existsSync(`${DEV3_HOME}/projects.json`) && !existsSync(`${DEV3_HOME}/data`);
 	const settings: GlobalSettings = {
 		...DEFAULT_SETTINGS,
-		simplifiedMode: fresh,
 		simplifiedModeSource: fresh ? "fresh" : "existing",
-		personalHiddenControls: [],
-		hiddenControls: fresh ? [...SIMPLIFY_VIEW_PRESET_IDS] : [],
+		...normalizeSimplifiedInterface({ simplifiedMode: fresh, personalHiddenControls: [] }),
 	};
 	mkdirSync(DEV3_HOME, { recursive: true });
 	const temporary = `${SETTINGS_FILE}.initial-${randomUUID()}`;

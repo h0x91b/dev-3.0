@@ -9,6 +9,7 @@ import {
 	SlotItems,
 	useFoldBudget,
 	type ContributionSlotItem,
+	type SlotItemMenuRequest,
 	type SlotItemProps,
 	type SlotUserLayout,
 } from "../SlotItems";
@@ -59,12 +60,13 @@ interface Props {
 	budget?: number;
 	region?: string;
 	layout?: SlotUserLayout;
+	onItemMenu?: (request: SlotItemMenuRequest) => void;
 }
 
 function renderItems(props: Props = {}) {
 	const ui = (p: Props) => (
 		<I18nProvider>
-			<SlotItems registry={registry} scope={p.scope ?? { hasPr: false }} budget={p.budget} region={p.region} layout={p.layout} />
+			<SlotItems registry={registry} scope={p.scope ?? { hasPr: false }} budget={p.budget} region={p.region} layout={p.layout} onItemMenu={p.onItemMenu} />
 		</I18nProvider>
 	);
 	const result = render(ui(props));
@@ -194,6 +196,73 @@ describe("SlotItems: placement by origin (bible §5.1, §5.12)", () => {
 		expect(placeSlotItems(entries, layout, 2).inline.map((x) => x.def.id)).toEqual(["builtin:a", "builtin:composite"]);
 		expect(placeSlotItems(entries, layout, 2, new Set(["builtin:composite"])).inline.map((x) => x.def.id))
 			.toEqual(["builtin:a", "builtin:composite", "ext:1"]);
+	});
+});
+
+describe("SlotItems: the user's layout and the item menu", () => {
+	const Nothing = () => null;
+
+	it("drops what the user hid", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }, { id: "builtin:b" }]);
+		renderItems({ layout: { hidden: ["builtin:a"] } });
+		expect(inlineLabels()).toEqual(["builtin:b"]);
+	});
+
+	it("counts only built-ins that draw something once it can measure them", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }, { id: "builtin:silent-1", component: Nothing }, { id: "builtin:silent-2", component: Nothing }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		const layout = { pinned: ["ext:x"] };
+		const { unmount } = renderItems({ budget: 2, layout });
+		// Without a host menu nothing is measured: every registered built-in counts.
+		expect(inlineLabels()).toEqual(["builtin:a"]);
+		unmount();
+		renderItems({ budget: 2, layout, onItemMenu: vi.fn() });
+		expect(inlineLabels()).toEqual(["builtin:a", "ext:x"]);
+	});
+
+	it("opens the host menu on right-click with the region as drawn", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }, { id: "builtin:silent", component: Nothing }, { id: "builtin:b" }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		const onItemMenu = vi.fn();
+		renderItems({ budget: 4, onItemMenu, layout: { hidden: ["builtin:b"] } });
+		fireEvent.contextMenu(screen.getByRole("button", { name: "builtin:a" }), { clientX: 30, clientY: 40 });
+		const request: SlotItemMenuRequest = onItemMenu.mock.calls[0][0];
+		expect(request).toMatchObject({ id: "builtin:a", placement: "inline", at: { top: 40, left: 30 }, drawn: ["builtin:a"], overflow: ["ext:x"], room: 3 });
+		expect(request.order).toEqual(["builtin:a", "builtin:silent", "builtin:b", "ext:x"]);
+	});
+
+	it("opens it from a More row too, and from the keyboard's menu key under the control", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		const onItemMenu = vi.fn();
+		renderItems({ onItemMenu });
+		fireEvent.click(more());
+		fireEvent.contextMenu(screen.getByRole("menuitem", { name: "ext:x" }), { clientX: 0, clientY: 0 });
+		expect(onItemMenu.mock.calls[0][0]).toMatchObject({ id: "ext:x", placement: "overflow" });
+		expect(onItemMenu.mock.calls[0][0].returnFocus).toBe(more());
+	});
+
+	it("opens it on a touch long-press and swallows the tap that ends the press", async () => {
+		vi.useFakeTimers();
+		try {
+			const clicked = vi.fn();
+			await plugin("builtins", [{ id: "builtin:a", component: () => <button type="button" onClick={clicked}>builtin:a</button> }]);
+			const onItemMenu = vi.fn();
+			renderItems({ onItemMenu });
+			const button = screen.getByRole("button", { name: "builtin:a" });
+			fireEvent.pointerDown(button, { pointerType: "touch", clientX: 5, clientY: 6 });
+			act(() => {
+				vi.advanceTimersByTime(600);
+			});
+			fireEvent.pointerUp(button, { pointerType: "touch" });
+			fireEvent.click(button);
+			expect(onItemMenu).toHaveBeenCalledOnce();
+			expect(clicked).not.toHaveBeenCalled();
+			fireEvent.click(button);
+			expect(clicked).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

@@ -9,6 +9,7 @@ import {
 	isSimplifyViewApplied,
 	restoreControl,
 	setHiddenControlsForTests,
+	updateHiddenControls,
 	showAllControls,
 	syncHiddenControlsFromGlobalSettings,
 	unapplySimplifyViewPreset,
@@ -27,15 +28,15 @@ beforeEach(() => {
 
 describe("hidden-controls registry", () => {
 	it("starts empty — an id never listed is always visible", () => {
-		expect(isControlHidden("bug-hunters")).toBe(false);
+		expect(isControlHidden("builtin:session.bug-hunters")).toBe(false);
 		expect(getHiddenControls().size).toBe(0);
 	});
 
 	it("round-trips through a GlobalSettings sync", () => {
-		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["bug-hunters", "stats-nav"] });
-		expect(isControlHidden("bug-hunters")).toBe(true);
+		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["builtin:session.bug-hunters", "stats-nav"] });
+		expect(isControlHidden("builtin:session.bug-hunters")).toBe(true);
 		expect(isControlHidden("stats-nav")).toBe(true);
-		expect(isControlHidden("hibernate")).toBe(false);
+		expect(isControlHidden("builtin:session.hibernate")).toBe(false);
 	});
 
 	it("announces only on an actual change", () => {
@@ -43,41 +44,65 @@ describe("hidden-controls registry", () => {
 		const listener = (e: Event) => seen.push((e as CustomEvent).detail);
 		window.addEventListener(HIDDEN_CONTROLS_CHANGED_EVENT, listener);
 
-		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["bug-hunters"] });
-		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["bug-hunters"] }); // same set, no event
+		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["builtin:session.bug-hunters"] });
+		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["builtin:session.bug-hunters"] }); // same set, no event
 		syncHiddenControlsFromGlobalSettings({ hiddenControls: [] });
 
 		window.removeEventListener(HIDDEN_CONTROLS_CHANGED_EVENT, listener);
-		expect(seen).toEqual([["bug-hunters"], []]);
+		expect(seen).toEqual([["builtin:session.bug-hunters"], []]);
 	});
 
 	it("hideControl persists into the cached GlobalSettings object", () => {
-		hideControl("scripts-runner");
-		expect(isControlHidden("scripts-runner")).toBe(true);
+		hideControl("builtin:runtime.scripts");
+		expect(isControlHidden("builtin:runtime.scripts")).toBe(true);
 		expect(saveGlobalSettings).toHaveBeenCalledWith(
-			expect.objectContaining({ hiddenControls: ["scripts-runner"] }),
+			expect.objectContaining({ hiddenControls: ["builtin:runtime.scripts", "scripts-runner"] }),
 		);
 	});
 
 	it("is a no-op before the settings cache has ever synced", () => {
 		syncGlobalSettingsCache(null as never); // simulate "never synced" without touching module internals
-		hideControl("scripts-runner");
+		hideControl("builtin:runtime.scripts");
 		// The id still lands in the reactive set (announce runs regardless);
 		// only the RPC persistence is skipped when there is nothing to merge into.
 		expect(saveGlobalSettings).not.toHaveBeenCalled();
 	});
 
 	it("restoreControl removes exactly that id and nothing else", () => {
-		setHiddenControlsForTests(["bug-hunters", "hibernate"]);
-		restoreControl("bug-hunters");
-		expect(getHiddenControls().has("bug-hunters")).toBe(false);
-		expect(getHiddenControls().has("hibernate")).toBe(true);
+		setHiddenControlsForTests(["builtin:session.bug-hunters", "builtin:session.hibernate"]);
+		restoreControl("builtin:session.bug-hunters");
+		expect(getHiddenControls().has("builtin:session.bug-hunters")).toBe(false);
+		expect(getHiddenControls().has("builtin:session.hibernate")).toBe(true);
 	});
 
 	it("restoreControl on an id that isn't hidden is a no-op", () => {
-		setHiddenControlsForTests(["hibernate"]);
-		restoreControl("bug-hunters");
-		expect(getHiddenControls()).toEqual(new Set(["hibernate"]));
+		setHiddenControlsForTests(["builtin:session.hibernate"]);
+		restoreControl("builtin:session.bug-hunters");
+		expect(getHiddenControls()).toEqual(new Set(["builtin:session.hibernate"]));
+	});
+});
+
+describe("task-header ids", () => {
+	it("reads a pre-registry name as its registry id, and keeps the old name on disk for older versions", async () => {
+		syncHiddenControlsFromGlobalSettings({ hiddenControls: ["tmux-pane-controls", "setup-dev-server", "stats-nav"] });
+		expect(getHiddenControls()).toEqual(new Set(["builtin:session.pane-controls", "builtin:runtime.dev-server-setup", "stats-nav"]));
+		await restoreControl("builtin:session.pane-controls");
+		const saved = saveGlobalSettings.mock.calls[saveGlobalSettings.mock.calls.length - 1]![0];
+		expect(saved.personalHiddenControls).toEqual(["builtin:runtime.dev-server-setup", "stats-nav"]);
+		expect(saved.hiddenControls).toEqual(["builtin:runtime.dev-server-setup", "stats-nav", "setup-dev-server"]);
+	});
+
+	it("names only registry ids or app controls in the Simplify View preset", () => {
+		for (const id of SIMPLIFY_VIEW_PRESET_IDS) expect(id.startsWith("builtin:") || !id.includes(":")).toBe(true);
+	});
+
+	it("hides one id, restores another and saves an extra field, all in one write", async () => {
+		setHiddenControlsForTests(["builtin:git.rebase"]);
+		const layout = { order: { "git.actions": ["builtin:git.rebase"] } };
+		await updateHiddenControls({ hide: ["builtin:git.merge"], restore: ["builtin:git.rebase"] }, { taskHeaderLayout: layout });
+		expect(saveGlobalSettings).toHaveBeenCalledOnce();
+		expect(saveGlobalSettings).toHaveBeenCalledWith(expect.objectContaining({ taskHeaderLayout: layout, personalHiddenControls: ["builtin:git.merge"] }));
+		expect(getHiddenControls()).toEqual(new Set(["builtin:git.merge"]));
 	});
 });
 
@@ -118,15 +143,15 @@ describe("Simplify View preset", () => {
 
 describe("personal choices across interface modes", () => {
 	it("preserves a personal preset hide across repeated switches and restart sync", async () => {
-		await hideControl("bug-hunters");
+		await hideControl("builtin:session.bug-hunters");
 		await applySimplifyViewPreset();
 		await unapplySimplifyViewPreset();
-		expect(getHiddenControls()).toEqual(new Set(["bug-hunters"]));
+		expect(getHiddenControls()).toEqual(new Set(["builtin:session.bug-hunters"]));
 		const saved = saveGlobalSettings.mock.calls[saveGlobalSettings.mock.calls.length - 1]![0];
 		syncHiddenControlsFromGlobalSettings(saved);
 		await applySimplifyViewPreset();
 		await unapplySimplifyViewPreset();
-		expect(getHiddenControls()).toEqual(new Set(["bug-hunters"]));
+		expect(getHiddenControls()).toEqual(new Set(["builtin:session.bug-hunters"]));
 	});
 
 	it("does not invent personal hides when a fresh preset is removed", async () => {
