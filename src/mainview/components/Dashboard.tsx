@@ -19,7 +19,7 @@ import NewSpaceModal from "./NewSpaceModal";
 import SpaceProjectsModal from "./SpaceProjectsModal";
 import SpaceFilterSheet from "./SpaceFilterSheet";
 
-interface DashboardProps {
+export interface DashboardProps {
 	projects: Project[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;

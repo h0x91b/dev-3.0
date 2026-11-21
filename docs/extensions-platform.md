@@ -128,7 +128,7 @@ contribution slots. Global Settings and the Project Settings tab bodies render t
 draws its four bars from the internal `taskHeader` slot (`src/mainview/task-header/`), one built-in item per control
 (`decisions/2026/11/21/task-header-status-items.md`). The ⇧⌘P palette lists the
 internal `commands` slot (`src/mainview/commands/`, `decisions/2026/11/21/commands-slot.md`); each command runs itself. Destination
-bodies (Sessions, Stats, Changelog, Agent traffic) sit on the internal `destinationBodies` replace slot (`src/mainview/destination-bodies/`,
+bodies (Sessions, Stats, Changelog, Agent traffic, Home) sit on the internal `destinationBodies` replace slot (`src/mainview/destination-bodies/`,
 `decisions/2026/11/21/destination-body-slots.md`), the built-in as the only option. The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 

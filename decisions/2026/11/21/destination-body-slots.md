@@ -8,7 +8,8 @@ and the app header stay host-owned; only what renders under the header is the sl
 
 ## Decision
 - `src/mainview/destination-bodies/registry.ts`: one replace-kind `SlotRegistry` for every destination; an item's
-  `region` names the destination it fills. `DestinationBodyProps` maps each destination to what the host passes.
+  `region` names the destination it fills. `DestinationBodyProps` maps each destination to its built-in
+  screen's own exported props type, so the slot contract cannot drift from the screen.
 - `DestinationBody.tsx` renders a destination through `<SlotHost>`, the board-view precedent: the built-in is the
   fallback (same component type, so the hand-over keeps state), a crash shows it under the inline notice. Props
   travel by React context with their destination (`useDestinationProps` throws on a mismatch), because a slot
