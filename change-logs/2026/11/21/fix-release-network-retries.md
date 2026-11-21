@@ -1,0 +1,1 @@
+Canary publishing now retries a bifrost binary download or a release-asset upload that fails with a dropped connection or a GitHub 5xx (30 seconds apart, up to 5 attempts). A macOS build that dies during notarization now names the known causes instead of guessing.

@@ -34,8 +34,10 @@ describe("create-release-artifacts.sh", () => {
 		});
 
 		expect(result.status).toBe(1);
-		expect(result.stdout).toContain("Electrobun likely failed after packaging the app");
-		expect(result.stdout).toContain("notarization");
+		expect(result.stdout).toContain("electrobun build failed after zipping the app");
+		// Names the measured causes instead of guessing, so the reader knows where to look.
+		expect(result.stdout).toContain("stapler/notary losing the network");
+		expect(result.stdout).toContain("A required agreement is missing or has expired");
 		expect(result.stdout).toContain("dev-3.0.app.zip");
 		expect(result.stdout).not.toContain("build failed before tarring");
 	});

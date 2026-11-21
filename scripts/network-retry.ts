@@ -20,6 +20,7 @@ const NETWORK_FAILURES: RegExp[] = [
 	/\bECONNRESET\b/,
 	/NSURLErrorDomain Code=-100[15]\b/, // stapler / notarytool: request timed out, connection lost
 	/The network connection was lost/,
+	/\bHTTP 50[0234]\b/, // gh release upload: "HTTP 502: Server Error"
 ];
 
 /** The first output line that proves the failure was the network's, or null. */
@@ -65,4 +66,35 @@ export async function retryOnNetworkFailure(
 /** `::warning::` makes a retry visible on the run summary instead of buried in the log. */
 export function ciWarning(message: string, env: Record<string, string | undefined> = process.env): string {
 	return env.GITHUB_ACTIONS === "true" ? `::warning title=Network retry::${message}` : `[network-retry] ${message}`;
+}
+
+export interface FetchRetryHooks extends Partial<RetryHooks> {
+	fetchImpl?: (url: string) => Promise<Response>;
+}
+
+/**
+ * `fetch` that retries when there was no answer at all (a reset or dropped socket) or the server
+ * answered 5xx. Any other answer, a 404 included, is returned as is for the caller to judge.
+ */
+export async function fetchWithNetworkRetry(url: string, hooks: FetchRetryHooks = {}): Promise<Response> {
+	const {
+		fetchImpl = (target) => fetch(target),
+		sleep = (ms) => Bun.sleep(ms),
+		warn = (message) => console.log(ciWarning(message)),
+		attempts = NETWORK_RETRY_ATTEMPTS,
+		delayMs = NETWORK_RETRY_DELAY_MS,
+	} = hooks;
+	for (let n = 1; ; n += 1) {
+		let cause: string;
+		try {
+			const response = await fetchImpl(url);
+			if (response.status < 500 || n >= attempts) return response;
+			cause = `HTTP ${response.status}`;
+		} catch (error) {
+			if (n >= attempts) throw error;
+			cause = error instanceof Error ? error.message : String(error);
+		}
+		warn(`${url}: attempt ${n}/${attempts} failed on the network (${cause}); retrying in ${delayMs / 1000}s`);
+		await sleep(delayMs);
+	}
 }
