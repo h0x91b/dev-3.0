@@ -5,14 +5,15 @@ import TaskHeader from "../TaskHeader";
 import { I18nProvider } from "../../i18n";
 import type { BranchStatus, Project, Task } from "../../../shared/types";
 import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
-import { getAppRoot, observeAppSlots } from "../../plugins/root";
+import { getAppRoot } from "../../plugins/root";
+import { countSlotSubscriptions } from "../../plugins/__tests__/slot-subscriptions";
 import type { SlotItem, SlotRegistry } from "../../plugins/slot-registry";
 import { BUILTIN_TASK_HEADER_PLUGIN } from "../../task-header/builtins";
 
 /**
  * Performance budgets for the task header (Phase 9): counts, not timings. Its slot subscriptions
  * stay a small constant, and a change in a slot the header does not read never re-renders it.
- * The wall-clock ceiling is loose on purpose: it catches an order-of-magnitude regression only.
+ * The counts are the guard; the wall-clock ceiling is only a backstop, far above the measurement.
  */
 
 vi.mock("../../rpc", () => ({
@@ -135,14 +136,7 @@ beforeEach(async () => {
 
 describe("task header budgets", () => {
 	it("keeps a constant number of slot subscriptions and ignores slots it does not read", async () => {
-		const subscriptions = new Map<string, number>();
-		observeAppSlots((slot: SlotRegistry<SlotItem>) => {
-			const subscribe = slot.subscribe;
-			vi.spyOn(slot, "subscribe").mockImplementation((listener) => {
-				subscriptions.set(slot.name, (subscriptions.get(slot.name) ?? 0) + 1);
-				return subscribe(listener);
-			});
-		});
+		const subscriptions = countSlotSubscriptions();
 		let commits = 0;
 		const started = performance.now();
 		render(

@@ -8,13 +8,14 @@ import { applyBuiltinPlugins, getPluginsSnapshot, resetPluginsForTests, setExten
 /**
  * Load-time budget for extensions (Phase 9): N board-view extensions through the real
  * `syncPlugins` path (manifest, guard, fibers), with only the bundle import faked.
- * The ceiling is loose on purpose: it catches an order-of-magnitude regression, never noise.
+ * The guard's work is counted (its passes over the board-view slot, and the items those passes
+ * visit); the wall-clock ceiling is only a backstop and is deliberately loose.
  */
 
 vi.mock("../../rpc", () => ({ api: { request: { listExtensions: vi.fn(), getExtensionSource: vi.fn(), setExtensionsEnabled: vi.fn() } } }));
 
 const N = 100;
-/** Measured ~25 ms for 100 on a dev laptop. The guard's rescan grows superlinearly (400 take ~300 ms), see docs/extensions-platform.md. */
+/** Measured ~25 ms for 100 on a dev laptop: a backstop far above that, never a timing check. */
 const LOAD_CEILING_MS = 2_000;
 
 function extension(id: string): InstalledExtension {
@@ -55,9 +56,26 @@ it(`loads ${N} extensions next to every built-in within the budget`, async () =>
 	const builtinViews = getBoardViewRegistry().list().length;
 	vi.mocked(api.request.listExtensions).mockResolvedValue(overview(Array.from({ length: N }, (_, i) => extension(`ext${i}`))));
 
+	const views = getBoardViewRegistry();
+	const list = views.list;
+	let passes = 0;
+	let visited = 0;
+	vi.spyOn(views, "list").mockImplementation(() => {
+		const entries = list();
+		passes++;
+		visited += entries.length;
+		return entries;
+	});
+
 	const started = performance.now();
 	await syncPlugins();
 	const elapsed = performance.now() - started;
+
+	// Two guard passes per extension today (its registration, then its load check): linear in N.
+	expect(passes).toBeLessThanOrEqual(2 * N + 4);
+	// Each pass rescans every item, so the items visited grow as N² (the opening-track item in
+	// docs/extensions-platform.md). This pins it there: indexing by owner brings it down, worse fails.
+	expect(visited).toBeLessThanOrEqual((N + builtinViews + 1) ** 2);
 
 	const loads = Object.values(getPluginsSnapshot().loads);
 	expect(loads.filter((load) => load.state === "loaded")).toHaveLength(N);

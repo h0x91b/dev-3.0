@@ -102,7 +102,7 @@ finds the slots by importing the app, fails on one it does not know, points to e
 runs one registry case per slot (all share `SlotRegistry.register` today, so the cases are a tripwire for an override).
 Every slot also has a crash-escape row: `plugins/__tests__/slot-crash-escape.test.tsx` throws from each callback a
 contribution hands the host and checks that the surface stays up and the guard logged it.
-Performance budgets are tests: `board-perf-budget.test.tsx` (2400 cards and a 2400-row sidebar: at most one
+Performance budgets are tests: `board-perf-budget-e2e.test.tsx` (CI and `test:full` only, ~10 s) (2400 cards and a 2400-row sidebar: at most one
 subscription per slot, and a change in a slot a row does not read re-renders no row), `task-header-perf-budget.test.tsx`
 (one subscription per header region, none to other slots) and `plugins/__tests__/extension-load-budget.test.ts`
 (100 extensions through `syncPlugins`). They assert counts; their wall-clock ceilings only catch an order-of-magnitude regression.
@@ -151,7 +151,7 @@ glyphs after a terminal window tab's name come from the internal `terminalTabDec
   row shows the reason (today the item only vanishes).
 - A page-shaped slot (settings sections) must place built-ins before extensions by origin, not by numeric `order` alone.
 - The extension guard rescans every item of every slot on each slot change (`enforceDeclaredItems` in
-  `plugins/runtime.ts`), so loading grows superlinearly: 100 extensions take ~25 ms, 400 take ~300 ms. Before slots
+  `plugins/runtime.ts`), so loading grows superlinearly (indicative, one dev laptop, 2026-11-22: 100 extensions ~25 ms, 400 ~300 ms). Before slots
   open widely, check only the changed slot, or index items by owner.
 - Before `taskMenu` opens, a crashed submenu should show the one-line slot notice instead of an empty flyout
   (today it falls back to nothing, logged; a crashed phone sheet just closes).

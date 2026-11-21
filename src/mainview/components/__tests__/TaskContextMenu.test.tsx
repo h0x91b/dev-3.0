@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -351,8 +352,6 @@ describe("TaskContextMenu", () => {
 	});
 });
 
-// R1 (Seq 2003 review 2003-010): "Move to → Agent is Working" on a To Do card must
-// open the launch dialog; a bare moveTask is refused by the lifecycle.
 describe("TaskContextMenu slot subscription", () => {
 	it("listens to the taskMenu slot only while open, however many closed menus are mounted", async () => {
 		const subscribe = vi.spyOn(getTaskMenuRegistry(), "subscribe");
@@ -375,6 +374,8 @@ describe("TaskContextMenu slot subscription", () => {
 	});
 });
 
+// R1 (Seq 2003 review 2003-010): "Move to → Agent is Working" on a To Do card must
+// open the launch dialog; a bare moveTask is refused by the lifecycle.
 describe("TaskContextMenu → start a To Do card", () => {
 	it("hands the start to the launch dialog, sending no moveTask", async () => {
 		const { LAUNCH_REQUESTED_EVENT } = await import("../../utils/moveTaskToStatus");
@@ -457,5 +458,28 @@ describe("TaskContextMenu on a phone", () => {
 		await userEvent.click(screen.getByTestId("task-menu-priority"));
 		expect(await screen.findByRole("menuitemradio", { name: /P0/ })).toBeInTheDocument();
 		expect(screen.queryByTestId("task-menu-flyout-priority")).not.toBeInTheDocument();
+	});
+
+	it("keeps listening while its sheet is up, so unloading the sheet's plugin takes the sheet down", async () => {
+		const fiber = getAppRoot().plugin({
+			name: "sheet-owner",
+			inject: ["taskMenu"],
+			apply: (ctx: Context) =>
+				void ctx.taskMenu.register({ id: "probe:sheet", region: "open", label: () => "Probe sheet", submenu: { flyout: () => null, sheet: () => <div data-testid="probe-sheet" /> } }),
+		});
+		await waitFor(() => expect(getTaskMenuRegistry().get("probe:sheet")).toBeTruthy());
+		// The host clears `pos` when the menu closes for the sheet, as cards and rows do.
+		function Host() {
+			const [pos, setPos] = useState<{ x: number; y: number } | null>({ x: 0, y: 0 });
+			return <TaskContextMenu task={makeTask()} project={project} dispatch={vi.fn()} pos={pos} onClose={() => setPos(null)} onOpenTask={vi.fn()} testId="task-menu" />;
+		}
+		render(<I18nProvider><Host /></I18nProvider>);
+		await userEvent.click(screen.getByTestId("task-menu-probe:sheet"));
+		expect(await screen.findByTestId("probe-sheet")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu")).not.toBeInTheDocument();
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryByTestId("probe-sheet")).not.toBeInTheDocument();
 	});
 });

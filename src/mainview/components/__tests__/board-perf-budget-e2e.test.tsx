@@ -5,7 +5,8 @@ import TaskCard from "../TaskCard";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
-import { getAppRoot, observeAppSlots } from "../../plugins/root";
+import { getAppRoot } from "../../plugins/root";
+import { countSlotSubscriptions } from "../../plugins/__tests__/slot-subscriptions";
 import type { SlotItem, SlotRegistry } from "../../plugins/slot-registry";
 import { TaskMarkersProvider } from "../../task-markers/TaskMarkers";
 import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
@@ -80,19 +81,6 @@ async function settle(): Promise<void> {
 	for (let tick = 0; tick < 50; tick++) await act(async () => {});
 }
 
-/** Counts each slot's subscriptions, from now on. */
-function countSubscriptions(): Map<string, number> {
-	const counts = new Map<string, number>();
-	observeAppSlots((slot: SlotRegistry<SlotItem>) => {
-		const subscribe = slot.subscribe;
-		vi.spyOn(slot, "subscribe").mockImplementation((listener) => {
-			counts.set(slot.name, (counts.get(slot.name) ?? 0) + 1);
-			return subscribe(listener);
-		});
-	});
-	return counts;
-}
-
 const LATE: Record<string, SlotItem & Record<string, unknown>> = {
 	commands: { id: "ext:command", order: 0, labelKey: "command.boardView", labelVars: { name: "x" }, category: "nav", scope: "always", run: () => {} },
 	taskMenu: { id: "ext:row", region: "open", label: () => "Row", run: () => {} },
@@ -134,7 +122,7 @@ function onRow(): void {
 
 describe(`${N}-task board budgets`, () => {
 	it.each(surfaces)("%s: slot subscriptions do not grow with the number of tasks, and a slot change wakes only its readers", async (surface, view) => {
-		const subscriptions = countSubscriptions();
+		const subscriptions = countSlotSubscriptions();
 		const started = performance.now();
 		render(<I18nProvider><TaskMarkersProvider>{view()}</TaskMarkersProvider></I18nProvider>);
 		expect(performance.now() - started).toBeLessThan(MOUNT_CEILING_MS);
