@@ -1825,6 +1825,7 @@ function TaskHeaderFrame({
 							<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
 								<TaskHeaderRegionItems region="session" />
 							</div>
+							{/* Keep in place, even when empty: it holds the index of the controls after it. */}
 							{collapsed && worktreeSettingsButton}
 							<PanelRestoreControl entries={panelHideableEntries} />
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />

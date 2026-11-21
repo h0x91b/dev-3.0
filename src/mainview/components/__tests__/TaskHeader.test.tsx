@@ -894,6 +894,26 @@ describe("TaskHeader", () => {
 			expect(screen.queryByText("Visible desc")).not.toBeInTheDocument();
 		});
 
+		it("keeps the bars, their controls and the toggle's focus across a collapse toggle", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			const nodes = () => [
+				document.querySelector('[data-help-id="inspector.context-bar"]'),
+				document.querySelector('[data-help-id="inspector.git-bar"]'),
+				document.querySelector('[data-help-id="inspector.runtime-bar"]'),
+				screen.getByLabelText("Full screen"),
+			];
+			const before = nodes();
+			before.forEach((node) => expect(node).toBeInTheDocument());
+
+			await user.click(screen.getByLabelText("Expand panel"));
+
+			nodes().forEach((node, i) => expect(node).toBe(before[i]));
+			expect(document.activeElement).toBe(screen.getByLabelText("Collapse panel"));
+		});
+
 		it("persists collapsed state to localStorage", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			await act(async () => {
