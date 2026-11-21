@@ -72,20 +72,25 @@ describe("CommandPaletteModal", () => {
 				ctx.commands.register({ id: "leaving:probe", order: 999, labelKey: "command.boardView", labelVars: { name: "Zebra probe" }, category: "nav", scope: "always", run: () => {} });
 			},
 		});
-		await act(async () => {
-			await fiber;
-		});
-		renderModal();
-		await user.type(screen.getByRole("textbox"), "Zebra probe");
-		expect(screen.getAllByRole("option")).toHaveLength(1);
-		await act(async () => {
+		try {
+			await act(async () => {
+				await fiber;
+			});
+			renderModal();
+			await user.type(screen.getByRole("textbox"), "Zebra probe");
+			expect(screen.getAllByRole("option")).toHaveLength(1);
+			await act(async () => {
+				await fiber.dispose();
+			});
+			expect(screen.queryAllByRole("option")).toHaveLength(0);
+			expect(screen.getByRole("dialog")).toBeInTheDocument();
+			await user.clear(screen.getByRole("textbox"));
+			await user.type(screen.getByRole("textbox"), "Theme: light");
+			expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+		} finally {
+			// This file shares one root across tests: a failed assertion must not leak the probe.
 			await fiber.dispose();
-		});
-		expect(screen.queryAllByRole("option")).toHaveLength(0);
-		expect(screen.getByRole("dialog")).toBeInTheDocument();
-		await user.clear(screen.getByRole("textbox"));
-		await user.type(screen.getByRole("textbox"), "Theme: light");
-		expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+		}
 	});
 
 	it("shows an empty state when nothing matches", async () => {

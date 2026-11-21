@@ -27,17 +27,7 @@ import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
 import { startPlugins } from "./plugins/runtime";
-import { BUILTIN_BOARD_VIEWS } from "./board-views/builtins";
-import { BUILTIN_SETTINGS_SECTIONS_PLUGIN } from "./settings-sections/builtins";
-import { BUILTIN_TASK_HEADER_PLUGIN } from "./task-header/builtins";
-import { BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN } from "./settings-sections/project-builtins";
-import { BUILTIN_COMMANDS_PLUGIN } from "./commands/builtins";
-import { BUILTIN_TASK_MENU_PLUGIN } from "./task-menu/builtins";
-import { BUILTIN_DESTINATION_BODIES_PLUGIN } from "./destination-bodies/builtins";
-import { BUILTIN_TASK_PANELS_PLUGIN } from "./task-panels/builtins";
-import { BUILTIN_SIDEBAR_PLUGIN } from "./sidebar/builtins";
-import { BUILTIN_TERMINAL_COMPANION_PLUGIN } from "./terminal-companion/builtins";
-import { BUILTIN_TASK_MARKERS_PLUGIN } from "./task-markers/builtins";
+import { BUILTIN_PLUGINS } from "./builtin-plugins";
 import { TaskMarkersProvider } from "./task-markers/TaskMarkers";
 
 // ── Global crash handlers (renderer) ──
@@ -176,9 +166,8 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	// The plugin runtime (Cordis root + built-in board views, settings sections, project settings tabs, header items,
-	// commands, task menu rows, destination bodies, task panels, the sidebar, the terminal companion and the task markers) is up before the first render.
-	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN, BUILTIN_COMMANDS_PLUGIN, BUILTIN_TASK_MENU_PLUGIN, BUILTIN_DESTINATION_BODIES_PLUGIN, BUILTIN_TASK_PANELS_PLUGIN, BUILTIN_SIDEBAR_PLUGIN, BUILTIN_TERMINAL_COMPANION_PLUGIN, BUILTIN_TASK_MARKERS_PLUGIN]);
+	// The plugin runtime (Cordis root + every built-in plugin, see builtin-plugins.ts) is up before the first render.
+	startPlugins(BUILTIN_PLUGINS);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in

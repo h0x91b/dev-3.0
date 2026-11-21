@@ -32,18 +32,18 @@ function sourceFiles(dir: string): string[] {
 	});
 }
 
-/** The modules that define a slot: found by scanning, so a new one cannot be forgotten here. */
-const SLOT_MODULES = sourceFiles(MAINVIEW).filter(
-	(file) => !file.endsWith(join("plugins", "root.ts")) && readFileSync(file, "utf8").includes("defineAppSlot("),
-);
-
 type AnySlot = SlotRegistry<SlotItem>;
 
 let slots: Map<string, AnySlot>;
 
+/**
+ * The slots are whatever the app itself reaches: importing the app and its built-in plugin
+ * composition runs every `defineAppSlot` call, however a module spells or wraps it.
+ */
 beforeAll(async () => {
-	await Promise.all(SLOT_MODULES.map((file) => import(file)));
-});
+	await import("../../App");
+	await import("../../builtin-plugins");
+}, 30_000);
 
 beforeEach(() => {
 	resetPluginsForTests();
@@ -82,10 +82,28 @@ const ids = (slot: AnySlot) => slot.list().map((entry) => entry.def.id).sort();
 describe("slot dispose", () => {
 	it("knows every slot on the app root and where each one's surface-level dispose test lives", () => {
 		expect([...slots.keys()].sort()).toEqual(Object.keys(SURFACE_DISPOSE_TESTS).sort());
+		// A convention check: the mapped file has a live `[dispose]` test, not proof it targets this slot.
+		const liveDisposeTest = /^\s*it(\.each\(.*?\))?\(\s*["'`][^"'`]*\[dispose\]/m;
 		for (const [slot, file] of Object.entries(SURFACE_DISPOSE_TESTS)) {
 			const text = readFileSync(join(MAINVIEW, file), "utf8");
-			expect(text, `${relative(MAINVIEW, join(MAINVIEW, file))} has no [dispose] test for ${slot}`).toMatch(/it(\.each\([^)]*\))?\(\s*["'`][^"'`]*\[dispose\]/);
+			expect(text, `${file} has no [dispose] test for ${slot}`).toMatch(liveDisposeTest);
 		}
+	});
+
+	it("sees defineAppSlot only imported by its own name and called, never renamed, re-exported or passed around", () => {
+		const offenders = sourceFiles(MAINVIEW)
+			.filter((file) => !file.endsWith(join("plugins", "root.ts")))
+			.filter((file) => {
+				const text = readFileSync(file, "utf8");
+				const rest = text
+					.replace(/import\s*\{[^}]*\}\s*from\s*["'][^"']*root["']/g, (decl) =>
+						/\bdefineAppSlot\s+as\b/.test(decl) ? decl : decl.replace(/\bdefineAppSlot\b/g, ""),
+					)
+					.replace(/\bdefineAppSlot\s*(<[^>]*>)?\s*\(/g, "");
+				return /\bdefineAppSlot\b/.test(rest) || /export\s*\*\s*from\s*["'][^"']*plugins\/root["']/.test(text);
+			})
+			.map((file) => relative(MAINVIEW, file));
+		expect(offenders).toEqual([]);
 	});
 
 	it.each(Object.keys(SURFACE_DISPOSE_TESTS))("%s: unloading a plugin removes everything it and its sub-plugins registered, and nothing else", async (name) => {

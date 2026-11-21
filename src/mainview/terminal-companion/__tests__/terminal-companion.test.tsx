@@ -136,7 +136,8 @@ describe("terminal companion slot", () => {
 		expect(screen.queryByTestId("leaving-companion")).toBeNull();
 		expect(screen.getByTestId("explorer").textContent).toBe("t1");
 		expect(screen.getByTestId("terminal")).toBeTruthy();
-		// A companion lays itself out around the terminal, so a different companion remounts it once.
+		// Any companion swap remounts the terminal once (known limit, an opening-track precondition):
+		// decisions/2026/11/21/terminal-companion-slot.md, Risks. Fixing it should make this 1.
 		expect(terminalMounts.count).toBe(2);
 		expect(screen.queryByRole("alert")).toBeNull();
 	});

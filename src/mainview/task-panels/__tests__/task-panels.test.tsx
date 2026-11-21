@@ -227,6 +227,7 @@ describe("task dock", () => {
 		const tab = screen.getByRole("tab", { selected: true });
 		expect(tab).toHaveTextContent("stay");
 		expect(tab).toHaveAttribute("tabindex", "0");
+		expect(screen.queryByRole("tab", { name: /gone/ })).toBeNull();
 		expect(screen.getByTestId("notes-t1")).toHaveAttribute("data-presentation", "docked");
 	});
 

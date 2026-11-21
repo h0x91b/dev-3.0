@@ -144,17 +144,21 @@ describe("settingsSections dispose", () => {
 			});
 		const staying = register("staying-section", "staying:section", "stays");
 		const leaving = register("leaving-section", "leaving:section", "leaves");
-		await act(async () => {
-			await Promise.all([staying, leaving]);
-		});
-		render(<I18nProvider><LivePage /></I18nProvider>);
-		expect(screen.getByText("leaves")).toBeInTheDocument();
-		await act(async () => {
-			await leaving.dispose();
-		});
-		expect(screen.queryByText("leaves")).toBeNull();
-		expect(screen.getByText("stays")).toBeInTheDocument();
-		expect(screen.queryByRole("alert")).toBeNull();
-		await staying.dispose();
+		try {
+			await act(async () => {
+				await Promise.all([staying, leaving]);
+			});
+			render(<I18nProvider><LivePage /></I18nProvider>);
+			expect(screen.getByText("leaves")).toBeInTheDocument();
+			await act(async () => {
+				await leaving.dispose();
+			});
+			expect(screen.queryByText("leaves")).toBeNull();
+			expect(screen.getByText("stays")).toBeInTheDocument();
+			expect(screen.queryByRole("alert")).toBeNull();
+		} finally {
+			// This file shares one root across tests: a failed assertion must not leak the probes.
+			await Promise.all([staying.dispose(), leaving.dispose()]);
+		}
 	});
 });
