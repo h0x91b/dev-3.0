@@ -46,7 +46,6 @@ import ProjectTerminal from "./components/ProjectTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
-import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import { DestinationBody } from "./destination-bodies/DestinationBody";
 import ViewportLab from "./components/ViewportLab";
@@ -4265,10 +4264,9 @@ function App() {
 				return <GlobalSettings section={route.section} anchor={route.anchor} preset={route.preset} />;
 			case "changelog":
 				return (
-					<Changelog
-						navigate={navigate}
-						goBack={() => dispatch({ type: "goBack" })}
-						canGoBack={state.historyIndex > 0}
+					<DestinationBody
+						destination="changelog"
+						props={{ navigate, goBack: () => dispatch({ type: "goBack" }), canGoBack: state.historyIndex > 0 }}
 					/>
 				);
 			case "stats":
