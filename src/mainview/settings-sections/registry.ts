@@ -12,13 +12,19 @@ declare module "cordis" {
 	}
 }
 
-/** One block of a Global Settings category page. */
+/** The fixed tabs of Project Settings; each tab body is a region of this slot. */
+export type ProjectSettingsTab = "global" | "project" | "worktree" | "automations";
+
+/** A Global Settings category, or a Project Settings tab (`projectSettings.<tab>`). */
+export type SettingsSectionRegion = SettingsCategoryId | `projectSettings.${ProjectSettingsTab}`;
+
+/** One block of a settings page: a Global Settings category or a Project Settings tab. */
 export interface SettingsSectionItem {
 	/** `builtin:<section>` for built-ins. */
 	id: string;
-	/** The category page it renders on; the categories themselves are fixed. */
-	region: SettingsCategoryId;
-	/** Position within the category page. */
+	/** The page it renders on; categories and tabs themselves are fixed. */
+	region: SettingsSectionRegion;
+	/** Position within that page. */
 	order: number;
 	/** The search rows this section answers for; their anchors live inside `component`. */
 	entries: readonly SettingsEntry[];

@@ -73,7 +73,7 @@ describe("SettingsCategoryPage", () => {
 		render(
 			<I18nProvider>
 				<SettingsCategoryPage
-					category="system"
+					region="system"
 					sections={[
 						section("builtin:a", "system", () => <p>first</p>),
 						section("builtin:b", "models", () => <p>elsewhere</p>),
@@ -94,7 +94,7 @@ describe("SettingsCategoryPage", () => {
 		render(
 			<I18nProvider>
 				<SettingsCategoryPage
-					category="system"
+					region="system"
 					sections={[
 						section("builtin:a", "system", () => <p>before</p>),
 						section("builtin:broken", "system", Broken),
@@ -116,7 +116,7 @@ describe("SettingsCategoryPage", () => {
 		render(
 			<I18nProvider>
 				<SettingsCategoryPage
-					category="system"
+					region="system"
 					sections={[section("builtin:a", "system", () => <p>before</p>), section("some-ext:broken", "system", Broken)]}
 				/>
 			</I18nProvider>,
