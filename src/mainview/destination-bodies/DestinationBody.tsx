@@ -25,6 +25,7 @@ export function DestinationBody<D extends DestinationId>({ destination, props }:
 				fallback={<SlotComponent ctx={getAppRoot()} component={builtin.component} />}
 				crashedMessage={t("destinationBody.crashed")}
 				failedMessage={(name) => t("destinationBody.extensionFailed", { name })}
+				fill
 			/>
 		</DestinationPropsContext.Provider>
 	);

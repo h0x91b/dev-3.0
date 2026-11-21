@@ -25,6 +25,8 @@ export function Sidebar(props: ActiveTasksSidebarProps) {
 				fallback={<SlotComponent ctx={getAppRoot()} component={ActiveTasksSidebarBody} />}
 				crashedMessage={t("sidebar.crashed")}
 				failedMessage={(name) => t("sidebar.extensionFailed", { name })}
+				fill
+				compactNotice
 			/>
 		</SidebarPropsContext.Provider>
 	);

@@ -136,8 +136,14 @@ describe("DestinationBody", () => {
 		});
 		await settle();
 		renderBody(destination);
-		expect(screen.getByRole("alert").textContent).toBe("This screen failed to load, so the built-in one is shown.");
+		const notice = screen.getByRole("alert");
+		expect(notice.textContent).toBe("This screen failed to load, so the built-in one is shown.");
 		expect(JSON.parse(screen.getByTestId(`body-${destination}-data`).textContent ?? "")).toEqual(CASES[destination].data);
+		// An `h-full` body shares a flex column with the notice and may shrink, so the notice cannot clip its bottom.
+		const bodyBox = screen.getByTestId(`body-${destination}`).parentElement!;
+		expect(bodyBox.parentElement).toBe(notice.parentElement);
+		expect(bodyBox.className.split(" ")).toEqual(expect.arrayContaining(["flex-1", "min-h-0"]));
+		expect(notice.className).toContain("mx-6");
 		errors.mockRestore();
 	});
 

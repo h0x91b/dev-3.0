@@ -62,7 +62,9 @@ describe("Sidebar slot", () => {
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
-	it("falls back to the built-in under the inline notice when the slot's sidebar throws", async () => {
+	// Boom takes the built-in's id from a plain (non-extension) plugin: this proves the boundary and the
+	// notice, not what a real replacement looks like — no extension may register here while the slot is internal.
+	it("falls back to the built-in under a compact inline notice that leaves the list room, when the slot's sidebar throws", async () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		const Boom = () => {
 			throw new Error("boom");
@@ -76,8 +78,15 @@ describe("Sidebar slot", () => {
 		});
 		await settle();
 		renderSidebar();
-		expect(screen.getByRole("alert").textContent).toBe("This sidebar failed to load, so the built-in Active Tasks list is shown.");
+		const notice = screen.getByRole("alert");
+		expect(notice.textContent).toBe("This sidebar failed to load, so the built-in Active Tasks list is shown.");
+		expect(notice.className).toContain("mx-2");
 		expect(screen.getByTestId("active-tasks").textContent).toContain("t1/s1");
+		// The list sits in a shrinkable flex child beside the notice, so an `h-full` list cannot overflow by its height.
+		const listBox = screen.getByTestId("active-tasks").parentElement!;
+		expect(listBox.className.split(" ")).toEqual(expect.arrayContaining(["flex-1", "min-h-0"]));
+		expect(listBox.parentElement).toBe(notice.parentElement);
+		expect(notice.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-col", "flex-1", "min-h-0"]));
 		errors.mockRestore();
 	});
 
