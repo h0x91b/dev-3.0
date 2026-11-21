@@ -30,10 +30,10 @@ import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "
  * Resume pointers for every pane, healed against the transcripts on disk in one
  * pass so no two panes reopen the same conversation (decision 189, #1950).
  */
-function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): { sessionId: string | null; mode: ResumePaneMode; unreadable?: UnreadableStore }[] {
+function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[], logsHealing = true): { sessionId: string | null; mode: ResumePaneMode; unreadable?: UnreadableStore }[] {
 	const targets = resolveResumableSessionIds(task.worktreePath ?? "", panes.map((pane, i) => ({ ...pane, adoptsOrphan: i === 0 })));
 	return targets.map((target, i) => {
-		if (target.substituted || target.startFresh) {
+		if (logsHealing && (target.substituted || target.startFresh)) {
 			log.warn(target.startFresh
 				? "Stored session id is not resumable and every transcript belongs to another pane — starting this pane on a new conversation"
 				: "Stored session id is not resumable for this pane — resuming another conversation instead", {
@@ -53,6 +53,17 @@ function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): {
 			: target.verified ? "exact" : "unverified";
 		return { sessionId: target.sessionId, mode, ...(target.unreadable ? { unreadable: target.unreadable } : {}) };
 	});
+}
+
+/** What a resume does with the task's first saved Claude pane, healed the same way the resume heals
+ *  it: the conversation it reopens, whether it falls back to the harness's own latest, and the
+ *  account the pane runs on today. Null when no saved pane runs Claude. Writes nothing. */
+export function claudeResumePickTarget(task: Task): { sessionId: string | null; agentLatest: boolean; savedAccountId: string | null | undefined } | null {
+	const panes = task.sessionState?.panes ?? [];
+	const index = panes.findIndex(paneTakesAccountChoice);
+	if (index < 0) return null;
+	const { sessionId, mode } = resolveResumeTargets(task, panes, false)[index];
+	return { sessionId: mode === "fresh-session" ? null : sessionId, agentLatest: mode === "agent-latest", savedAccountId: panes[index].accountId };
 }
 
 /** The stored panes, or — when there are none — the lost Codex conversation resumeTask would reopen. Never persisted here. */

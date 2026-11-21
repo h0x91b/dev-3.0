@@ -344,6 +344,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 								value={resumeAccount !== undefined ? resumeAccount : savedResumeAccount(request.resume.panes, undefined)}
 								onChange={updateResumeAccount}
 								projectId={request.projectId}
+								taskId={request.taskId}
 							/>
 						</div>
 					) : globalSettings ? (
