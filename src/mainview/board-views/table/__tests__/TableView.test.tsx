@@ -3,7 +3,7 @@ import { Context } from "cordis";
 import type { BoardColumnSlot, CodingAgent, Label, Project, Task } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
 import { BoardService, type BoardActions, type BoardAllActions, type BoardModel } from "../../board-service";
-import { BoardViewSlot } from "../../BoardViewChrome";
+import { SlotComponent } from "../../../plugins/SlotHost";
 import { BoardViewRegistry } from "../../registry";
 import { installTableView, TABLE_VIEW_ID } from "..";
 import { TableOptions } from "../TableOptions";
@@ -94,7 +94,7 @@ async function renderTable(setup: Setup = {}) {
 	const view = await vi.waitFor(() => root.boardViews.get(TABLE_VIEW_ID) ?? Promise.reject(new Error("not registered")));
 	const ui$ = render(
 		<I18nProvider>
-			<BoardViewSlot ctx={view.ctx} component={view.def.component} />
+			<SlotComponent ctx={view.ctx} component={view.def.component} />
 		</I18nProvider>,
 	);
 	const rerender = () => {
@@ -104,7 +104,7 @@ async function renderTable(setup: Setup = {}) {
 	};
 	const renderOptions = () => render(
 		<I18nProvider>
-			<BoardViewSlot ctx={view.ctx} component={TableOptions} />
+			<SlotComponent ctx={view.ctx} component={TableOptions} />
 		</I18nProvider>,
 	);
 	return { ...ui$, view, model, actions: act$, layouts, rerender, renderOptions };

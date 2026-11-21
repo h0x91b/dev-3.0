@@ -739,6 +739,7 @@ const common = {
 	"taskRef.previewArtifacts": "Artefactos",
 	"taskRef.previewMore_one": "{count} más",
 	"taskRef.previewMore_other": "{count} más",
+	"slots.more": "Más",
 };
 
 export default common;
