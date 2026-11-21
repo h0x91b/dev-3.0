@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskWorkspacePane from "../TaskWorkspacePane";
-import { showArtifactViewer } from "../../task-panels/artifact-panel";
+import { isArtifactViewerShowing, showArtifactViewer } from "../../task-panels/artifact-panel";
 import TaskPanelInstances from "../../task-panels/TaskPanelInstances";
 import { installTaskPanelBuiltins } from "../../task-panels/__tests__/install-builtins";
 
@@ -139,12 +139,13 @@ describe("TaskWorkspacePane artifact dock", () => {
 		expect(viewer).toHaveAttribute("data-presentation", "popup");
 	});
 
-	it("pops up in immersive fullscreen, which keeps the dock out", async () => {
+	it("waits offscreen in immersive fullscreen instead of covering the terminal", async () => {
 		renderPane({ immersive: true });
 		openArtifact();
 		const viewer = await screen.findByTestId("artifact-viewer");
 		expect(screen.queryByTestId("task-dock")).toBeNull();
-		expect(viewer).toHaveAttribute("data-presentation", "popup");
+		expect(viewer).toHaveAttribute("data-presentation", "offscreen");
+		expect(isArtifactViewerShowing("t1")).toBe(false);
 	});
 
 	it("waits offscreen while the inline diff owns the surface", async () => {

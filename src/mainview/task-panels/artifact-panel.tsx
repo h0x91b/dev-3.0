@@ -1,9 +1,11 @@
 import { useState, useSyncExternalStore } from "react";
+import { SlotErrorBoundary } from "../plugins/SlotHost";
 import type { LiveArtifact, SharedArtifact, TaskStatus } from "../../shared/types";
 import TaskArtifactViewer from "../components/TaskArtifactViewer";
 import { requestTaskTerminalFocus } from "../terminal-focus-request";
 import { closeTaskPanel, getTaskDockSeat, openTaskPanel } from "./dock-store";
 import type { TaskPanelProps } from "./registry";
+import { PanelCrashed } from "./TaskPanelInstances";
 
 export const ARTIFACT_PANEL_ID = "builtin:artifact";
 
@@ -23,6 +25,8 @@ export interface ArtifactViewerState {
 }
 
 let viewer: ArtifactViewerState | null = null;
+/** Bumped on every show, so a crashed viewer gets a fresh try the next time it is shown. */
+let shown = 0;
 let popupPreference = false;
 const listeners = new Set<() => void>();
 
@@ -42,6 +46,7 @@ function notify(): void {
 function setViewer(next: ArtifactViewerState | null): void {
 	const previous = viewer;
 	viewer = next;
+	if (next) shown++;
 	if (previous && previous.taskId !== next?.taskId) closeTaskPanel(previous.taskId, ARTIFACT_PANEL_ID);
 	if (next) openTaskPanel(next.taskId, ARTIFACT_PANEL_ID, { floating: floats(next) });
 	notify();
@@ -89,6 +94,7 @@ function subscribe(listener: () => void): () => void {
 
 export function resetArtifactViewerForTests(): void {
 	viewer = null;
+	shown = 0;
 	popupPreference = false;
 	notify();
 }
@@ -102,23 +108,25 @@ export function ArtifactPanel({ taskId, task, presentation }: TaskPanelProps) {
 	const state = useSyncExternalStore(subscribe, getArtifactViewer);
 	const [dock, setDock] = useState<HTMLDivElement | null>(null);
 	if (!state || state.taskId !== taskId) return null;
-	const docked = presentation === "docked";
+	const inDock = presentation === "docked" || presentation === "inactive";
 	const hidden = presentation === "inactive" || presentation === "offscreen";
 	return (
 		<>
 			<div ref={setDock} className="min-h-0 min-w-0 flex-1 overflow-hidden" />
-			<TaskArtifactViewer
-				taskId={state.taskId}
-				projectId={state.projectId}
-				task={task}
-				taskStatus={state.taskStatus}
-				live={task?.liveArtifact ?? state.live}
-				artifacts={state.artifacts}
-				initialIndex={state.index}
-				dock={docked ? dock : null}
-				offscreen={hidden}
-				onClose={closeArtifactViewer}
-			/>
+			<SlotErrorBoundary slot="taskPanels" resetKey={`${ARTIFACT_PANEL_ID}#${shown}`} fallback={() => <PanelCrashed onClose={closeArtifactViewer} floating={!inDock && !hidden} />}>
+				<TaskArtifactViewer
+					taskId={state.taskId}
+					projectId={state.projectId}
+					task={task}
+					taskStatus={state.taskStatus}
+					live={task?.liveArtifact ?? state.live}
+					artifacts={state.artifacts}
+					initialIndex={state.index}
+					dock={inDock ? dock : null}
+					offscreen={hidden}
+					onClose={closeArtifactViewer}
+				/>
+			</SlotErrorBoundary>
 		</>
 	);
 }

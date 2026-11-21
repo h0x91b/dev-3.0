@@ -17,8 +17,8 @@ declare module "cordis" {
  * Where an open panel stands right now:
  * - `docked`: the active tab of its task's dock, on screen;
  * - `inactive`: in an on-screen dock behind another tab;
- * - `undocked`: its task is on screen but there is no dock (narrow viewport, immersive);
- * - `offscreen`: the route left its task, or the inline diff covers it;
+ * - `undocked`: its task is on screen but there is no room for a dock (narrow viewport);
+ * - `offscreen`: the route left its task, or the inline diff or immersive fullscreen covers it;
  * - `floating`: opened floating (`openTaskPanel(..., { floating: true })`): no tab, the panel draws itself as a lightbox.
  * The host shows only `docked` itself. The panel stays mounted in every state, so it keeps its state.
  */

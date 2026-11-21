@@ -135,7 +135,7 @@ function TaskWorkspacePane({
 					</FileExplorerFrame>
 					{yazi.dialog}
 				</div>
-				<TaskDock taskId={taskId} covered={!!inlineDiffRequest} canDock={!isNarrow && !immersive} />
+				<TaskDock taskId={taskId} covered={!!inlineDiffRequest || immersive} canDock={!isNarrow} />
 			</div>
 
 			{inlineDiffRequest && task && project && (

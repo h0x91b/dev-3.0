@@ -201,6 +201,8 @@ describe("task dock", () => {
 		expect(getTaskDock("t1").open).toContain("builtin:boom");
 		expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("boom");
 		expect(within(screen.getByTestId("task-dock-body")).getByRole("alert")).toHaveTextContent("This panel stopped working.");
+		fireEvent.click(within(screen.getByTestId("task-panel-crashed")).getByRole("button", { name: "Close" }));
+		expect(getTaskDock("t1").open).toEqual(["ext:fine"]);
 		spy.mockRestore();
 	});
 

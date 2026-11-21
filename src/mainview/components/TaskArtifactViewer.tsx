@@ -88,10 +88,11 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  *    width the dock owns.
  *  - **Popup** (`openArtifactsInPopup`, and wherever no dock exists — the
  *    archived-task modal, a toast for a task that is not on screen, narrow
- *    viewports, immersive). The lightbox `TaskImageViewer` uses: a centred card
+ *    viewports). The lightbox `TaskImageViewer` uses: a centred card
  *    over a scrim, ~90% of the viewport, portalled to `body`.
- *  - **Offscreen** (`offscreen`). A docked panel whose task the route has left.
- *    It renders inside a `hidden` wrapper rather than falling back to the popup,
+ *  - **Offscreen** (`offscreen`). A docked panel whose task is not on screen
+ *    (route left, inline diff, immersive) or behind another tab. Kept in its
+ *    hidden dock when it has one, else inside a `hidden` wrapper rather than falling back to the popup,
  *    which used to drop a centred artifact over an unrelated board on every task
  *    switch. Still mounted, so returning to the task brings back the document,
  *    the version pick and an unsent draft; it owns no keys while hidden.
@@ -872,13 +873,14 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 			</section>
 	);
 
+	// The dock is the panel's own element, so the viewer renders inside the
+	// workspace layout; a flip between dock and popup re-hosts this same instance.
+	// Behind another tab the dock is hidden but kept, so the iframe survives the switch.
+	if (dock) return createPortal(card, dock);
+
 	// Waiting for its task to come back on screen: rendered, so nothing is lost,
 	// but out of the layout and out of the accessibility tree.
 	if (offscreen) return <div hidden data-testid="artifact-viewer-offscreen">{card}</div>;
-
-	// The dock is the panel's own element, so the viewer renders inside the
-	// workspace layout; a flip between dock and popup re-hosts this same instance.
-	if (dock) return createPortal(card, dock);
 
 	return createPortal(
 		<div

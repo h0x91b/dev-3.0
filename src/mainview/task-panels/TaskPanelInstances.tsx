@@ -43,7 +43,7 @@ function PanelInstance({ taskId, task, entry, presentation, seat, parking }: {
 	const Component = entry.def.component;
 	const panelId = entry.def.id;
 	return createPortal(
-		<SlotErrorBoundary slot="taskPanels" resetKey={panelId} fallback={() => (isBuiltinItem(panelId) ? <PanelCrashed /> : <DropPanel taskId={taskId} panelId={panelId} />)}>
+		<SlotErrorBoundary slot="taskPanels" resetKey={panelId} fallback={() => (isBuiltinItem(panelId) ? <PanelCrashed onClose={() => closeTaskPanel(taskId, panelId)} /> : <DropPanel taskId={taskId} panelId={panelId} />)}>
 			<CordisContext.Provider value={entry.ctx}>
 				<Component ctx={entry.ctx} taskId={taskId} task={task} presentation={presentation} close={() => closeTaskPanel(taskId, panelId)} />
 			</CordisContext.Provider>
@@ -52,14 +52,23 @@ function PanelInstance({ taskId, task, entry, presentation, seat, parking }: {
 	);
 }
 
-/** A crashed built-in keeps its tab and says so in the body (bible §5.12). */
-function PanelCrashed() {
+/**
+ * A crashed built-in keeps its tab and says so in the body (bible §5.12), with a
+ * Close so even a panel without a ✕ can be dismissed. `floating`: the panel had no
+ * dock to say it in, so the notice is centred over the page, where its popup was.
+ */
+export function PanelCrashed({ onClose, floating = false }: { onClose: () => void; floating?: boolean }) {
 	const t = useT();
-	return (
-		<div role="alert" className="m-3 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
-			{t("taskDock.panelCrashed")}
+	const notice = (
+		<div role="alert" data-testid="task-panel-crashed" className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-danger ${floating ? "bg-overlay shadow-lg" : "m-3 bg-danger/10"}`}>
+			<span>{t("taskDock.panelCrashed")}</span>
+			<button type="button" onClick={onClose} className="ml-auto shrink-0 rounded-md px-2 py-1 underline underline-offset-2 hover:text-fg active:scale-[0.96]">
+				{t("common.close")}
+			</button>
 		</div>
 	);
+	if (!floating) return notice;
+	return createPortal(<div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">{notice}</div>, document.body);
 }
 
 /** A crashed extension panel vanishes from the dock: its tab closes. */
