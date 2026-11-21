@@ -151,7 +151,7 @@ The **command palette** is keyboard-only (no button, no creep), one `PaletteShel
 
 ### 5.1 Task info panel — bar model (2×2) — `Observed`
 
-The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) is a **2×2 grid of quickbars**: two rows, each split into a left and a right bar by a `flex-1` spacer. This exploits the wide desktop width instead of stacking more rows above the terminal (the panel has a hard height budget, `MAX_RATIO = 0.33`). **Each bar owns exactly one action domain. Panel chrome is not a bar.**
+The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) is a **2×2 grid of quickbars**: two rows, each split into a left and a right bar by a `flex-1` spacer. Width beats more rows above the terminal (height budget `MAX_RATIO = 0.33`). **Each bar owns exactly one action domain. Panel chrome is not a bar.**
 
 | Bar | Position | Domain | Contents | Evidence |
 |---|---|---|---|---|
@@ -162,13 +162,13 @@ The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) i
 
 Rules:
 
-- **Row 1 = "Drive"** (what the task is + how I control its session). **Row 2 = "Outputs"** (what the work produces and how I access it: branch/PR + open-in/scripts/running server). open-in lives here because it opens the produced worktree, and it keeps the Runtime bar balanced (3 controls) instead of leaving it sparse.
+- **Row 1 = "Drive"** (what the task is + how I control its session). **Row 2 = "Outputs"** (what the work produces and how I access it: branch/PR + open-in/scripts/running server). open-in lives here because it opens the produced worktree, and keeps the Runtime bar balanced.
 - **Chrome** (collapse/expand, fullscreen toggle, ⚙ worktree-settings) is pinned to the far right edge of row 1 and is **not** counted as a bar or against any bar's budget.
 - A new control must be assigned to exactly one domain and placed in that bar. Do not drop it into whichever bar has room — that is how the pre-2026-06 "everything in row-1-right" dumpster happened.
 - **Label overflow:** the Context bar shows up to `MAX_INLINE_LABELS` (4) chips inline, then a `+k` chip (hover lists the rest). The full label list still renders in the expanded metadata grid, so the inline strip may truncate safely.
 - **Variant switcher (conditional):** when the task's variant group has ≥ 2 **alive** (active-status) variants, the Context bar leads with a compact segmented switcher — one numbered chip per alive variant (status-colored, current highlighted); click switches the workspace to that sibling. It counts as **one composite control** (like the label strip) and is an explicit conditional exception to the four-control budget; no unrelated control inherits the exception. Keyboard: `⇧⌘[` / `⇧⌘]` cycles alive variants (registered in `keymap.ts`).
 - **Tight bars fold, they never overflow:** each bar is boxed (`min-w-0 overflow-hidden`) so its contents cannot paint over the neighbouring bar or the pinned chrome, and the fold order is driven by the **panel's own width** (`useContainerWidth`, not `useCompact`): `< 1280px` folds the label strip to its `+k` chip, clamps the branch name and drops the text labels of the tmux-layout and Runtime controls; `< 900px` also drops the label strip and the include-tests toggle. Long sentence labels are banned from a bar — the chip carries the short label, the sentence lives in the tooltip (see decision 164).
-- **Registry-driven (`Proposed`, §5.12):** the four bars become the four regions of the `taskHeader` contribution slot; every control is an item declaring exactly one region (none = rejected), chrome stays pinned, unbudgeted and built-in only. The host enforces the budget with a per-region ghost "More" overflow; collapsed, expanded and narrow read the same items. User layout (reorder, hide, pin, swap) persists globally.
+- **Registry-driven (`Proposed`, §5.12):** the bars become the regions of the `taskHeader` slot; each item declares one region (none = rejected); chrome stays pinned, unbudgeted, built-in only. A per-region ghost "More" holds only extension and user overflow; a 5th built-in still promotes its domain to a row. All layouts read the same items; user layout (§5.10) is global.
 - Per-bar visible-action budget stays at the toolbar default (≤ 4 visible, then overflow). **Explicit exception:** the Runtime bar may additionally show separate `Images` and `Artifacts` controls when those outputs exist; both are conditional, user-selected identities rather than permanent chrome. Do not use this exception for unrelated controls.
 
 ### 5.2 Keyboard-shortcut registry, editor + reference overlay — `Observed`
@@ -400,9 +400,9 @@ The archived-task path (`TaskDetailModal`) is already a dedicated surface, so it
 
 **Invitation:** after 3 hours of active use, then 1, 3, 9 and every 14 days from postponement; manually enabling starts a recurring 14-day schedule. Timing persists across restarts, and the host prevents duplicate prompts across windows. Active = focused/visible with trusted key/pointer/wheel/touch input within 60s; 15s heartbeats union windows, gaps >30s earn nothing. Calm = dashboard/project without active task, ≥10s since input, no typing context, back layers, portal overlays, artifact, help, hint or tour. One React invitation shows 2–3 benefits and a small static example; “Explore the full interface” switches immediately, “Remind me later”/dismiss postpones. No forced switch or second confirmation. This delayed consent invitation is the narrow exception to §5.4a's no-centre-teaching rule. Acceptance stops reminders and shows one dismissible lesson on hiding individual controls and restoring Simplified Mode. The invitation and lesson temporarily suppress the header help callout. Returning switches immediately; optional feedback must not block it.
 
-**Hiding a control:** desktop right-clicks it → one-item "Hide" menu (`HideableControl`, `useHideContextMenu`). Narrow offers no hiding (no restore control there): its actions sheet ignores personal hiding, Simplified Mode still applies. **Generalised (`Proposed`, §5.12):** every registered task-header item is hideable (registry ids replace the panel list below); the same menu gains Move left/right, Move to More and Use instead of… (swap = hide + pin in place), and restore lists every hidden item by region. No "Customize toolbar" button.
+**Hiding a control:** desktop right-clicks it → one-item "Hide" menu (`HideableControl`, `useHideContextMenu`). Narrow offers no hiding (no restore control there): its actions sheet ignores personal hiding, Simplified Mode still applies. **Generalised (`Proposed`, §5.12):** every non-chrome header item is hideable; the menu adds Move left/right, Move to More (inside More: Show in bar) and Use instead of… (hide + pin in place); restore lists hidden items by region. No "Customize toolbar" button.
 
-**Restoring — task info panel:** one conditional restore control in panel chrome beside ⚙/collapse (§5.1; no bar-budget cost). Dropdown groups by bar: click runs the action, return icon restores (hover on desktop, always visible on touch); permanent "Show all". Ids: Context bar (`diff-include-tests`), Session/Agent bar (`spawn-agent`, `bug-hunters`, `hibernate`, `scheduled-message`, `tmux-pane-controls`), Runtime bar (`scripts-runner`, `setup-dev-server`).
+**Restoring — task info panel:** one conditional restore control in panel chrome beside ⚙/collapse (§5.1; no bar-budget cost). Dropdown groups by bar: click runs the action, return icon restores (hover on desktop, always visible on touch); permanent "Show all". Ids: yaml `simplify_mode.panel_hideable`.
 
 **Restoring — global header:** no new icon. Exactly three ids are hideable there — `agent-traffic`, `project-terminal-button`, `remote-access-qr` — folding into the existing kebab as restore rows when hidden. Nothing else in the header is hideable: the ambient resource readout, the rate-limit indicator, and the header's tmux session manager are **not** in this set.
 
@@ -432,13 +432,13 @@ Evidence: `board-views/`, `keymap.ts` `board-view`, `application-menu.ts`.
 
 ### 5.12 Plugin slots — `Proposed`
 
-Surfaces are rebuilt as Cordis slots. **Internal first:** every surface moves with built-ins only; a slot opens to extensions later, one kind at a time. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
+Surfaces become Cordis slots. **Internal first:** every surface moves with built-ins only; extensions get slots only after that, one kind at a time. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
 
-- **Replace slot:** one body at a time behind §5.11's chooser (hidden with one option or in Simplified Mode; "Manage…" → Settings → Extensions). The built-in is the undisableable fallback; a crash renders it under an inline danger notice. Board view now; sidebar, home and destination bodies later — the destination stays.
-- **Contribution slot:** a host-owned surface collecting items — task header (§5.1), settings sections, ⇧⌘P commands, task menu, dock panels, card/sidebar marker. The host owns chrome, order (user layout → built-ins → extensions) and budget; a failed contributor's items vanish, the reason shows on its Extensions row, never inline.
-- **Extensions are add-only:** never replace, hide or displace a built-in item, region or section; no new settings category. Header items start in overflow; settings sections sit under a muted "From <name>" label; task-menu items in one trailing "Extensions" group; an action header item is also a palette command, unbound.
+- **Replace slot:** one body at a time behind a chooser shaped like §5.11's (per-slot "Manage…" label). The built-in is the undisableable fallback; a crash renders it under an inline danger notice, keeping the saved choice. Board view now; sidebar, home and destination bodies later; the destination stays.
+- **Contribution slot:** a host-owned surface collecting items — task header (§5.1), settings sections, ⇧⌘P commands, task menu, dock panels, card/sidebar marker. The host owns chrome, order (user layout → built-ins → extensions) and budget; a failed contributor's items vanish (reason on its Extensions row, never inline).
+- **Extensions are add-only:** never replace, hide or displace a built-in item, region or section; no new settings category. Header items start in overflow; settings sections sit under a muted "From <name>" label; task-menu items in one trailing "Extensions" group. Every action header item is also a palette command (extensions' unbound).
 - **Not slots:** app shell (header, breadcrumbs, layout), terminal renderer, native menu, `Route` destinations, the card inline strip. Dialogs only via `ctx.ui`.
-- **Settings → Extensions:** kill switch → Built-in (by slot) → Installed (contributions by kind with toggles, load state, failure reason); search above ~12 rows.
+- **Settings → Extensions:** kill switch → Built-in (by slot) → Installed (per-kind toggles, load state, failure reason); search above ~12 rows.
 
 ## 6. Action taxonomy — `Observed`
 
@@ -510,8 +510,8 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | Task card inline actions | 4 (strip is **full**: Open-in, dev-server split, Watch, +Variant) | push to context menu; ≤1 split control on the card |
 | Toolbar visible actions | 4 | overflow after 4 |
 | Tabs | 6 | more-menu / subpage |
-| Task info panel | 4 bars (2×2), ≤ 4 visible per bar | one domain bar per control; after 4 ⇒ promote the domain to its own row (§5.1); registry-driven: the region's "More" (§5.12) |
-| Task dock tabs (§5.12) | 4 | "More" |
+| Task info panel | 4 bars (2×2), ≤ 4 visible per bar | one domain bar per control; a 5th built-in ⇒ its domain's own row; "More" = extension/user overflow (§5.1) |
+| Task dock tabs | 4 | "More" |
 | Extension marker, card/sidebar row | 1 passive glyph (§5.6) | none; never an action |
 | Active Tasks sidebar row | 2 resting (lifecycle rail, priority) + 1 hide, hover or touch | demote to the row context menu; the row is a navigator, not a board |
 | Settings library toolbar (§8) | 4 visible controls; 5 always-visible editor fields | extra editor fields go behind the single `Advanced` disclosure; list rows stay actionless |
