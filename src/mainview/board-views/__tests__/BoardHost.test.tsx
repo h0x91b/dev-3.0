@@ -8,7 +8,8 @@ import { api } from "../../rpc";
 import { trackEvent } from "../../analytics";
 import { setHiddenControlsForTests } from "../../hidden-controls";
 import BoardHost from "../BoardHost";
-import { getAppRoot, getBoardViewRegistry, resetAppRootForTests, startBoardViews } from "../../plugins/root";
+import { getAppRoot, installIntoAppRoot, resetAppRootForTests } from "../../plugins/root";
+import { getBoardViewRegistry } from "../registry";
 import { installKanbanView } from "../kanban";
 import { installTreeView, TREE_VIEW_ID } from "../tree";
 import { installTableView } from "../table";
@@ -23,7 +24,7 @@ import { setStreamerMode } from "../../streamer-mode";
 import { isBoardMounted, resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPreviousBoardViewsForTests } from "../BoardHost";
 import { toast } from "../../toast";
-import { resetBoardPluginsForTests, setExtensionLoadForTests } from "../../plugins/runtime";
+import { resetPluginsForTests, setExtensionLoadForTests } from "../../plugins/runtime";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import { READABLE_GUTTER } from "../readable-width";
 
@@ -129,7 +130,7 @@ beforeEach(() => {
 	vi.mocked(api.request.setBoardFilterState).mockClear();
 	resetBoardViewCommandsForTests();
 	resetPreviousBoardViewsForTests();
-	resetBoardPluginsForTests();
+	resetPluginsForTests();
 	setHiddenControlsForTests([]);
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
 	vi.mocked(api.request.setBoardViewState).mockClear();
@@ -138,7 +139,7 @@ beforeEach(() => {
 
 describe("BoardHost", () => {
 	it("renders Kanban and provides ctx.board under StrictMode", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		renderHost({ strict: true });
 		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-total", "2");
 		await waitFor(() => expect(getBoardViewRegistry().list().map((v) => v.def.id)).toEqual(["builtin:kanban"]));
@@ -201,7 +202,7 @@ describe("BoardHost", () => {
 		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
 		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
 		try {
-			startBoardViews([installKanbanView, installTableView, installAttentionView]);
+			installIntoAppRoot([installKanbanView, installTableView, installAttentionView]);
 			vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", viewId));
 			vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
 			renderHost();
@@ -270,7 +271,7 @@ describe("BoardHost", () => {
 		// The Tree virtualizes its rows, which needs a measurable scroll box.
 		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
 		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
-		startBoardViews([installKanbanView, installTreeView]);
+		installIntoAppRoot([installKanbanView, installTreeView]);
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", TREE_VIEW_ID));
 		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
 		const parent = makeTask("t1", "parent", { status: "completed" });
@@ -314,7 +315,7 @@ describe("BoardHost", () => {
 	});
 
 	it("re-renders a memoised view on board/changed", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		const Count = memo(function Count() {
 			const board = useBoard();
 			return <div data-testid="count">{board.tasks().length}</div>;
@@ -328,7 +329,7 @@ describe("BoardHost", () => {
 	});
 
 	it("hides the switcher while only one view is enabled", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		renderHost();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(1));
 		expect(screen.queryByTestId("board-view-switcher")).not.toBeInTheDocument();
@@ -336,7 +337,7 @@ describe("BoardHost", () => {
 	});
 
 	it("shows the switcher for two views and saves the pick without navigating", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("ext:list");
 		renderHost();
 		const switcher = await screen.findByTestId("board-view-switcher");
@@ -350,7 +351,7 @@ describe("BoardHost", () => {
 	});
 
 	it("reports a picked extension view to telemetry only as third_party (telemetry rule 1)", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("acme-secret:roadmap");
 		vi.mocked(trackEvent).mockClear();
 		renderHost();
@@ -371,7 +372,7 @@ describe("BoardHost", () => {
 		setHiddenControlsForTests([]);
 		const { syncHiddenControlsFromGlobalSettings } = await import("../../hidden-controls");
 		syncHiddenControlsFromGlobalSettings({ simplifiedMode: true });
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("ext:list");
 		renderHost();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(2));
@@ -381,7 +382,7 @@ describe("BoardHost", () => {
 
 	it("falls back to Kanban when a view crashes, keeping the saved choice", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("ext:boom", { component: () => { throw new Error("boom"); } });
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:boom"));
 		renderHost();
@@ -392,7 +393,7 @@ describe("BoardHost", () => {
 
 	// An undeclared view id unloads the extension before it can crash, so no error boundary fires.
 	it("says which extension failed when its saved view falls back to Kanban, and links to the settings", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		setExtensionLoadForTests("gone", { state: "failed", error: "registered an undeclared board view" });
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "gone:main"));
 		const opened = vi.fn();
@@ -408,7 +409,7 @@ describe("BoardHost", () => {
 	});
 
 	it("withdraws ctx.board on unmount, which stops plugins that inject it", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		const { unmount } = renderHost();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(1));
 		unmount();
@@ -543,7 +544,7 @@ describe("BoardHost", () => {
 		const filterBar = () => document.querySelector<HTMLElement>('[data-help-id="board.filter-bar"]')!;
 
 		it("lines the bar up with Tree, and keeps px-6 for every other view", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("builtin:table");
 			registerView("builtin:tree");
 			registerView("ext:list");
@@ -564,7 +565,7 @@ describe("BoardHost", () => {
 
 	describe("board-view commands (v chord, menu, palette)", () => {
 		it("answers commands only while mounted", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			const { unmount } = renderHost();
 			expect(isBoardMounted()).toBe(true);
 			unmount();
@@ -572,7 +573,7 @@ describe("BoardHost", () => {
 		});
 
 		it("v N picks the Nth offered view; out of range does nothing", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			registerView("ext:b");
 			renderHost();
@@ -584,7 +585,7 @@ describe("BoardHost", () => {
 		});
 
 		it("v v toggles back to the previous view, and again", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			renderHost();
 			await screen.findByTestId("board-view-switcher");
@@ -600,7 +601,7 @@ describe("BoardHost", () => {
 
 		it("picks a view by id and says so when the board does not offer it", async () => {
 			const info = vi.spyOn(toast, "info").mockImplementation(() => "");
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			registerView("ext:wide-only", { supportsNarrow: false });
 			renderHost();
@@ -614,7 +615,7 @@ describe("BoardHost", () => {
 		});
 
 		it("ends the switcher with Manage views…, which opens Settings → Extensions", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			const opened = vi.fn();
 			window.addEventListener("dev3:openSettingsSection", opened);
@@ -629,7 +630,7 @@ describe("BoardHost", () => {
 		});
 
 		it("runs a command sent before the board mounted", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			runBoardViewCommand({ kind: "pick", viewId: "ext:a" });
 			renderHost();

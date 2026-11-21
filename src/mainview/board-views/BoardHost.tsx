@@ -8,7 +8,7 @@ import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
-import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "../plugins/runtime";
+import { failedExtensionForView, getPluginsSnapshot, subscribePlugins } from "../plugins/runtime";
 import LabelFilterBar from "../components/LabelFilterBar";
 import BoardVisibilitySwitch from "../components/BoardVisibilitySwitch";
 import HiddenByVisibilityNotice from "../components/HiddenByVisibilityNotice";
@@ -328,7 +328,7 @@ function BoardHost(props: BoardHostProps) {
 	const active = offered.find((view) => view.def.id === viewState.viewType)
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
 	const kanbanFallback = <BoardViewSlot ctx={root} component={KanbanView} />;
-	const plugins = useSyncExternalStore(subscribeBoardPlugins, getBoardPluginsSnapshot);
+	const plugins = useSyncExternalStore(subscribePlugins, getPluginsSnapshot);
 	const failedExtension = active?.def.id === viewState.viewType ? null : failedExtensionForView(plugins, viewState.viewType);
 
 	const { setViewType } = viewState;
