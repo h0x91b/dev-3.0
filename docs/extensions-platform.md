@@ -19,7 +19,7 @@ developer experience is a first-class part of the goal, not an afterthought.
 | 1 | Board views on Cordis: the first real proof | Done; merged to `main` via #2143 (2026-11-07) |
 | 2 | Agent DX for writing extensions | Skill shipped (`dev3-extensions`, 2026-11-07); `dev3 extension` CLI not started |
 | 3 | Reliability bar: what "works well and reliably" means before migrating more | Partly covered by phase 1; versioning policy decided |
-| 4 | Migrate dev3 surfaces to plugins, one at a time | Planned (2026-11-21): GUI on Cordis, Settings and task header first |
+| 4 | Migrate dev3 surfaces to plugins, one at a time | In progress: internal foundations done (2026-11-21); Settings and task header next |
 
 ### Phase 1: Board views on Cordis (umbrella PR #2143)
 
@@ -119,6 +119,11 @@ user's header layout; then commands, context menu, dock panels, replace slots fo
 terminal contributions). **Then the opening track** exposes slots and `ctx.*` services to third parties one kind
 at a time, each a public PR with a version bump, docs, example and skill update. The app shell and terminal
 renderer stay host-owned. Each move keeps behaviour identical.
+
+**Progress.** The internal foundations are in `src/mainview/plugins/`: the app root (`root.ts`, slots declared
+with `defineAppSlot`), the generic `SlotRegistry` (`slot-registry.ts`; board views run on it), the runtime that
+guards every slot (`runtime.ts`), `<SlotHost>` for replace slots (the board uses it) and `<SlotItems>` for
+contribution slots (no consumer yet). The public `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 ## Tech debt
 

@@ -10,7 +10,10 @@ export interface SlotItem {
 	order?: number;
 }
 
-/** A replace slot shows one item at a time; a contribution slot shows many. */
+/**
+ * A replace slot shows one item at a time; a contribution slot shows many. Metadata
+ * for hosts: the registry holds any number of items either way, `<SlotHost>` picks one.
+ */
 export type SlotKind = "replace" | "contribute";
 
 /** A registered item and the context of the plugin that registered it. */

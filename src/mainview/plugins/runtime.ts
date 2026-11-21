@@ -3,9 +3,9 @@ import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDom from "react-dom";
 import * as Cordis from "cordis";
 import type { Context, Fiber } from "cordis";
-import { extensionViewId, TOGGLEABLE_BUILTIN_VIEWS, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
+import { extensionViewId, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
 import { api } from "../rpc";
-import { getAppRoot, observeAppSlots } from "./root";
+import { getAppRoot, observeAppSlots, resetAppRootForTests } from "./root";
 import type { SlotItem, SlotRegistry } from "./slot-registry";
 
 /**
@@ -23,7 +23,6 @@ export interface BuiltinPlugin {
 
 /** `FiberState.FAILED` — an ambient const enum, so not readable under isolatedModules. */
 const FIBER_FAILED = 3;
-const TOGGLEABLE: ReadonlySet<string> = new Set(TOGGLEABLE_BUILTIN_VIEWS);
 // Persisted key; its board-era name stays, renaming it would forget every user's toggles.
 const DISABLED_BUILTINS_KEY = "dev3-disabled-board-views";
 const SKIP_EXTENSIONS_ONCE_KEY = "dev3-extensions-skip-once";
@@ -46,7 +45,8 @@ export function setExtensionImporterForTests(importer: (url: string) => Promise<
 
 let builtinPlugins: readonly BuiltinPlugin[] = [];
 const builtinFibers = new Map<string, Fiber>();
-const extensionFibers = new Map<string, { fiber: Fiber; declared: ReadonlySet<string> }>();
+/** Per extension: its fiber, and the item ids its manifest declares, per slot name. */
+const extensionFibers = new Map<string, { fiber: Fiber; declared: ReadonlyMap<string, ReadonlySet<string>> }>();
 let snapshot: RuntimeSnapshot = { overview: null, loads: {} };
 const listeners = new Set<() => void>();
 let guardInstalled = false;
@@ -73,8 +73,10 @@ export function getPluginsSnapshot(): RuntimeSnapshot {
 function readCachedDisabledBuiltins(): string[] {
 	try {
 		const raw = JSON.parse(localStorage.getItem(DISABLED_BUILTINS_KEY) ?? "[]");
-		// Same filter as the host's state file: a stale or edited cache can never disable a required built-in.
-		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && TOGGLEABLE.has(id)) : [];
+		// A stale or edited cache can only name built-ins the user may switch off, never a required one.
+		// The host filters by TOGGLEABLE_BUILTIN_VIEWS; board-views/__tests__/builtins.test.ts keeps the two in step.
+		const toggleable = new Set(builtinPlugins.filter((builtin) => !builtin.required).map((builtin) => builtin.id));
+		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && toggleable.has(id)) : [];
 	} catch {
 		return [];
 	}
@@ -151,7 +153,7 @@ function enforceDeclaredItems(): void {
 			const owner = owningExtension(item.ctx);
 			if (!owner) continue;
 			const entry = extensionFibers.get(owner);
-			if (entry && !entry.declared.has(item.def.id)) {
+			if (entry && !entry.declared.get(slot.name)?.has(item.def.id)) {
 				const error = `registered an undeclared ${slot.noun} "${item.def.id}"`;
 				console.error(`[extensions] ${owner} failed to load: ${error}`);
 				unloadExtension(owner, { state: "failed", error });
@@ -178,7 +180,8 @@ function isPlugin(value: unknown): boolean {
 
 async function loadExtension(ext: InstalledExtension): Promise<void> {
 	const manifest = ext.manifest!;
-	const declared = new Set(manifest.contributes.boardViews.map((view) => extensionViewId(manifest.id, view.id)));
+	// The manifest knows one kind today; each new kind adds its slot name here.
+	const declared = new Map([["boardViews", new Set(manifest.contributes.boardViews.map((view) => extensionViewId(manifest.id, view.id)))]]);
 	let url: string | null = null;
 	installRegistryGuard();
 	try {
@@ -253,13 +256,13 @@ export function syncPlugins(): Promise<ExtensionsOverview | null> {
 }
 
 /**
- * The display name of the extension behind `viewId` when that extension failed to
- * load, so a board showing Kanban instead can say why. Null for a built-in or a healthy one.
+ * The display name of the extension behind `itemId` when that extension failed to
+ * load, so a slot showing its fallback instead can say why. Null for a built-in or a healthy one.
  */
-export function failedExtensionForView(state: RuntimeSnapshot, viewId: string): string | null {
-	const sep = viewId.indexOf(":");
-	if (sep <= 0 || viewId.startsWith("builtin:")) return null;
-	const id = viewId.slice(0, sep);
+export function failedExtensionForItem(state: RuntimeSnapshot, itemId: string): string | null {
+	const sep = itemId.indexOf(":");
+	if (sep <= 0 || itemId.startsWith("builtin:")) return null;
+	const id = itemId.slice(0, sep);
 	if (state.loads[id]?.state !== "failed") return null;
 	return state.overview?.extensions.find((ext) => ext.id === id)?.manifest?.name ?? id;
 }
@@ -308,7 +311,9 @@ export function setExtensionLoadForTests(id: string, load: ExtensionLoadState): 
 	publish({ loads: { ...snapshot.loads, [id]: load } });
 }
 
+/** Resets the app root too: the guard watches the root's slots, so one cannot be reset without the other. */
 export function resetPluginsForTests(): void {
+	resetAppRootForTests();
 	builtinPlugins = [];
 	builtinFibers.clear();
 	guardedSlots.clear();

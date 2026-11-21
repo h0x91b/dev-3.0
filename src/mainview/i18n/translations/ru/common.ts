@@ -803,6 +803,7 @@ const common = {
 	"taskRef.previewMore_few": "ещё {count}",
 	"taskRef.previewMore_many": "ещё {count}",
 	"taskRef.previewMore_other": "ещё {count}",
+	"slots.more": "Ещё",
 };
 
 export default common;
