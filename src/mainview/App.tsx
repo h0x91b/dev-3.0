@@ -49,7 +49,7 @@ import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBan
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
-import SessionsScreen from "./components/SessionsScreen";
+import { DestinationBody } from "./destination-bodies/DestinationBody";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
@@ -4282,12 +4282,15 @@ function App() {
 				);
 			case "sessions":
 				return (
-					<SessionsScreen
+					<DestinationBody
 						// A new entry is a new scope: remount so the old scope state does not survive it.
 						key={route.scopeProjectId ?? "all"}
-						projectId={route.scopeProjectId ?? null}
-						projectName={state.projects.find((p) => p.id === route.scopeProjectId)?.name ?? null}
-						onOpenTask={openTaskFromNotification}
+						destination="sessions"
+						props={{
+							projectId: route.scopeProjectId ?? null,
+							projectName: state.projects.find((p) => p.id === route.scopeProjectId)?.name ?? null,
+							onOpenTask: openTaskFromNotification,
+						}}
 					/>
 				);
 			case "agent-traffic":

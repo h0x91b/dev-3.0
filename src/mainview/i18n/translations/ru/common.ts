@@ -804,6 +804,8 @@ const common = {
 	"taskRef.previewMore_many": "ещё {count}",
 	"taskRef.previewMore_other": "ещё {count}",
 	"slots.more": "Ещё",
+	"destinationBody.crashed": "Этот экран не загрузился, поэтому показан встроенный.",
+	"destinationBody.extensionFailed": "Расширение {name} не загрузилось, поэтому показан встроенный экран.",
 };
 
 export default common;
