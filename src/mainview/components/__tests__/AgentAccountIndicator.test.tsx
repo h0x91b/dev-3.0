@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { AgentAccountsState } from "../../../shared/agent-accounts";
+import type { AgentAccountsState, ClaudePickLaunches, ProjectClaudeBackend, ProjectClaudeLogin } from "../../../shared/agent-accounts";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../../shared/rate-limits";
 import type { AssessedAccount, AutoAccountPreview } from "../../../shared/account-routing";
 import type { CodingAgent } from "../../../shared/types";
@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			setActiveAgentAccount: vi.fn(),
 			getAgentRateLimits: vi.fn(),
 			getProjectClaudeLogin: vi.fn(),
+			getClaudePickLaunches: vi.fn(),
 			previewAutoAccount: vi.fn(),
 		},
 	},
@@ -134,8 +135,27 @@ function makeReport(snapshots: AgentRateLimitSnapshot[]): AgentRateLimitsReport 
 	return { snapshots, generatedAt: Date.now() };
 }
 
+/** The project env's backend the fake launcher reports; the server reads it from the project env. */
+let projectBackend: ProjectClaudeBackend | null = null;
+
+/** A stand-in for the launcher's resolver, read off the mocked accounts and project login without
+ *  counting calls: an account signed in to the project's folder runs there, and no pick keeps the env. */
+async function fakePickLaunches(): Promise<ClaudePickLaunches> {
+	const state = (await mockedApi.request.listAgentAccounts.getMockImplementation()?.()) as AgentAccountsState;
+	const login = (await mockedApi.request.getProjectClaudeLogin.getMockImplementation()?.({ projectId: "p1" })) as ProjectClaudeLogin;
+	const pinned = !!login?.configDir;
+	const accounts: ClaudePickLaunches["accounts"] = {};
+	for (const account of state.claude.accounts) {
+		const here = pinned && account.auth !== "api" && !!account.identity?.accountId && account.identity.accountId === login.identity?.accountId;
+		accounts[account.id] = { projectFolder: here, backend: null };
+	}
+	return { none: { projectFolder: pinned, backend: pinned ? projectBackend : null }, accounts };
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
+	projectBackend = null;
+	mockedApi.request.getClaudePickLaunches.mockImplementation(fakePickLaunches);
 	mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
 	mockedApi.request.setActiveAgentAccount.mockResolvedValue(undefined as any);
 	mockedApi.request.getAgentRateLimits.mockResolvedValue(makeReport([]));
@@ -944,7 +964,7 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 
 	it("keeps the folder's account as its own row when the project env runs Claude on Bedrock", async () => {
 		const { here } = projectFolderAccounts();
-		mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ ...projectLogin, backend: "bedrock" });
+		projectBackend = "bedrock";
 		const onSelect = vi.fn();
 		renderIndicator(claudeAgent, { projectId: "p1", onSelect });
 		const trigger = await screen.findByTestId("agent-account-trigger");
@@ -1008,13 +1028,13 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 
 	it("names a project env that only sets a gateway URL or a model without claiming credentials", async () => {
 		projectFolderAccounts();
-		mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ ...projectLogin, backend: "gateway" });
+		projectBackend = "gateway";
 		const view = renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
 		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
 		expect((await projectRowEl()).textContent).toContain("Runs through the gateway URL from the project settings");
 		expect(screen.getByText("Project account")).toBeTruthy();
 		view.unmount();
-		mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ ...projectLogin, backend: "model" });
+		projectBackend = "model";
 		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
 		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
 		expect((await projectRowEl()).textContent).toContain("Uses the model set in the project settings");
@@ -1036,6 +1056,85 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		const accountRow = screen.getByText("Project account").closest("[role='menuitemradio']") as HTMLElement;
 		await userEvent.click(accountRow);
 		expect(onChange).toHaveBeenLastCalledWith(here.id);
+	});
+
+	it("asks the launcher about the resumed conversation, and says the account runs in its own folder when it holds it", async () => {
+		const { here } = projectFolderAccounts();
+		mockedApi.request.getClaudePickLaunches.mockImplementation(async () => {
+			const launches = await fakePickLaunches();
+			return { ...launches, accounts: { ...launches.accounts, [here.id]: { projectFolder: false, backend: null } } };
+		});
+		render(
+			<I18nProvider>
+				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude" }]} agents={[claudeAgent]} value={undefined} onChange={vi.fn()} projectId="p1" taskId="t1" />
+			</I18nProvider>,
+		);
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		const accountRow = screen.getByText("Project account").closest("[role='menuitemradio']") as HTMLElement;
+		await waitFor(() => expect(accountRow.textContent).toContain("Runs in its own Claude folder"));
+		expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", resume: true });
+	});
+
+	it("names no folder for an account the resume would refuse to switch to", async () => {
+		const { here } = projectFolderAccounts();
+		mockedApi.request.getClaudePickLaunches.mockImplementation(async () => {
+			const launches = await fakePickLaunches();
+			const { [here.id]: _refused, ...accounts } = launches.accounts;
+			return { ...launches, accounts };
+		});
+		render(
+			<I18nProvider>
+				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude" }]} agents={[claudeAgent]} value={undefined} onChange={vi.fn()} projectId="p1" taskId="t1" />
+			</I18nProvider>,
+		);
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		await waitFor(() => expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalled());
+		const accountRow = screen.getByText("Project account").closest("[role='menuitemradio']") as HTMLElement;
+		expect(accountRow.textContent).not.toContain("Claude folder");
+	});
+
+	it("asks once when the project login answers before the account list", async () => {
+		projectFolderAccounts();
+		const state = await mockedApi.request.listAgentAccounts.getMockImplementation()?.();
+		let release: () => void = () => {};
+		const listed = new Promise<void>((resolve) => { release = resolve; });
+		mockedApi.request.listAgentAccounts.mockImplementation(async () => { await listed; return state as AgentAccountsState; });
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
+		release();
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		await waitFor(() => expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalled());
+		expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalledTimes(1);
+	});
+
+	it("claims no folder on a resume it cannot name the task of", async () => {
+		projectFolderAccounts();
+		render(
+			<I18nProvider>
+				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude" }]} agents={[claudeAgent]} value={undefined} onChange={vi.fn()} projectId="p1" />
+			</I18nProvider>,
+		);
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		expect(screen.queryByText(/Claude folder/)).toBeNull();
+		expect(mockedApi.request.getClaudePickLaunches).not.toHaveBeenCalled();
+	});
+
+	it("does not fold an account the launcher keeps out of the project folder, even on the folder's login", async () => {
+		const { here } = projectFolderAccounts();
+		mockedApi.request.getClaudePickLaunches.mockImplementation(async () => {
+			const launches = await fakePickLaunches();
+			return { ...launches, accounts: { ...launches.accounts, [here.id]: { projectFolder: false, backend: null } } };
+		});
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		const accountRow = (await screen.findByText("Project account")).closest("[role='menuitemradio']") as HTMLElement;
+		await waitFor(() => expect(accountRow.textContent).toContain("Runs in its own Claude folder"));
+		expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalledWith({ projectId: "p1" });
 	});
 
 	it("keeps ~/.claude when it is signed in to someone else", async () => {

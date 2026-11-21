@@ -27,7 +27,7 @@ vi.mock("../agent-transcripts", () => ({
 		panes.map((p) => ({ sessionId: p.sessionId, substituted: false, startFresh: false, verified: true }))),
 	claudeConfigDirHasSession: vi.fn(() => true),
 }));
-vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../ops-worktree", () => ({ resolveLaunchProject: vi.fn(async (p: Project) => p), rootProjectFor: vi.fn((p: Project) => p) }));
 vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: {} }));
@@ -63,7 +63,8 @@ import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { launchTaskPty } from "../rpc-handlers/tmux-pty/task-launch";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { findTaskAcrossProjects, wakeIfHibernated } from "../rpc-handlers/tmux-pty/task-state";
-import { resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
+import { claudeResumePickTarget, resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
+import { log } from "../rpc-handlers/shared-pure";
 import { resolveResumableSessionIds } from "../agent-transcripts";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 
@@ -122,6 +123,21 @@ describe("resume clears the agent-exited mark", () => {
 		vi.mocked(data.updateTaskWith).mockRejectedValue(new Error("disk full"));
 		await expect(resumeTaskSession("t1")).resolves.toMatchObject({ kind: "resumed" });
 		expect(task.agentExitedAt).toBe(FLAG);
+	});
+});
+
+describe("resume of a foreign-code task", () => {
+	const launchOptions = async (extra: Partial<Task>) => {
+		vi.mocked(agents.resolveCommandForAgent).mockClear();
+		arrange([codexPane, { ...claudePane, main: false, sessionId: "s-extra" }], extra);
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId: "s-codex", codexHome: "/codex-home" }]]) as never);
+		await resumeTaskSession("t1");
+		return vi.mocked(agents.resolveCommandForAgent).mock.calls[0][3];
+	};
+
+	it("tells the launch so, and leaves it out for an ordinary task", async () => {
+		expect(await launchOptions({ foreignCode: true })).toMatchObject({ foreignCode: true });
+		expect(await launchOptions({})).not.toHaveProperty("foreignCode");
 	});
 });
 
@@ -249,5 +265,32 @@ describe("resume with an account override", () => {
 		await expect(resumeTaskSession("t1", { accountId: "acct-new" })).rejects.toThrow("already running");
 		release();
 		await first;
+	});
+});
+
+describe("claudeResumePickTarget", () => {
+	it("names the conversation the resume heals to, not the stale saved one, and logs nothing", () => {
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([
+			{ sessionId: "s-codex", substituted: false, startFresh: false, verified: true },
+			{ sessionId: "s-newest", substituted: true, startFresh: false, verified: true },
+		] as never);
+		const task = arrange([codexPane, { ...claudePane, main: false, sessionId: "s-stale" }]);
+		expect(claudeResumePickTarget(task)).toEqual({ sessionId: "s-newest", agentLatest: false, savedAccountId: "acct-old" });
+		expect(log.warn).not.toHaveBeenCalled();
+	});
+
+	it("reports a pane the harness resumes with --continue, and the account it ran on", () => {
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }] as never);
+		const task = arrange([{ ...claudePane, sessionId: null, accountId: undefined }]);
+		expect(claudeResumePickTarget(task)).toEqual({ sessionId: null, agentLatest: true, savedAccountId: undefined });
+	});
+
+	it("names no conversation for a pane that starts over", () => {
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: true, verified: false }] as never);
+		expect(claudeResumePickTarget(arrange([claudePane]))).toEqual({ sessionId: null, agentLatest: false, savedAccountId: "acct-old" });
+	});
+
+	it("is null when no saved pane runs Claude", () => {
+		expect(claudeResumePickTarget(arrange([codexPane]))).toBeNull();
 	});
 });

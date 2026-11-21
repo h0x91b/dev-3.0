@@ -10,6 +10,7 @@ import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 import { type HookCliDialect, hookCliDialect } from "./dev3-cli-path";
 import { symlinkOnWritePath } from "./symlink-write-guard";
+import { quoteIfUnsafe } from "./agent-adapters/shell";
 import { resolveDev3Home } from "./dev3-home";
 
 /** Dialect of the machine generating the hooks (the frozen POSIX string on macOS/Linux). */
@@ -610,6 +611,91 @@ function buildUnguardedClaudeHooks(
 }
 
 /**
+ * The Antigravity CLI (`agy`) lifecycle events dev3 subscribes to. agy has no
+ * hook for a tool-approval wait and none for a session end, so the board learns
+ * only that a session started, that the model is being invoked, and that a turn
+ * stopped.
+ */
+export const AGY_HOOK_EVENTS = ["SessionStart", "PreInvocation", "Stop"] as const;
+export type AgyHookEvent = typeof AGY_HOOK_EVENTS[number];
+
+/** The key of dev3's entry in agy's `hooks.json`; every other key belongs to the user. */
+export const AGY_HOOK_NAME = "dev3";
+
+/** agy reads `hooks.json` from a customization root; the worktree's own one is `.agents/`. */
+export const AGY_CONFIG_DIR = ".agents";
+
+/**
+ * How agy's commands spell the dev3 CLI. agy expands `~` itself, and a launcher
+ * that overrides HOME turns the frozen `~/.dev3.0/bin/dev3` into a path under the
+ * launcher's private home, where dev3 never runs. So on POSIX the backend passes
+ * the ACCOUNT home (not `$HOME`, not a redirected `DEV3_HOME`: the machine-wide CLI
+ * lives only at `<account home>/.dev3.0/bin/dev3`) and the CLI is spelled as that
+ * absolute path. Windows keeps its absolute exe path; `POSIX_DEV3_CLI` stays as it
+ * is for every other agent.
+ */
+export function agyHookDialect(accountHome: string): HookCliDialect {
+	if (!DEFAULT_DIALECT.posixShell) return DEFAULT_DIALECT;
+	return { cli: quoteIfUnsafe(`${accountHome.replace(/\/+$/, "")}/.dev3.0/bin/dev3`), posixShell: true };
+}
+
+/** `sh -c '<script>'`, with a quote inside the script (a quoted CLI path) escaped. */
+function posixShellC(script: string): string {
+	return `sh -c '${script.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The command dev3 declares for one agy hook.
+ *
+ * agy parses the hook's stdout as JSON, so the env guard answers `{}` instead of
+ * printing nothing; without DEV3_TASK_ID (an agy the user started by hand in a
+ * dev3 worktree) no dev3 process is spawned at all. agy runs the command with
+ * `sh -c` (`cmd /c` on Windows, where a POSIX guard is not valid, so the bare
+ * command stays: `dev3 hook agy` answers `{}` and exits 0 outside a task).
+ */
+export function agyHookCommand(event: AgyHookEvent, dialect: HookCliDialect = DEFAULT_DIALECT): string {
+	const run = `${dialect.cli} hook agy ${event}`;
+	if (!dialect.posixShell) return run;
+	return posixShellC(`[ -z "$${CODEX_HOOK_SESSION_ENV}" ] && echo {} || exec ${run}`);
+}
+
+/**
+ * The statusLine command agy runs on every refresh (passed through the per-session
+ * `--settings`). It prints nothing, so agy's own line stays; `--no-limits` keeps the
+ * quota out of the dump while rate-limit tracking is off. The guard keeps it inert
+ * outside a dev3 task, like the hook commands.
+ */
+export function agyStatusLineCommand(options?: { trackLimits?: boolean; dialect?: HookCliDialect }): string {
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
+	const run = `${dialect.cli} statusline agy${options?.trackLimits === false ? " --no-limits" : ""}`;
+	if (!dialect.posixShell) return run;
+	return posixShellC(`[ -z "$${CODEX_HOOK_SESSION_ENV}" ] || exec ${run}`);
+}
+
+/** The value of dev3's named entry in agy's `hooks.json`. */
+export function buildAgyHooks(options?: { dialect?: HookCliDialect }): Record<string, unknown> {
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
+	const handler = (event: AgyHookEvent, timeout: number) => ({
+		type: "command",
+		command: agyHookCommand(event, dialect),
+		timeout,
+	});
+	return {
+		SessionStart: [handler("SessionStart", 10)],
+		PreInvocation: [handler("PreInvocation", 5)],
+		Stop: [handler("Stop", 5)],
+	};
+}
+
+/** Set dev3's named entry and keep every other hook the user has. */
+export function mergeAgyHooks(
+	existing: Record<string, unknown>,
+	options?: { dialect?: HookCliDialect },
+): Record<string, unknown> {
+	return { ...asRecord(existing), [AGY_HOOK_NAME]: buildAgyHooks(options) };
+}
+
+/**
  * Build the Codex hooks object for a given task.
  *
  * All entries call one stable handler from a worktree-local hooks file. The
@@ -1018,4 +1104,37 @@ export function writeCodexHooks(worktreePath: string): string | null {
 	if (JSON.stringify(updated) === JSON.stringify(settings)) return null;
 	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 	return null;
+}
+
+export interface AgyHooksWriteResult {
+	written: boolean;
+	skippedSymlink: string | null;
+	/** The worktree already has a `.agents/hooks.json` that is not a JSON object; it is left alone. */
+	skippedUnreadable: boolean;
+}
+
+/**
+ * Merge dev3's entry into the worktree's `.agents/hooks.json`: agy walks up from
+ * its cwd, so this is the one hook source a launch under an overridden HOME still
+ * sees. Every other hook in the file stays; a file that does not parse is never
+ * replaced.
+ */
+export function writeAgyHooks(worktreePath: string, options?: { dialect?: HookCliDialect }): AgyHooksWriteResult {
+	const dir = join(worktreePath, AGY_CONFIG_DIR);
+	const hooksPath = join(dir, "hooks.json");
+	const skippedSymlink = symlinkOnWritePath(worktreePath, hooksPath);
+	if (skippedSymlink) return { written: false, skippedSymlink, skippedUnreadable: false };
+
+	let previous: Record<string, unknown> = {};
+	if (existsSync(hooksPath)) {
+		try {
+			const parsed: unknown = JSON.parse(readFileSync(hooksPath, "utf-8").replace(/^﻿/, ""));
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+			previous = parsed as Record<string, unknown>;
+		} catch {
+			return { written: false, skippedSymlink: null, skippedUnreadable: true };
+		}
+	}
+	mkdirSync(dir, { recursive: true });
+	return { written: writeIfChanged(hooksPath, mergeAgyHooks(previous, options), previous), skippedSymlink: null, skippedUnreadable: false };
 }

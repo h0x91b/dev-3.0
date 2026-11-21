@@ -16,11 +16,13 @@ export async function handleAgentExitedHook(
 		const taskId = args.flags.task || context?.taskId;
 		const sessionId = args.flags.session;
 		const exitCode = Number.parseInt(args.positional[0] ?? "", 10);
+		const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim();
 		if (!socketPath || !taskId || !sessionId || taskId === "true" || sessionId === "true") return;
 		await sendRequest(socketPath, "agent.exited", {
 			taskId,
 			...(context?.projectId ? { projectId: context.projectId } : {}),
 			sessionId,
+			...(paneId ? { paneId } : {}),
 			exitCode: Number.isFinite(exitCode) ? exitCode : null,
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 	} catch {

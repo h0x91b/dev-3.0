@@ -8,7 +8,8 @@ import { api } from "../../rpc";
 import { trackEvent } from "../../analytics";
 import { setHiddenControlsForTests } from "../../hidden-controls";
 import BoardHost from "../BoardHost";
-import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from "../root";
+import { getAppRoot, installIntoAppRoot, resetAppRootForTests } from "../../plugins/root";
+import { getBoardViewRegistry } from "../registry";
 import { installKanbanView } from "../kanban";
 import { installTreeView, TREE_VIEW_ID } from "../tree";
 import { installTableView } from "../table";
@@ -23,7 +24,7 @@ import { setStreamerMode } from "../../streamer-mode";
 import { isBoardMounted, resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPreviousBoardViewsForTests } from "../BoardHost";
 import { toast } from "../../toast";
-import { resetBoardPluginsForTests, setExtensionLoadForTests } from "../plugins";
+import { resetPluginsForTests, setExtensionLoadForTests } from "../../plugins/runtime";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import { READABLE_GUTTER } from "../readable-width";
 
@@ -107,7 +108,7 @@ function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispat
 }
 
 function registerView(id: string, opts: { supportsNarrow?: boolean; component?: React.ComponentType<{ ctx: Context }> } = {}) {
-	getBoardRoot().plugin({
+	getAppRoot().plugin({
 		name: id,
 		inject: ["board", "boardViews"],
 		apply(ctx: Context) {
@@ -122,14 +123,14 @@ function registerView(id: string, opts: { supportsNarrow?: boolean; component?: 
 }
 
 beforeEach(() => {
-	resetBoardRootForTests();
+	resetAppRootForTests();
 	resetBoardViewStateCacheForTests();
 	resetTaskVisibilityForTests();
 	vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "all" });
 	vi.mocked(api.request.setBoardFilterState).mockClear();
 	resetBoardViewCommandsForTests();
 	resetPreviousBoardViewsForTests();
-	resetBoardPluginsForTests();
+	resetPluginsForTests();
 	setHiddenControlsForTests([]);
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
 	vi.mocked(api.request.setBoardViewState).mockClear();
@@ -138,12 +139,12 @@ beforeEach(() => {
 
 describe("BoardHost", () => {
 	it("renders Kanban and provides ctx.board under StrictMode", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		renderHost({ strict: true });
 		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-total", "2");
 		await waitFor(() => expect(getBoardViewRegistry().list().map((v) => v.def.id)).toEqual(["builtin:kanban"]));
-		expect(getBoardRoot().board.scope).toEqual({ kind: "project", id: "p1", projectIds: ["p1"] });
-		expect(getBoardRoot().board.tasks().map((t) => t.id)).toEqual(["t1", "t2"]);
+		expect(getAppRoot().board.scope).toEqual({ kind: "project", id: "p1", projectIds: ["p1"] });
+		expect(getAppRoot().board.tasks().map((t) => t.id)).toEqual(["t1", "t2"]);
 	});
 
 	it("renders Kanban before any plugin has registered, once the saved visibility has settled", async () => {
@@ -157,8 +158,8 @@ describe("BoardHost", () => {
 		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-total", "2");
-		expect(getBoardRoot().board.query).toBe("beta");
-		expect(getBoardRoot().board.matches(tasks[0], "alpha")).toBe(true);
+		expect(getAppRoot().board.query).toBe("beta");
+		expect(getAppRoot().board.matches(tasks[0], "alpha")).toBe(true);
 	});
 
 	it("hides completed and cancelled tasks from tasks() under Active, keeping scopeTasks() whole", async () => {
@@ -176,9 +177,9 @@ describe("BoardHost", () => {
 	it("exposes the Active | All choice through ctx.board.visibility()", async () => {
 		renderHost();
 		await screen.findByTestId("kanban");
-		expect(getBoardRoot().board.visibility()).toBe("all");
+		expect(getAppRoot().board.visibility()).toBe("all");
 		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
-		expect(getBoardRoot().board.visibility()).toBe("active");
+		expect(getAppRoot().board.visibility()).toBe("active");
 	});
 
 	it("tells how many finished tasks a search hides under Active, and Show all reveals them", async () => {
@@ -201,14 +202,14 @@ describe("BoardHost", () => {
 		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
 		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
 		try {
-			startBoardViews([installKanbanView, installTableView, installAttentionView]);
+			installIntoAppRoot([installKanbanView, installTableView, installAttentionView]);
 			vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", viewId));
 			vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
 			renderHost();
 			await waitFor(() => expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true"));
-			await waitFor(() => expect(getBoardRoot().board.visibility()).toBe("active"));
+			await waitFor(() => expect(getAppRoot().board.visibility()).toBe("active"));
 			fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
-			await waitFor(() => expect(getBoardRoot().board.query).toBe("beta"));
+			await waitFor(() => expect(getAppRoot().board.query).toBe("beta"));
 			if (expected) expect(await screen.findByTestId("hidden-by-visibility-notice")).toBeInTheDocument();
 			else {
 				await screen.findByTestId("attention-view");
@@ -270,7 +271,7 @@ describe("BoardHost", () => {
 		// The Tree virtualizes its rows, which needs a measurable scroll box.
 		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
 		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
-		startBoardViews([installKanbanView, installTreeView]);
+		installIntoAppRoot([installKanbanView, installTreeView]);
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", TREE_VIEW_ID));
 		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
 		const parent = makeTask("t1", "parent", { status: "completed" });
@@ -314,7 +315,7 @@ describe("BoardHost", () => {
 	});
 
 	it("re-renders a memoised view on board/changed", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		const Count = memo(function Count() {
 			const board = useBoard();
 			return <div data-testid="count">{board.tasks().length}</div>;
@@ -328,7 +329,7 @@ describe("BoardHost", () => {
 	});
 
 	it("hides the switcher while only one view is enabled", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		renderHost();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(1));
 		expect(screen.queryByTestId("board-view-switcher")).not.toBeInTheDocument();
@@ -336,7 +337,7 @@ describe("BoardHost", () => {
 	});
 
 	it("shows the switcher for two views and saves the pick without navigating", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("ext:list");
 		renderHost();
 		const switcher = await screen.findByTestId("board-view-switcher");
@@ -350,7 +351,7 @@ describe("BoardHost", () => {
 	});
 
 	it("reports a picked extension view to telemetry only as third_party (telemetry rule 1)", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("acme-secret:roadmap");
 		vi.mocked(trackEvent).mockClear();
 		renderHost();
@@ -371,7 +372,7 @@ describe("BoardHost", () => {
 		setHiddenControlsForTests([]);
 		const { syncHiddenControlsFromGlobalSettings } = await import("../../hidden-controls");
 		syncHiddenControlsFromGlobalSettings({ simplifiedMode: true });
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("ext:list");
 		renderHost();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(2));
@@ -381,7 +382,7 @@ describe("BoardHost", () => {
 
 	it("falls back to Kanban when a view crashes, keeping the saved choice", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		registerView("ext:boom", { component: () => { throw new Error("boom"); } });
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:boom"));
 		renderHost();
@@ -392,7 +393,7 @@ describe("BoardHost", () => {
 
 	// An undeclared view id unloads the extension before it can crash, so no error boundary fires.
 	it("says which extension failed when its saved view falls back to Kanban, and links to the settings", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		setExtensionLoadForTests("gone", { state: "failed", error: "registered an undeclared board view" });
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "gone:main"));
 		const opened = vi.fn();
@@ -408,12 +409,12 @@ describe("BoardHost", () => {
 	});
 
 	it("withdraws ctx.board on unmount, which stops plugins that inject it", async () => {
-		startBoardViews([installKanbanView]);
+		installIntoAppRoot([installKanbanView]);
 		const { unmount } = renderHost();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(1));
 		unmount();
 		await waitFor(() => expect(getBoardViewRegistry().list()).toHaveLength(0));
-		expect(getBoardRoot().get("board")).toBeUndefined();
+		expect(getAppRoot().get("board")).toBeUndefined();
 	});
 
 	it("creates a label project-wide and hands it back; a failure rejects", async () => {
@@ -421,19 +422,19 @@ describe("BoardHost", () => {
 		renderHost({ dispatch });
 		const label = { id: "l1", name: "Ops", color: "#fff" };
 		vi.mocked(api.request.createLabel).mockResolvedValueOnce(label);
-		await expect(getBoardRoot().board.createLabel("p1", "Ops")).resolves.toEqual(label);
+		await expect(getAppRoot().board.createLabel("p1", "Ops")).resolves.toEqual(label);
 		expect(api.request.createLabel).toHaveBeenCalledWith({ projectId: "p1", name: "Ops" });
 		expect(dispatch).toHaveBeenCalledWith({ type: "updateProject", project: { ...project, labels: [label] } });
 
 		vi.mocked(api.request.createLabel).mockRejectedValueOnce(new Error("nope"));
-		await expect(getBoardRoot().board.createLabel("p1", "Ops")).rejects.toThrow("nope");
-		await expect(getBoardRoot().board.createLabel("elsewhere", "Ops")).rejects.toThrow(/not on this board/);
+		await expect(getAppRoot().board.createLabel("p1", "Ops")).rejects.toThrow("nope");
+		await expect(getAppRoot().board.createLabel("elsewhere", "Ops")).rejects.toThrow(/not on this board/);
 	});
 	it("lists the config's lanes by default and adds occupied hidden built-ins on request", () => {
 		const ops: Project = { ...project, kind: "virtual" };
 		renderHost({ project: ops, tasks: [makeTask("t1", "alpha", { status: "review-by-ai" })] });
 		const statuses = (opts?: { includeOccupied?: boolean }) =>
-			getBoardRoot().board.columns(opts).flatMap((slot) => (slot.type === "builtin" ? [slot.status] : []));
+			getAppRoot().board.columns(opts).flatMap((slot) => (slot.type === "builtin" ? [slot.status] : []));
 		expect(statuses()).not.toContain("review-by-ai");
 		expect(statuses({ includeOccupied: true })).toContain("review-by-ai");
 	});
@@ -445,17 +446,17 @@ describe("BoardHost", () => {
 		const secret = { ...project, id: "p9", name: "Secret", sensitive: true };
 		const parent = { id: "x1", projectId: "p9", projectName: "Secret", seq: 77, variantIndex: null, status: "in-progress", title: "Hidden plan" };
 		renderHost({ allProjects: [project, secret] });
-		expect(getBoardRoot().board.lineageNode("x1")).toBeNull();
+		expect(getAppRoot().board.lineageNode("x1")).toBeNull();
 		await waitFor(() => expect(resolveIndex).toBeTypeOf("function"));
-		expect(getBoardRoot().board.lineageNode("x1")).toBeNull();
+		expect(getAppRoot().board.lineageNode("x1")).toBeNull();
 		await act(async () => {
 			resolveIndex!({ nodes: [parent], edges: [] });
 		});
-		await waitFor(() => expect(getBoardRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, title: "Hidden plan" }));
-		expect(getBoardRoot().board.lineageNode("gone")).toBe("deleted");
+		await waitFor(() => expect(getAppRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, title: "Hidden plan" }));
+		expect(getAppRoot().board.lineageNode("gone")).toBe("deleted");
 		act(() => setStreamerMode(true));
 		try {
-			expect(getBoardRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, projectName: "Secret", title: null });
+			expect(getAppRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, projectName: "Secret", title: null });
 		} finally {
 			act(() => setStreamerMode(false));
 		}
@@ -469,7 +470,7 @@ describe("BoardHost", () => {
 		];
 		vi.mocked(api.request.getEpics).mockResolvedValueOnce({ version: 1, epics });
 		renderHost();
-		await waitFor(() => expect(getBoardRoot().board.epics()).toEqual(epics));
+		await waitFor(() => expect(getAppRoot().board.epics()).toEqual(epics));
 	});
 
 	it("hands views the real task card through ctx.board.TaskCard", async () => {
@@ -489,7 +490,7 @@ describe("BoardHost", () => {
 		renderHost({ dispatch });
 		const moving = vi.fn();
 		vi.mocked(api.request.moveTaskToCustomColumn).mockRejectedValueOnce(new Error("nope"));
-		await act(() => getBoardRoot().board.moveTask("t1", { customColumnId: "col-a" }, { onMovingChange: moving }));
+		await act(() => getAppRoot().board.moveTask("t1", { customColumnId: "col-a" }, { onMovingChange: moving }));
 		expect(dispatch).toHaveBeenNthCalledWith(1, { type: "updateTask", task: { ...tasks[0], customColumnId: "col-a" } });
 		expect(dispatch).toHaveBeenLastCalledWith({ type: "updateTask", task: tasks[0] });
 		expect(moving.mock.calls).toEqual([[true], [false]]);
@@ -498,24 +499,24 @@ describe("BoardHost", () => {
 	it("reorders a project board's columns and refuses column edits on a space board", async () => {
 		const dispatch = vi.fn();
 		const { unmount } = renderHost({ dispatch });
-		await act(() => getBoardRoot().board.reorderColumns(["completed", "todo"]));
+		await act(() => getAppRoot().board.reorderColumns(["completed", "todo"]));
 		expect(api.request.reorderColumns).toHaveBeenCalledWith({ projectId: "p1", columnOrder: ["completed", "todo"] });
 		expect(dispatch).toHaveBeenCalledWith({ type: "updateProject", project: { ...project, customColumns: [], columnOrder: ["completed", "todo"] } });
 		unmount();
 
 		const space = { id: "s1", name: "Space", projectIds: ["p1"] } as unknown as Space;
 		renderHost({ space });
-		await expect(getBoardRoot().board.reorderColumns(["todo"])).rejects.toThrow(/space board/);
-		await expect(getBoardRoot().board.createColumn()).rejects.toThrow(/space board/);
+		await expect(getAppRoot().board.reorderColumns(["todo"])).rejects.toThrow(/space board/);
+		await expect(getAppRoot().board.createColumn()).rejects.toThrow(/space board/);
 	});
 
 	it("follows the settings push for the sort order", async () => {
 		renderHost();
-		await waitFor(() => expect(getBoardRoot().board.preferences().taskSortOrder).toBe("oldest-first"));
+		await waitFor(() => expect(getAppRoot().board.preferences().taskSortOrder).toBe("oldest-first"));
 		act(() => {
 			window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", { detail: { taskSortOrder: "newest-first", tipsDisabled: true } }));
 		});
-		expect(getBoardRoot().board.preferences()).toEqual({ taskSortOrder: "newest-first", tipsDisabled: true });
+		expect(getAppRoot().board.preferences()).toEqual({ taskSortOrder: "newest-first", tipsDisabled: true });
 	});
 	it("creates a column once even when the project push lands before the RPC returns", async () => {
 		const dispatch = vi.fn();
@@ -531,7 +532,7 @@ describe("BoardHost", () => {
 			act(() => rerender(host(pushed)));
 			return column;
 		});
-		await expect(getBoardRoot().board.createColumn()).resolves.toBe("col-new");
+		await expect(getAppRoot().board.createColumn()).resolves.toBe("col-new");
 		const reorders = vi.mocked(api.request.reorderColumns).mock.calls;
 		const order: string[] = reorders[reorders.length - 1][0].columnOrder;
 		expect(order.filter((id) => id === "col-new")).toHaveLength(1);
@@ -543,7 +544,7 @@ describe("BoardHost", () => {
 		const filterBar = () => document.querySelector<HTMLElement>('[data-help-id="board.filter-bar"]')!;
 
 		it("lines the bar up with Tree, and keeps px-6 for every other view", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("builtin:table");
 			registerView("builtin:tree");
 			registerView("ext:list");
@@ -564,7 +565,7 @@ describe("BoardHost", () => {
 
 	describe("board-view commands (v chord, menu, palette)", () => {
 		it("answers commands only while mounted", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			const { unmount } = renderHost();
 			expect(isBoardMounted()).toBe(true);
 			unmount();
@@ -572,7 +573,7 @@ describe("BoardHost", () => {
 		});
 
 		it("v N picks the Nth offered view; out of range does nothing", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			registerView("ext:b");
 			renderHost();
@@ -584,7 +585,7 @@ describe("BoardHost", () => {
 		});
 
 		it("v v toggles back to the previous view, and again", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			renderHost();
 			await screen.findByTestId("board-view-switcher");
@@ -600,7 +601,7 @@ describe("BoardHost", () => {
 
 		it("picks a view by id and says so when the board does not offer it", async () => {
 			const info = vi.spyOn(toast, "info").mockImplementation(() => "");
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			registerView("ext:wide-only", { supportsNarrow: false });
 			renderHost();
@@ -614,7 +615,7 @@ describe("BoardHost", () => {
 		});
 
 		it("ends the switcher with Manage views…, which opens Settings → Extensions", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			const opened = vi.fn();
 			window.addEventListener("dev3:openSettingsSection", opened);
@@ -629,7 +630,7 @@ describe("BoardHost", () => {
 		});
 
 		it("runs a command sent before the board mounted", async () => {
-			startBoardViews([installKanbanView]);
+			installIntoAppRoot([installKanbanView]);
 			registerView("ext:a");
 			runBoardViewCommand({ kind: "pick", viewId: "ext:a" });
 			renderHost();

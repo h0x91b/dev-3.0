@@ -332,7 +332,7 @@ The project board is not one component: `BoardHost` (`src/mainview/board-views/`
 
 - **Kanban is the fallback view**: always on, cannot be disabled, and the board falls back to it when another view fails. The old `KanbanBoard` is gone; a change to how cards behave goes through `BoardCardBindings` (`BoardTaskCard.tsx`) and the filter through `useBoardFilter`, never through props threaded into `KanbanColumn`.
 - **`ctx.board` is a public API.** Third-party extensions are written against it, so a breaking change to `BoardService` or `BoardViewDef` must bump `EXTENSION_API_VERSION` (`src/shared/extensions.ts`) and update `docs/extensions.md` plus `examples/board-view-extension/` in the same commit.
-- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/board-views/plugins.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
+- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/plugins/runtime.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
 
 ### Renderer asset loading (dev-channel Vite fallback)
 

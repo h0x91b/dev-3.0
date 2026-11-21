@@ -2,22 +2,33 @@ import { waitFor } from "@testing-library/react";
 import type { Context } from "cordis";
 import type { ExtensionsOverview, InstalledExtension } from "../../../shared/extensions";
 import { api } from "../../rpc";
-import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests } from "../root";
+import { defineAppSlot, getAppRoot, resetAppRootForTests } from "../root";
+import { SlotRegistry } from "../slot-registry";
+import { getBoardViewRegistry } from "../../board-views/registry";
 import {
-	applyBuiltinBoardViews,
+	applyBuiltinPlugins,
 	failedExtensionForView,
-	getBoardPluginsSnapshot,
-	resetBoardPluginsForTests,
+	getPluginsSnapshot,
+	resetPluginsForTests,
 	setExtensionImporterForTests,
 	restartWithExtensionsOff,
-	startBoardPlugins,
-	syncBoardPlugins,
-} from "../plugins";
-import type { BuiltinBoardView } from "../builtins";
+	startPlugins,
+	syncPlugins,
+} from "../runtime";
+import type { BuiltinBoardView } from "../../board-views/builtins";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { listExtensions: vi.fn(), getExtensionSource: vi.fn(), setExtensionsEnabled: vi.fn() } },
 }));
+
+declare module "cordis" {
+	interface Context {
+		runtimeTestSlot: SlotRegistry<{ id: string }>;
+	}
+}
+
+// A second slot, so the guard is shown to watch every slot rather than only board views.
+const getTestSlot = defineAppSlot((root) => new SlotRegistry<{ id: string }>(root, "runtimeTestSlot", { kind: "contribute", noun: "test item" }));
 
 function viewPlugin(name: string, ids: string[]) {
 	return {
@@ -30,7 +41,7 @@ function viewPlugin(name: string, ids: string[]) {
 }
 
 const builtins: BuiltinBoardView[] = [
-	{ id: "builtin:kanban", labelKey: "boardView.kanban", install: (ctx) => ctx.plugin(viewPlugin("builtin:kanban", ["builtin:kanban"])) },
+	{ id: "builtin:kanban", labelKey: "boardView.kanban", required: true, install: (ctx) => ctx.plugin(viewPlugin("builtin:kanban", ["builtin:kanban"])) },
 	{ id: "builtin:table", labelKey: "boardView.table", install: (ctx) => ctx.plugin(viewPlugin("builtin:table", ["builtin:table"])) },
 ];
 
@@ -57,8 +68,8 @@ function ids(): string[] {
 }
 
 beforeEach(() => {
-	resetBoardRootForTests();
-	resetBoardPluginsForTests();
+	resetAppRootForTests();
+	resetPluginsForTests();
 	modules = {};
 	vi.mocked(api.request.getExtensionSource).mockClear();
 	vi.mocked(api.request.getExtensionSource).mockImplementation(async ({ id }) => id);
@@ -74,58 +85,66 @@ beforeEach(() => {
 		return { default: modules[sources.get(url)!] };
 	});
 	// A board on screen, so plugins that inject `board` start.
-	getBoardRoot().provide("board", {} as never);
+	getAppRoot().provide("board", {} as never);
 });
 
 describe("built-in board views", () => {
 	it("keeps a built-in registered when it is disabled and re-enabled in one tick", async () => {
-		applyBuiltinBoardViews([], builtins);
+		applyBuiltinPlugins([], builtins);
 		await waitFor(() => expect(ids()).toEqual(["builtin:kanban", "builtin:table"]));
-		applyBuiltinBoardViews(["builtin:table"], builtins);
-		applyBuiltinBoardViews([], builtins);
+		applyBuiltinPlugins(["builtin:table"], builtins);
+		applyBuiltinPlugins([], builtins);
 		await new Promise((r) => setTimeout(r, 20));
 		await waitFor(() => expect(ids()).toEqual(["builtin:kanban", "builtin:table"]));
 	});
 
+	it("ignores a cached disabled list naming a built-in that cannot be disabled", async () => {
+		localStorage.setItem("dev3-disabled-board-views", JSON.stringify(["builtin:kanban", "builtin:table"]));
+		vi.mocked(api.request.listExtensions).mockReturnValue(new Promise(() => {}));
+		startPlugins(builtins.map(({ required: _required, ...builtin }) => builtin));
+		await waitFor(() => expect(ids()).toEqual(["builtin:kanban"]));
+		localStorage.removeItem("dev3-disabled-board-views");
+	});
+
 	it("never disposes Kanban, whatever the disabled list says", async () => {
-		applyBuiltinBoardViews(["builtin:kanban", "builtin:table"], builtins);
+		applyBuiltinPlugins(["builtin:kanban", "builtin:table"], builtins);
 		await waitFor(() => expect(ids()).toEqual(["builtin:kanban"]));
 	});
 });
 
 describe("extension loader", () => {
 	beforeEach(() => {
-		applyBuiltinBoardViews([], builtins);
+		applyBuiltinPlugins([], builtins);
 	});
 
 	it("loads an active extension and unloads it when the kill switch goes off", async () => {
 		modules["focus-list"] = viewPlugin("focus-list", ["focus-list:focus"]);
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("focus-list", ["focus"])]));
-		await syncBoardPlugins();
+		await syncPlugins();
 		await waitFor(() => expect(ids()).toContain("focus-list:focus"));
-		expect(getBoardPluginsSnapshot().loads["focus-list"]).toEqual({ state: "loaded" });
+		expect(getPluginsSnapshot().loads["focus-list"]).toEqual({ state: "loaded" });
 
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("focus-list", ["focus"])], false));
-		await syncBoardPlugins();
+		await syncPlugins();
 		await waitFor(() => expect(ids()).not.toContain("focus-list:focus"));
-		expect(getBoardPluginsSnapshot().loads["focus-list"]).toBeUndefined();
+		expect(getPluginsSnapshot().loads["focus-list"]).toBeUndefined();
 	});
 
 	it("never runs an extension that is not active", async () => {
 		modules["shady"] = viewPlugin("shady", ["shady:v"]);
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("shady", ["v"], "untrusted")]));
-		await syncBoardPlugins();
+		await syncPlugins();
 		expect(api.request.getExtensionSource).not.toHaveBeenCalled();
 	});
 
 	it("refuses an extension registering builtin:kanban, keeps the built-in, and names the extension", async () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-		startBoardPlugins();
+		startPlugins(builtins);
 		modules["hijack"] = viewPlugin("hijack", ["builtin:kanban"]);
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("hijack", ["kanban"])]));
-		await syncBoardPlugins();
-		await waitFor(() => expect(getBoardPluginsSnapshot().loads["hijack"]?.state).toBe("failed"));
-		expect(getBoardPluginsSnapshot().loads["hijack"]).toMatchObject({ error: expect.stringContaining("builtin:kanban") });
+		await syncPlugins();
+		await waitFor(() => expect(getPluginsSnapshot().loads["hijack"]?.state).toBe("failed"));
+		expect(getPluginsSnapshot().loads["hijack"]).toMatchObject({ error: expect.stringContaining("builtin:kanban") });
 		const kanban = getBoardViewRegistry().get("builtin:kanban");
 		expect(kanban?.ctx.fiber.name).toBe("builtin:kanban");
 		expect(errors.mock.calls.some((call) => String(call[0]).includes("hijack"))).toBe(true);
@@ -136,11 +155,27 @@ describe("extension loader", () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		modules["sneaky"] = viewPlugin("sneaky", ["sneaky:declared", "sneaky:extra"]);
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("sneaky", ["declared"])]));
-		await syncBoardPlugins();
-		await waitFor(() => expect(getBoardPluginsSnapshot().loads["sneaky"]?.state).toBe("failed"));
+		await syncPlugins();
+		await waitFor(() => expect(getPluginsSnapshot().loads["sneaky"]?.state).toBe("failed"));
 		await waitFor(() => expect(ids().filter((id) => id.startsWith("sneaky:"))).toEqual([]));
 		expect(errors.mock.calls.some((call) => String(call[0]).includes("[extensions] sneaky failed to load") && String(call[0]).includes("sneaky:extra"))).toBe(true);
-		expect(failedExtensionForView(getBoardPluginsSnapshot(), "sneaky:declared")).toBe("sneaky");
+		expect(failedExtensionForView(getPluginsSnapshot(), "sneaky:declared")).toBe("sneaky");
+	});
+
+	it("unloads an extension that registers an undeclared item into any other slot", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		modules["wide"] = {
+			name: "wide",
+			inject: ["runtimeTestSlot"],
+			apply(ctx: Context) {
+				ctx.runtimeTestSlot.register({ id: "wide:item" });
+			},
+		};
+		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("wide", ["declared"])]));
+		await syncPlugins();
+		await waitFor(() => expect(getPluginsSnapshot().loads["wide"]).toMatchObject({ state: "failed", error: 'registered an undeclared test item "wide:item"' }));
+		expect(getTestSlot().list()).toEqual([]);
+		errors.mockRestore();
 	});
 
 	it("names a failed extension behind a view, and nothing for built-ins or healthy ones", () => {
@@ -158,8 +193,8 @@ describe("extension loader", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		modules["empty"] = 42;
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("empty", ["v"])]));
-		await syncBoardPlugins();
-		expect(getBoardPluginsSnapshot().loads["empty"]).toMatchObject({ state: "failed", error: expect.stringMatching(/default-export/) });
+		await syncPlugins();
+		expect(getPluginsSnapshot().loads["empty"]).toMatchObject({ state: "failed", error: expect.stringMatching(/default-export/) });
 	});
 
 	it("Restart with extensions off: turns the kill switch off, and the next load skips extensions even if the host was unreachable", async () => {
@@ -172,9 +207,9 @@ describe("extension loader", () => {
 
 		modules["focus-list"] = viewPlugin("focus-list", ["focus-list:focus"]);
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("focus-list", ["focus"])]));
-		await syncBoardPlugins();
+		await syncPlugins();
 		expect(api.request.getExtensionSource).not.toHaveBeenCalled();
-		await syncBoardPlugins(); // "once": a later sync loads it again
+		await syncPlugins(); // "once": a later sync loads it again
 		await waitFor(() => expect(ids()).toContain("focus-list:focus"));
 	});
 });

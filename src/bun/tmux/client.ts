@@ -505,11 +505,14 @@ export class TmuxClient {
 	async capturePane(opts: {
 		target: string;
 		escapes?: boolean;
+		/** `-J`: join wrapped lines back into the line that was printed. */
+		joinWrapped?: boolean;
 		startLine?: number;
 		endLine?: number;
 	} & SocketOpt): Promise<string> {
 		const args = ["capture-pane", "-p"];
 		if (opts.escapes) args.push("-e");
+		if (opts.joinWrapped) args.push("-J");
 		args.push("-t", opts.target);
 		if (opts.startLine !== undefined) args.push("-S", String(opts.startLine));
 		if (opts.endLine !== undefined) args.push("-E", String(opts.endLine));

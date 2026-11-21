@@ -1144,7 +1144,7 @@ function App() {
 	const handleDeepLink = useCallback(
 		(nav: DeepLinkNav) => {
 			if (nav.kind === "task") {
-				openTaskFromNotification(nav.taskId, nav.projectId);
+				openTaskFromNotification(nav.taskId, nav.projectId, { archived: nav.archived });
 			} else if (nav.kind === "project") {
 				navigateToProject(nav.projectId);
 			} else if (nav.kind === "space") {
@@ -4195,6 +4195,7 @@ function App() {
 						spaceId={route.spaceId}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
+						taskSnapshots={state.taskSnapshots}
 						dispatch={dispatch}
 						route={state.route}
 						navigate={navigate}

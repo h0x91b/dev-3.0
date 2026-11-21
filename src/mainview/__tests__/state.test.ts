@@ -47,6 +47,7 @@ describe("initialState", () => {
 			historyIndex: 0,
 			projects: [],
 			currentProjectTasks: [],
+			taskSnapshots: {},
 			loading: true,
 			bellCounts: new Map(),
 			bellReasons: new Map(),
@@ -331,7 +332,7 @@ describe("reducer", () => {
 			tasks: [mockTask],
 		});
 
-		expect(next).toBe(state);
+		expect(next.currentProjectTasks).toBe(state.currentProjectTasks);
 	});
 
 	it("updateTask: updates matching task", () => {
@@ -1367,7 +1368,7 @@ describe("reducer — a board whose subject is a space", () => {
 	it("a project board still refuses a fetch that belongs to another project", () => {
 		const projectRoute: Route = { screen: "project", projectId: "p1" };
 		const state: AppState = { ...initialState, route: projectRoute, routeHistory: [projectRoute] };
-		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] })).toBe(state);
+		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] }).currentProjectTasks).toBe(state.currentProjectTasks);
 	});
 
 	// A full-page task route carries a space for scope and breadcrumb purposes but
@@ -1375,7 +1376,7 @@ describe("reducer — a board whose subject is a space", () => {
 	it("a full-page task route carrying a space is not treated as a space board", () => {
 		const taskRoute: Route = { screen: "task", projectId: "p1", spaceId: "sp_1", taskId: "t1" };
 		const state: AppState = { ...initialState, route: taskRoute, routeHistory: [taskRoute] };
-		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] })).toBe(state);
+		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] }).currentProjectTasks).toBe(state.currentProjectTasks);
 		expect(reducer(state, { type: "updateTask", task: taskIn("p2", "b") })).toBe(state);
 	});
 });
@@ -1497,5 +1498,117 @@ describe("taskOpenRoute", () => {
 			projectId: "p1",
 			taskId: "t1",
 		});
+	});
+});
+
+describe("reducer — per-project task snapshots", () => {
+	const taskIn = (projectId: string, id: string, title = id): Task => ({ ...mockTask, id, projectId, title });
+	const onBoard = (projectId: string, snapshots: AppState["taskSnapshots"] = {}): AppState => ({
+		...initialState,
+		route: { screen: "project", projectId },
+		routeHistory: [{ screen: "project", projectId }],
+		taskSnapshots: snapshots,
+	});
+
+	it("setTasks stores the snapshot even for a project that is not on screen", () => {
+		const b = taskIn("p2", "b");
+		const next = reducer(onBoard("p1"), { type: "setTasks", projectId: "p2", tasks: [b] });
+		expect(next.taskSnapshots.p2).toEqual([b]);
+		expect(next.currentProjectTasks).toEqual([]);
+	});
+
+	it("navigating to another board keeps every snapshot", () => {
+		const a = taskIn("p1", "a");
+		const state: AppState = { ...onBoard("p1", { p1: [a] }), currentProjectTasks: [a] };
+		const next = reducer(state, { type: "navigate", route: { screen: "project", projectId: "p2" } });
+		expect(next.taskSnapshots).toEqual({ p1: [a] });
+	});
+
+	it("switching to a board without a snapshot still clears the current tasks", () => {
+		const a = taskIn("p1", "a");
+		const state: AppState = { ...onBoard("p1", { p1: [a] }), currentProjectTasks: [a] };
+		const next = reducer(state, { type: "navigate", route: { screen: "project", projectId: "p2" } });
+		expect(next.currentProjectTasks).toEqual([]);
+		expect(next.taskSnapshots.p2).toBeUndefined();
+	});
+
+	it("updateTask upserts into the snapshot of a board that is not on screen", () => {
+		const b = taskIn("p2", "b");
+		const state = onBoard("p1", { p2: [b, taskIn("p2", "c")] });
+		const next = reducer(state, { type: "updateTask", task: { ...b, title: "renamed" } });
+		expect(next.taskSnapshots.p2.map((t) => t.title)).toEqual(["renamed", "c"]);
+	});
+
+	it("updateTask appends a new task to an existing snapshot", () => {
+		const next = reducer(onBoard("p1", { p2: [] }), { type: "updateTask", task: taskIn("p2", "b") });
+		expect(next.taskSnapshots.p2.map((t) => t.id)).toEqual(["b"]);
+	});
+
+	it("updateTask does not create a snapshot for a project that has none", () => {
+		const next = reducer(onBoard("p1"), { type: "updateTask", task: taskIn("p2", "b") });
+		expect(next.taskSnapshots).toEqual({});
+	});
+
+	it("a task that moved to another project leaves the old snapshot", () => {
+		const state = onBoard("p1", { p1: [taskIn("p1", "t")], p2: [] });
+		const next = reducer(state, { type: "updateTask", task: taskIn("p2", "t") });
+		expect(next.taskSnapshots.p1).toEqual([]);
+		expect(next.taskSnapshots.p2.map((t) => t.id)).toEqual(["t"]);
+	});
+
+	it("removeTask with a project id touches only that snapshot", () => {
+		const state = onBoard("p1", { p1: [taskIn("p1", "t")], p2: [taskIn("p2", "t")] });
+		const next = reducer(state, { type: "removeTask", taskId: "t", projectId: "p2" });
+		expect(next.taskSnapshots.p2).toEqual([]);
+		expect(next.taskSnapshots.p1).toBe(state.taskSnapshots.p1);
+	});
+
+	it("removeTask without a project id clears the task from every snapshot", () => {
+		const state = onBoard("p1", { p1: [taskIn("p1", "t")], p2: [taskIn("p2", "t"), taskIn("p2", "u")] });
+		const next = reducer(state, { type: "removeTask", taskId: "t" });
+		expect(next.taskSnapshots.p1).toEqual([]);
+		expect(next.taskSnapshots.p2.map((t) => t.id)).toEqual(["u"]);
+	});
+
+	it("addTask upserts into an existing snapshot only", () => {
+		const state = onBoard("p1", { p2: [] });
+		expect(reducer(state, { type: "addTask", task: taskIn("p2", "b") }).taskSnapshots.p2).toHaveLength(1);
+		expect(reducer(state, { type: "addTask", task: taskIn("p3", "c") }).taskSnapshots.p3).toBeUndefined();
+	});
+
+	it("spawnVariants replaces the source task with its variants in the snapshot", () => {
+		const state = onBoard("p1", { p2: [taskIn("p2", "src")] });
+		const next = reducer(state, { type: "spawnVariants", sourceTaskId: "src", variants: [taskIn("p2", "v1"), taskIn("p2", "v2")] });
+		expect(next.taskSnapshots.p2.map((t) => t.id)).toEqual(["v1", "v2"]);
+	});
+
+	it("addAttempts updates the source and appends the attempts in the snapshot", () => {
+		const state = onBoard("p1", { p2: [taskIn("p2", "src")] });
+		const next = reducer(state, { type: "addAttempts", sourceTaskId: "src", newAttempts: [taskIn("p2", "a1")], updatedSource: taskIn("p2", "src", "updated") });
+		expect(next.taskSnapshots.p2.map((t) => t.title)).toEqual(["updated", "a1"]);
+	});
+
+	it("addAttempts never adds the source to a snapshot that lacks it, and re-appends existing attempts", () => {
+		const state = onBoard("p1", { p2: [taskIn("p2", "a1", "old"), taskIn("p2", "other")] });
+		const next = reducer(state, { type: "addAttempts", sourceTaskId: "src", newAttempts: [taskIn("p2", "a1", "new")], updatedSource: taskIn("p2", "src", "updated") });
+		expect(next.taskSnapshots.p2.map((t) => `${t.id}:${t.title}`)).toEqual(["other:other", "a1:new"]);
+	});
+
+	it("updateTask and addTask with the identical task object keep the same state", () => {
+		const b = taskIn("p2", "b");
+		const state = onBoard("p1", { p2: [b] });
+		expect(reducer(state, { type: "updateTask", task: b })).toBe(state);
+		expect(reducer(state, { type: "addTask", task: b })).toBe(state);
+	});
+
+	it("removeProject drops that project's snapshot", () => {
+		const state = onBoard("p1", { p1: [taskIn("p1", "a")], p2: [taskIn("p2", "b")] });
+		const next = reducer(state, { type: "removeProject", projectId: "p2" });
+		expect(Object.keys(next.taskSnapshots)).toEqual(["p1"]);
+	});
+
+	it("an action that changes no snapshot keeps the snapshots object", () => {
+		const state = onBoard("p1", { p2: [taskIn("p2", "b")] });
+		expect(reducer(state, { type: "removeTask", taskId: "missing" }).taskSnapshots).toBe(state.taskSnapshots);
 	});
 });

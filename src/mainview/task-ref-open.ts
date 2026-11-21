@@ -2,6 +2,7 @@ import type { TFunction } from "./i18n";
 import { api } from "./rpc";
 import { toast } from "./toast";
 import { formatRef, parseRefUri } from "../shared/task-refs";
+import { taskDeepLinkNav } from "../shared/deep-link";
 
 export interface TaskRefActivateContext {
 	t: TFunction;
@@ -32,7 +33,7 @@ export async function activateTaskPrRef(uri: string, ctx: TaskRefActivateContext
 		}
 		if (resolved.kind === "task") {
 			window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
-				detail: { kind: "task", taskId: resolved.taskId, projectId: resolved.projectId },
+				detail: taskDeepLinkNav(resolved.taskId, resolved.projectId, resolved.status),
 			}));
 			return;
 		}

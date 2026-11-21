@@ -5,7 +5,7 @@ import { LOCAL_MERGE_SHARED_FOLDER_ERROR, MAX_TASK_NOTES_KEPT, OWN_WORKTREE_NOT_
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { ptyWsUrl } from "../pty-server-access";
 import * as agentAccounts from "../agent-accounts";
-import { chooseTaskCodexConversations } from "../codex-task-selection";
+import { chooseTaskCodexConversations, claimCodexChoices } from "../codex-task-selection";
 import {
 	activatePane,
 	closePane,
@@ -250,7 +250,7 @@ vi.mock("../agent-prompt-native", () => ({
 	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
 }));
 
-vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 
 // Unit-tested on its own; here only its place in each handler matters.
 vi.mock("../agent-launch-availability", () => ({
@@ -544,7 +544,8 @@ const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
  */
 function bridgeLockedWrites(): void {
 	vi.mocked(data.updateTaskWith).mockImplementation(async (project, taskId, mutator) => {
-		const current = await data.getTask(project, taskId);
+		// A launch reads the row only to clear a stale launch failure; handler tests seed no row for it.
+		const current = (await data.getTask(project, taskId)) ?? ({} as Task);
 		const { updates, result } = await mutator(current);
 		if (Object.keys(updates).length === 0) return { task: current, result };
 		const written = await data.updateTask(project, taskId, updates);
@@ -780,6 +781,19 @@ describe("handleBellAutoStatus", () => {
 		await handleBellAutoStatus("task-1");
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({ status: "user-questions" }), { ifStatus: "in-progress" });
+	});
+
+	it("leaves an agy task alone: its statusLine reports the wait, and its own turn-end bell must not undo Stop", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "agy", agentId: "builtin-agy", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("still moves a Cursor task: its hooks only account usage", async () => {
@@ -8664,7 +8678,7 @@ describe("handlers.resolveDeepLinkNav", () => {
 		const data = await import("../data");
 		(data.loadProjects as any).mockResolvedValue([{ id: "proj-a" }, { id: "proj-b" }]);
 		(data.loadTasks as any).mockImplementation(async (project: any) =>
-			project.id === "proj-b" ? [{ id: "task-9" }] : [],
+			project.id === "proj-b" ? [{ id: "task-9", status: "in-progress" }] : [],
 		);
 		expect(await handlers.resolveDeepLinkNav({ url: "dev3://task/task-9" })).toEqual({
 			kind: "task",
@@ -11449,6 +11463,18 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("claude-bedrock", "c", expect.anything(), expect.objectContaining({ bedrockProfile: null }));
 	});
 
+	it("a spawn into a foreign-code task says so, so no agent pre-trusts the branch", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(data.updateTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "agy", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+		await handlers.spawnAgentInTask({ taskId: task.id, projectId: "proj-1", agentId: "builtin-agy", configId: "c" });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-agy", "c", expect.anything(), expect.objectContaining({ foreignCode: true }));
+	});
+
 	it("uses resolveCommandForProject when agentId is null", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
@@ -11822,6 +11848,22 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		);
 
 		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode)).toEqual(["shared-folder"]);
+	});
+
+	it("launches a hunter on a foreign-code task with foreignCode set", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.foreignCode)).toEqual([true]);
 	});
 
 	it("creates N panes: first horizontal 50% off the session, rest vertical off the previous right pane", async () => {
@@ -13138,6 +13180,27 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 	});
 });
 
+describe("restartTask (start fresh) replaces every agent of the task", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("forgets the waits and remembered lanes of the agy panes it replaces", async () => {
+		const { addAgyPending, agyPendingSessionsOf } = await import("../agy-session-state");
+		const { getApprovalResumeStatus, rememberResumeStatus } = await import("../approval-resume-status");
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "agy", agentId: "builtin-agy", configId: "agy-auto-neon-high", sessionId: "conv-old", paneId: "%1" }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		addAgyPending(task.id, "conv-old", Date.now(), "%1");
+		rememberResumeStatus(`${task.id}:conv-old`, "in-progress");
+
+		await handlers.restartTask({ taskId: task.id });
+
+		expect(agyPendingSessionsOf(task.id).size).toBe(0);
+		expect(getApprovalResumeStatus(`${task.id}:conv-old`)).toBeUndefined();
+	});
+});
+
 describe("restartTask clears the agent-exited mark", () => {
 	beforeEach(() => vi.clearAllMocks());
 	const FLAG = "2026-11-13T10:00:00.000Z";
@@ -13431,7 +13494,8 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 		chose([0, sessionId, home]);
 		try {
 			await handlers.resumeTask({ taskId: task.id });
-			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: true }));
+			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: false }));
+			expect(claimCodexChoices).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), expect.anything(), [expect.objectContaining({ sessionId })], expect.any(Map));
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
 		} finally { accountSpy.mockRestore(); }
@@ -14029,7 +14093,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId: recorded, codexHome: home }]]));
 		await handlers.resumeTask({ taskId: task.id });
 		expect(chooseTaskCodexConversations).toHaveBeenCalledTimes(1);
-		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.anything(), [expect.objectContaining({ sessionId: recorded })], "explicit-resume", expect.objectContaining({ persist: true }));
+		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.anything(), [expect.objectContaining({ sessionId: recorded })], "explicit-resume", expect.objectContaining({ persist: false }));
 	});
 });
 
@@ -14193,6 +14257,24 @@ describe("launchTaskPty", () => {
 		const options = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][3];
 		expect(options).not.toHaveProperty("autoRouting");
 		expect(options).toMatchObject({ accountId: "acct-a", resume: true });
+	});
+
+	it("routes a never-started relaunch like a first launch and pins the new pick on the pane", async () => {
+		const project = makeProject();
+		const task = makeTask({ accountId: "acct-a", accountPick: { reason: { code: "lowest-short", short: 90, nextShort: 95 }, at: "2026-11-19T10:00:00Z" } } as never);
+		const reason = { code: "lowest-short" as const, short: 20, nextShort: 60 };
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValueOnce({
+			command: "claude", extraEnv: {}, agent: { baseCommand: "claude" }, resolvedAccountId: "acct-b",
+			accountPick: { accountId: "acct-b", label: "B", reason },
+		} as never);
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", false, true, { accountId: "auto", freshSessionId: "new-id", freshWithTaskPrompt: true });
+
+		const options = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][3];
+		expect(options).toMatchObject({ accountId: "auto", sessionId: "new-id", autoRouting: expect.objectContaining({ reservationKey: "k" }) });
+		const patch = vi.mocked(data.updateTask).mock.calls.map(([, , updates]) => updates).find((u) => u.sessionState);
+		expect(patch).toMatchObject({ accountId: "acct-b", accountPick: { reason } });
+		expect(patch?.sessionState?.panes[0].accountId).toBe("acct-b");
 	});
 
 	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {

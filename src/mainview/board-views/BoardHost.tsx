@@ -8,7 +8,7 @@ import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
-import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "./plugins";
+import { failedExtensionForView, getPluginsSnapshot, subscribePlugins } from "../plugins/runtime";
 import LabelFilterBar from "../components/LabelFilterBar";
 import BoardVisibilitySwitch from "../components/BoardVisibilitySwitch";
 import HiddenByVisibilityNotice from "../components/HiddenByVisibilityNotice";
@@ -28,7 +28,7 @@ import { useStreamerMode } from "../streamer-mode";
 import { HIDDEN_CONTROLS_CHANGED_EVENT, isSimplifyViewApplied } from "../hidden-controls";
 import { BoardService, type BoardLineageNode, type BoardModel, type BoardModelSource, type BoardPreferences } from "./board-service";
 import { BoardCardBindingsContext, BoardTaskCard, type BoardCardBindings } from "./BoardTaskCard";
-import { getBoardRoot } from "./root";
+import { getAppRoot } from "../plugins/root";
 import { useRegisteredBoardViews } from "./react";
 import { useBoardFilter } from "./useBoardFilter";
 import { useBoardViewState } from "./useBoardViewState";
@@ -306,7 +306,7 @@ function BoardHost(props: BoardHostProps) {
 
 	// `ctx.board` exists while the host is mounted. A layout effect, so the
 	// provision lands before the first paint and the view never renders without it.
-	const root = getBoardRoot();
+	const root = getAppRoot();
 	const [provided, setProvided] = useState(false);
 	useLayoutEffect(() => {
 		const dispose = root.provide("board", new BoardService(sourceRef.current!, BoardTaskCard));
@@ -328,7 +328,7 @@ function BoardHost(props: BoardHostProps) {
 	const active = offered.find((view) => view.def.id === viewState.viewType)
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
 	const kanbanFallback = <BoardViewSlot ctx={root} component={KanbanView} />;
-	const plugins = useSyncExternalStore(subscribeBoardPlugins, getBoardPluginsSnapshot);
+	const plugins = useSyncExternalStore(subscribePlugins, getPluginsSnapshot);
 	const failedExtension = active?.def.id === viewState.viewType ? null : failedExtensionForView(plugins, viewState.viewType);
 
 	const { setViewType } = viewState;

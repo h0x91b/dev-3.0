@@ -3,20 +3,28 @@ import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDom from "react-dom";
 import * as Cordis from "cordis";
 import type { Context, Fiber } from "cordis";
-import { KANBAN_VIEW_ID } from "../../shared/board-view-state";
-import { extensionViewId, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
+import { extensionViewId, TOGGLEABLE_BUILTIN_VIEWS, type ExtensionsOverview, type InstalledExtension } from "../../shared/extensions";
 import { api } from "../rpc";
-import { BUILTIN_BOARD_VIEWS, type BuiltinBoardView } from "./builtins";
-import { getBoardRoot, getBoardViewRegistry } from "./root";
+import { getAppRoot, observeAppSlots } from "./root";
+import type { SlotItem, SlotRegistry } from "./slot-registry";
 
 /**
- * The board-view plugin runtime: which built-ins run, and the third-party
- * extensions loaded from `~/.dev3.0/extensions` (spec §4.3). Everything here
- * applies live — toggling a view or the kill switch never needs a restart.
+ * The plugin runtime: which built-ins run, and the third-party extensions loaded
+ * from `~/.dev3.0/extensions` (spec §4.3). Everything here applies live —
+ * toggling a built-in or the kill switch never needs a restart.
  */
+
+/** One of dev3's own plugins. A `required` one is the fallback of its slot and always runs (D16). */
+export interface BuiltinPlugin {
+	id: string;
+	required?: boolean;
+	install(ctx: Context): Fiber;
+}
 
 /** `FiberState.FAILED` — an ambient const enum, so not readable under isolatedModules. */
 const FIBER_FAILED = 3;
+const TOGGLEABLE: ReadonlySet<string> = new Set(TOGGLEABLE_BUILTIN_VIEWS);
+// Persisted key; its board-era name stays, renaming it would forget every user's toggles.
 const DISABLED_BUILTINS_KEY = "dev3-disabled-board-views";
 const SKIP_EXTENSIONS_ONCE_KEY = "dev3-extensions-skip-once";
 
@@ -36,11 +44,13 @@ export function setExtensionImporterForTests(importer: (url: string) => Promise<
 	importModule = importer;
 }
 
+let builtinPlugins: readonly BuiltinPlugin[] = [];
 const builtinFibers = new Map<string, Fiber>();
 const extensionFibers = new Map<string, { fiber: Fiber; declared: ReadonlySet<string> }>();
 let snapshot: RuntimeSnapshot = { overview: null, loads: {} };
 const listeners = new Set<() => void>();
 let guardInstalled = false;
+const guardedSlots = new Set<SlotRegistry<SlotItem>>();
 /** The extension whose module is being evaluated / started right now (loads are serialized). */
 let loadingExtension: string | null = null;
 const refusals = new Map<string, string>();
@@ -51,19 +61,20 @@ function publish(next: Partial<RuntimeSnapshot>): void {
 	for (const listener of listeners) listener();
 }
 
-export function subscribeBoardPlugins(listener: () => void): () => void {
+export function subscribePlugins(listener: () => void): () => void {
 	listeners.add(listener);
 	return () => listeners.delete(listener);
 }
 
-export function getBoardPluginsSnapshot(): RuntimeSnapshot {
+export function getPluginsSnapshot(): RuntimeSnapshot {
 	return snapshot;
 }
 
 function readCachedDisabledBuiltins(): string[] {
 	try {
 		const raw = JSON.parse(localStorage.getItem(DISABLED_BUILTINS_KEY) ?? "[]");
-		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+		// Same filter as the host's state file: a stale or edited cache can never disable a required built-in.
+		return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && TOGGLEABLE.has(id)) : [];
 	} catch {
 		return [];
 	}
@@ -77,11 +88,11 @@ function cacheDisabledBuiltins(ids: readonly string[]): void {
 	}
 }
 
-/** Runs each built-in unless the user switched it off. Kanban always runs (D16). */
-export function applyBuiltinBoardViews(disabled: readonly string[], builtins: readonly BuiltinBoardView[] = BUILTIN_BOARD_VIEWS): void {
-	const root = getBoardRoot();
+/** Runs each built-in unless the user switched it off. A required one always runs (D16). */
+export function applyBuiltinPlugins(disabled: readonly string[], builtins: readonly BuiltinPlugin[] = builtinPlugins): void {
+	const root = getAppRoot();
 	for (const builtin of builtins) {
-		const run = builtin.id === KANBAN_VIEW_ID || !disabled.includes(builtin.id);
+		const run = builtin.required === true || !disabled.includes(builtin.id);
 		const fiber = builtinFibers.get(builtin.id);
 		if (run && !fiber) builtinFibers.set(builtin.id, builtin.install(root));
 		if (!run && fiber) {
@@ -114,32 +125,37 @@ function owningExtension(ctx: Context): string | undefined {
 }
 
 /**
- * An extension may register only the views its manifest declares, under its own
+ * An extension may register only the items its manifest declares, under its own
  * prefix. Anything else — a `builtin:` id, another extension's id — unloads it.
+ * The guard covers every slot on the app root, including slots defined later.
  */
 function installRegistryGuard(): void {
 	if (guardInstalled) return;
 	guardInstalled = true;
-	const registry = getBoardViewRegistry();
-	registry.onRefused((viewId, ctx) => {
-		const owner = owningExtension(ctx) ?? loadingExtension;
-		if (!owner) return;
-		const error = `tried to register board view "${viewId}", which another view already owns`;
-		console.error(`[extensions] ${owner} ${error}`);
-		refusals.set(owner, error);
+	observeAppSlots((slot) => {
+		guardedSlots.add(slot);
+		slot.onRefused((id, ctx) => {
+			const owner = owningExtension(ctx) ?? loadingExtension;
+			if (!owner) return;
+			const error = `tried to register ${slot.noun} "${id}", which another ${slot.noun} already owns`;
+			console.error(`[extensions] ${owner} ${error}`);
+			refusals.set(owner, error);
+		});
+		slot.subscribe(enforceDeclaredItems);
 	});
-	registry.subscribe(enforceDeclaredViews);
 }
 
-function enforceDeclaredViews(): void {
-	for (const view of getBoardViewRegistry().list()) {
-		const owner = owningExtension(view.ctx);
-		if (!owner) continue;
-		const entry = extensionFibers.get(owner);
-		if (entry && !entry.declared.has(view.def.id)) {
-			const error = `registered an undeclared board view "${view.def.id}"`;
-			console.error(`[extensions] ${owner} failed to load: ${error}`);
-			unloadExtension(owner, { state: "failed", error });
+function enforceDeclaredItems(): void {
+	for (const slot of guardedSlots) {
+		for (const item of slot.list()) {
+			const owner = owningExtension(item.ctx);
+			if (!owner) continue;
+			const entry = extensionFibers.get(owner);
+			if (entry && !entry.declared.has(item.def.id)) {
+				const error = `registered an undeclared ${slot.noun} "${item.def.id}"`;
+				console.error(`[extensions] ${owner} failed to load: ${error}`);
+				unloadExtension(owner, { state: "failed", error });
+			}
 		}
 	}
 }
@@ -172,14 +188,14 @@ async function loadExtension(ext: InstalledExtension): Promise<void> {
 		if (!isPlugin(mod.default)) throw new Error("index.js must default-export a Cordis plugin");
 		loadingExtension = ext.id;
 		refusals.delete(ext.id);
-		const fiber = getBoardRoot().plugin(mod.default as Parameters<Context["plugin"]>[0]);
+		const fiber = getAppRoot().plugin(mod.default as Parameters<Context["plugin"]>[0]);
 		extensionFibers.set(ext.id, { fiber, declared });
 		// `plugin()` hands back a thenable wrapper; the fiber a plugin's context points at is
 		// what it resolves to, so ownership checks can only start once it has.
 		const started = await fiber;
 		const entry = extensionFibers.get(ext.id);
 		if (entry) entry.fiber = started;
-		enforceDeclaredViews();
+		enforceDeclaredItems();
 		if (!extensionFibers.has(ext.id)) return; // unloaded by the guard while starting
 		const refusal = refusals.get(ext.id);
 		if (refusal) throw new Error(refusal);
@@ -195,7 +211,7 @@ async function loadExtension(ext: InstalledExtension): Promise<void> {
 }
 
 async function reconcile(overview: ExtensionsOverview): Promise<void> {
-	applyBuiltinBoardViews(overview.disabledBuiltins);
+	applyBuiltinPlugins(overview.disabledBuiltins);
 	cacheDisabledBuiltins(overview.disabledBuiltins);
 	let skipOnce = false;
 	try {
@@ -220,7 +236,7 @@ async function reconcile(overview: ExtensionsOverview): Promise<void> {
  * Re-reads the host's extension state and brings this window in line with it.
  * Serialized, so two quick toggles never race two loads of one extension.
  */
-export function syncBoardPlugins(): Promise<ExtensionsOverview | null> {
+export function syncPlugins(): Promise<ExtensionsOverview | null> {
 	const run = syncChain.then(async () => {
 		try {
 			const overview = await api.request.listExtensions();
@@ -257,10 +273,11 @@ export function clearExtensionFailure(id: string): void {
 }
 
 /** At renderer start: built-ins synchronously (from the last known toggles), then the host's real state. */
-export function startBoardPlugins(): void {
+export function startPlugins(builtins: readonly BuiltinPlugin[]): void {
+	builtinPlugins = builtins;
 	installRegistryGuard();
-	applyBuiltinBoardViews(readCachedDisabledBuiltins());
-	void syncBoardPlugins();
+	applyBuiltinPlugins(readCachedDisabledBuiltins());
+	void syncPlugins();
 }
 
 /** Whether any third-party code runs in this window — the crash screens offer their escape only then. */
@@ -291,8 +308,10 @@ export function setExtensionLoadForTests(id: string, load: ExtensionLoadState): 
 	publish({ loads: { ...snapshot.loads, [id]: load } });
 }
 
-export function resetBoardPluginsForTests(): void {
+export function resetPluginsForTests(): void {
+	builtinPlugins = [];
 	builtinFibers.clear();
+	guardedSlots.clear();
 	extensionFibers.clear();
 	snapshot = { overview: null, loads: {} };
 	listeners.clear();

@@ -43,7 +43,9 @@ import { handleShowArtifact } from "./commands/show-artifact";
 import { handleLive } from "./commands/live";
 import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
+import { handleAgyStatusLine } from "./commands/agy-statusline";
 import { handleStatusLine } from "./commands/statusline";
+import { handleAgyHook } from "./commands/agy-hook";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleCursorUsage } from "./commands/cursor-usage";
@@ -304,6 +306,16 @@ async function main(): Promise<void> {
 	if (command === "install-hooks") {
 		return await handleInstallHooks({ removeCursor: args.flags["remove-cursor"] === "true" });
 	}
+	if (command === "statusline" && subcommand === "agy") {
+		// Internal: Antigravity's statusLine (see commands/agy-statusline.ts). Prints
+		// nothing and always exits 0, so it can never disturb agy's own status line.
+		return await handleAgyStatusLine(
+			await Bun.stdin.text(),
+			{ noLimits: args.flags["no-limits"] === "true" },
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
 	if (command === "statusline") {
 		// Internal: Claude Code statusLine wrapper (see commands/statusline.ts).
 		// Reads stdin, dumps rate limits, delegates to the user's original
@@ -314,6 +326,16 @@ async function main(): Promise<void> {
 		// Internal lifecycle adapter. It intentionally remains successful when
 		// the app is offline so a status-sync failure can never block Codex.
 		return await handleCodexHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "agy") {
+		// Internal lifecycle adapter. Answers SessionStart with the dev3 protocol and
+		// stays successful whatever happens, so agy is never blocked.
+		return await handleAgyHook(
+			rawArgs[2] ?? "",
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,

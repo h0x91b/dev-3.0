@@ -561,6 +561,12 @@ describe("capturePane", () => {
 		await client.capturePane({ target: "dev3-abc" });
 		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-t", "dev3-abc"]);
 	});
+
+	it("joins wrapped lines with -J", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "" });
+		await client.capturePane({ target: "%1", joinWrapped: true });
+		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-J", "-t", "%1"]);
+	});
 });
 
 // capture-pane is the highest-frequency command in the app (one per pane poll).

@@ -4,6 +4,7 @@ import { ACTIVE_STATUSES } from "../shared/types";
 import type { CliResumeOutcome, ResumeDialogPane, ResumeUnavailableReason, ResumePaneReport } from "../shared/agent-resume";
 import { askSessionApproval, type LaunchRequester, launchRequesterKey, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
 import { assertResumeAccountUsable, ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
+import { mainAgentNeverStarted } from "../shared/agent-launch-failure";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { assertTaskWorkspacePresent } from "./task-workspace-guard";
 
@@ -51,6 +52,7 @@ async function preflight(project: Project, task: Task, accountId: string | null 
 	return { panes: saved.panes.map(({ agentId, configId, sessionId, accountId, agentCmd, agentFamily }, i) => ({
 		agentId, configId, sessionId, agentCmd, agentFamily,
 		accountId: i === 0 && accountId === undefined ? task.accountId : accountId,
+		...(i === 0 && mainAgentNeverStarted(task) ? { neverStarted: true } : {}),
 	})) };
 }
 

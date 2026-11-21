@@ -31,7 +31,8 @@ export type HooksSpec =
 	| { kind: "copilot" }
 	| { kind: "cursor" }
 	| { kind: "omp" }
-	| { kind: "pi" };
+	| { kind: "pi" }
+	| { kind: "agy" };
 
 /** Codex-only launch runtime resolved by the backend (theme state + a
  *  `codex --help` probe are impure) and threaded into the pure CodexAdapter. */
@@ -42,6 +43,20 @@ export interface CodexLaunchRuntime {
 	theme: string;
 	/** Flag the installed codex accepts to select a profile file (see issue #611). */
 	profileLaunchFlag: "--profile" | "--profile-v2";
+}
+
+/** agy-only launch inputs resolved by the backend. */
+export interface AgyLaunchRuntime {
+	/** The worktree's realpath: agy trusts a workspace only by its resolved path
+	 *  (`/private/tmp`, not `/tmp`). Absent means the path as given. */
+	worktreeRealPath?: string;
+	/** The account's home directory. agy expands `~` against a launcher's HOME, so its
+	 *  statusLine command spells the CLI as `<accountHome>/.dev3.0/bin/dev3`. */
+	accountHome?: string;
+	/** Whether the statusLine hook may dump quota (the global rate-limit tracking setting). Absent means on. */
+	trackRateLimits?: boolean;
+	/** The task runs someone else's branch: agy's own trust dialog must face the user, so no workspace is pre-trusted. */
+	foreignCode?: boolean;
 }
 
 /** Pure inputs to `launchArgs`. The backend maps its public CommandOptions
@@ -74,6 +89,8 @@ export interface AdapterLaunchOptions {
 	providerArgs?: string[];
 	/** Codex-only runtime (theme/profile/launch-flag); present only for codex. */
 	codex?: CodexLaunchRuntime;
+	/** agy-only facts the pure adapter cannot resolve itself. */
+	agy?: AgyLaunchRuntime;
 }
 
 /**
@@ -154,6 +171,13 @@ export interface AgentAdapter {
 	/** Whether its hooks move the task to user-questions on a tool-approval wait, so a BEL adds nothing. */
 	readonly hooksReportPermissionWaits: boolean;
 
+	/**
+	 * What shows the agent has booted far enough to take typed input. Absent: the pane existing is enough.
+	 * `session-capture`: the session id its own hook wrote onto the pane - for an agent that cannot
+	 * pre-assign one, so the launch handoff waits for it instead of typing into a booting launcher.
+	 */
+	readonly readyEvidence?: "session-capture";
+
 	/** Agent-native lifecycle hooks to install, or null when the agent has none. */
 	hooksSpec(options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode }): HooksSpec | null;
 
@@ -163,4 +187,10 @@ export interface AgentAdapter {
 	 * run. Null when the CLI has no known quit command and only the kill remains.
 	 */
 	exitProgram(): readonly PaneInputStage[] | null;
+
+	/**
+	 * A prompt submitted while the agent is busy waits in a follow-up queue until the turn
+	 * ends, and one more Enter on the empty input steers it into the running turn instead.
+	 */
+	readonly enterSteersQueuedPrompt?: boolean;
 }

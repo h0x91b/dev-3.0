@@ -218,6 +218,7 @@ const kanban = {
 	"task.resetTitle": "Restablecer a auto",
 	"task.failedRename": "Error al renombrar: {error}",
 	"task.reopenTo": "Reabrir como",
+	"task.reopenTask": "Reabrir tarea",
 	"task.openPR": "Abrir PR #{number}",
 	"task.prBadge": "PR #{number}",
 	"task.prNumber": "#{number}",

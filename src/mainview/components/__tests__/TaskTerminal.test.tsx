@@ -216,6 +216,93 @@ describe("TaskTerminal", () => {
 			expect(screen.getByText("This task is cancelled")).toBeInTheDocument();
 		});
 
+		it.each(["completed", "cancelled"] as const)("reopens a %s task to Agent is Working from the closed screen", async (status) => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockResolvedValue(makeTask({ status: "in-progress" }));
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ status, worktreePath: null, branchName: null })], dispatch, navigate });
+			});
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", projectId: "p1", newStatus: "in-progress" }),
+			));
+			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+				type: "updateTask",
+				task: expect.objectContaining({ id: "t1", status: "in-progress" }),
+			}));
+			// The view stays on the task so the resumed session attaches here.
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
+		// The optimistic in-progress snapshot has no workspace yet: a session read
+		// then would fail and offer Complete/Cancel on the task just reopened.
+		it("holds the closed screen until the reopen is prepared, then attaches", async () => {
+			const user = userEvent.setup();
+			let resolveMove: (task: Task) => void = () => {};
+			mockedApi.request.moveTask.mockImplementation(() => new Promise((resolve) => { resolveMove = resolve; }));
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no session yet"));
+			const closed = makeTask({ status: "completed", worktreePath: null, branchName: null });
+			const renderWith = (task: Task) => (
+				<I18nProvider>
+					<TaskTerminal projectId="p1" taskId="t1" tasks={[task]} projects={[project]} navigate={vi.fn()} dispatch={vi.fn()} />
+				</I18nProvider>
+			);
+			let view!: ReturnType<typeof render>;
+			await act(async () => {
+				view = render(renderWith(closed));
+			});
+
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+			await act(async () => {
+				view.rerender(renderWith(makeTask({ status: "in-progress", worktreePath: null, branchName: null })));
+			});
+
+			expect(screen.getByTestId("terminal-task-closed-screen")).toBeInTheDocument();
+			expect(screen.getByText("This task is completed")).toBeInTheDocument();
+			expect(screen.getByTestId("terminal-task-reopen")).toBeDisabled();
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+			expect(screen.queryByText("Task environment error")).not.toBeInTheDocument();
+
+			// A second click while the move is in flight sends nothing.
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(1);
+
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
+			const prepared = makeTask({ status: "in-progress" });
+			await act(async () => {
+				resolveMove(prepared);
+				view.rerender(renderWith(prepared));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+			expect(screen.queryByText("Task environment error")).not.toBeInTheDocument();
+		});
+
+		it("hands over to the preparing view once the server reports the preparation", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockImplementation(() => new Promise(() => {}));
+			const renderWith = (task: Task) => (
+				<I18nProvider>
+					<TaskTerminal projectId="p1" taskId="t1" tasks={[task]} projects={[project]} navigate={vi.fn()} dispatch={vi.fn()} />
+				</I18nProvider>
+			);
+			let view!: ReturnType<typeof render>;
+			await act(async () => {
+				view = render(renderWith(makeTask({ status: "cancelled", worktreePath: null, branchName: null })));
+			});
+
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+			await act(async () => {
+				view.rerender(renderWith(makeTask({ status: "in-progress", worktreePath: null, branchName: null, preparing: true })));
+			});
+
+			expect(screen.queryByTestId("terminal-task-closed-screen")).not.toBeInTheDocument();
+		});
+
 		it("replaces a live terminal with the closed screen when the task completes under it", async () => {
 			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
 			const { rerender } = render(
@@ -911,6 +998,163 @@ describe("TaskTerminal", () => {
 			});
 
 			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("Launch failure", () => {
+		const recoverable = {
+			recoverable: true as const,
+			sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+		};
+		const failure = (overrides?: Partial<NonNullable<Task["launchFailure"]>>) => ({
+			exitCode: 2, at: "2026-11-19T10:00:00Z", output: "wrapper: cannot reach the login server", neverStarted: false, sessionId: "sid-1", ...overrides,
+		});
+
+		it("shows the captured output and the exit code on the recovery screen, keeping Resume for a crash", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure() })] });
+			});
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-launch-failure")).toHaveTextContent("wrapper: cannot reach the login server");
+			});
+			expect(screen.getByText("The agent exited with code 2")).toBeInTheDocument();
+			expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			expect(screen.getByText("Start Fresh")).toBeInTheDocument();
+		});
+
+		it("offers one Start again button for a conversation that never started, and it resumes through the backend", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
+			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
+			});
+			await waitFor(() => {
+				expect(screen.getByText("The agent did not start (exit code 2)")).toBeInTheDocument();
+			});
+			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
+			expect(screen.queryByText("Start Fresh")).not.toBeInTheDocument();
+			await act(async () => {
+				await user.click(screen.getByText("Start again"));
+			});
+			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
+		});
+
+		it("says so when no output was captured", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ output: null, exitCode: null }) })] });
+			});
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-launch-failure")).toHaveTextContent("The agent's output was not captured.");
+			});
+			expect(screen.getByText("The agent exited")).toBeInTheDocument();
+		});
+
+		it("shows the failure on the session-ended screen and replaces Resume with Start again, which resumes through the backend", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeState.mockResolvedValue("present");
+			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
+			});
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-launch-failure")).toBeInTheDocument();
+			});
+			expect(screen.getByText("The agent did not start (exit code 2)")).toBeInTheDocument();
+			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
+			await act(async () => {
+				await user.click(screen.getByText("Start again"));
+			});
+			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
+			await waitFor(() => {
+				expect(screen.queryByTestId("terminal-launch-failure")).not.toBeInTheDocument();
+			});
+		});
+
+		it("offers Start Fresh after a refused Start again, and it restarts without resuming", async () => {
+			const user = userEvent.setup();
+			const panes = [...recoverable.sessionState.panes, { agentCmd: "claude", sessionId: "extra-saved", agentId: "builtin-claude", configId: "cfg-1" }];
+			const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ ...recoverable, sessionState: { panes } });
+			mockedApi.request.resumeTask.mockRejectedValue(new Error("Cannot read extra history. Restore access or choose Start fresh for a new conversation."));
+			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:9999?session=t1");
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }), sessionState: { panes } })] });
+			});
+			expect(screen.queryByRole("button", { name: "Start Fresh" })).not.toBeInTheDocument();
+			await act(async () => {
+				await user.click(await screen.findByRole("button", { name: "Start again" }));
+			});
+			await waitFor(() => expect(errorToast).toHaveBeenCalled());
+			await act(async () => {
+				await user.click(await screen.findByRole("button", { name: "Start Fresh" }));
+			});
+			expect(mockedApi.request.restartTask).toHaveBeenCalledWith({ taskId: "t1" });
+		});
+
+		it("puts the exit code in the recovery title once, and the block carries no second heading", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
+			});
+			await waitFor(() => {
+				expect(screen.getAllByText("The agent did not start (exit code 2)")).toHaveLength(1);
+			});
+			expect(screen.getByText("Its first launch failed before a conversation was created, so there is nothing to resume.")).toBeInTheDocument();
+			expect(screen.queryByText("Previous agent session found")).not.toBeInTheDocument();
+		});
+
+		it("keeps Resume when the main pane already carries another conversation", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
+			const sessionState = { panes: [{ agentCmd: "claude", sessionId: "later-session", agentId: "builtin-claude", configId: "cfg-1" }] };
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }), sessionState })] });
+			});
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-launch-failure")).toBeInTheDocument();
+			});
+			expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			expect(screen.getByText("Previous agent session found")).toBeInTheDocument();
+			expect(screen.queryByText("Start again")).not.toBeInTheDocument();
+		});
+
+		it("shows the failure block on the hibernated wake screen too, keeping its buttons", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ ...recoverable, hibernated: true });
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
+			});
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
+			});
+			expect(screen.getByTestId("terminal-launch-failure")).toBeInTheDocument();
+			expect(screen.getByText("Wake and resume agent")).toBeInTheDocument();
+			expect(screen.getByText("Wake with a plain shell")).toBeInTheDocument();
+		});
+
+		it("stays on the recovery screen after a refused resume, with the reason in a toast and Start Fresh still offered", async () => {
+			const user = userEvent.setup();
+			const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
+			mockedApi.request.resumeTask.mockRejectedValue(new Error("Cannot read this task's conversation history (/x: EACCES)."));
+			await act(async () => {
+				renderTerminal();
+			});
+			await waitFor(() => {
+				expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			});
+			await act(async () => {
+				await user.click(screen.getByText("Resume Session"));
+			});
+			await waitFor(() => {
+				expect(errorToast).toHaveBeenCalledWith("Cannot read this task's conversation history (/x: EACCES).");
+			});
+			expect(screen.getByTestId("terminal-recovery-screen")).toBeInTheDocument();
+			expect(screen.getByText("Start Fresh")).toBeInTheDocument();
 		});
 	});
 

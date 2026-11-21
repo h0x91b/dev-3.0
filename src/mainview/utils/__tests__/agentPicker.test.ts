@@ -6,6 +6,7 @@ import {
 	getModelGroupLabel,
 	getModeLeafLabel,
 	groupLabelForConfig,
+	installedAgentsFirst,
 	pickConfigForModelChange,
 	prettifyModel,
 	providerCaptionForConfig,
@@ -475,5 +476,36 @@ describe("resolveFavoriteChips", () => {
 		expect(chips).toHaveLength(1);
 		// Higher uses (the -xhigh entry) wins; its storedConfigId is the live id.
 		expect(chips[0].storedConfigId).toBe("claude-bypass-sonnet5-xhigh");
+	});
+});
+
+describe("installedAgentsFirst", () => {
+	const list = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+
+	it("moves agents that are not installed below the installed ones, keeping each group's order", () => {
+		const out = installedAgentsFirst(list, [
+			{ agentId: "a", installed: false },
+			{ agentId: "b", installed: true },
+			{ agentId: "c", installed: false },
+			{ agentId: "d", installed: true },
+		]);
+		expect(out.map((x) => x.id)).toEqual(["b", "d", "a", "c"]);
+	});
+
+	it("treats an agent with no availability result as installed and does not mutate the input", () => {
+		const out = installedAgentsFirst(list, [{ agentId: "b", installed: false }]);
+		expect(out.map((x) => x.id)).toEqual(["a", "c", "d", "b"]);
+		expect(list.map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
+		expect(installedAgentsFirst(list, []).map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
+	});
+});
+
+describe("Antigravity model labels", () => {
+	it("names each model without the vendor and groups every effort and mode under it", () => {
+		const agy = DEFAULT_AGENTS.find((a) => a.id === "builtin-agy")!;
+		const groups = buildPickerGroups(agy).map((g) => g.label);
+		expect(groups).toEqual(["Neon", "Carbon", "Argon", "Hydrogen"]);
+		const auto = agy.configurations.find((c) => c.id === "agy-auto-neon-xhigh")!;
+		expect(getModeLeafLabel(auto)).toBe("Auto · X-High");
 	});
 });

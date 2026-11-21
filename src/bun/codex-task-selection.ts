@@ -98,15 +98,16 @@ export async function chooseTaskCodexConversations(
 	selections.forEach((selection, i) => {
 		if (selection.kind === "selected") choices.set(codexIndices[i], { sessionId: selection.sessionId, codexHome: selection.codexHome });
 	});
-	if (options.persist) await claimChoices(project, task, options.onDisk ?? panes, panes, choices);
+	if (options.persist) await claimCodexChoices(project, task, options.onDisk ?? panes, panes, choices);
 	return choices;
 }
 
 /**
  * Record the chosen ids only if no pane changed since the snapshot, so a second
  * app instance choosing at the same time fails instead of doubling a conversation.
+ * A caller with refusals of its own chooses with `persist: false` and claims after them.
  */
-async function claimChoices(project: Project, task: Task, expected: PaneSessionEntry[], snapshot: PaneSessionEntry[], choices: Map<number, CodexPaneChoice>): Promise<void> {
+export async function claimCodexChoices(project: Project, task: Task, expected: PaneSessionEntry[], snapshot: PaneSessionEntry[], choices: Map<number, CodexPaneChoice>): Promise<void> {
 	const { result } = await data.updateTaskWith(project, task.id, (current) => {
 		const stored = current.sessionState?.panes ?? [];
 		const unchanged = stored.length === expected.length && expected.every((pane, i) => stored[i]?.sessionId === pane.sessionId);

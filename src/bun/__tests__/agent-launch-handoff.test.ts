@@ -140,6 +140,115 @@ describe("deliverLaunchHandoff", () => {
 
 // #2034: a Claude session this app launched is typed into only after it says it
 // is past its startup dialogs — the trust prompt's default is "No, exit".
+describe("deliverLaunchHandoff — a launched agy session", () => {
+	const agyTask = (sessionId: string | null, extra: Record<string, unknown> = {}) =>
+		liveTask({ sessionState: { panes: [{ paneId: "%4", sessionId, agentCmd: "agy", ...extra }] } });
+
+	function runWithClock(onTick: (elapsedMs: number) => void = () => {}) {
+		let clock = 0;
+		return deliverLaunchHandoff({
+			projectId: "p1",
+			childTaskId: "child-1234",
+			source,
+			sleep: async (ms) => {
+				clock += ms;
+				onTick(clock);
+			},
+			now: () => clock,
+		});
+	}
+
+	it("types nothing while the pane has no captured session: badges the card, then gives up with a toast", async () => {
+		getTask.mockResolvedValue(agyTask(null));
+		await expect(runWithClock()).resolves.toBe(false);
+
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliAttention).toHaveBeenCalledTimes(1);
+		expect(pushCliAttention.mock.calls[0]![0]).toMatchObject({ taskId: "child-1234", reason: expect.stringContaining("has not finished starting") });
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error" }));
+	});
+
+	it("types into that pane once its SessionStart hook has captured the conversation id", async () => {
+		getTask.mockResolvedValue(agyTask(null));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 8_000) getTask.mockResolvedValue(agyTask("conv-1"));
+		});
+
+		expect(result).toBe(true);
+		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+		expect(sendMessageImmediately.mock.calls[0]![2]).toEqual({ kind: "pane", paneId: "%4" });
+		expect(pushCliAttention).not.toHaveBeenCalled();
+	});
+
+	it("still delivers after the boot window if the session shows up late, badge included", async () => {
+		getTask.mockResolvedValue(agyTask(null));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 300_000) getTask.mockResolvedValue(agyTask("conv-1"));
+		});
+		expect(result).toBe(true);
+		expect(pushCliAttention).toHaveBeenCalledTimes(1);
+	});
+
+	it("abandons the note when agy captured its session and exited before the poll: the pane is a bare shell", async () => {
+		noteAgentLaunched("child-1234", "launch-1", { startReceipts: false });
+		noteAgentExited("child-1234", "launch-1", 0);
+		getTask.mockResolvedValue(agyTask("conv-1"));
+		await expect(runWithClock()).resolves.toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error", message: expect.stringContaining("exited") }));
+	});
+
+	it("delivers while that launch is still alive", async () => {
+		noteAgentLaunched("child-1234", "launch-1", { startReceipts: false });
+		getTask.mockResolvedValue(agyTask("conv-1"));
+		await expect(runWithClock()).resolves.toBe(true);
+	});
+
+	it("stops waiting for the capture when the launch exits meanwhile", async () => {
+		noteAgentLaunched("child-1234", "launch-1", { startReceipts: false });
+		getTask.mockResolvedValue(agyTask(null));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 4_000) noteAgentExited("child-1234", "launch-1", 1);
+		});
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("abandons the note when the task is relaunched before the first agy reported: the relaunch brings its own", async () => {
+		getTask.mockResolvedValue(agyTask(null));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 5_000) getTask.mockResolvedValue(agyTask(null, { paneId: "%9" }));
+			if (elapsed === 8_000) getTask.mockResolvedValue(agyTask("conv-new", { paneId: "%9" }));
+		});
+
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error", message: expect.stringContaining("restarted") }));
+	});
+
+	it("is not confused by the pane id still being unknown right after a launch", async () => {
+		getTask.mockResolvedValue(agyTask(null, { paneId: null }));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 3_000) getTask.mockResolvedValue(agyTask(null));
+			if (elapsed === 6_000) getTask.mockResolvedValue(agyTask("conv-1"));
+		});
+		expect(result).toBe(true);
+		expect(sendMessageImmediately.mock.calls[0]![2]).toEqual({ kind: "pane", paneId: "%4" });
+	});
+
+	it("resolves a wrapper through the family its pane records", async () => {
+		getTask.mockResolvedValue(agyTask(null, { agentCmd: "ant", agentFamily: "agy" }));
+		await expect(runWithClock()).resolves.toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("leaves another harness on the pane-exists rule: a Codex pane with no session id is typed into at once", async () => {
+		getTask.mockResolvedValue(liveTask({ sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "codex" }] } }));
+		await expect(runWithClock()).resolves.toBe(true);
+		expect(sendMessageImmediately.mock.calls[0]![2]).toBeNull();
+	});
+});
+
 describe("deliverLaunchHandoff — a launched Claude session", () => {
 	const SESSION = "11111111-2222-4333-8444-555555555555";
 	const claudeTask = () => liveTask({ sessionState: { panes: [{ paneId: "%1", sessionId: SESSION, agentCmd: "claude" }] } });

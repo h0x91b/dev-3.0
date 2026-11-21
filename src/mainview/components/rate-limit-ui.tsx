@@ -20,7 +20,7 @@ import type { AgentAccountsState } from "../../shared/agent-accounts";
 /** Data older than this gets a staleness note in the tooltip. */
 export const STALE_AFTER_MS = 10 * 60 * 1000;
 
-export const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", kimi: "Kimi" };
+export const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", kimi: "Kimi", agy: "Antigravity" };
 
 /** Which account the rate-limit windows for a source are drawn from. */
 export interface AccountLine {
@@ -45,7 +45,7 @@ export interface AccountLine {
  * so surfacing it answers "whose limit is this?" at a glance.
  */
 export function resolveAccount(
-	source: Exclude<RateLimitSource, "kimi">,
+	source: Exclude<RateLimitSource, "kimi" | "agy">,
 	state: AgentAccountsState | null,
 	accountId?: string | null,
 ): AccountLine | null {
@@ -83,15 +83,20 @@ export function resolveAccount(
 	return null;
 }
 
-/** Localized window label: budget windows get words, timed ones keep "5h"/"7d". */
+/** Localized window label: budget windows and agy's other models get words, timed ones keep "5h"/"7d". */
+const LOCALIZED_WINDOW_LABELS = {
+	monthly_credits: "rateLimits.monthlyLabel",
+	spend_limit: "rateLimits.spendLabel",
+	"3p-5h": "rateLimits.otherFiveHourLabel",
+	"3p-weekly": "rateLimits.otherWeeklyLabel",
+} as const;
+
 export function useWindowLabel(): (window: RateLimitWindow) => string {
 	const t = useT();
-	return (window) =>
-		window.id === "monthly_credits"
-			? t("rateLimits.monthlyLabel")
-			: window.id === "spend_limit"
-				? t("rateLimits.spendLabel")
-				: windowLabel(window);
+	return (window) => {
+		const key = LOCALIZED_WINDOW_LABELS[window.id as keyof typeof LOCALIZED_WINDOW_LABELS];
+		return key ? t(key) : windowLabel(window);
+	};
 }
 
 /** "~$314.12 of $500 monthly limit" — null until Claude Code has fetched both dollar
@@ -181,10 +186,12 @@ export function WindowBarRow({
 	const reset = formatResetDelta(resetsAt, now);
 	return (
 		<div className="flex flex-col gap-[0.1875rem]">
-			<div className="flex items-center gap-1.5">
+			{/* Wraps instead of clipping: a long reading (Russian "98% использовано · сброс через 2ч13м")
+			    drops under the bar, right-aligned, when it cannot share the line with label and bar. */}
+			<div className="flex flex-wrap items-center gap-x-1.5 gap-y-[0.125rem]">
 				<span className="min-w-[1.5rem] shrink-0 font-medium tabular-nums text-fg-3">{label}</span>
 				<UsageBar percent={usedPercent} className="h-1 min-w-[3rem] flex-1" />
-				<span className="shrink-0 whitespace-nowrap tabular-nums">
+				<span className="ml-auto shrink-0 whitespace-nowrap tabular-nums">
 					<span className={`font-semibold ${severityText(percent)}`}>{t("rateLimits.percentUsed", { percent })}</span>
 					{reset && <span className="text-fg-3"> · {t("rateLimits.resetsIn", { time: reset })}</span>}
 					{trailing}

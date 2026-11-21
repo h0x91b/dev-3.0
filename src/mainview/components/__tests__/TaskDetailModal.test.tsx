@@ -771,4 +771,25 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByTestId("task-detail-pull-requests")).toBeNull();
 		});
 	});
+
+	describe("archived reopen", () => {
+		it.each(["completed", "cancelled"] as const)("reopens a %s task to Agent is Working in one click", async (status) => {
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockResolvedValue(makeTodoTask({ status: "in-progress" }));
+
+			renderModal(makeTodoTask({ status }), { dispatch, onClose });
+			await user.click(screen.getByTestId("archived-task-reopen"));
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", newStatus: "in-progress" }),
+			));
+			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+				type: "updateTask",
+				task: expect.objectContaining({ status: "in-progress" }),
+			}));
+			expect(onClose).toHaveBeenCalled();
+		});
+	});
 });

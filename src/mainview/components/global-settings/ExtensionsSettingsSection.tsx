@@ -10,11 +10,11 @@ import { isRemote } from "../../utils/platform";
 import { BUILTIN_BOARD_VIEWS } from "../../board-views/builtins";
 import {
 	clearExtensionFailure,
-	getBoardPluginsSnapshot,
-	subscribeBoardPlugins,
-	syncBoardPlugins,
+	getPluginsSnapshot,
+	subscribePlugins,
+	syncPlugins,
 	type ExtensionLoadState,
-} from "../../board-views/plugins";
+} from "../../plugins/runtime";
 import ExtensionConsentModal, { type ExtensionConsentRequest } from "./ExtensionConsentModal";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
@@ -53,13 +53,13 @@ function errorText(err: unknown): string {
  */
 export default function ExtensionsSettingsSection({ t }: { t: TFunction }) {
 	const remote = isRemote();
-	const runtime = useSyncExternalStore(subscribeBoardPlugins, getBoardPluginsSnapshot);
+	const runtime = useSyncExternalStore(subscribePlugins, getPluginsSnapshot);
 	const [overview, setOverview] = useState<ExtensionsOverview | null>(runtime.overview);
 	const [consent, setConsent] = useState<(ExtensionConsentRequest & { onConfirm: () => Promise<void> }) | null>(null);
 	const [busy, setBusy] = useState(false);
 
 	const refresh = useCallback(async () => {
-		const next = await syncBoardPlugins();
+		const next = await syncPlugins();
 		if (next) setOverview(next);
 	}, []);
 

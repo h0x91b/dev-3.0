@@ -71,6 +71,7 @@ const common = {
 	"agentLaunch.resumeNoteAccount": "Reabre las conversaciones guardadas, cada una con su propio agente y preset. Los paneles de Claude pueden pasar a otra cuenta abajo.",
 	"agentLaunch.resumeConversation": "Conversación {id}",
 	"agentLaunch.resumeLatest": "Sin id de conversación guardado: el agente abre la última",
+	"agentLaunch.resumeStartAgain": "Iniciar de nuevo (el agente no se inició)",
 	"agentLaunch.resume": "Reanudar",
 	"agentLaunch.resuming": "Reanudando…",
 	"agentLaunch.initialPrompt": "Instrucciones iniciales",

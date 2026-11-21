@@ -100,6 +100,16 @@ describe("dev3 agent resume", () => {
 		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, { refuseLive: true, refuseFresh: true, requireSessionIds: true });
 	});
 
+	it("tells the dialog the main agent never started, so it offers a start again instead of a resume", async () => {
+		const failed = { ...task, launchFailure: { exitCode: 2, at: "t", output: null, neverStarted: true, sessionId: "s-main" } } as Task;
+		const pending = resumeCliAgent({ project, task: failed, requester, allowAgentLatest: false });
+		await answer(true);
+		await pending;
+		const { panes } = push.mock.calls[0][1].resume;
+		expect(panes[0].neverStarted).toBe(true);
+		expect(panes[1].neverStarted).toBeUndefined();
+	});
+
 	it("resumes nothing when declined, or when the run ended before an answer", async () => {
 		const declined = resumeCliAgent({ project, task, requester, allowAgentLatest: false });
 		await answer(false);
