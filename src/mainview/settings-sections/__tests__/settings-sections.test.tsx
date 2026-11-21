@@ -107,4 +107,21 @@ describe("SettingsCategoryPage", () => {
 		expect(screen.getByText("before")).toBeInTheDocument();
 		expect(screen.getByText("after")).toBeInTheDocument();
 	});
+
+	it("drops an extension's section that throws, with no inline notice (bible §5.12)", () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		function Broken(): never {
+			throw new Error("boom");
+		}
+		render(
+			<I18nProvider>
+				<SettingsCategoryPage
+					category="system"
+					sections={[section("builtin:a", "system", () => <p>before</p>), section("some-ext:broken", "system", Broken)]}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(screen.getByText("before")).toBeInTheDocument();
+	});
 });

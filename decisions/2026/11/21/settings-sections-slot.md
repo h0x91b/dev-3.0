@@ -17,12 +17,17 @@ the slot ships with built-ins only: no manifest kind, no public `ctx.*` service,
   provides it through `SettingsControllerContext` and each built-in adapter passes the same props as before.
   This is the recorded tech debt (built-ins on internals, `docs/extensions-platform.md`).
 - `<SettingsCategoryPage>` renders a category's sections itself instead of through `<SlotItems>`: that one is
-  a bar (inline vs a "More" menu, a budget), the wrong shape for a page. Each section gets a `SlotErrorBoundary`
-  whose fallback is a visible notice, because a section that silently disappears reads as a removed setting.
+  a bar (inline vs a "More" menu, a budget), the wrong shape for a page. Each section gets a `SlotErrorBoundary`.
+  A crashed **built-in** leaves a visible notice, because a built-in section that silently disappears reads as a
+  removed setting; an **extension** section vanishes like any failed contributor. This is the settings-sections
+  exception now written into `docs/ux/PRODUCT_UX_BIBLE.md` §5.12 and amended onto
+  `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
 - Search filters the entries of the registered sections; the anchor-scroll effect also re-runs when the
   registered set changes.
 
 ## Risks
+Before the slot opens to extensions, the page must place built-ins before extensions by origin (as `<SlotItems>`
+does): today numeric `order` alone sorts, so an extension passing `order: -1` would rise above the built-ins.
 The controller context re-renders every section on any settings change, as the prop-passing switch did. Built-ins
 must be installed before Settings renders: tests that mount `GlobalSettings` call `applyBuiltinPlugins`.
 

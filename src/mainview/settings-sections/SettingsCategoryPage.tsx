@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { useT } from "../i18n";
 import { CordisContext } from "../plugins/react";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
+import { isBuiltinItem } from "../plugins/SlotItems";
 import type { SlotEntry } from "../plugins/slot-registry";
 import type { SettingsCategoryId } from "../settings-registry";
 import { getSettingsSectionsRegistry, type SettingsSectionItem } from "./registry";
@@ -22,8 +23,9 @@ function SectionCrashed() {
 }
 
 /**
- * One category page: its registered sections in order, each in its own error boundary,
- * so a section that throws leaves a notice in its place and the rest of the page works.
+ * One category page: its registered sections in order, each in its own error boundary.
+ * A crashed built-in leaves a notice (a vanished one reads as a removed setting); an
+ * extension's section simply vanishes, like any failed contributor (bible §5.12).
  */
 export function SettingsCategoryPage({
 	category,
@@ -39,7 +41,7 @@ export function SettingsCategoryPage({
 				.map(({ def, ctx }) => {
 					const Section = def.component;
 					return (
-						<SlotErrorBoundary key={def.id} slot="settingsSections" resetKey={def.id} fallback={() => <SectionCrashed />}>
+						<SlotErrorBoundary key={def.id} slot="settingsSections" resetKey={def.id} fallback={() => (isBuiltinItem(def.id) ? <SectionCrashed /> : null)}>
 							<CordisContext.Provider value={ctx}>
 								<Section ctx={ctx} />
 							</CordisContext.Provider>

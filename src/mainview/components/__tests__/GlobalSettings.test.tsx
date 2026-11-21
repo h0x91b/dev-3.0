@@ -195,6 +195,8 @@ describe("GlobalSettings", () => {
 		localStorage.clear();
 		setViewport(1024);
 		document.documentElement.dataset.theme = "dark";
+		// The Simplified Mode tests leave its preset applied, which hides the Keyboard category.
+		setHiddenControlsForTests([]);
 	});
 
 	describe("initial load", () => {
@@ -1055,8 +1057,6 @@ describe("GlobalSettings", () => {
 		let scrolled: Element[] = [];
 		let original: PropertyDescriptor | undefined;
 		beforeEach(() => {
-			// An earlier test switches Simplified Mode on, which hides the Keyboard category.
-			setHiddenControlsForTests([]);
 			scrolled = [];
 			original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 			Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {

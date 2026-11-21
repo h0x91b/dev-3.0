@@ -1,5 +1,7 @@
 # GUI plugin slots: two kinds, internal migration first, add-only for third parties
 
+Amended on 2026-11-21 by `decisions/2026/11/21/settings-sections-slot.md`: a crashed built-in settings section shows an inline notice instead of vanishing; extension items still vanish.
+
 Status: Accepted — decided by Arseny on 2026-11-21 (coordinator task seq:2526). Not yet implemented; the first foundation PRs (app root, generic slot registry and host) build it. The migration's step-by-step status lives in `docs/extensions-platform.md`, Phase 4.
 
 ## Context

@@ -284,7 +284,7 @@ function BuiltinDeveloperToolsSection() {
 			t={s.t}
 			cliInstallStatus={s.cliInstallStatus}
 			cliArmedInstance={s.cliArmedInstance}
-				onInstallDev3Cli={s.handleInstallDev3Cli}
+			onInstallDev3Cli={s.handleInstallDev3Cli}
 		/>
 	);
 }
