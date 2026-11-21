@@ -17,7 +17,7 @@ import type { AppAction, Route } from "../state";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import LabelChip from "./LabelChip";
 import { TaskMarkerItems, useTaskMarkerEntries } from "../task-markers/TaskMarkers";
-import { placeTaskMarkers } from "../task-markers/registry";
+import { labelTaskMarkers, placeTaskMarkers } from "../task-markers/registry";
 import PipelineDropdown from "./PipelineDropdown";
 import PortBadgeList from "./PortBadgeList";
 import PriorityBadge from "./PriorityBadge";
@@ -101,7 +101,7 @@ export default function ActiveTaskRow({
 	closePreview,
 }: ActiveTaskRowProps) {
 	const t = useT();
-	const markers = placeTaskMarkers(useTaskMarkerEntries(), { task, surface: "sidebar" });
+	const markers = labelTaskMarkers(placeTaskMarkers(useTaskMarkerEntries(), { task, surface: "sidebar" }), t, { task, surface: "sidebar" });
 	const reviewedPr = reviewedPrLink(task, prInfo);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusMenu = useStatusMenu(narrow);
@@ -202,7 +202,7 @@ export default function ActiveTaskRow({
 			// The row's explicit name overrides its descendants, so the role and
 			// the markers only reach assistive tech from here.
 			aria-label={
-				[displayTitle, isCoordinatorTask(task) && t("task.coordinatorBadge"), ...markers.map((entry) => entry.def.label(t, { task, surface: "sidebar" })), task.hidden && t("task.hiddenFromSidebar")]
+				[displayTitle, isCoordinatorTask(task) && t("task.coordinatorBadge"), ...markers.map((marker) => marker.label), task.hidden && t("task.hiddenFromSidebar")]
 					.filter(Boolean)
 					.join(" — ")
 			}
@@ -392,7 +392,7 @@ export default function ActiveTaskRow({
 				<div className="mt-1 flex items-center gap-1.5 min-w-0">
 				<Tooltip content={agentSummary} disabled={!agentSummary}>
 					<div className="flex min-w-0 flex-1 items-center gap-1.5" data-testid={`sidebar-identity-${task.id}`}>
-						<TaskMarkerItems entries={markers} task={task} surface="sidebar" />
+						<TaskMarkerItems entries={markers.map((marker) => marker.entry)} task={task} surface="sidebar" />
 						{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" />}
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
 						{task.taskType === "pr-review" && (

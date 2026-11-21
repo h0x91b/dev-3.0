@@ -42,13 +42,23 @@ export interface TaskMarkerItem extends SlotItem {
 /** Bible §9: at most one extension marker per card or row, after every built-in. */
 export const TASK_MARKER_EXTENSION_LIMIT = 1;
 
+const reportedFailures = new Set<string>();
+
+/** Once per marker and callback: a board calls them for every card on every render. */
+function reportOnce(id: string, callback: "when" | "label", err: unknown): void {
+	const key = `${id}\u0000${callback}`;
+	if (reportedFailures.has(key)) return;
+	reportedFailures.add(key);
+	console.error(`[slots] ${callback}() of task marker ${id} threw; hiding it:`, err);
+}
+
 function applies(entry: SlotEntry<TaskMarkerItem>, scope: TaskMarkerScope): boolean {
 	const { surfaces, when } = entry.def;
 	if (surfaces && !surfaces.includes(scope.surface)) return false;
 	try {
 		return when(scope);
 	} catch (err) {
-		console.error(`[slots] when() of task marker ${entry.def.id} threw; hiding it:`, err);
+		reportOnce(entry.def.id, "when", err);
 		return false;
 	}
 }
@@ -74,3 +84,23 @@ export class TaskMarkerRegistry extends SlotRegistry<TaskMarkerItem> {
 }
 
 export const getTaskMarkerRegistry = defineAppSlot((root) => new TaskMarkerRegistry(root));
+
+/**
+ * Shown markers with their accessible names, for a host that folds them into its own name (the
+ * sidebar row). A marker whose `label` throws is dropped, so it cannot take the row down with it.
+ */
+export function labelTaskMarkers(
+	entries: readonly SlotEntry<TaskMarkerItem>[],
+	t: TFunction,
+	scope: TaskMarkerScope,
+): { entry: SlotEntry<TaskMarkerItem>; label: string }[] {
+	const labelled: { entry: SlotEntry<TaskMarkerItem>; label: string }[] = [];
+	for (const entry of entries) {
+		try {
+			labelled.push({ entry, label: entry.def.label(t, scope) });
+		} catch (err) {
+			reportOnce(entry.def.id, "label", err);
+		}
+	}
+	return labelled;
+}

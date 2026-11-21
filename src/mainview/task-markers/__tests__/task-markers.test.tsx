@@ -6,7 +6,8 @@ import { getAppRoot } from "../../plugins/root";
 import { resetPluginsForTests } from "../../plugins/runtime";
 import type { SlotEntry } from "../../plugins/slot-registry";
 import { BUILTIN_TASK_MARKERS } from "../builtins";
-import { getTaskMarkerRegistry, placeTaskMarkers, type TaskMarkerItem, type TaskMarkerScope } from "../registry";
+import { getTaskMarkerRegistry, labelTaskMarkers, placeTaskMarkers, type TaskMarkerItem, type TaskMarkerScope } from "../registry";
+import type { TFunction } from "../../i18n";
 import { TaskMarkers, TaskMarkersProvider } from "../TaskMarkers";
 import { installTaskMarkerBuiltins } from "./install-builtins";
 
@@ -70,6 +71,29 @@ describe("placeTaskMarkers", () => {
 		];
 		expect(placeTaskMarkers(entries, card()).map((e) => e.def.id)).toEqual(["builtin:card-only"]);
 		expect(placeTaskMarkers(entries, { ...card(), surface: "sidebar" })).toEqual([]);
+		errors.mockRestore();
+	});
+
+	it("reports a throwing when() once per marker, not once per card per render", () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		const entries = [entry(marker("builtin:noisy-when", { when: () => { throw new Error("boom"); } }))];
+		for (let i = 0; i < 100; i++) placeTaskMarkers(entries, card({ id: `t${i}` }));
+		expect(errors.mock.calls.filter((call) => String(call[0]).includes("builtin:noisy-when"))).toHaveLength(1);
+		errors.mockRestore();
+	});
+
+	it("drops a marker whose label() throws, keeps the rest, and reports it once", () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		const entries = [
+			entry(marker("builtin:ok")),
+			entry(marker("builtin:noisy-label", { label: () => { throw new Error("boom"); } })),
+		];
+		const t = ((key: string) => key) as TFunction;
+		for (let i = 0; i < 100; i++) {
+			const labelled = labelTaskMarkers(entries, t, card({ id: `t${i}` }));
+			expect(labelled.map((m) => [m.entry.def.id, m.label])).toEqual([["builtin:ok", "builtin:ok"]]);
+		}
+		expect(errors.mock.calls.filter((call) => String(call[0]).includes("builtin:noisy-label"))).toHaveLength(1);
 		errors.mockRestore();
 	});
 

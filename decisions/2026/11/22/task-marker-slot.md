@@ -15,9 +15,11 @@ service, no API version bump. The card's inline action strip is full (§9) and i
   scratch and automation glyphs carry no accessible name; the role band hosts a filter; PR-review and draft are
   text badges. They stay inline.
 - Performance (2400-task boards): one `useSyncExternalStore` in `TaskMarkersProvider` at the app root; a card
-  reads the entries from context. `when` runs before anything mounts, so a task no marker applies to adds no
-  fiber beyond `<TaskMarkers>`. No wrapper element, so the DOM is unchanged.
+  reads the entries from context. `when` runs before anything mounts, so a card no marker applies to adds no
+  fiber beyond `<TaskMarkers>`; a sidebar row keeps an empty `<TaskMarkerItems>`. No wrapper element, so the DOM is unchanged.
 - `placeTaskMarkers` shows every applicable built-in, then the first applicable extension marker, after them.
+- A throwing `when` or `label` hides that marker and is logged once per marker id, not once per card per
+  render; a throwing `component` is caught by its own boundary.
 - The sidebar row's explicit `aria-label` overrides its descendants, so the row folds each shown marker's
   `label` into its own name instead of special-casing the native backend.
 
