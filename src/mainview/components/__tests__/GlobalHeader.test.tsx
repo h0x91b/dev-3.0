@@ -464,16 +464,17 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			expect(within(menu).getAllByText("Project Delta")).toHaveLength(1);
 		});
 
-		it("keeps the ⌘N badge on board order, not on the regrouped row order", async () => {
+		it("badges ⌘N in dashboard order, not on the hoisted row order", async () => {
 			withSpaces();
 			const menu = await openSwitcher();
 			await within(menu).findByText("Dev Space");
 			const rows = within(menu).getAllByRole("button");
 			const badgeOf = (name: string) =>
 				rows.find((r) => r.textContent?.includes(name))?.querySelector("kbd")?.textContent;
-			// p1 is board index 0 → ⌘1, even though it now sits under a hoisted space.
-			expect(badgeOf("Project Alpha")).toBe("⌘1");
-			expect(badgeOf("Project Beta")).toBe("⌘2");
+			// Dashboard: Other Space (Beta), Dev Space (Alpha, Beta again), Home (Delta).
+			// The switcher hoists Dev Space; the digits stay on the dashboard.
+			expect(badgeOf("Project Beta")).toBe("⌘1");
+			expect(badgeOf("Project Alpha")).toBe("⌘2");
 			expect(badgeOf("Project Delta")).toBe("⌘3");
 		});
 
