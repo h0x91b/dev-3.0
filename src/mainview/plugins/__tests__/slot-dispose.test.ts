@@ -13,6 +13,7 @@ import { importAppSlots, MAINVIEW, sourceFiles } from "./app-slots";
 const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	boardViews: "board-views/__tests__/BoardHost.test.tsx",
 	commands: "components/__tests__/CommandPaletteModal.test.tsx",
+	openInTargets: "open-in-targets/__tests__/open-in-targets.test.tsx",
 	destinationBodies: "destination-bodies/__tests__/destination-body.test.tsx",
 	fileMenu: "file-menu/__tests__/file-menu-slot.test.tsx",
 	goToSources: "go-to-sources/__tests__/go-to-sources.test.tsx",

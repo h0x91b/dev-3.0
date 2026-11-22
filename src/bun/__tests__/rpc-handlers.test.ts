@@ -18468,19 +18468,25 @@ describe("handlers.openInApp", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(loadSettings).mockResolvedValue({ externalApps: [{ id: "custom-fork", name: "Fork", macAppName: "Fork" }] } as any);
 	});
 
 	it("opens a path in Finder via `open <path>`", async () => {
-		await handlers.openInApp({ appName: "Finder", path: "/tmp/work" });
+		await handlers.openInApp({ appId: "finder", path: "/tmp/work" });
 		expect(mockSpawn).toHaveBeenCalledWith(["open", "/tmp/work"], expect.anything());
 	});
 
 	it("opens non-Zed editors via `open -a <app> <path>`", async () => {
-		await handlers.openInApp({ appName: "Visual Studio Code", path: "/tmp/work" });
+		await handlers.openInApp({ appId: "vscode", path: "/tmp/work" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["open", "-a", "Visual Studio Code", "/tmp/work"],
 			expect.anything(),
 		);
+	});
+
+	it("still opens an app the user added in Settings", async () => {
+		await handlers.openInApp({ appId: "custom-fork", path: "/tmp/work" });
+		expect(mockSpawn).toHaveBeenCalledWith(["open", "-a", "Fork", "/tmp/work"], expect.anything());
 	});
 
 	it("opens Zed in a NEW window via the bundled Zed CLI `-n` flag", async () => {
@@ -18488,7 +18494,7 @@ describe("handlers.openInApp", () => {
 		vi.mocked(existsSync).mockImplementation(
 			(p) => p === "/Applications/Zed.app/Contents/MacOS/cli",
 		);
-		await handlers.openInApp({ appName: "Zed", path: "/tmp/work" });
+		await handlers.openInApp({ appId: "zed", path: "/tmp/work" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["/Applications/Zed.app/Contents/MacOS/cli", "-n", "/tmp/work"],
 			expect.anything(),
@@ -18498,7 +18504,7 @@ describe("handlers.openInApp", () => {
 	it("prefers a Zed CLI on PATH over the app bundle", async () => {
 		// All candidates exist → the first (PATH binary) wins.
 		vi.mocked(existsSync).mockReturnValue(true);
-		await handlers.openInApp({ appName: "Zed", path: "/tmp/work" });
+		await handlers.openInApp({ appId: "zed", path: "/tmp/work" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["/usr/local/bin/zed", "-n", "/tmp/work"],
 			expect.anything(),
@@ -18507,7 +18513,7 @@ describe("handlers.openInApp", () => {
 
 	it("falls back to `open -a Zed` when no Zed CLI is found", async () => {
 		vi.mocked(existsSync).mockReturnValue(false);
-		await handlers.openInApp({ appName: "Zed", path: "/tmp/work" });
+		await handlers.openInApp({ appId: "zed", path: "/tmp/work" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["open", "-a", "Zed", "/tmp/work"],
 			expect.anything(),
@@ -18516,17 +18522,30 @@ describe("handlers.openInApp", () => {
 
 	it("rejects relative paths and path traversal", async () => {
 		await expect(
-			handlers.openInApp({ appName: "Zed", path: "relative/path" }),
+			handlers.openInApp({ appId: "zed", path: "relative/path" }),
 		).rejects.toThrow("Invalid path");
 		await expect(
-			handlers.openInApp({ appName: "Zed", path: "/tmp/../etc/passwd" }),
+			handlers.openInApp({ appId: "zed", path: "/tmp/../etc/passwd" }),
 		).rejects.toThrow("Invalid path");
+		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 
-	it("rejects app names containing a slash", async () => {
-		await expect(
-			handlers.openInApp({ appName: "../evil", path: "/tmp/work" }),
-		).rejects.toThrow("Invalid app name");
+	// Only a known id launches anything: an app name, a path or an unknown id is refused before any spawn.
+	it.each([
+		["an unknown id", "not-an-app"],
+		["a bare app name", "Visual Studio Code"],
+		["an absolute path", "/Applications/Calculator.app"],
+		["a path-like name", "../evil"],
+		["an empty id", ""],
+	])("refuses %s without spawning", async (_what, appId) => {
+		await expect(handlers.openInApp({ appId, path: "/tmp/work" })).rejects.toThrow("Unknown app");
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("refuses a user-configured app whose name is a path", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ externalApps: [{ id: "sneaky", name: "Sneaky", macAppName: "/tmp/evil.app" }] } as any);
+		await expect(handlers.openInApp({ appId: "sneaky", path: "/tmp/work" })).rejects.toThrow("Invalid app name");
+		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 });
 

@@ -94,12 +94,14 @@ import type { CardLineage } from "../../utils/taskLineage";
 import { resetLiveSessionStatsForTests } from "../../hooks/useLiveSessionStats";
 import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
 import { installTaskMarkerBuiltins } from "../../task-markers/__tests__/install-builtins";
+import { installOpenInTargetBuiltins } from "../../open-in-targets/__tests__/install-builtins";
 
 // The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins,
 // and the identity glyphs from the taskMarkers slot.
 beforeEach(async () => {
 	await installTaskMenuBuiltins();
 	await installTaskMarkerBuiltins();
+	await installOpenInTargetBuiltins();
 });
 
 vi.mock("../../confirm", () => ({
@@ -1801,7 +1803,7 @@ describe("TaskCard", () => {
 
 			await waitFor(() => {
 				expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
-					appName: "Finder",
+					appId: "finder",
 					path: "/tmp/worktree",
 				});
 			});

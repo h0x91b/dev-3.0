@@ -1633,7 +1633,8 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			openInApp: {
-				params: { appName: string; path: string };
+				/** `appId` must name a default or user-configured app; anything else is refused. */
+				params: { appId: string; path: string };
 				response: void;
 			};
 			/**
