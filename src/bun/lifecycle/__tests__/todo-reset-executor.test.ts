@@ -315,6 +315,8 @@ describe("notifyStatusChange — armed message draft (#2281)", () => {
 
 	it("leaves it for any other move, and leaves an unarmed draft alone", async () => {
 		await executeLifecycleEffect(change("review-by-ai"), ctx(liveTask({ messageDraft: armed })));
+		// Has Questions is where every harness's PermissionRequest lands: an approval prompt may be open.
+		await executeLifecycleEffect(change("user-questions"), ctx(liveTask({ messageDraft: armed })));
 		await executeLifecycleEffect(change("user-questions"), ctx(liveTask({ messageDraft: { text: "notes", updatedAt: "t0" } })));
 		await new Promise((r) => setTimeout(r, 10));
 		expect(fireArmedMessageDraft).not.toHaveBeenCalled();

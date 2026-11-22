@@ -10,6 +10,7 @@ import {
 	getTaskTitle,
 	MAX_SCHEDULED_MESSAGES_PER_TASK,
 	MAX_SCHEDULED_MESSAGE_LENGTH,
+	MESSAGE_DRAFT_CHANGED_ERROR,
 } from "../shared/types";
 import * as data from "./data";
 import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
@@ -553,29 +554,32 @@ export async function sendMessageImmediately(
 }
 
 /**
- * Save the task's message draft, or clear it when `text` is blank (#2281). An autosave
- * passes the `updatedAt` it last saw; when the draft moved on since (a stop-send claimed
- * it), the text is still kept, but as a note: a save never re-arms a draft already sent.
+ * Save the task's message draft, or clear it when `text` is blank (#2281). A caller that
+ * passes the `updatedAt` it last saw gets a compare-and-set. An autosave that finds the
+ * draft moved on (a stop-send claimed it) keeps the text as a note, never re-armed; a
+ * `strict` save (a button, Undo) refuses instead, so nothing is sent twice or overwritten.
  */
 export async function saveMessageDraft(
 	project: Project,
 	taskId: string,
-	input: { text: string; sendOnStop?: boolean; expectedUpdatedAt?: string | null },
+	input: { text: string; sendOnStop?: boolean; expectedUpdatedAt?: string | null; strict?: boolean },
 ): Promise<Task> {
 	if (input.text.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
 		throw new Error(`Draft too long: ${input.text.length} chars, and the limit is ${MAX_SCHEDULED_MESSAGE_LENGTH}.`);
 	}
-	const { task: updated } = await data.updateTaskWith<void>(project, taskId, (current) => {
+	const { task: updated, result: refused } = await data.updateTaskWith<boolean>(project, taskId, (current) => {
 		const stale = input.expectedUpdatedAt !== undefined && (current.messageDraft?.updatedAt ?? null) !== input.expectedUpdatedAt;
+		if (stale && input.strict) return { updates: {}, result: true };
 		// Clearing a draft that moved on would delete text this window never saw.
-		if (stale && !input.text.trim()) return { updates: {}, result: undefined };
+		if (stale && !input.text.trim()) return { updates: {}, result: false };
 		if (stale && input.sendOnStop) log.info("Draft changed since the window read it; saving it disarmed", { taskId: taskId.slice(0, 8) });
 		const armed = !!input.sendOnStop && !stale;
 		const draft: TaskMessageDraft | null = input.text.trim()
 			? { text: input.text, ...(armed ? { sendOnStop: true } : {}), updatedAt: new Date().toISOString() }
 			: null;
-		return { updates: { messageDraft: draft }, result: undefined };
+		return { updates: { messageDraft: draft }, result: false };
 	});
+	if (refused) throw new Error(MESSAGE_DRAFT_CHANGED_ERROR);
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	return updated;
 }
@@ -628,10 +632,9 @@ export async function sendMessageDraft(project: Project, taskId: string): Promis
 }
 
 /**
- * The agent stopped: send an armed draft. It goes through the hold because the user
- * may be typing in that pane, and because a Claude permission menu also moves the card
- * to Has Questions: the hold types nothing while the prompt ledger shows a prompt open.
- * A failed send puts the text back, disarmed.
+ * The agent finished its turn (the card reached Your Review): send an armed draft. It
+ * goes through the hold because the user may be typing in that pane. A failed send puts
+ * the text back, disarmed.
  */
 export async function fireArmedMessageDraft(project: Project, taskId: string): Promise<void> {
 	const { task, draft: armed } = await claimDraft(project, taskId, (d, t) => !!d.sendOnStop && !isTerminal(t.status));

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../shared/types";
-import { ACTIVE_STATUSES } from "../../shared/types";
+import { ACTIVE_STATUSES, MESSAGE_DRAFT_CHANGED_ERROR } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { toast } from "../toast";
@@ -139,12 +139,12 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up", onOp
 		}
 	}
 
-	async function saveDraft(text: string, sendOnStop?: boolean, expectedUpdatedAt?: string | null) {
-		const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text, sendOnStop, expectedUpdatedAt });
+	async function saveDraft(text: string, sendOnStop?: boolean, guard?: { expectedUpdatedAt: string | null; strict: true }) {
+		const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text, sendOnStop, ...guard });
 		dispatch({ type: "updateTask", task: updated });
 	}
 
-	/** One click discards; the toast's Undo puts the text back, armed only if no newer draft took its place. */
+	/** One click discards; the toast's Undo puts the text back as it was, unless a newer draft took its place. */
 	async function discardDraft(e: React.MouseEvent) {
 		e.stopPropagation();
 		setOpen(false);
@@ -162,8 +162,9 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up", onOp
 				label: t("task.draftUndo"),
 				emphasis: true,
 				onClick: () => {
-					saveDraft(discarded.text, discarded.sendOnStop, null).catch((err) => {
-						toast.error(t("scheduleMessage.draftSaveFailed", { error: String(err) }), { taskId: task.id });
+					saveDraft(discarded.text, discarded.sendOnStop, { expectedUpdatedAt: null, strict: true }).catch((err) => {
+						if (String(err).includes(MESSAGE_DRAFT_CHANGED_ERROR)) toast.info(t("task.draftUndoSkipped"), { taskId: task.id });
+						else toast.error(t("scheduleMessage.draftSaveFailed", { error: String(err) }), { taskId: task.id });
 					});
 				},
 			}],

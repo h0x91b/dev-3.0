@@ -92,12 +92,12 @@ describe("TerminalComposer", () => {
 		);
 		const input = screen.getByTestId("terminal-composer-input");
 		await userEvent.type(input, "later thought");
-		await userEvent.click(screen.getByRole("button", { name: "Send later" }));
+		await userEvent.click(screen.getByRole("button", { name: "Message agent" }));
 		expect(screen.getByTestId("schedule-modal-seed").textContent).toBe("later thought");
 		expect(input).toHaveValue("");
 		await userEvent.click(screen.getByText("close-stub"));
 		expect(screen.queryByTestId("schedule-modal-stub")).toBeNull();
-		expect(screen.getByRole("button", { name: "Send later" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Message agent" })).toBeDisabled();
 	});
 
 	it("uses the terminal submit transport and clears the input", async () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import type { Project, Task, TmuxPaneInfo, ScheduledMessageTarget } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, MESSAGE_DRAFT_CHANGED_ERROR } from "../../shared/types";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useFileDrop } from "../hooks/useFileDrop";
@@ -65,21 +65,25 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	textRef.current = text;
 	const armedRef = useRef(false);
 	armedRef.current = !!task.messageDraft?.sendOnStop;
-	// The draft version this window last read or wrote; an autosave builds on it (compare-and-set).
+	// The draft version this window last read or wrote; every save builds on it (compare-and-set).
 	const baseVersionRef = useRef<string | null>(task.messageDraft?.updatedAt ?? null);
+	const latestVersionRef = useRef<string | null>(null);
+	latestVersionRef.current = task.messageDraft?.updatedAt ?? null;
 
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	// Writes go out one at a time, so an autosave still in flight can never land after a Discard or a send.
 	const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
-	const persistDraft = useCallback((value: string, sendOnStop: boolean, opts?: { guarded: boolean }) => {
+	/** `strict` (a button) refuses when the draft moved on; an autosave keeps the text as a note instead. */
+	const persistDraft = useCallback((value: string, sendOnStop: boolean, opts?: { strict: boolean }) => {
 		const run = saveChainRef.current.catch(() => {}).then(async () => {
 			const updated = await api.request.saveMessageDraft({
 				taskId: task.id,
 				projectId: project.id,
 				text: value,
 				sendOnStop,
-				...(opts?.guarded ? { expectedUpdatedAt: baseVersionRef.current } : {}),
+				expectedUpdatedAt: baseVersionRef.current,
+				...(opts?.strict ? { strict: true } : {}),
 			});
 			baseVersionRef.current = updated.messageDraft?.updatedAt ?? null;
 			dispatch({ type: "updateTask", task: updated });
@@ -91,7 +95,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	const autosave = useCallback((value: string) => {
 		if (value === lastSavedRef.current) return;
 		lastSavedRef.current = value;
-		persistDraft(value, armedRef.current, { guarded: true }).catch((err) => {
+		persistDraft(value, armedRef.current).catch((err) => {
 			// Still unsaved, so the close-time flush tries again.
 			if (lastSavedRef.current === value) lastSavedRef.current = null;
 			toast.error(t("scheduleMessage.draftSaveFailed", { error: String(err) }), { taskId: task.id });
@@ -176,7 +180,13 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 			onClose();
 		} catch (err) {
 			lastSavedRef.current = previous;
-			setError(String(err));
+			if (String(err).includes(MESSAGE_DRAFT_CHANGED_ERROR)) {
+				// Shown once: the next click saves this text over what the draft is now.
+				baseVersionRef.current = latestVersionRef.current;
+				setError(t("scheduleMessage.draftChanged"));
+			} else {
+				setError(String(err));
+			}
 			submittingRef.current = false;
 			setSubmitting(false);
 		}
@@ -186,16 +196,16 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 		if (!canSubmit) return;
 		void submitWith(async () => {
 			if (delivery === "draft") {
-				await persistDraft(text, false);
+				await persistDraft(text, false, { strict: true });
 				return;
 			}
 			if (delivery === "now") {
-				await persistDraft(text, false);
+				await persistDraft(text, false, { strict: true });
 				dispatch({ type: "updateTask", task: await api.request.sendMessageDraft({ taskId: task.id, projectId: project.id }) });
 				return;
 			}
 			if (delivery === "stop") {
-				await persistDraft(text, true);
+				await persistDraft(text, true, { strict: true });
 				return;
 			}
 			if (!scheduleTarget) return;

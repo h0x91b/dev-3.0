@@ -197,7 +197,7 @@ const help = {
 	"help.modal.automation.title": "Automatización",
 	"help.modal.automation.body":
 		"Un horario que dispara un agente con una cadencia recurrente. Elige la cadencia, la zona horaria, el prompt y el agente — cada ejecución crea una tarea normal en el tablero.",
-	"help.modal.scheduleMessage.title": "Enviar más tarde",
+	"help.modal.scheduleMessage.title": "Mensaje al agente",
 	"help.modal.scheduleMessage.body":
 		"Escribe al agente vivo fuera de su terminal, así nada escrito en el panel puede enviarlo. El texto se guarda solo como borrador de la tarea; guárdalo como nota («Ahora no»), envíalo ahora, cuando el agente pare o más tarde (opcionalmente a un panel tmux elegido).",
 	"help.modal.bugHunters.title": "Cazadores de bugs",

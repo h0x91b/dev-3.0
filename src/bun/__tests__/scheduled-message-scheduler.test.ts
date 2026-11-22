@@ -615,10 +615,9 @@ describe("message draft (#2281)", () => {
 		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow(/no message draft/i);
 	});
 
-	it("a Claude permission menu (Has Questions) hands the armed draft to the hold, never types it", async () => {
-		statefulTask({ status: "user-questions", messageDraft: { text: "after you", sendOnStop: true, updatedAt: "t0" } });
+	it("hands an armed draft to the hold, never types it directly", async () => {
+		statefulTask({ status: "review-by-user", messageDraft: { text: "after you", sendOnStop: true, updatedAt: "t0" } });
 		await fireArmedMessageDraft(project, "task-12345678");
-		// The hold is where the prompt-ledger gate lives (agent-message-hold.test.ts covers the gate).
 		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", "after you", expect.any(Function), undefined, undefined);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
@@ -648,6 +647,19 @@ describe("message draft (#2281)", () => {
 		it("does not clear a draft that moved on since the window read it", async () => {
 			const state = statefulTask({ messageDraft: { text: "newer", updatedAt: "t9" } });
 			await saveMessageDraft(project, "task-12345678", { text: "", expectedUpdatedAt: "t0" });
+			expect(state.current.messageDraft).toEqual({ text: "newer", updatedAt: "t9" });
+		});
+
+		it("a strict save refuses when the draft moved on, so a button never re-arms or re-sends it", async () => {
+			const state = statefulTask({ messageDraft: null });
+			await expect(saveMessageDraft(project, "task-12345678", { text: "sent already", sendOnStop: true, expectedUpdatedAt: "t0", strict: true }))
+				.rejects.toThrow("message-draft-changed");
+			expect(state.current.messageDraft).toBeNull();
+		});
+
+		it("a strict save with no base refuses to overwrite a draft that exists (Undo)", async () => {
+			const state = statefulTask({ messageDraft: { text: "newer", updatedAt: "t9" } });
+			await expect(saveMessageDraft(project, "task-12345678", { text: "older", expectedUpdatedAt: null, strict: true })).rejects.toThrow();
 			expect(state.current.messageDraft).toEqual({ text: "newer", updatedAt: "t9" });
 		});
 

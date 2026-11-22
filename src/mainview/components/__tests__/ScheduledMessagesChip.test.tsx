@@ -142,7 +142,7 @@ describe("ScheduledMessagesChip", () => {
 			expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", text: "" });
 		});
 
-		it("offers Undo after a discard, which puts the text back armed unless a newer draft exists", async () => {
+		it("offers Undo after a discard, which puts the text back armed", async () => {
 			renderChip(draftTask({ text: "keep this", sendOnStop: true, updatedAt: "x" }));
 			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
 			await userEvent.click(screen.getByText("Discard"));
@@ -151,8 +151,18 @@ describe("ScheduledMessagesChip", () => {
 			expect(message).toBe("Draft discarded");
 			opts!.actions![0]!.onClick();
 			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({
-				taskId: "t1", projectId: "p1", text: "keep this", sendOnStop: true, expectedUpdatedAt: null,
+				taskId: "t1", projectId: "p1", text: "keep this", sendOnStop: true, expectedUpdatedAt: null, strict: true,
 			});
+		});
+
+		it("Undo leaves a newer draft alone and says so", async () => {
+			renderChip(draftTask({ text: "keep this", updatedAt: "x" }));
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			await userEvent.click(screen.getByText("Discard"));
+			await vi.waitFor(() => expect(toast.info).toHaveBeenCalled());
+			mockedApi.request.saveMessageDraft.mockRejectedValueOnce(new Error("message-draft-changed"));
+			vi.mocked(toast.info).mock.calls[0]![1]!.actions![0]!.onClick();
+			await vi.waitFor(() => expect(toast.info).toHaveBeenLastCalledWith("Not restored: a newer draft is already saved", expect.anything()));
 		});
 	});
 });

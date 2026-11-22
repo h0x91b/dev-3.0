@@ -15,6 +15,7 @@ import type {
 	TaskStatus,
 } from "../../shared/types";
 import {
+	armedDraftFiresOn,
 	buildTaskDialogSubject,
 	DEFAULT_REVIEW_AGENT_ID,
 	DEFAULT_REVIEW_CONFIG_ID,
@@ -50,7 +51,7 @@ import * as pty from "../pty-server";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { AuxPaneUnavailableError } from "../task-aux-panes";
 import * as repoConfig from "../repo-config";
-import { isNeedsYouSoundStatus, isTaskSoundEnabled, type TaskSoundStatus } from "../../shared/task-sound-statuses";
+import { isTaskSoundEnabled, type TaskSoundStatus } from "../../shared/task-sound-statuses";
 import { loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
@@ -1532,9 +1533,8 @@ export async function executeLifecycleEffect(
 			return launchColumnAgentEffect(ctx, effect.column);
 		case "notifyStatusChange":
 			notifyWatchedTaskStatusChange(ctx.task, effect.from, effect.to, ctx.project.name);
-			if (isNeedsYouSoundStatus(effect.to) && ctx.task.messageDraft?.sendOnStop) {
-				// Lazy: the scheduler reaches the rpc-handlers barrel, which leads back here. A Claude
-				// permission menu also lands here; the hold's prompt gate keeps the draft out of it.
+			if (armedDraftFiresOn(effect.to) && ctx.task.messageDraft?.sendOnStop) {
+				// Lazy: the scheduler reaches the rpc-handlers barrel, which leads back here.
 				void import("../scheduled-message-scheduler")
 					.then((m) => m.fireArmedMessageDraft(ctx.project, ctx.task.id))
 					.catch((err) => log.warn("Armed message draft could not be fired", { taskId: ctx.task.id.slice(0, 8), error: String(err) }));

@@ -77,7 +77,7 @@ describe("session items", () => {
 		expect(labels()).toEqual([
 			"Spawn a swarm of read-only bug hunters in the right pane",
 			"Spawn another agent in a new pane",
-			"Send later",
+			"Message agent",
 			"Hibernate",
 			"scheduled-chip",
 			"pane-controls",
@@ -100,7 +100,7 @@ describe("session items", () => {
 
 	it("folds the labels when compact and the pane controls when tight", () => {
 		renderSession({ layout: { ...DESKTOP, compact: true, tight: true } });
-		expect(screen.queryByText("Later")).toBeNull();
+		expect(screen.queryByText("Message")).toBeNull();
 		expect(screen.getByTestId("pane-controls").dataset.compact).toBe("true");
 	});
 

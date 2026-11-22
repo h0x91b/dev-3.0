@@ -152,7 +152,7 @@ describe("ScheduleMessageModal", () => {
 			await userEvent.click(screen.getByRole("button", { name: "Not now" }));
 			await userEvent.click(screen.getByRole("button", { name: "Keep as draft" }));
 			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "later", sendOnStop: false });
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "later", sendOnStop: false, expectedUpdatedAt: "t0", strict: true });
 			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
 		});
 
@@ -167,7 +167,7 @@ describe("ScheduleMessageModal", () => {
 			await userEvent.type(screen.getByTestId("schedule-message-input"), "then rebase");
 			await userEvent.click(screen.getByRole("button", { name: "Send on stop" }));
 			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "then rebase", sendOnStop: true });
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "then rebase", sendOnStop: true, expectedUpdatedAt: null, strict: true });
 			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
 		});
 
@@ -192,6 +192,17 @@ describe("ScheduleMessageModal", () => {
 			await userEvent.type(screen.getByTestId("schedule-message-input"), "b");
 			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith(expect.objectContaining({ text: "old ab", expectedUpdatedAt: "t1" })));
 			unmount();
+		});
+
+		it("refuses Send on stop once when the draft was sent meanwhile, then saves on the second click", async () => {
+			mockedApi.request.saveMessageDraft.mockRejectedValueOnce(new Error("message-draft-changed"));
+			const { onClose } = renderModal(undefined, { messageDraft: { text: "then rebase", sendOnStop: true, updatedAt: "t0" } });
+			await userEvent.click(screen.getByRole("button", { name: "Send on stop" }));
+			expect(await screen.findByText(/sent or changed while the window was open/)).toBeInTheDocument();
+			expect(onClose).not.toHaveBeenCalled();
+			await userEvent.click(screen.getByRole("button", { name: "Send on stop" }));
+			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith(expect.objectContaining({ sendOnStop: true, strict: true }));
 		});
 
 		it("retries a failed autosave when the window closes", async () => {
