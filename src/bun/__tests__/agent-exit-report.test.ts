@@ -26,6 +26,7 @@ import { tmux } from "../tmux";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { agentSessionRecord, noteAgentLaunched, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 import { agentPromptLedger } from "../agent-prompt-ledger";
+import { claudeApprovals } from "../claude-approval-state";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
@@ -80,6 +81,14 @@ describe("the launch wrapper's exit report (#2034)", () => {
 		expect(agentPromptLedger.isPromptOpen("task", "%1")).toBe(true);
 		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: SESSION, exitCode: 0, ...report });
 		expect(agentPromptLedger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("drops the exited session's approval waits, so the next session is not pinned in Has Questions", async () => {
+		fixtures.task = { ...fixtures.task, status: "user-questions" };
+		claudeApprovals.apply("task", "in-progress", "PermissionRequest", { sessionId: SESSION });
+		await exited(0);
+		expect(claudeApprovals.apply("task", "user-questions", "PreToolUse", { sessionId: "next-session" })).toBe("in-progress");
+		claudeApprovals.forgetTask("task");
 	});
 
 	it("forgets the task's statusLine dump on any exit, so the card stops reporting the gone session", async () => {

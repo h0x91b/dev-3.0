@@ -137,6 +137,9 @@ export const agentHandlers: Record<string, Handler> = {
 		// The agent is gone, and so is any menu it showed: nothing is left to answer.
 		const promptPane = exitedPane ?? agentSessionRecord(task.id, sessionId)?.paneId ?? null;
 		if (promptPane) agentPromptLedger.closePane(task.id, promptPane);
+		// Its approval waits died with it; left behind, they would pin the next session in Has Questions.
+		await claudeApprovals.run(task.id, async () => { claudeApprovals.endSession(task.id, sessionId); })
+			.finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });

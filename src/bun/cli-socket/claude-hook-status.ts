@@ -4,32 +4,32 @@ import { moveTask } from "../rpc-handlers";
 import { log, type Handler } from "./shared";
 import { resolveTaskFromParams } from "./task-resolution";
 
-const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
 /**
  * Re-arm the one timer that lets a stopped parent's card leave Agent is Working when a
  * background agent's stop event never arrives. Call after every change to the task's state.
  */
 export function scheduleClaudeBackgroundExpiry(taskId: string, projectId: string): void {
-	const previous = expiryTimers.get(taskId);
-	if (previous) clearTimeout(previous);
-	expiryTimers.delete(taskId);
 	const at = claudeApprovals.nextExpiry(taskId);
-	if (at === null) return;
-	const timer = setTimeout(() => {
-		expiryTimers.delete(taskId);
+	if (at === null) {
+		claudeApprovals.cancelExpiry(taskId);
+		return;
+	}
+	claudeApprovals.armExpiry(taskId, Math.max(0, at - Date.now()), () => {
 		void claudeApprovals.run(taskId, async () => {
 			const { task } = await resolveTaskFromParams({ taskId, projectId });
 			const target = claudeApprovals.expireStale(task.id, task.status);
 			if (target && target !== task.status) {
 				await moveTask({ taskId: task.id, projectId: task.projectId, newStatus: target, ifStatus: task.status });
 			}
-		}).catch((error) => {
-			log.warn("Claude background expiry failed", { taskId: taskId.slice(0, 8), error: String(error) });
-		}).finally(() => scheduleClaudeBackgroundExpiry(taskId, projectId));
-	}, Math.max(0, at - Date.now()));
-	(timer as { unref?: () => void }).unref?.();
-	expiryTimers.set(taskId, timer);
+		}).then(
+			() => scheduleClaudeBackgroundExpiry(taskId, projectId),
+			(error) => {
+				// A task that can no longer be resolved or moved would re-fire at once forever.
+				claudeApprovals.forgetTask(taskId);
+				log.warn("Claude background expiry failed; dropped the task's approval state", { taskId: taskId.slice(0, 8), error: String(error) });
+			},
+		);
+	});
 }
 
 export const applyClaudeHookStatus: Handler = (params) => claudeApprovals.run(String(params.taskId), async () => {

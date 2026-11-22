@@ -4,7 +4,8 @@ const moveTask = vi.fn();
 const resolveTaskFromParams = vi.fn();
 vi.mock("../rpc-handlers", () => ({ moveTask: (...args: unknown[]) => moveTask(...args) }));
 vi.mock("../cli-socket/task-resolution", () => ({ resolveTaskFromParams: (...args: unknown[]) => resolveTaskFromParams(...args) }));
-vi.mock("../cli-socket/shared", () => ({ log: { warn: vi.fn(), info: vi.fn() } }));
+const warn = vi.fn();
+vi.mock("../cli-socket/shared", () => ({ log: { warn: (...args: unknown[]) => warn(...args), info: vi.fn() } }));
 
 import { CLAUDE_BACKGROUND_STALE_MS, claudeApprovals } from "../claude-approval-state";
 import { applyClaudeHookStatus, scheduleClaudeBackgroundExpiry } from "../cli-socket/claude-hook-status";
@@ -22,8 +23,8 @@ beforeEach(() => {
 	});
 });
 afterEach(() => {
-	claudeApprovals.endSession("t1", "s");
-	scheduleClaudeBackgroundExpiry("t1", "p1");
+	claudeApprovals.forgetTask("t1");
+	warn.mockReset();
 	vi.useRealTimers();
 	moveTask.mockReset();
 });
@@ -55,5 +56,20 @@ describe("Claude background expiry timer", () => {
 
 		await applyClaudeHookStatus({ taskId: "t1", event: "SubagentStop", sessionId: "s", agentId: "reader" }, ctx);
 		expect(moveTask).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", newStatus: "review-by-user", ifStatus: "in-progress" });
+	});
+
+	it("stops for good instead of re-firing at once when the task can no longer be resolved", async () => {
+		await applyClaudeHookStatus({ taskId: "t1", event: "PreToolUse", sessionId: "s", agentId: "reader" }, ctx);
+		await claudeApprovals.run("t1", async () => { claudeApprovals.stopParent("t1", "in-progress", "s", "review-by-user"); });
+		scheduleClaudeBackgroundExpiry("t1", "p1");
+		resolveTaskFromParams.mockRejectedValue(new Error("task not found"));
+		const lookups = resolveTaskFromParams.mock.calls.length;
+
+		await vi.advanceTimersByTimeAsync(CLAUDE_BACKGROUND_STALE_MS);
+		await vi.advanceTimersByTimeAsync(10 * CLAUDE_BACKGROUND_STALE_MS);
+		expect(resolveTaskFromParams.mock.calls.length - lookups).toBe(1);
+		expect(warn).toHaveBeenCalledTimes(1);
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(claudeApprovals.nextExpiry("t1")).toBeNull();
 	});
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CLAUDE_BACKGROUND_STALE_MS, ClaudeApprovalState } from "../claude-approval-state";
 
 const parent = { sessionId: "s" };
@@ -147,5 +147,19 @@ describe("ClaudeApprovalState", () => {
 		const state = new ClaudeApprovalState();
 		state.apply("t", "in-progress", "PermissionRequest", child);
 		expect(state.apply("t", "user-questions", "PostToolUseFailure", child)).toBe("in-progress");
+	});
+
+	it("forgetTask drops every owner and cancels the pending expiry timer", () => {
+		vi.useFakeTimers();
+		try {
+			const state = new ClaudeApprovalState();
+			const fire = vi.fn();
+			state.apply("t", "in-progress", "PermissionRequest", { sessionId: "old" });
+			state.armExpiry("t", 1_000, fire);
+			state.forgetTask("t");
+			vi.advanceTimersByTime(2_000);
+			expect(fire).not.toHaveBeenCalled();
+			expect(state.apply("t", "user-questions", "PreToolUse", { sessionId: "new" })).toBe("in-progress");
+		} finally { vi.useRealTimers(); }
 	});
 });

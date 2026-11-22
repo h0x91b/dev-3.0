@@ -24,6 +24,7 @@ function inactive(status: TaskStatus): boolean {
 export class ClaudeApprovalState {
 	private tasks = new Map<string, ClaudeActivity>();
 	private queues = new Map<string, Promise<unknown>>();
+	private expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	async run<T>(taskId: string, action: () => Promise<T>): Promise<T> {
 		const previous = this.queues.get(taskId) ?? Promise.resolve();
@@ -140,6 +141,29 @@ export class ClaudeApprovalState {
 		const stoppedStatus = activity.stoppedStatus;
 		this.tasks.delete(taskId);
 		return status === "in-progress" ? stoppedStatus : null;
+	}
+
+	/** Replace the task's one expiry timer; `fire` runs once after `delayMs`. */
+	armExpiry(taskId: string, delayMs: number, fire: () => void): void {
+		this.cancelExpiry(taskId);
+		const timer = setTimeout(() => {
+			this.expiryTimers.delete(taskId);
+			fire();
+		}, delayMs);
+		(timer as { unref?: () => void }).unref?.();
+		this.expiryTimers.set(taskId, timer);
+	}
+
+	cancelExpiry(taskId: string): void {
+		const timer = this.expiryTimers.get(taskId);
+		if (timer) clearTimeout(timer);
+		this.expiryTimers.delete(taskId);
+	}
+
+	/** Everything the task's agents left behind: owners, waits and the pending expiry. */
+	forgetTask(taskId: string): void {
+		this.tasks.delete(taskId);
+		this.cancelExpiry(taskId);
 	}
 
 	private forgetEmpty(taskId: string, activity: ClaudeActivity): void {
