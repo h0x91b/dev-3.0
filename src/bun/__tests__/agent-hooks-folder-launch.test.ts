@@ -68,7 +68,8 @@ describe("setupAgentHooks in a folder dev3 does not own", () => {
 		expect(settings.permissions.allow.some((rule: string) => rule.includes("dev3"))).toBe(true);
 		// Only a dev3 launch reads this file, so the hooks carry no env guard.
 		const commands = JSON.stringify(settings.hooks);
-		expect(commands).toContain("task move");
+		expect(commands).toContain("hook claude-pre-tool");
+		expect(commands).toContain("hook claude-turn-ended --stop-target review-by-user");
 		expect(commands).not.toContain("DEV3_TASK_ID");
 		// The edit tools claim their file, so two tasks in this folder cannot overwrite each other.
 		const claim = settings.hooks.PreToolUse.find((group: { matcher?: string }) => group.matcher === "Edit|Write|MultiEdit|NotebookEdit");

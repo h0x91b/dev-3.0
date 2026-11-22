@@ -21,6 +21,8 @@ import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
+import { applyClaudeHookStatus, scheduleClaudeBackgroundExpiry } from "./claude-hook-status";
+import { claudeApprovals } from "../claude-approval-state";
 import { recordTaskActivity } from "../task-activity";
 
 async function claudeReturnedToInput(event: ClaudeIdleEvent): Promise<void> {
@@ -77,6 +79,26 @@ const AGY_CONVERSATION_ID = /^[A-Za-z0-9._-]+$/;
 export const agentHandlers: Record<string, Handler> = {
 	"task.claudeTurnEnded": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { task } = await resolveTaskFromParams(params);
+		if (typeof params.sessionId === "string") {
+			const sessionId = params.sessionId;
+			await claudeApprovals.run(task.id, async () => {
+				const { task: current } = await resolveTaskFromParams(params);
+				let target: Task["status"] | null = null;
+				const stopTarget = params.stopTarget;
+				if (params.sessionEnded === true) {
+					const resumed = claudeApprovals.endSession(task.id, sessionId);
+					// A nested SDK session can finish while the pane's own agent is still working.
+					if (!params.paneId && current.status === "user-questions") target = resumed;
+				} else if (params.paneId && (
+					stopTarget === "review-by-user" || stopTarget === "review-by-ai" || stopTarget === "user-questions" || stopTarget === "in-progress"
+				)) {
+					target = claudeApprovals.stopParent(task.id, current.status, sessionId, stopTarget);
+				}
+				if (target && (target !== current.status || current.customColumnId != null)) {
+					await moveTask({ projectId: task.projectId, taskId: task.id, newStatus: target, ifStatus: current.status });
+				}
+			}).finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
+		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
 			agentPromptLedger.claudeSessionReturned(task.id, params.sessionId);
@@ -115,6 +137,15 @@ export const agentHandlers: Record<string, Handler> = {
 		// The agent is gone, and so is any menu it showed: nothing is left to answer.
 		const promptPane = exitedPane ?? agentSessionRecord(task.id, sessionId)?.paneId ?? null;
 		if (promptPane) agentPromptLedger.closePane(task.id, promptPane);
+		// Its approval waits died with it; left behind, they would pin the next session in Has Questions.
+		// A resumed Claude reports a fresh launch id, so the pane's own conversation id is ended too.
+		const paneConversation = answersForTask && promptPane
+			? task.sessionState?.panes.find((pane) => pane.paneId === promptPane)?.sessionId ?? null
+			: null;
+		await claudeApprovals.run(task.id, async () => {
+			claudeApprovals.endSession(task.id, sessionId);
+			if (paneConversation && paneConversation !== sessionId) claudeApprovals.endSession(task.id, paneConversation);
+		}).finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
@@ -412,10 +443,7 @@ export const agentHandlers: Record<string, Handler> = {
 			}
 		}
 		if (harness === "claude") {
-			const target = getAgentHookTargetStatus("UserPromptSubmit", task.status, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType));
-			if (target && (task.status !== target || task.customColumnId != null)) {
-				await moveTask({ projectId: project.id, taskId: task.id, newStatus: target, ifStatus: task.status });
-			}
+			await applyClaudeHookStatus({ ...params, event: "UserPromptSubmit" });
 		}
 		const outcome = recordTerminalPromptSubmission({
 			project,

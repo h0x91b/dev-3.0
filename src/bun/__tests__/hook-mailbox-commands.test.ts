@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const move = vi.hoisted(() => vi.fn());
-vi.mock("../cli-socket/task-commands", () => ({ taskHandlers: { "task.move": move } }));
+vi.mock("../rpc-handlers", () => ({ moveTask: move }));
 vi.mock("../cli-socket/task-resolution", () => ({
-	resolveTaskFromParams: vi.fn(async () => ({ project: { id: "p" }, task: { id: "task-full-id" } })),
+	resolveTaskFromParams: vi.fn(async () => ({ project: { id: "p" }, task: { id: "task-full-id", projectId: "p", status: "review-by-user" } })),
 }));
 vi.mock("../cli-socket/shared", () => ({ log: { warn: vi.fn(), info: vi.fn() } }));
 vi.mock("../logger", () => ({
@@ -38,12 +38,11 @@ describe("task.claudePostToolUse", () => {
 		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
 		await handler({ taskId: "task-1", projectId: "p" });
 		expect(move).toHaveBeenCalledWith({
-			taskId: "task-1",
+			taskId: "task-full-id",
 			projectId: "p",
 			newStatus: "in-progress",
-			ifStatusNot: "review-by-ai",
-			sourceTaskId: "task-1",
-		}, undefined);
+			ifStatus: "review-by-user",
+		});
 	});
 
 	it("drains the pane's held message, keyed by the task the move returned", async () => {
@@ -60,16 +59,16 @@ describe("task.claudePostToolUse", () => {
 		expect(delivered).toHaveBeenCalledTimes(1);
 		await expect(hookMailboxHandlers["task.claudePostToolUseAck"]!({ claimId: out.claimId })).resolves.toEqual({ acknowledged: false });
 		expect(pendingAgentMessageHoldCount()).toBe(0);
-		expect(resolveTaskFromParams).not.toHaveBeenCalled();
+		expect(resolveTaskFromParams).toHaveBeenCalledTimes(1);
 	});
 
-	it("costs no task lookup when nothing is held anywhere", async () => {
+	it("does not look up the task again when no mail is held", async () => {
 		move.mockRejectedValue(new Error("offline board"));
 		await expect(handler({ taskId: "task-1", paneId: "%3" })).resolves.toEqual({ moveError: "offline board" });
-		expect(resolveTaskFromParams).not.toHaveBeenCalled();
+		expect(resolveTaskFromParams).toHaveBeenCalledTimes(1);
 	});
 
-	it("still drains when the move failed, resolving the task itself", async () => {
+	it("still drains when the status move failed", async () => {
 		move.mockRejectedValue(new Error("status guard"));
 		holdFor("task-full-id", "%3", "mail");
 		await expect(handler({ taskId: "task-1", paneId: "%3" })).resolves.toEqual({ moveError: "status guard", context: "mail", messages: 1, claimId: expect.any(String) });

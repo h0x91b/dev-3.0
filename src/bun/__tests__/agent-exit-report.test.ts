@@ -26,6 +26,7 @@ import { tmux } from "../tmux";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { agentSessionRecord, noteAgentLaunched, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 import { agentPromptLedger } from "../agent-prompt-ledger";
+import { claudeApprovals } from "../claude-approval-state";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
@@ -80,6 +81,35 @@ describe("the launch wrapper's exit report (#2034)", () => {
 		expect(agentPromptLedger.isPromptOpen("task", "%1")).toBe(true);
 		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: SESSION, exitCode: 0, ...report });
 		expect(agentPromptLedger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("drops the exited session's approval waits, so the next session is not pinned in Has Questions", async () => {
+		fixtures.task = { ...fixtures.task, status: "user-questions" };
+		claudeApprovals.apply("task", "in-progress", "PermissionRequest", { sessionId: SESSION });
+		await exited(0);
+		expect(claudeApprovals.apply("task", "user-questions", "PreToolUse", { sessionId: "next-session" })).toBe("in-progress");
+		claudeApprovals.forgetTask("task");
+	});
+
+	it("drops a resumed session's waits too: its exit report carries a fresh launch id, not the conversation id", async () => {
+		const launchId = "99999999-8888-4777-8666-555555555555";
+		noteAgentLaunched("task", launchId, { startReceipts: false });
+		fixtures.task = { ...fixtures.task, status: "user-questions" };
+		claudeApprovals.apply("task", "in-progress", "PermissionRequest", { sessionId: SESSION });
+		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: launchId, exitCode: 0, paneId: "%1" });
+		expect(claudeApprovals.apply("task", "user-questions", "PreToolUse", { sessionId: "next-session" })).toBe("in-progress");
+		claudeApprovals.forgetTask("task");
+	});
+
+	it("leaves the current conversation's waits alone when an older launch exits late", async () => {
+		const oldLaunch = "77777777-8888-4777-8666-555555555555";
+		noteAgentLaunched("task", oldLaunch, { startReceipts: false });
+		noteAgentLaunched("task", "66666666-8888-4777-8666-555555555555", { startReceipts: false });
+		fixtures.task = { ...fixtures.task, status: "user-questions" };
+		claudeApprovals.apply("task", "in-progress", "PermissionRequest", { sessionId: SESSION });
+		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: oldLaunch, exitCode: 0, paneId: "%1" });
+		expect(claudeApprovals.apply("task", "user-questions", "PreToolUse", { sessionId: "next-session" })).toBe("user-questions");
+		claudeApprovals.forgetTask("task");
 	});
 
 	it("forgets the task's statusLine dump on any exit, so the card stops reporting the gone session", async () => {

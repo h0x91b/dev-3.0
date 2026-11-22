@@ -15,6 +15,7 @@ import type { LifecycleEvent } from "./events";
 import { activitiesFor, transition, type LifecycleActivity } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 import { claudeSessionWatches } from "../claude-session-watch";
+import { claudeApprovals } from "../claude-approval-state";
 import { codexTurnWatches } from "../codex-turn-watch";
 import { forgetTaskActivity } from "../task-activity";
 
@@ -258,6 +259,7 @@ class LifecycleService {
 					forgetAgyTask(id);
 					agentPromptLedger.forgetTask(id);
 					claudeSessionWatches.forgetTask(id);
+					claudeApprovals.forgetTask(id);
 					codexTurnWatches.forgetTask(id);
 					const runtime = this.actors.runtime(id);
 					delete runtime.mergePromptReservation;

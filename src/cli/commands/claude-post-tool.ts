@@ -1,22 +1,8 @@
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 import { claudeHookPaneId } from "./claude-prompt";
+import { parseClaudeToolStatus } from "../../shared/claude-status-hook";
 import { claudeToolHookFields } from "./claude-tool-fields";
-
-/**
- * What matters in Claude Code's `PostToolUse` payload. `agent_id` is present only
- * when the tool ran inside a subagent or an in-process teammate: that agent is not
- * the pane's own conversation, so it never takes the pane's held messages.
- */
-function parsePayload(rawInput: string): { subagent: boolean } | null {
-	try {
-		const parsed = JSON.parse(rawInput) as Record<string, unknown>;
-		if (parsed.hook_event_name !== "PostToolUse") return null;
-		return { subagent: typeof parsed.agent_id === "string" && parsed.agent_id !== "" };
-	} catch {
-		return null;
-	}
-}
 
 /**
  * The hook output that hands Claude the drained messages next to the tool result.
@@ -48,19 +34,19 @@ export async function handleClaudePostTool(
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
 	if (!socketPath || !context?.taskId) return;
-	const payload = parsePayload(rawInput);
-	const paneId = payload && !payload.subagent ? claudeHookPaneId(env) : undefined;
+	const status = parseClaudeToolStatus(rawInput);
+	if (!status || status.event !== "PostToolUse") return;
+	const paneId = !status.agentId ? claudeHookPaneId(env) : undefined;
 	// The call it reports on closes its prompt in the ledger, a subagent's included.
-	const { sessionId, toolName, toolUseId, agentId } = payload ? claudeToolHookFields(rawInput, env) : {};
+	const { toolName, toolUseId } = claudeToolHookFields(rawInput, env);
 	try {
 		const response = await sendRequest(socketPath, "task.claudePostToolUse", {
 			taskId: context.taskId,
 			...(context.projectId ? { projectId: context.projectId } : {}),
+			...status,
 			...(paneId ? { paneId } : {}),
-			...(sessionId ? { sessionId } : {}),
 			...(toolName ? { toolName } : {}),
 			...(toolUseId ? { toolUseId } : {}),
-			...(agentId ? { agentId } : {}),
 		});
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude tool hook: ${response.error || "request failed"}\n`);

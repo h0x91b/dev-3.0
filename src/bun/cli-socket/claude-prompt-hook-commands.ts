@@ -1,7 +1,8 @@
 import type { ClaudeToolInput } from "../agent-prompt-ledger";
 import { agentPromptLedger } from "../agent-prompt-ledger";
 import { log, type Handler } from "./shared";
-import { taskHandlers } from "./task-commands";
+import { applyClaudeHookStatus } from "./claude-hook-status";
+import type { ClaudeToolStatusEvent } from "../../shared/claude-status-hook";
 import { resolveTaskFromParams } from "./task-resolution";
 
 function text(value: unknown): string | null {
@@ -26,20 +27,14 @@ export function claudeToolInput(taskId: string, params: Record<string, unknown>)
 	};
 }
 
-/** The hook's status move; returns the error it failed with, if any. */
-async function move(params: Record<string, unknown>, ctx: Parameters<Handler>[1], newStatus: string, ifStatusNot?: string): Promise<{ error?: string }> {
+/** The hook's owner-aware status move; returns the error it failed with, if any. */
+async function applyStatus(params: Record<string, unknown>, ctx: Parameters<Handler>[1], event: ClaudeToolStatusEvent): Promise<{ error?: string }> {
 	try {
-		await taskHandlers["task.move"]({
-			taskId: params.taskId,
-			...(params.projectId ? { projectId: params.projectId } : {}),
-			newStatus,
-			...(ifStatusNot ? { ifStatusNot } : {}),
-			sourceTaskId: params.taskId,
-		}, ctx);
+		await applyClaudeHookStatus({ ...params, event }, ctx);
 		return {};
 	} catch (err) {
 		const error = err instanceof Error ? err.message : String(err);
-		log.warn("Claude prompt hook status move failed", { taskId: String(params.taskId).slice(0, 8), newStatus, error });
+		log.warn("Claude prompt hook status move failed", { taskId: String(params.taskId).slice(0, 8), event, error });
 		return { error };
 	}
 }
@@ -69,27 +64,31 @@ export const claudePromptHookHandlers: Record<string, Handler> = {
 			const input = claudeToolInput(taskId, params);
 			if (input) agentPromptLedger.claudePreToolUse(input);
 		});
-		const moved = await move(params, ctx, "in-progress", "review-by-ai");
+		const moved = await applyStatus(params, ctx, "PreToolUse");
+		return moved.error ? { moveError: moved.error } : {};
+	},
+	/**
+	 * Claude's PostToolUseFailure: the call is over. It leaves the ledger and clears its
+	 * owner's own approval wait; an interrupted call otherwise moves nothing.
+	 */
+	"task.claudePostToolUseFailure": async (params, ctx) => {
+		await updateLedger(params, "PostToolUseFailure", (taskId) => {
+			const input = claudeToolInput(taskId, params);
+			if (input?.toolUseId) agentPromptLedger.claudePostToolUse(input);
+		});
+		const moved = await applyStatus(params, ctx, "PostToolUseFailure");
 		return moved.error ? { moveError: moved.error } : {};
 	},
 	/**
 	 * Claude's PermissionRequest: a permission menu, plan approval or question picker
 	 * is on screen. Nothing may be typed into that pane until it is answered.
 	 */
-	/** Claude's PostToolUseFailure: the call is over. Only the ledger hears it; nothing moves. */
-	"task.claudePostToolUseFailure": async (params) => {
-		await updateLedger(params, "PostToolUseFailure", (taskId) => {
-			const input = claudeToolInput(taskId, params);
-			if (input?.toolUseId) agentPromptLedger.claudePostToolUse(input);
-		});
-		return {};
-	},
 	"task.claudePermissionRequest": async (params, ctx) => {
 		await updateLedger(params, "PermissionRequest", (taskId) => {
 			const input = claudeToolInput(taskId, params);
 			if (input) agentPromptLedger.claudePermissionRequest(input);
 		});
-		const moved = await move(params, ctx, "user-questions");
+		const moved = await applyStatus(params, ctx, "PermissionRequest");
 		return moved.error ? { moveError: moved.error } : {};
 	},
 };

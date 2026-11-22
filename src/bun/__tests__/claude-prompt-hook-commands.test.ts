@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const move = vi.hoisted(() => vi.fn());
-vi.mock("../cli-socket/task-commands", () => ({ taskHandlers: { "task.move": move } }));
+vi.mock("../rpc-handlers", () => ({ moveTask: move }));
 vi.mock("../cli-socket/task-resolution", () => ({
-	resolveTaskFromParams: vi.fn(async () => ({ project: { id: "p" }, task: { id: "task-full-id" } })),
+	resolveTaskFromParams: vi.fn(async () => ({ project: { id: "p" }, task: { id: "task-full-id", projectId: "p", status: "in-progress" } })),
 }));
 vi.mock("../cli-socket/shared", () => ({ log: { warn: vi.fn(), info: vi.fn() } }));
 vi.mock("../logger", () => ({
@@ -13,6 +13,7 @@ vi.mock("../logger", () => ({
 import { claudePromptHookHandlers } from "../cli-socket/claude-prompt-hook-commands";
 import { hookMailboxHandlers } from "../cli-socket/hook-mailbox-commands";
 import { agentPromptLedger } from "../agent-prompt-ledger";
+import { claudeApprovals } from "../claude-approval-state";
 import { agentMessageHoldKey, agentMessageHeldBehindPrompt, holdAgentMessage, resetAgentMessageHolds } from "../agent-message-hold";
 
 const preTool = claudePromptHookHandlers["task.claudePreToolUse"]!;
@@ -27,6 +28,7 @@ function holdOne() {
 afterEach(() => {
 	resetAgentMessageHolds();
 	agentPromptLedger.reset();
+	claudeApprovals.endSession("task-full-id", "s1");
 	vi.clearAllMocks();
 });
 
@@ -35,7 +37,7 @@ describe("Claude prompt hooks → what the message hold does", () => {
 		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
 		await preTool({ taskId: "task-1", projectId: "p", sessionId: "s1", toolName: "Bash", toolUseId: "toolu_1", paneId: "%3" });
 		await permission({ taskId: "task-1", projectId: "p", sessionId: "s1", toolName: "Bash", paneId: "%3" });
-		expect(move).toHaveBeenLastCalledWith(expect.objectContaining({ newStatus: "user-questions", taskId: "task-1" }), undefined);
+		expect(move).toHaveBeenLastCalledWith(expect.objectContaining({ newStatus: "user-questions", taskId: "task-full-id" }));
 		holdOne();
 		expect(agentMessageHeldBehindPrompt(KEY)).toBe(true);
 	});
