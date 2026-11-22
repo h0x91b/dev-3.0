@@ -1234,8 +1234,9 @@ function App() {
 		[navigate, state.route, state.projects, goToProjectView],
 	);
 	// From a task view (Active Tasks or a full-page task) the digit opens the target's
-	// most recent coordinator; with none, it falls through to the board as before.
-	// The token drops a lookup a later digit press has already overtaken.
+	// most recent coordinator; with none, or when it is the task already open, it falls
+	// through to the board as before. A lookup is dropped once a later digit press or any
+	// navigation since the press has overtaken it.
 	const digitJumpRef = useRef(0);
 	const goToProjectBoardIndex = useCallback(
 		(target: MixedEntry, view: "project" | "task" | "preserve") => {
@@ -1251,22 +1252,22 @@ function App() {
 			const target = digitTargetList[n - 1];
 			if (!target) return; // out of range — no-op
 			const token = ++digitJumpRef.current;
-			if (view !== "preserve" || !routeIsTaskView(state.route)) return goToProjectBoardIndex(target, view);
+			const pressedRoute = state.route;
+			if (view !== "preserve" || !routeIsTaskView(pressedRoute)) return goToProjectBoardIndex(target, view);
 			const projectIds = target.kind === "project" ? [target.project.id] : target.projects.map((p) => p.id);
-			const currentTaskId = routeTaskId(state.route);
+			const currentTaskId = routeTaskId(pressedRoute);
 			const mru = state.taskMru;
-			const loadTasks = async (projectId: string): Promise<Task[]> => {
+			const loadActiveTasks = async (): Promise<Task[]> => {
 				try {
-					return await api.request.getTasks({ projectId });
+					return (await api.request.getAllProjectTasks()).flatMap((r) => r.tasks);
 				} catch {
-					return []; // an unreadable board just has no coordinator to offer
+					return []; // unreadable boards just have no coordinator to offer
 				}
 			};
-			void Promise.all(projectIds.map(loadTasks)).then((lists) => {
-				if (token !== digitJumpRef.current) return;
-				const coordinator = digitCoordinator(lists.flat(), projectIds, currentTaskId, mru);
-				if (!coordinator) return goToProjectBoardIndex(target, view);
-				if (coordinator.id === currentTaskId) return;
+			void loadActiveTasks().then((tasks) => {
+				if (token !== digitJumpRef.current || routeRef.current !== pressedRoute) return;
+				const coordinator = digitCoordinator(tasks, projectIds, currentTaskId, mru);
+				if (!coordinator || coordinator.id === currentTaskId) return goToProjectBoardIndex(target, view);
 				const route = taskOpenRoute(coordinator.id, coordinator.projectId, getTaskOpenMode(), false);
 				const spaceId = target.kind === "space" ? target.space.id : undefined;
 				navigate(spaceId && (route.screen === "task" || route.screen === "project") ? { ...route, spaceId } : route, { inheritSpace: false });
@@ -1744,8 +1745,9 @@ function App() {
 				//  - "fullscreen" users have no task to show full-page after a switch, so
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
-				// The board already on screen is a no-op, so the selection stays; a
-				// full-page task is not a board, so its own digit still leads to one.
+				// From a task view the digit first tries the target's coordinator
+				// (`goToProjectIndex`); otherwise the board already on screen is a no-op,
+				// so the selection stays, and a full-page task's own digit leads to a board.
 				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
 				const n = parseInt(e.key, 10);
 				if (digitTargetList[n - 1]) {

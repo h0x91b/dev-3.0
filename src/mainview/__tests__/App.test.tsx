@@ -921,9 +921,9 @@ describe("App keyboard shortcuts", () => {
 			order: ["sp_a"],
 		};
 
-		async function renderWith(follow: boolean) {
+		async function renderWith(follow: boolean, spaces: object = spacesFile) {
 			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
-			vi.mocked(api.request.getSpaces).mockResolvedValue(spacesFile as never);
+			vi.mocked(api.request.getSpaces).mockResolvedValue(spaces as never);
 			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
@@ -1126,12 +1126,13 @@ describe("App keyboard shortcuts", () => {
 				id, seq: Number(id.replace(/\D/g, "")), projectId, title: id, status: "in-progress", taskType: "coordinator", worktreePath: `/w/${id}`, ...over,
 			});
 			function mockBoards(boards: Record<string, unknown[]>) {
-				(api.request as { getTasks?: unknown }).getTasks = vi.fn(({ projectId }: { projectId: string }) =>
-					Promise.resolve(boards[projectId] ?? []),
+				vi.mocked(api.request.getAllProjectTasks).mockResolvedValue(
+					Object.entries(boards).map(([projectId, tasks]) => ({ projectId, tasks, todoCount: 0 })) as never,
 				);
 			}
 			afterEach(() => {
-				delete (api.request as { getTasks?: unknown }).getTasks;
+				vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([]);
+				localStorage.removeItem("dev3-task-open-mode");
 			});
 			// With follow off the dashboard order makes Gamma (p3) digit 2.
 			const fromTask = () =>
@@ -1145,9 +1146,18 @@ describe("App keyboard shortcuts", () => {
 				await renderWith(false);
 				press({ key: "2", code: "Digit2", metaKey: true });
 				await settleDigitJump();
-				expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p3" });
 				expect(project()).toHaveAttribute("data-project-id", "p3");
 				expect(project()).toHaveAttribute("data-active-task-id", "c2");
+			});
+
+			it("a pinned key opens the coordinator of the project pinned to it", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c2", "p3")], p4: [coordinator("c4", "p4")] });
+				await renderWith(false, { ...spacesFile, digitSlots: ["p4"] });
+				press({ key: "1", code: "Digit1", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p4");
+				expect(project()).toHaveAttribute("data-active-task-id", "c4");
 			});
 
 			it("g then 2 does the same", async () => {
@@ -1171,12 +1181,11 @@ describe("App keyboard shortcuts", () => {
 				expect(project()).toHaveAttribute("data-active-task-id", "c5");
 			});
 
-			it("from a board the digit still opens the board and never looks one up", async () => {
+			it("from a board the digit still opens the board, not the coordinator", async () => {
 				mockBoards({ p3: [coordinator("c2", "p3")] });
 				await renderWith(false);
 				press({ key: "2", code: "Digit2", metaKey: true });
 				await settleDigitJump();
-				expect(api.request.getTasks).not.toHaveBeenCalled();
 				expect(project()).toHaveAttribute("data-project-id", "p3");
 				expect(project()).toHaveAttribute("data-active-task-id", "");
 			});
@@ -1191,9 +1200,40 @@ describe("App keyboard shortcuts", () => {
 				expect(project()).toHaveAttribute("data-active-task-id", "");
 				expect(project()).toHaveAttribute("data-task-view", "false");
 			});
+
+			it("on the target's own coordinator, full-page, the digit still leads to its board", async () => {
+				localStorage.setItem("dev3-task-open-mode", "fullscreen");
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "task", projectId: "p3", taskId: "c2" }),
+				});
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			});
+
+			it("drops a lookup that lands after the user navigated elsewhere", async () => {
+				fromTask();
+				let resolve: (value: unknown) => void = () => {};
+				await renderWith(false);
+				vi.mocked(api.request.getAllProjectTasks).mockReturnValueOnce(new Promise((r) => { resolve = r; }) as never);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				press({ key: "g", code: "KeyG" });
+				press({ key: "d", code: "KeyD" });
+				expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+				await act(async () => {
+					resolve([{ projectId: "p3", tasks: [coordinator("c2", "p3")], todoCount: 0 }]);
+				});
+				await settleDigitJump();
+				expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+				expect(screen.queryByTestId("project-screen")).toBeNull();
+			});
 		});
 
-		it("digits follow the order just chosen, before the host has stored it", async () => {
+it("digits follow the order just chosen, before the host has stored it", async () => {
 			await renderWith(true);
 			act(() => commitMixedOrder(["sp_a", "p1", "p4"]));
 			press({ key: "1", code: "Digit1", metaKey: true });
