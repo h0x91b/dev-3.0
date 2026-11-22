@@ -225,6 +225,17 @@ describe("ScheduleMessageModal", () => {
 			expect(onClose).toHaveBeenCalledTimes(1);
 		});
 
+		it("Now saves strictly, so a draft already sent while the window was open is not sent again", async () => {
+			mockedApi.request.saveMessageDraft.mockRejectedValueOnce(new Error("message-draft-changed"));
+			const { onClose } = renderModal(undefined, { status: "review-by-user", messageDraft: { text: "go on", updatedAt: "t0" } });
+			await userEvent.click(screen.getByRole("button", { name: "Now" }));
+			await userEvent.click(screen.getByRole("button", { name: "Send now" }));
+			expect(await screen.findByText(/sent or changed while the window was open/)).toBeInTheDocument();
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith(expect.objectContaining({ text: "go on", expectedUpdatedAt: "t0", strict: true }));
+			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
+			expect(onClose).not.toHaveBeenCalled();
+		});
+
 		it("Close leaves without sending", async () => {
 			const { onClose } = renderModal();
 			await userEvent.click(screen.getByRole("button", { name: "Close" }));
