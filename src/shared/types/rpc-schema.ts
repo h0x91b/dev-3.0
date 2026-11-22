@@ -1398,7 +1398,8 @@ export type AppRPCSchema = {
 			};
 			/** Save the task's message draft; blank `text` clears it. */
 			saveMessageDraft: {
-				params: { taskId: string; projectId: string; text: string; sendOnStop?: boolean };
+				/** `expectedUpdatedAt`: the draft version an autosave builds on; a mismatch never re-arms. */
+				params: { taskId: string; projectId: string; text: string; sendOnStop?: boolean; expectedUpdatedAt?: string | null };
 				response: Task;
 			};
 			/** Send the saved message draft to the live agent now and clear it. */

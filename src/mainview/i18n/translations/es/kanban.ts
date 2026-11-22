@@ -593,6 +593,8 @@ const kanban = {
 	"task.draftEdit": "Editar",
 	"task.draftDiscard": "Descartar",
 	"task.draftDiscardFailed": "No se pudo descartar el borrador: {error}",
+	"task.draftDiscarded": "Borrador descartado",
+	"task.draftUndo": "Deshacer",
 	"task.heldMessages_one": "{count} en espera",
 	"task.heldMessages_many": "{count} en espera",
 	"task.heldMessages_other": "{count} en espera",

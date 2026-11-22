@@ -3,6 +3,7 @@ import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import TerminalComposer, { type TerminalComposerApi } from "../TerminalComposer";
 import type { TerminalHandle } from "../../TerminalView";
+import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import { uploadDroppedFile } from "../../utils/uploadDroppedFile";
 import { toast } from "../../toast";
@@ -11,6 +12,14 @@ vi.mock("../../utils/uploadDroppedFile", () => ({
 	uploadDroppedFile: vi.fn(),
 }));
 
+vi.mock("../ScheduleMessageModal", () => ({
+	default: ({ initialText, onClose }: { initialText?: string; onClose: () => void }) => (
+		<div data-testid="schedule-modal-stub">
+			<span data-testid="schedule-modal-seed">{initialText}</span>
+			<button type="button" onClick={onClose}>close-stub</button>
+		</div>
+	),
+}));
 vi.mock("../../toast", () => ({
 	toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
@@ -73,6 +82,24 @@ afterEach(() => {
 });
 
 describe("TerminalComposer", () => {
+	it("moves the composer text into the message window, so reopening cannot add it twice", async () => {
+		const task = { id: "t1", status: "in-progress", worktreePath: "/w" } as unknown as Task;
+		const project = { id: "p1" } as unknown as Project;
+		render(
+			<I18nProvider>
+				<TerminalComposer handle={makeHandle()} task={task} project={project} dispatch={vi.fn()} />
+			</I18nProvider>,
+		);
+		const input = screen.getByTestId("terminal-composer-input");
+		await userEvent.type(input, "later thought");
+		await userEvent.click(screen.getByRole("button", { name: "Send later" }));
+		expect(screen.getByTestId("schedule-modal-seed").textContent).toBe("later thought");
+		expect(input).toHaveValue("");
+		await userEvent.click(screen.getByText("close-stub"));
+		expect(screen.queryByTestId("schedule-modal-stub")).toBeNull();
+		expect(screen.getByRole("button", { name: "Send later" })).toBeDisabled();
+	});
+
 	it("uses the terminal submit transport and clears the input", async () => {
 		const handle = makeHandle();
 		renderComposer(handle);

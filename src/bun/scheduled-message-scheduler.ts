@@ -552,19 +552,30 @@ export async function sendMessageImmediately(
 	return { ...delivery, spilledPath, messageId: id };
 }
 
-/** Save the task's message draft, or clear it when `text` is blank (#2281). */
+/**
+ * Save the task's message draft, or clear it when `text` is blank (#2281). An autosave
+ * passes the `updatedAt` it last saw; when the draft moved on since (a stop-send claimed
+ * it), the text is still kept, but as a note: a save never re-arms a draft already sent.
+ */
 export async function saveMessageDraft(
 	project: Project,
 	taskId: string,
-	input: { text: string; sendOnStop?: boolean },
+	input: { text: string; sendOnStop?: boolean; expectedUpdatedAt?: string | null },
 ): Promise<Task> {
 	if (input.text.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
 		throw new Error(`Draft too long: ${input.text.length} chars, and the limit is ${MAX_SCHEDULED_MESSAGE_LENGTH}.`);
 	}
-	const draft: TaskMessageDraft | null = input.text.trim()
-		? { text: input.text, ...(input.sendOnStop ? { sendOnStop: true } : {}), updatedAt: new Date().toISOString() }
-		: null;
-	const updated = await data.updateTask(project, taskId, { messageDraft: draft });
+	const { task: updated } = await data.updateTaskWith<void>(project, taskId, (current) => {
+		const stale = input.expectedUpdatedAt !== undefined && (current.messageDraft?.updatedAt ?? null) !== input.expectedUpdatedAt;
+		// Clearing a draft that moved on would delete text this window never saw.
+		if (stale && !input.text.trim()) return { updates: {}, result: undefined };
+		if (stale && input.sendOnStop) log.info("Draft changed since the window read it; saving it disarmed", { taskId: taskId.slice(0, 8) });
+		const armed = !!input.sendOnStop && !stale;
+		const draft: TaskMessageDraft | null = input.text.trim()
+			? { text: input.text, ...(armed ? { sendOnStop: true } : {}), updatedAt: new Date().toISOString() }
+			: null;
+		return { updates: { messageDraft: draft }, result: undefined };
+	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	return updated;
 }
@@ -587,10 +598,14 @@ async function claimDraft(
 	return { task, draft: result };
 }
 
-/** A send failed: put the text back, disarmed, unless the user already wrote a new draft. */
-async function restoreDraft(project: Project, taskId: string, draft: TaskMessageDraft): Promise<void> {
+/**
+ * A send failed: put the text back, unless the user already wrote a new draft. A failed
+ * stop-send comes back disarmed (it would only fail again); a failed Send now keeps its arming.
+ */
+async function restoreDraft(project: Project, taskId: string, draft: TaskMessageDraft, opts: { keepArmed: boolean }): Promise<void> {
+	const armed = opts.keepArmed && draft.sendOnStop ? { sendOnStop: true } : {};
 	const { task } = await data.updateTaskWith<void>(project, taskId, (current) => ({
-		updates: current.messageDraft ? {} : { messageDraft: { text: draft.text, updatedAt: draft.updatedAt } },
+		updates: current.messageDraft ? {} : { messageDraft: { text: draft.text, ...armed, updatedAt: draft.updatedAt } },
 		result: undefined,
 	}));
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
@@ -606,15 +621,17 @@ export async function sendMessageDraft(project: Project, taskId: string): Promis
 	try {
 		await sendMessageImmediately(task, draft.text, null, null, { hold: false, origin: "user" });
 	} catch (err) {
-		await restoreDraft(project, taskId, draft);
+		await restoreDraft(project, taskId, draft, { keepArmed: true });
 		throw err;
 	}
 	return data.getTask(project, taskId);
 }
 
 /**
- * The agent stopped: send an armed draft. It goes through the hold because the
- * user may be typing in that pane. A failed send puts the text back, disarmed.
+ * The agent stopped: send an armed draft. It goes through the hold because the user
+ * may be typing in that pane, and because a Claude permission menu also moves the card
+ * to Has Questions: the hold types nothing while the prompt ledger shows a prompt open.
+ * A failed send puts the text back, disarmed.
  */
 export async function fireArmedMessageDraft(project: Project, taskId: string): Promise<void> {
 	const { task, draft: armed } = await claimDraft(project, taskId, (d, t) => !!d.sendOnStop && !isTerminal(t.status));
@@ -623,7 +640,7 @@ export async function fireArmedMessageDraft(project: Project, taskId: string): P
 		await sendMessageImmediately(task, armed.text, null, null, { hold: true, origin: "user" });
 		log.info("Armed message draft sent", { taskId: taskId.slice(0, 8) });
 	} catch (err) {
-		await restoreDraft(project, taskId, armed);
+		await restoreDraft(project, taskId, armed, { keepArmed: false });
 		log.warn("Armed message draft not sent", { taskId: taskId.slice(0, 8), error: String(err) });
 		notifyOutcome(project, task, {
 			toast: `Draft not sent, it is still saved — ${err instanceof Error ? err.message : String(err)}`,

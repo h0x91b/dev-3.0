@@ -1533,8 +1533,11 @@ export async function executeLifecycleEffect(
 		case "notifyStatusChange":
 			notifyWatchedTaskStatusChange(ctx.task, effect.from, effect.to, ctx.project.name);
 			if (isNeedsYouSoundStatus(effect.to) && ctx.task.messageDraft?.sendOnStop) {
-				// Lazy: the scheduler reaches the rpc-handlers barrel, which leads back here.
-				void import("../scheduled-message-scheduler").then((m) => m.fireArmedMessageDraft(ctx.project, ctx.task.id));
+				// Lazy: the scheduler reaches the rpc-handlers barrel, which leads back here. A Claude
+				// permission menu also lands here; the hold's prompt gate keeps the draft out of it.
+				void import("../scheduled-message-scheduler")
+					.then((m) => m.fireArmedMessageDraft(ctx.project, ctx.task.id))
+					.catch((err) => log.warn("Armed message draft could not be fired", { taskId: ctx.task.id.slice(0, 8), error: String(err) }));
 			}
 			return {};
 		case "raisePrAttention":

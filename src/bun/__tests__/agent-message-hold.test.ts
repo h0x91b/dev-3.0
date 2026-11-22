@@ -946,6 +946,21 @@ describe("a pane showing a prompt gets nothing typed into it (#2342)", () => {
 		expect(pendingAgentMessageHoldCount()).toBe(0);
 	});
 
+	it("an armed draft fired by the PermissionRequest move waits behind the menu, then lands after the answer", async () => {
+		// The hooks open the prompt in the ledger BEFORE the Has Questions move that fires the draft.
+		openPrompt();
+		const draft = message();
+		holdAgentMessage(KEY, draft, {});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_CEILING_MS * 2);
+		expect(draft.deliver).not.toHaveBeenCalled();
+		expect(draft.submit).not.toHaveBeenCalled();
+
+		answerPrompt();
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(draft.deliver).toHaveBeenCalledTimes(1);
+		expect(draft.submit).toHaveBeenCalledTimes(1);
+	});
+
 	it("catches a prompt that opened after the message was held", async () => {
 		const one = message();
 		holdAgentMessage(KEY, one, {});

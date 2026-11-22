@@ -43,6 +43,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up", onOp
 	const messages = task.scheduledMessages ?? [];
 	const sorted = [...messages].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 	const draft = ACTIVE_STATUSES.includes(task.status) ? task.messageDraft : null;
+	const hasDraft = !!draft;
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [, setTick] = useState(0);
@@ -84,7 +85,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up", onOp
 
 		setPos({ top, left });
 		setVisible(true);
-	}, [open, placement, messages.length, !!draft]);
+	}, [open, placement, messages.length, hasDraft]);
 
 	// Close on outside click — a portaled popover lives outside the trigger's
 	// subtree, so check both the trigger and the popover before closing.
@@ -138,15 +139,35 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up", onOp
 		}
 	}
 
+	async function saveDraft(text: string, sendOnStop?: boolean, expectedUpdatedAt?: string | null) {
+		const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text, sendOnStop, expectedUpdatedAt });
+		dispatch({ type: "updateTask", task: updated });
+	}
+
+	/** One click discards; the toast's Undo puts the text back, armed only if no newer draft took its place. */
 	async function discardDraft(e: React.MouseEvent) {
 		e.stopPropagation();
 		setOpen(false);
+		if (!draft) return;
+		const discarded = draft;
 		try {
-			const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text: "" });
-			dispatch({ type: "updateTask", task: updated });
+			await saveDraft("");
 		} catch (err) {
 			toast.error(t("task.draftDiscardFailed", { error: String(err) }), { taskId: task.id });
+			return;
 		}
+		toast.info(t("task.draftDiscarded"), {
+			taskId: task.id,
+			actions: [{
+				label: t("task.draftUndo"),
+				emphasis: true,
+				onClick: () => {
+					saveDraft(discarded.text, discarded.sendOnStop, null).catch((err) => {
+						toast.error(t("scheduleMessage.draftSaveFailed", { error: String(err) }), { taskId: task.id });
+					});
+				},
+			}],
+		});
 	}
 
 	return (

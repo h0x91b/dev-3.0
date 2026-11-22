@@ -403,7 +403,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 
 ## 2026-11-11 — Task message draft lives inside Send later
 - **Rule:** The per-task message draft is edited in the Send later dialog (autosave; Not now / Now / When agent stops / In / At) and shown in the existing deferred-timer chip; no new bar control or card badge.
-- **Why:** the session bar is at its 4-control budget and the card has one deferred-work slot; rejected a separate draft button. `decisions/2026/11/11/task-message-draft.md`.
+- **Why:** session bar at its 4-control budget, one deferred-work slot per card. `decisions/2026/11/11/task-message-draft.md`.
 
 ## 2026-07-11 — Favorites: leading "Favorites" column on the launch picker (NOT a chip row / split)
 - **Rule:** The Provider→Model→Mode picker (`AgentConfigPicker`) carries ONE compact favorites control as a **leading labeled column** (peer to Provider/Model/Mode) on the 3 **launch** surfaces (Launch/Retry, Spawn Agent, Bug Hunters) via `showFavorites`: a narrow fixed-width trigger with a Nerd Font **star tha — bible §10.

@@ -184,6 +184,16 @@ describe("ScheduleMessageModal", () => {
 			unmount();
 		});
 
+		it("autosaves against the draft version it read, then the version it wrote", async () => {
+			mockedApi.request.saveMessageDraft.mockResolvedValueOnce({ id: task.id, messageDraft: { text: "old a", updatedAt: "t1" } } as never);
+			const { unmount } = renderModal(undefined, { messageDraft: { text: "old", updatedAt: "t0" } });
+			await userEvent.type(screen.getByTestId("schedule-message-input"), " a");
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith(expect.objectContaining({ text: "old a", expectedUpdatedAt: "t0" })));
+			await userEvent.type(screen.getByTestId("schedule-message-input"), "b");
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith(expect.objectContaining({ text: "old ab", expectedUpdatedAt: "t1" })));
+			unmount();
+		});
+
 		it("retries a failed autosave when the window closes", async () => {
 			mockedApi.request.saveMessageDraft.mockRejectedValueOnce(new Error("busy"));
 			const { unmount } = renderModal();

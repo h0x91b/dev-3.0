@@ -12,6 +12,8 @@ One optional `Task.messageDraft` (`{ text, sendOnStop?, updatedAt }`, `src/share
 
 A draft handed to the hold is cleared at once; if the hold later drops it (the pane went away inside the quiet window) the hold's own drop report is the only trace, the same as any held message. `review-by-ai` deliberately does not fire it: a message to the main agent while the AI reviewer works would race the review.
 
+`user-questions` is also where Claude's `PermissionRequest` moves the card, so an armed draft fires while a tool-approval menu is on screen. It is never typed into it: the hooks open the prompt in the agent prompt ledger before that move, and the hold's `release()` types nothing while the pane shows a prompt (`decisions/2026/11/21/hold-agent-messages-behind-open-prompts.md`). The draft then lands one quiet window after the prompt is answered, which can be mid-turn rather than at the next stop. An autosave sends the `updatedAt` it last saw; a mismatch keeps the text as a note and never re-arms a draft a stop-send already took.
+
 ## Alternatives considered
 
 Detecting a non-empty agent input box before releasing a held message: per-harness screen scraping, fragile, and it does not cover parking a message for later. Storing drafts as scheduled messages without `at`: older versions read `at` as required and would render an invalid countdown. A new card badge and session-bar button: the bar is at its four-control budget and the card already has one deferred-work chip slot.

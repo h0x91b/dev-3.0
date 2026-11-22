@@ -614,6 +614,49 @@ describe("message draft (#2281)", () => {
 		expect(state.current.messageDraft).toBeNull();
 		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow(/no message draft/i);
 	});
+
+	it("a Claude permission menu (Has Questions) hands the armed draft to the hold, never types it", async () => {
+		statefulTask({ status: "user-questions", messageDraft: { text: "after you", sendOnStop: true, updatedAt: "t0" } });
+		await fireArmedMessageDraft(project, "task-12345678");
+		// The hold is where the prompt-ledger gate lives (agent-message-hold.test.ts covers the gate).
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", "after you", expect.any(Function), undefined, undefined);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		expect(sendPromptToPane).not.toHaveBeenCalled();
+	});
+
+	it("a failed Send now puts the draft back still armed", async () => {
+		vi.mocked(sendPromptToAgentPane).mockRejectedValue(new Error("pane gone"));
+		const state = statefulTask({ status: "review-by-user", messageDraft: { text: "keep armed", sendOnStop: true, updatedAt: "t0" } });
+		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow();
+		expect(state.current.messageDraft).toEqual({ text: "keep armed", sendOnStop: true, updatedAt: "t0" });
+	});
+
+	describe("autosave compare-and-set", () => {
+		it("arms when the draft is still the version the window read", async () => {
+			const state = statefulTask({ messageDraft: { text: "v1", sendOnStop: true, updatedAt: "t0" } });
+			await saveMessageDraft(project, "task-12345678", { text: "v2", sendOnStop: true, expectedUpdatedAt: "t0" });
+			expect(state.current.messageDraft).toEqual(expect.objectContaining({ text: "v2", sendOnStop: true }));
+		});
+
+		it("never re-arms a draft a stop-send already claimed, but keeps the new text as a note", async () => {
+			const state = statefulTask({ messageDraft: null });
+			await saveMessageDraft(project, "task-12345678", { text: "typed after the send", sendOnStop: true, expectedUpdatedAt: "t0" });
+			expect(state.current.messageDraft).toEqual(expect.objectContaining({ text: "typed after the send" }));
+			expect((state.current.messageDraft as { sendOnStop?: boolean }).sendOnStop).toBeUndefined();
+		});
+
+		it("does not clear a draft that moved on since the window read it", async () => {
+			const state = statefulTask({ messageDraft: { text: "newer", updatedAt: "t9" } });
+			await saveMessageDraft(project, "task-12345678", { text: "", expectedUpdatedAt: "t0" });
+			expect(state.current.messageDraft).toEqual({ text: "newer", updatedAt: "t9" });
+		});
+
+		it("an explicit save with no version arms unconditionally", async () => {
+			const state = statefulTask({ messageDraft: null });
+			await saveMessageDraft(project, "task-12345678", { text: "arm me", sendOnStop: true });
+			expect(state.current.messageDraft).toEqual(expect.objectContaining({ sendOnStop: true }));
+		});
+	});
 });
 
 // Both entry points — the immediate `dev3 message` send and the queued

@@ -15,7 +15,10 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+vi.mock("../../toast", () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
+
 import { api } from "../../rpc";
+import { toast } from "../../toast";
 
 const mockedApi = api as unknown as {
 	request: {
@@ -137,6 +140,19 @@ describe("ScheduledMessagesChip", () => {
 			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
 			await userEvent.click(screen.getByText("Discard"));
 			expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", text: "" });
+		});
+
+		it("offers Undo after a discard, which puts the text back armed unless a newer draft exists", async () => {
+			renderChip(draftTask({ text: "keep this", sendOnStop: true, updatedAt: "x" }));
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			await userEvent.click(screen.getByText("Discard"));
+			await vi.waitFor(() => expect(toast.info).toHaveBeenCalled());
+			const [message, opts] = vi.mocked(toast.info).mock.calls[0]!;
+			expect(message).toBe("Draft discarded");
+			opts!.actions![0]!.onClick();
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({
+				taskId: "t1", projectId: "p1", text: "keep this", sendOnStop: true, expectedUpdatedAt: null,
+			});
 		});
 	});
 });

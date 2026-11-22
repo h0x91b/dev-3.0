@@ -627,6 +627,8 @@ const kanban = {
 	"task.draftEdit": "Изменить",
 	"task.draftDiscard": "Удалить",
 	"task.draftDiscardFailed": "Не удалось удалить черновик: {error}",
+	"task.draftDiscarded": "Черновик удалён",
+	"task.draftUndo": "Вернуть",
 	"task.heldMessages_one": "{count} ждёт",
 	"task.heldMessages_few": "{count} ждут",
 	"task.heldMessages_many": "{count} ждут",

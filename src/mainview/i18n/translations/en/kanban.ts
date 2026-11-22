@@ -594,6 +594,8 @@ const kanban = {
 	"task.draftEdit": "Edit",
 	"task.draftDiscard": "Discard",
 	"task.draftDiscardFailed": "Couldn't discard the draft: {error}",
+	"task.draftDiscarded": "Draft discarded",
+	"task.draftUndo": "Undo",
 	"task.heldMessages_one": "{count} waiting",
 	"task.heldMessages_other": "{count} waiting",
 	"task.heldMessagesTooltip_one": "{count} message waits until the agent's prompt is answered",
