@@ -1400,6 +1400,17 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; messageId: string };
 				response: Task;
 			};
+			/** Save the task's message draft; blank `text` clears it. */
+			saveMessageDraft: {
+				/** `expectedUpdatedAt`: the draft version the caller read; a mismatch never re-arms, and `strict` refuses. */
+				params: { taskId: string; projectId: string; text: string; sendOnStop?: boolean; expectedUpdatedAt?: string | null; strict?: boolean };
+				response: Task;
+			};
+			/** Send the saved message draft to the live agent now and clear it. */
+			sendMessageDraft: {
+				params: { taskId: string; projectId: string };
+				response: Task;
+			};
 			/**
 			 * Type `text` + Enter into the task's live agent pane right now, without
 			 * queueing (the diff viewer's per-thread "send to agent"). Throws when the

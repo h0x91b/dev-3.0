@@ -295,7 +295,7 @@ const terminal = {
 	"terminal.composerInsert": "Insert without Enter",
 	"terminal.composerExpand": "Expand editor",
 	"terminal.composerCollapse": "Collapse editor",
-	"terminal.composerScheduleLater": "Send later",
+	"terminal.composerScheduleLater": "Message agent",
 	"terminal.rawKeyboard": "Direct keyboard input",
 	"terminal.scrollToLatest": "Back to latest output",
 	"terminal.backspace": "Backspace",

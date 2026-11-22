@@ -313,7 +313,7 @@ const terminal = {
 	"terminal.composerInsert": "Вставить без Enter",
 	"terminal.composerExpand": "Развернуть редактор",
 	"terminal.composerCollapse": "Свернуть редактор",
-	"terminal.composerScheduleLater": "Отправить позже",
+	"terminal.composerScheduleLater": "Сообщение агенту",
 	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
 	"terminal.scrollToLatest": "К последнему выводу",
 	"terminal.backspace": "Удалить слева",

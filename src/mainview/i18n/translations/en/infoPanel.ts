@@ -360,7 +360,7 @@ const infoPanel = {
 	"taskHeaderItem.status.include-tests": "Include tests in diff",
 	"taskHeaderItem.session.bug-hunters": "Find bugs",
 	"taskHeaderItem.session.spawn-agent": "Add agent",
-	"taskHeaderItem.session.send-later": "Send later",
+	"taskHeaderItem.session.send-later": "Message agent",
 	"taskHeaderItem.session.hibernate": "Hibernate",
 	"taskHeaderItem.session.scheduled-messages": "Scheduled messages",
 	"taskHeaderItem.session.pane-controls": "Pane layout",

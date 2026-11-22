@@ -398,7 +398,7 @@ const infoPanel = {
 	"taskHeaderItem.status.include-tests": "Учитывать тесты в диффе",
 	"taskHeaderItem.session.bug-hunters": "Поиск багов",
 	"taskHeaderItem.session.spawn-agent": "Добавить агента",
-	"taskHeaderItem.session.send-later": "Отправить позже",
+	"taskHeaderItem.session.send-later": "Сообщение агенту",
 	"taskHeaderItem.session.hibernate": "Усыпить",
 	"taskHeaderItem.session.scheduled-messages": "Запланированные сообщения",
 	"taskHeaderItem.session.pane-controls": "Раскладка панелей",

@@ -120,6 +120,31 @@ export interface AgentMessageSource {
 	agentUnavailable?: string;
 }
 
+/**
+ * The user's unsent message to a task's agent, kept outside the terminal input line
+ * so a held peer message can never submit it (#2281). One per task; additive in
+ * `tasks.json`, so older versions ignore it.
+ */
+export interface TaskMessageDraft {
+	text: string;
+	/** Armed: sent the next time the task enters Your Review (see {@link armedDraftFiresOn}). */
+	sendOnStop?: boolean;
+	/** ISO time of the last edit. */
+	updatedAt: string;
+}
+
+/**
+ * Whether a move into `to` sends an armed draft: only Your Review, the agent's finished turn.
+ * Has Questions is also where every harness's PermissionRequest lands, and most harnesses'
+ * approval prompts are invisible to the prompt ledger, so it never fires a draft.
+ */
+export function armedDraftFiresOn(to: string): boolean {
+	return to === "review-by-user";
+}
+
+/** A strict draft save found the draft changed (sent, discarded or rewritten) since the caller read it. */
+export const MESSAGE_DRAFT_CHANGED_ERROR = "message-draft-changed";
+
 /** Per-task cap on pending scheduled messages; scheduling past this is rejected. */
 export const MAX_SCHEDULED_MESSAGES_PER_TASK = 20;
 

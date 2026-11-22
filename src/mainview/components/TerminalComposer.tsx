@@ -57,7 +57,8 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 	const t = useT();
 	const [text, setText] = useState("");
 	const [expanded, setExpanded] = useState(false);
-	const [scheduleOpen, setScheduleOpen] = useState(false);
+	// The composer text handed to the message window; it moves there, so a reopen cannot add it twice.
+	const [scheduleSeed, setScheduleSeed] = useState<string | null>(null);
 	const taRef = useRef<HTMLTextAreaElement>(null);
 	const focusedViewportHeightRef = useRef<number | null>(null);
 
@@ -221,7 +222,10 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 					type="button"
 					className={`${iconBtn} bg-elevated text-fg-2 disabled:opacity-40`}
 					onMouseDown={keepFocus}
-					onClick={() => setScheduleOpen(true)}
+					onClick={() => {
+						setScheduleSeed(text);
+						setText("");
+					}}
 					disabled={!text}
 					aria-label={t("terminal.composerScheduleLater")}
 					title={t("terminal.composerScheduleLater")}
@@ -297,13 +301,13 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 		>
 			{textarea}
 			<div className={expanded ? "flex flex-shrink-0 items-center justify-end gap-2" : "contents"}>{buttons}</div>
-			{scheduleOpen && task && project && dispatch && createPortal(
+			{scheduleSeed !== null && task && project && dispatch && createPortal(
 				<ScheduleMessageModal
 					task={task}
 					project={project}
 					dispatch={dispatch}
-					initialText={text}
-					onClose={() => setScheduleOpen(false)}
+					initialText={scheduleSeed}
+					onClose={() => setScheduleSeed(null)}
 				/>,
 				document.body,
 			)}
