@@ -24,7 +24,7 @@ System → Advanced Experience next to Terminal BiDi.
 | Keymap listing (overlay + rebind editor) | `FLAGGED_SHORTCUTS` in `keymap.ts` |
 | Palette command | the command's `when` in `commands/builtins.ts` |
 | Native View + Help rows | `agentTrafficItems()` reading `MenuContext.agentTrafficEnabled` |
-| Discovery tip | `availableTips` in `tips.ts` |
+| Discovery tip | the tip's `when` in `tips/builtins.ts` |
 
 The value is mirrored in a module flag (`src/mainview/agent-traffic-flag.ts`, fed from
 `globalSettings` by one effect in `App.tsx`, exactly like `terminal-bidi/flag.ts`) because four of

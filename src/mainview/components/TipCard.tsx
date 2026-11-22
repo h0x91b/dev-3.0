@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { Tip } from "../tips";
+import { tipStateKey, type Tip } from "../tips/registry";
 import type { TipState } from "../../shared/types";
-import { SNOOZE_MS, ROTATION_INTERVAL_MS } from "../tips";
+import { SNOOZE_MS, ROTATION_INTERVAL_MS } from "../tips/rotation";
 import { useT } from "../i18n";
 import { api } from "../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
@@ -26,7 +26,7 @@ function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 	/** Mark the current tip seen and advance to the next one. */
 	function rotate() {
 		api.request.updateTipState({
-			seen: { [tip.id]: Date.now() },
+			seen: { [tipStateKey(tip)]: Date.now() },
 			rotationIndex: tipState.rotationIndex + 1,
 		}).then(onChanged).catch(() => {});
 	}

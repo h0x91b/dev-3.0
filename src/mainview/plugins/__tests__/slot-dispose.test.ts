@@ -25,6 +25,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	terminalLinks: "terminal-links/__tests__/terminal-links.test.ts",
 	terminalTabDecorations: "components/__tests__/TerminalWindowNav.test.tsx",
 	terminalWindowMenu: "components/__tests__/TerminalWindowNav.test.tsx",
+	tips: "tips/__tests__/tips-slot.test.tsx",
 };
 
 type AnySlot = SlotRegistry<SlotItem>;

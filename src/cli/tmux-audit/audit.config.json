@@ -755,7 +755,7 @@
 			"consumer": "Applies persisted tmux theme on boot.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
 		},
-		"src/mainview/tips.ts": {
+		"src/mainview/tips/builtins.ts": {
 			"category": "documentation",
 			"roadmapItem": "CUT-005",
 			"depth": "caller",

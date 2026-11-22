@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import TipCard from "../TipCard";
 import { I18nProvider } from "../../i18n";
-import { ALL_TIPS } from "../../tips";
+import { BUILTIN_TIPS } from "../../tips/builtins";
+import { tipStateKey } from "../../tips/registry";
+
+const ALL_TIPS = BUILTIN_TIPS.map((t) => ({ ...t, id: tipStateKey(t) }));
 import type { TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({

@@ -223,13 +223,13 @@ Rules:
 
 1. **Hidden value** — invisible or unlikely to be discovered by normal UI exploration (keyboard shortcut, hover/drag/right-click behavior, CLI power, non-obvious workflow). If a visible button/badge/toggle explains itself on screen, a tip about it is spam.
 2. **Honest score ≥ 3** on the rubric below. A would-be 1–2 means no tip (rare exception: a truly invisible auto-behavior that saves real pain may ship at 2).
-3. **Not already covered** — check `ALL_TIPS` first; if the feature, or its cluster (stats screen, mobile gestures, remote access, diff review…), already has 2–3 tips, update/reword the existing tip in the same commit instead of stacking a near-duplicate.
+3. **Not already covered** — check `BUILTIN_TIPS` first; if the feature, or its cluster (stats screen, mobile gestures, remote access, diff review…), already has 2–3 tips, update/reword the existing tip in the same commit instead of stacking a near-duplicate.
 
 **Count:** 0 by default; 1 if the gate passes; 2 only for a genuine flagship (score 5). Ship tips in the same commit as the feature. **Never write a tip for:** self-describing UI, visible visual states (spinners, glows, badges), settings toggles that restate their label, behavior users already expect, anything met naturally on the happy path.
 
-**Files:** registry `src/mainview/tips.ts` (`ALL_TIPS` array); i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. **Content:** title 3–6 words; body one sentence max ~120 chars — tell the user *what to do*, no fluff.
+**Files:** the built-in tips are `BUILTIN_TIPS` in `src/mainview/tips/builtins.ts`, registered into the internal `tips` slot (`src/mainview/tips/registry.ts`); rotation, cool-down and snooze stay in the host (`src/mainview/tips/rotation.ts`). Ids are `builtin:tip.<key>` and `<key>` is what the persisted tip state remembers, so never rename one. i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. **Content:** title 3–6 words; body one sentence max ~120 chars — tell the user *what to do*, no fluff.
 
-**The 1–5 coolness rubric lives on the `TipScore` type** in `src/mainview/tips.ts` — read it there when scoring, and keep it there when it changes. Append new tips at the end of `ALL_TIPS`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `ALL_TIPS` entry + keys in all three locales).
+**The 1–5 coolness rubric lives on the `TipScore` type** in `src/mainview/tips/registry.ts` — read it there when scoring, and keep it there when it changes. Append new tips at the end of `BUILTIN_TIPS` (registration order is rotation order within a tier), then regenerate the pin with `bunx vitest run --config vitest.config.ts src/mainview/tips -u`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `BUILTIN_TIPS` entry + keys in all three locales).
 
 ## The `ask-dev3` skill
 
