@@ -14,6 +14,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	boardViews: "board-views/__tests__/BoardHost.test.tsx",
 	commands: "components/__tests__/CommandPaletteModal.test.tsx",
 	destinationBodies: "destination-bodies/__tests__/destination-body.test.tsx",
+	fileMenu: "file-menu/__tests__/file-menu-slot.test.tsx",
 	settingsSections: "settings-sections/__tests__/settings-sections.test.tsx",
 	sidebar: "sidebar/__tests__/sidebar-slot.test.tsx",
 	taskHeader: "task-header/__tests__/task-header-slot.test.tsx",
@@ -23,6 +24,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	terminalCompanion: "terminal-companion/__tests__/terminal-companion.test.tsx",
 	terminalLinks: "terminal-links/__tests__/terminal-links.test.ts",
 	terminalTabDecorations: "components/__tests__/TerminalWindowNav.test.tsx",
+	terminalWindowMenu: "components/__tests__/TerminalWindowNav.test.tsx",
 };
 
 type AnySlot = SlotRegistry<SlotItem>;

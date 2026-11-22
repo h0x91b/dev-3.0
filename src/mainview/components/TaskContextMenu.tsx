@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction } from "../state";
@@ -8,8 +8,8 @@ import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { computeMenuFlyoutPosition, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import { getTaskMenuRegistry, TASK_MENU_GROUPS, type TaskMenuItem, type TaskMenuScope } from "../task-menu/registry";
-import type { SlotEntry } from "../plugins/slot-registry";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
+import { groupMenuRows, runMenuItem, useMenuSlotEntries, type MenuRow } from "../plugins/menu-rows";
 import BottomSheet from "./BottomSheet";
 import TaskDetailModal from "./TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -29,58 +29,6 @@ interface TaskContextMenuProps {
 	/** Filters the board to the task's lineage batch; the row is shown only when given. */
 	onShowFamily?: () => void;
 	testId?: string;
-}
-
-/** An item resolved against one task: what the row draws. */
-interface MenuRow {
-	item: TaskMenuItem;
-	/** `task-menu-<key>` test ids; built-ins drop their `builtin:` prefix. */
-	key: string;
-	label: string;
-	disabled: boolean;
-	checked: boolean;
-}
-
-const BUILTIN_PREFIX = "builtin:";
-
-function rowKey(id: string): string {
-	return id.startsWith(BUILTIN_PREFIX) ? id.slice(BUILTIN_PREFIX.length) : id;
-}
-
-/** A throwing item drops only its own row, never the whole menu. */
-function resolveRow(item: TaskMenuItem, scope: TaskMenuScope): MenuRow | null {
-	try {
-		if (item.when && !item.when(scope)) return null;
-		return {
-			item,
-			key: rowKey(item.id),
-			label: item.label(scope),
-			disabled: item.disabled?.(scope) ?? false,
-			checked: item.checked?.(scope) ?? false,
-		};
-	} catch (err) {
-		console.error(`[taskMenu] "${item.id}" failed to resolve`, err);
-		return null;
-	}
-}
-
-const NO_SUBSCRIPTION = () => () => {};
-
-/**
- * Built-in items land in their own group, in `TASK_MENU_GROUPS` order. Anything
- * else goes into one trailing group the host owns, never interleaved with
- * dev3's rows — the slot of a future extension "Extensions" section (bible §11).
- */
-export function groupTaskMenuRows(entries: readonly SlotEntry<TaskMenuItem>[], scope: TaskMenuScope): MenuRow[][] {
-	const builtin = new Map<string, MenuRow[]>();
-	const foreign: MenuRow[] = [];
-	for (const { def } of entries) {
-		const row = resolveRow(def, scope);
-		if (!row) continue;
-		if (!def.id.startsWith(BUILTIN_PREFIX)) foreign.push(row);
-		else if (TASK_MENU_GROUPS.includes(def.region)) builtin.set(def.region, [...(builtin.get(def.region) ?? []), row]);
-	}
-	return [...TASK_MENU_GROUPS.map((group) => builtin.get(group) ?? []), foreign].filter((group) => group.length > 0);
 }
 
 /**
@@ -105,7 +53,7 @@ export default function TaskContextMenu({
 	/** The item whose phone surface the sheet handed off to, if any. */
 	const [sheet, setSheet] = useState<string | null>(null);
 	// Every card and sidebar row keeps a closed menu mounted: only an open one listens to the slot.
-	const entries = useSyncExternalStore(pos || sheet ? registry.subscribe : NO_SUBSCRIPTION, registry.list);
+	const entries = useMenuSlotEntries(registry, !!pos || !!sheet);
 	const [flyout, setFlyout] = useState<string | null>(null);
 	// A flyout opened from the keyboard takes focus; one opened by hover leaves it be.
 	const [flyoutByKey, setFlyoutByKey] = useState(false);
@@ -195,16 +143,10 @@ export default function TaskContextMenu({
 			return;
 		}
 		onClose();
-		// A failing row reports itself; it never escapes into the click or goes unhandled.
-		const fail = (err: unknown) => console.error(`[taskMenu] "${item.id}" failed`, err);
-		try {
-			void Promise.resolve(item.run?.(scope)).catch(fail);
-		} catch (err) {
-			fail(err);
-		}
+		runMenuItem("taskMenu", item.id, item.run, scope);
 	}
 
-	function renderRow(row: MenuRow) {
+	function renderRow(row: MenuRow<TaskMenuItem>) {
 		const { item } = row;
 		const hasFlyout = !!item.submenu && !narrow;
 		const open = hasFlyout && flyout === item.id;
@@ -275,7 +217,7 @@ export default function TaskContextMenu({
 	// Rows are resolved only while the menu is open: a long-lived card must not run every item each render.
 	const rows: ReactNode[] = [];
 	if (pos) {
-		groupTaskMenuRows(entries, scope).forEach((group, groupIndex) => {
+		groupMenuRows("taskMenu", entries, scope, TASK_MENU_GROUPS).forEach((group, groupIndex) => {
 			if (groupIndex > 0) rows.push(<div key={`sep-${groupIndex}`} className="my-1 border-t border-edge" />);
 			for (const row of group) rows.push(renderRow(row));
 		});

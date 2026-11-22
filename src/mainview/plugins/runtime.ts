@@ -7,6 +7,7 @@ import { extensionViewId, type ExtensionsOverview, type InstalledExtension } fro
 import { api } from "../rpc";
 import { getAppRoot, observeAppSlots, resetAppRootForTests } from "./root";
 import type { SlotItem, SlotRegistry } from "./slot-registry";
+import { resetMenuRowFailuresForTests } from "./menu-rows";
 
 /**
  * The plugin runtime: which built-ins run, and the third-party extensions loaded
@@ -324,4 +325,5 @@ export function resetPluginsForTests(): void {
 	loadingExtension = null;
 	refusals.clear();
 	syncChain = Promise.resolve();
+	resetMenuRowFailuresForTests();
 }

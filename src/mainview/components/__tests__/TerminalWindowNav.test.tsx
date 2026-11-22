@@ -6,10 +6,12 @@ import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
 import type { TmuxWindowEntry } from "../../../shared/types";
-import type { Context } from "cordis";
+import type { Context, Fiber } from "cordis";
 import { getAppRoot } from "../../plugins/root";
 import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
 import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "../../terminal-tab-decorations/builtins";
+import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
+import { getTerminalWindowMenuRegistry, type TerminalWindowMenuItem, type TerminalWindowMenuScope } from "../../terminal-window-menu/registry";
 import { getTerminalTabDecorationRegistry, resetDecorationFailuresForTests, type TerminalTabDecorationItem, type TerminalTabDecorationProps } from "../../terminal-tab-decorations/registry";
 
 vi.mock("../../rpc", () => ({
@@ -51,7 +53,7 @@ const reread = async () => {
 describe("TerminalWindowNav", () => {
 	beforeEach(() => {
 		resetPluginsForTests();
-		applyBuiltinPlugins([], [BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN]);
+		applyBuiltinPlugins([], [BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN, BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN]);
 		navigate().mockReset();
 		vi.mocked(api.request.tmuxCloseWindow).mockReset().mockResolvedValue({ closed: true });
 		vi.mocked(confirm).mockReset();
@@ -330,6 +332,61 @@ describe("TerminalWindowNav", () => {
 		await userEvent.click(plus);
 		expect(api.request.tmuxNewWindow).toHaveBeenCalledWith({ taskId: "task-1" });
 		await waitFor(() => expect(navigate().mock.calls.length).toBeGreaterThan(1));
+	});
+
+	describe("terminalWindowMenu slot", () => {
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+		async function contribute(items: TerminalWindowMenuItem[]): Promise<Fiber> {
+			const fiber = getAppRoot().plugin({
+				name: "acme",
+				inject: ["terminalWindowMenu"],
+				apply(ctx: Context) {
+					for (const item of items) ctx.terminalWindowMenu.register(item);
+				},
+			});
+			await settle();
+			return fiber;
+		}
+		/** Menu rows and `---` rules, in document order. */
+		const layout = () => [...screen.getByRole("menu").querySelectorAll('[role="menuitem"], .border-t')].map((el) => (el.getAttribute("role") ? el.textContent : "---"));
+
+		it("is a contribution slot whose built-ins all sit in the window group", () => {
+			const registry = getTerminalWindowMenuRegistry();
+			expect(registry.kind).toBe("contribute");
+			expect(registry.list().map(({ def }) => [def.id, def.region])).toEqual([
+				["builtin:switch", "window"],
+				["builtin:rename", "window"],
+				["builtin:close", "window"],
+			]);
+		});
+
+		it("puts a non-built-in row after a rule, below Close, and hands it the window's scope", async () => {
+			const run = vi.fn();
+			await contribute([{ id: "acme:copy", region: "window", order: -1, label: ({ window: w }) => `Copy ${w.label}`, run }]);
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+			renderNav();
+			await userEvent.pointer({ keys: "[MouseRight]", target: await screen.findByRole("tab", { name: "zsh" }) });
+			expect(layout()).toEqual(["Switch to this window", "Rename", "Close window", "---", "Copy zsh"]);
+			await userEvent.click(screen.getByRole("menuitem", { name: "Copy zsh" }));
+			expect(screen.queryByRole("menu")).toBeNull();
+			const scope = run.mock.calls[0][0] as TerminalWindowMenuScope;
+			expect(scope).toMatchObject({ taskId: "task-1", closable: true, window: { windowId: "@2" } });
+		});
+
+		it("[dispose] drops a plugin's rows from the open menu when the plugin unloads, keeping the window's own", async () => {
+			const fiber = await contribute([{ id: "acme:x", region: "window", label: () => "Acme row", run: () => {} }]);
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+			renderNav();
+			await userEvent.pointer({ keys: "[MouseRight]", target: await screen.findByRole("tab", { name: "zsh" }) });
+			expect(layout().slice(-2)).toEqual(["---", "Acme row"]);
+			await act(async () => {
+				await fiber.dispose();
+			});
+			expect(getTerminalWindowMenuRegistry().get("acme:x")).toBeUndefined();
+			// The trailing group goes with its last row: no dangling rule.
+			expect(layout()).toEqual(["Switch to this window", "Rename", "Close window"]);
+			expect(screen.getByTestId("terminal")).toBeInTheDocument();
+		});
 	});
 
 	describe("terminalTabDecorations slot", () => {
