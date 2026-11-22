@@ -906,6 +906,8 @@ describe("App keyboard shortcuts", () => {
 			{ ...base, id: "p4", name: "Delta" },
 		];
 		// Mixed order: Alpha, the space (slot of Beta), Delta.
+		// Off, the dashboard lists the space first: Beta, Gamma, then Home: Alpha, Delta.
+		const alphaDigit = (follow: boolean) => (follow ? "1" : "3");
 		const spacesFile = {
 			version: 1,
 			spaces: [{ id: "sp_a", name: "Client", parentId: null, projectIds: ["p2", "p3"], createdAt: 1 }],
@@ -992,7 +994,8 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(follow);
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
-			press({ key: "1", code: "Digit1", metaKey: true });
+			const digit = alphaDigit(follow);
+			press({ key: digit, code: `Digit${digit}`, metaKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-space-id", "");
 			expect(project()).toHaveAttribute("data-task-view", "true");
@@ -1005,7 +1008,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(false);
 			await userEvent.click(screen.getByTestId("mock-make-dirty"));
-			press({ key: "1", code: "Digit1", metaKey: true });
+			press({ key: "3", code: "Digit3", metaKey: true });
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
 			expect(project()).toHaveAttribute("data-project-id", "p1");
@@ -1056,7 +1059,7 @@ describe("App keyboard shortcuts", () => {
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
 			});
 			await renderWith(false);
-			press({ key: "1", code: "Digit1", metaKey: true });
+			press({ key: "3", code: "Digit3", metaKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1067,7 +1070,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(false);
 			press({ key: "g", code: "KeyG" });
-			press({ key: "1", code: "Digit1" });
+			press({ key: "3", code: "Digit3" });
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1125,18 +1128,20 @@ describe("App keyboard shortcuts", () => {
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 		});
 
-		it("g then 1 skips Operations in both modes", async () => {
-			await renderWith(false);
+		it.each([true, false])("g then 1 skips Operations (follow=%s)", async (follow) => {
+			await renderWith(follow);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "1", code: "Digit1" });
-			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-project-id", follow ? "p1" : "p2");
 		});
 
-		it("with the setting off, ⌘2 is the second project, never a space", async () => {
+		it("with the setting off, ⌘N walks the dashboard's rows, the space's members first, never a space", async () => {
 			await renderWith(false);
-			press({ key: "2", code: "Digit2", metaKey: true });
-			expect(project()).toHaveAttribute("data-project-id", "p2");
-			expect(project()).toHaveAttribute("data-space-id", "");
+			const opened = ["1", "2", "3", "4"].map((digit) => {
+				press({ key: digit, code: `Digit${digit}`, metaKey: true });
+				return [project().getAttribute("data-project-id"), project().getAttribute("data-space-id")];
+			});
+			expect(opened).toEqual([["p2", ""], ["p3", ""], ["p1", ""], ["p4", ""]]);
 		});
 	});
 
