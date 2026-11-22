@@ -10,7 +10,7 @@ import { toast } from "../toast";
 import Tooltip from "./Tooltip";
 import { getDecorationCrashVersion, getTerminalTabDecorationRegistry, placeTerminalTabDecorations, subscribeDecorationCrashes } from "../terminal-tab-decorations/registry";
 import { TerminalTabDecorations } from "../terminal-tab-decorations/TerminalTabDecorations";
-import { groupMenuRows, runMenuItem } from "../plugins/menu-rows";
+import { groupMenuRows, runMenuItem, useMenuSlotEntries } from "../plugins/menu-rows";
 import { getTerminalWindowMenuRegistry, TERMINAL_WINDOW_MENU_GROUPS, type TerminalWindowMenuItem, type TerminalWindowMenuScope } from "../terminal-window-menu/registry";
 
 /**
@@ -332,7 +332,7 @@ function WindowMenu({
 	const menuRef = useRef<HTMLDivElement>(null);
 	const w = state.window;
 	const registry = getTerminalWindowMenuRegistry();
-	const entries = useSyncExternalStore(registry.subscribe, registry.list);
+	const entries = useMenuSlotEntries(registry, true);
 	const scope: TerminalWindowMenuScope = { window: w, taskId, closable, t, select: () => onSelect(w), rename: () => onRename(w), close: () => onClose(w) };
 
 	useEffect(() => {

@@ -10,12 +10,15 @@ Both slots are internal: no manifest kind, no public service, no API version bum
 - **Shared helper.** `src/mainview/plugins/menu-rows.ts` holds what all three menus share: `MenuSlotItem`
   (region, guarded `label` / `when` / `disabled` / `checked`, `danger`), `resolveMenuRow`, `groupMenuRows`
   (built-ins by group, then one trailing group for anything else) and `runMenuItem` (sync and async throws
-  logged, never escaping). `TaskContextMenu` now uses it and keeps its `[taskMenu]` log lines.
+  logged, never escaping). A failure is logged once per slot, id and phase (resolve / run), because an open menu
+  re-resolves on every host render. `useMenuSlotEntries` listens to the slot only while a menu is open, the
+  rule <pr:2402> set for task menus, so the long-lived explorer does not re-render on slot changes.
+  `TaskContextMenu` now uses all of it and keeps its `[taskMenu]` log lines.
 - **`fileMenu`** (`src/mainview/file-menu/`). Groups `open` / `path` / `host`. The scope is the row's entry, whether
   it sits in the primary root, project and task, and the explorer's own `openFile` / `handOff` / `copyText` /
   `openWithSystem`, so toasts stay the explorer's. An item may carry an `icon` component, drawn inside its own
-  boundary. The six built-ins and their glyphs moved out of `FileExplorer.tsx`, with `quoteForShell` and
-  `fileManagerKeys`. The header "More" menu is not a row menu and stays host-owned.
+  boundary. The six built-ins moved out of `FileExplorer.tsx` with `quoteForShell`; the glyphs went to
+  `file-menu/glyphs.tsx` and `fileManagerKeys` to `file-menu/file-manager.ts`, which the explorer header shares. The header "More" menu is not a row menu and stays host-owned.
 - **`terminalWindowMenu`** (`src/mainview/terminal-window-menu/`). One group, `window`: switch (background windows
   only), rename, close (`danger`, only when closable). The scope is the window, task id, `closable` and the row's
   own `select` / `rename` / `close`.
@@ -31,6 +34,9 @@ Both slots are internal: no manifest kind, no public service, no API version bum
   set one (and then this goes through `/ux-principal`).
 - `isElectrobun` gates the host rows inside their `when`; a plugin can still call `openWithSystem` in a browser,
   where the RPC fails with the explorer's own error toast.
+
+- React keys and test ids strip `builtin:`, so a foreign item with a bare id such as `open` would collide with a
+  built-in key. Impossible while the slots are internal; key foreign rows on their full id before opening.
 
 ## Alternatives considered
 - **Two separate PRs without a shared helper.** Rejected: the guard and grouping code would exist three times.

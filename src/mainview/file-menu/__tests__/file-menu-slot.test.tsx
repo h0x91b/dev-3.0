@@ -109,6 +109,16 @@ describe("fileMenu slot", () => {
 		expect(scope).toMatchObject({ entry: { relPath: "README.md" }, inPrimaryRoot: true, projectId: "p1", taskId: "t1" });
 	});
 
+	it("listens to the fileMenu slot only while a row menu is open", async () => {
+		const subscribe = vi.spyOn(getFileMenuRegistry(), "subscribe");
+		renderExplorer();
+		await screen.findByRole("treeitem", { name: /README\.md/ });
+		expect(subscribe).not.toHaveBeenCalled();
+		await openMenu(/README\.md/);
+		expect(subscribe).toHaveBeenCalledTimes(1);
+		subscribe.mockRestore();
+	});
+
 	it("[dispose] drops a plugin's rows from the open menu when the plugin unloads, keeping the explorer's", async () => {
 		const fiber = await contribute("acme", [{ id: "acme:x", region: "open", label: () => "Acme row", run: () => {} }]);
 		renderExplorer();

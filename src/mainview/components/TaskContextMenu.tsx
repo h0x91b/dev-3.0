@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction } from "../state";
@@ -9,7 +9,7 @@ import { registerOverlayLayer } from "../utils/overlay-layers";
 import { computeMenuFlyoutPosition, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import { getTaskMenuRegistry, TASK_MENU_GROUPS, type TaskMenuItem, type TaskMenuScope } from "../task-menu/registry";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
-import { groupMenuRows, runMenuItem, type MenuRow } from "../plugins/menu-rows";
+import { groupMenuRows, runMenuItem, useMenuSlotEntries, type MenuRow } from "../plugins/menu-rows";
 import BottomSheet from "./BottomSheet";
 import TaskDetailModal from "./TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -30,8 +30,6 @@ interface TaskContextMenuProps {
 	onShowFamily?: () => void;
 	testId?: string;
 }
-
-const NO_SUBSCRIPTION = () => () => {};
 
 /**
  * Right-click actions for one task, shared by the Kanban card, the Active Tasks
@@ -55,7 +53,7 @@ export default function TaskContextMenu({
 	/** The item whose phone surface the sheet handed off to, if any. */
 	const [sheet, setSheet] = useState<string | null>(null);
 	// Every card and sidebar row keeps a closed menu mounted: only an open one listens to the slot.
-	const entries = useSyncExternalStore(pos || sheet ? registry.subscribe : NO_SUBSCRIPTION, registry.list);
+	const entries = useMenuSlotEntries(registry, !!pos || !!sheet);
 	const [flyout, setFlyout] = useState<string | null>(null);
 	// A flyout opened from the keyboard takes focus; one opened by hover leaves it be.
 	const [flyoutByKey, setFlyoutByKey] = useState(false);

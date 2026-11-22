@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { EXPLORER_MAX_ENTRIES, type ExplorerEntry, type ExplorerListing, type ProjectFolder } from "../../shared/types";
 import { api, isElectrobun } from "../rpc";
@@ -7,10 +7,11 @@ import { toast } from "../toast";
 import { openFilePreview } from "../terminal-path-open";
 import { writeClipboardText } from "../utils/clipboard-write";
 import Tooltip from "./Tooltip";
-import { groupMenuRows, runMenuItem } from "../plugins/menu-rows";
+import { groupMenuRows, runMenuItem, useMenuSlotEntries } from "../plugins/menu-rows";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
 import { FILE_MENU_GROUPS, getFileMenuRegistry, type FileMenuScope } from "../file-menu/registry";
-import { fileManagerKeys, PathGlyph, RevealGlyph } from "../file-menu/builtins";
+import { fileManagerKeys } from "../file-menu/file-manager";
+import { menuGlyph, PathGlyph, RevealGlyph } from "../file-menu/glyphs";
 import {
 	clearRevealRequest,
 	folderSourceLabel,
@@ -435,7 +436,7 @@ export default function FileExplorer({
 	const rootState = dirs.get(keyOf(PRIMARY, ""));
 	const fileManager = fileManagerKeys();
 	const fileMenuRegistry = getFileMenuRegistry();
-	const fileMenuEntries = useSyncExternalStore(fileMenuRegistry.subscribe, fileMenuRegistry.list);
+	const fileMenuEntries = useMenuSlotEntries(fileMenuRegistry, menu !== null);
 
 	/** The row menu comes from the `fileMenu` slot; only resolved while it is open. */
 	function contextMenuSections(entry: ExplorerEntry, rootId: string): MenuItem[][] {
@@ -1032,9 +1033,6 @@ export function ExplorerRailGlyph() {
 		</svg>
 	);
 }
-
-// Menu glyphs: one outline set, a lighter stroke to sit beside 12px regular text.
-const menuGlyph = { ...glyph, strokeWidth: 1.75 };
 
 function TuiGlyph() {
 	return (

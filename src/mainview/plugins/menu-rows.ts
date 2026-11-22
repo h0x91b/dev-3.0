@@ -1,4 +1,5 @@
-import type { SlotEntry, SlotItem } from "./slot-registry";
+import { useSyncExternalStore } from "react";
+import type { SlotEntry, SlotItem, SlotRegistry } from "./slot-registry";
 
 /** What every menu slot's item shares: a group, a guarded label and visibility, and how its row looks. */
 export interface MenuSlotItem<Scope, Group extends string> extends SlotItem {
@@ -23,6 +24,26 @@ export interface MenuRow<Item> {
 }
 
 const BUILTIN_PREFIX = "builtin:";
+const NO_SUBSCRIPTION = () => () => {};
+
+/** The slot's items, listened to only while the menu is open: a long-lived host must not re-render on every slot change. */
+export function useMenuSlotEntries<Item extends SlotItem>(registry: SlotRegistry<Item>, open: boolean): readonly SlotEntry<Item>[] {
+	return useSyncExternalStore(open ? registry.subscribe : NO_SUBSCRIPTION, registry.list);
+}
+
+/** Resolution re-runs on every render of an open menu, so each broken item is reported once per slot, id and phase. */
+const reported = new Set<string>();
+
+function report(slot: string, id: string, phase: "failed to resolve" | "failed", err: unknown): void {
+	const key = `${slot}\u0000${id}\u0000${phase}`;
+	if (reported.has(key)) return;
+	reported.add(key);
+	console.error(`[${slot}] "${id}" ${phase}`, err);
+}
+
+export function resetMenuRowFailuresForTests(): void {
+	reported.clear();
+}
 
 function rowKey(id: string): string {
 	return id.startsWith(BUILTIN_PREFIX) ? id.slice(BUILTIN_PREFIX.length) : id;
@@ -40,7 +61,7 @@ export function resolveMenuRow<Scope, Item extends MenuSlotItem<Scope, string>>(
 			checked: item.checked?.(scope) ?? false,
 		};
 	} catch (err) {
-		console.error(`[${slot}] "${item.id}" failed to resolve`, err);
+		report(slot, item.id, "failed to resolve", err);
 		return null;
 	}
 }
@@ -69,7 +90,7 @@ export function groupMenuRows<Scope, Group extends string, Item extends MenuSlot
 
 /** A failing row reports itself; it never escapes into the click or goes unhandled. */
 export function runMenuItem<Scope>(slot: string, id: string, run: ((scope: Scope) => void | Promise<void>) | undefined, scope: Scope): void {
-	const fail = (err: unknown) => console.error(`[${slot}] "${id}" failed`, err);
+	const fail = (err: unknown) => report(slot, id, "failed", err);
 	try {
 		void Promise.resolve(run?.(scope)).catch(fail);
 	} catch (err) {
