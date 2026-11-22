@@ -77,6 +77,7 @@ describe("items that are never hidden (open-in, dev server, ports)", () => {
 		placement: "inline",
 		at: { top: 0, left: 0 },
 		returnFocus: null,
+		host: null,
 		order: ["builtin:runtime.open-in", "builtin:runtime.ports", "builtin:runtime.images", "builtin:runtime.scripts"],
 		drawn: ["builtin:runtime.open-in", "builtin:runtime.ports", "builtin:runtime.images", "builtin:runtime.scripts"],
 		overflow: ["ext:x"],

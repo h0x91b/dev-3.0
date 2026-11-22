@@ -242,6 +242,25 @@ describe("SlotItems: the user's layout and the item menu", () => {
 		expect(onItemMenu.mock.calls[0][0].returnFocus).toBe(more());
 	});
 
+	it("opens it on Shift+F10 and the Menu key itself, where the browser fires no contextmenu", async () => {
+		await plugin("builtins", [{ id: "builtin:a" }]);
+		await plugin("ext", [{ id: "ext:x" }]);
+		const onItemMenu = vi.fn();
+		renderItems({ onItemMenu });
+		const button = screen.getByRole("button", { name: "builtin:a" });
+		fireEvent.keyDown(button, { key: "F10" });
+		fireEvent.keyDown(button, { key: "F10", shiftKey: true, metaKey: true });
+		expect(onItemMenu).not.toHaveBeenCalled();
+		fireEvent.keyDown(button, { key: "F10", shiftKey: true });
+		expect(onItemMenu.mock.calls[0][0]).toMatchObject({ id: "builtin:a", placement: "inline" });
+		expect(onItemMenu.mock.calls[0][0].returnFocus).toBe(button);
+		expect(onItemMenu.mock.calls[0][0].host).toBe(document.querySelector("[data-slot]"));
+		fireEvent.click(more());
+		fireEvent.keyDown(screen.getByRole("menuitem", { name: "ext:x" }), { key: "ContextMenu" });
+		expect(onItemMenu.mock.calls[1][0]).toMatchObject({ id: "ext:x", placement: "overflow" });
+		expect(onItemMenu.mock.calls[1][0].returnFocus).toBe(more());
+	});
+
 	it("opens it on a touch long-press and swallows the tap that ends the press", async () => {
 		vi.useFakeTimers();
 		try {

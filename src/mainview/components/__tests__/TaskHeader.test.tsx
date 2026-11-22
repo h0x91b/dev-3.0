@@ -5300,6 +5300,20 @@ describe("task header user layout", () => {
 		await choose("Show in bar");
 		expect(drawn("session")).toContain("builtin:session.hibernate");
 		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+		// The row and the More trigger went with the panel: focus stays in the bar.
+		await waitFor(() => expect(document.activeElement?.closest('[data-region="session"]')).not.toBeNull());
+	});
+
+	it("keeps focus in the bar after hiding the last item in More", async () => {
+		await render();
+		openItemMenu("Hibernate");
+		await choose("Move to More");
+		fireEvent.click(screen.getByRole("button", { name: "More" }));
+		const row = within(screen.getByRole("menu")).getByRole("button", { name: "Hibernate" });
+		fireEvent.keyDown(row, { key: "F10", shiftKey: true });
+		await choose("Hide");
+		expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+		await waitFor(() => expect(document.activeElement?.closest('[data-region="session"]')).not.toBeNull());
 	});
 
 	it("uses a hidden item instead of a drawn one in one step and one write", async () => {
