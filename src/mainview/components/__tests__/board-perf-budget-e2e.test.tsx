@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { Profiler, type ReactNode } from "react";
 import type { Context } from "cordis";
 import TaskCard from "../TaskCard";
@@ -54,6 +54,20 @@ vi.mock("../../rpc", () => ({
 		},
 	},
 }));
+// Every card and sidebar row draws one rail, and the rail does not read the markers: its render
+// count is how many rows re-rendered as a whole.
+const renders = vi.hoisted(() => ({ rail: 0, lateMarker: 0 }));
+vi.mock("../TaskCardRail", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../TaskCardRail")>();
+	const Rail = actual.default;
+	return {
+		...actual,
+		default: (props: Parameters<typeof Rail>[0]) => {
+			renders.rail++;
+			return <Rail {...props} />;
+		},
+	};
+});
 vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
 vi.mock("../../confirm", () => ({ confirm: vi.fn(), ConfirmHost: () => null }));
 vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() }, ToastHost: () => null }));
@@ -84,7 +98,15 @@ async function settle(): Promise<void> {
 const LATE: Record<string, SlotItem & Record<string, unknown>> = {
 	commands: { id: "ext:command", order: 0, labelKey: "command.boardView", labelVars: { name: "x" }, category: "nav", scope: "always", run: () => {} },
 	taskMenu: { id: "ext:row", region: "open", label: () => "Row", run: () => {} },
-	taskMarkers: { id: "ext:marker", when: () => true, label: () => "Marker", component: () => <span /> },
+	taskMarkers: {
+		id: "ext:marker",
+		when: () => true,
+		label: () => "Marker",
+		component: () => {
+			renders.lateMarker++;
+			return <span data-testid="late-marker" />;
+		},
+	},
 };
 
 function registerLate(slot: string): void {
@@ -128,11 +150,16 @@ function onRow(): void {
 	rowRenders++;
 }
 
+let commits = 0;
+function onCommit(): void {
+	commits++;
+}
+
 describe(`${N}-task board budgets`, () => {
 	it.each(surfaces)("%s: slot subscriptions do not grow with the number of tasks, and a slot change wakes only its readers", async (surface, view) => {
 		const subscriptions = countSlotSubscriptions();
 		const started = performance.now();
-		render(<I18nProvider><TaskMarkersProvider>{view()}</TaskMarkersProvider></I18nProvider>);
+		render(<I18nProvider><Profiler id="root" onRender={onCommit}><TaskMarkersProvider>{view()}</TaskMarkersProvider></Profiler></I18nProvider>);
 		expect(performance.now() - started).toBeLessThan(MOUNT_CEILING_MS);
 		// One provider-level subscription at most per slot, never one per row.
 		for (const [slot, count] of subscriptions) expect(count, `${slot} subscriptions`).toBeLessThanOrEqual(1);
@@ -140,18 +167,26 @@ describe(`${N}-task board budgets`, () => {
 
 		for (const slot of ["commands", "taskMenu"]) {
 			rowRenders = 0;
+			renders.rail = 0;
 			registerLate(slot);
 			await settle();
 			expect(rowRenders, `${slot} registration re-rendered rows`).toBe(0);
+			expect(renders.rail, `${slot} registration re-rendered rails`).toBe(0);
 		}
 
-		// A marker may apply to any task, so every row reads it: each card once on the board (one
-		// Profiler per card), the sidebar list (one Profiler) in one commit.
-		rowRenders = 0;
+		// A marker may apply to any task: it lands on every row in one commit, drawn once per row. A card
+		// reads it below its own render (no whole-card re-render); a sidebar row folds marker labels into
+		// its accessible name, so each row re-renders once.
+		commits = 0;
+		renders.rail = 0;
+		renders.lateMarker = 0;
 		const registered = performance.now();
 		registerLate("taskMarkers");
 		await settle();
 		expect(performance.now() - registered).toBeLessThan(REGISTRATION_CEILING_MS);
-		expect(rowRenders).toBeLessThanOrEqual(surface === "board" ? N : 1);
+		expect(commits).toBe(1);
+		expect(renders.lateMarker).toBe(N);
+		expect(screen.getAllByTestId("late-marker")).toHaveLength(N);
+		expect(renders.rail).toBe(surface === "board" ? 0 : N);
 	}, 120_000);
 });
