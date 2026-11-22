@@ -54,6 +54,8 @@ import { TipCarrier } from "../../tips/__tests__/TipCarrier";
 import { importAppSlots } from "./app-slots";
 import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
+import GoToPalette from "../../components/GoToPalette";
+import { BUILTIN_GO_TO_SOURCES_PLUGIN } from "../../go-to-sources/builtins";
 
 vi.mock("../../rpc", () => ({
 	isElectrobun: false,
@@ -73,6 +75,8 @@ vi.mock("../../rpc", () => ({
 			listExplorerDirectory: vi.fn(),
 			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			updateTipState: vi.fn(),
+			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
+			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
 		},
 	},
 }));
@@ -563,6 +567,36 @@ const CASES: CrashCase[] = [
 			expect(screen.getByTestId("tip-progress")).toBeInTheDocument();
 		},
 		logs: "crash:tip",
+	})),
+	...(["rows", "matches", "rankText", "textClassName", "right", "render", "select"] as const).map((callback): CrashCase => ({
+		slot: "goToSources",
+		callback,
+		builtins: [BUILTIN_GO_TO_SOURCES_PLUGIN],
+		contribute(ctx) {
+			ctx.goToSources.register({
+				id: "crash:source",
+				order: 99,
+				modes: ["project"],
+				rows: callback === "rows" ? boom : () => [{ id: "crash:row", text: "Crash row", value: null }],
+				matches: callback === "matches" ? boom : () => true,
+				rankText: callback === "rankText" ? boom : (row) => row.text,
+				textClassName: callback === "textClassName" ? boom : () => "",
+				right: callback === "right" ? boom : callback === "render" ? () => <Boom /> : () => null,
+				select: boom,
+			});
+		},
+		render() {
+			mount(<GoToPalette mode="project" onModeChange={vi.fn()} projects={[project]} projectById={new Map([[project.id, project]])} taskPorts={new Map()} onSelectProject={vi.fn()} onSelectSpace={vi.fn()} onSelectTask={vi.fn()} onClose={vi.fn()} />);
+		},
+		async interact() {
+			if (callback === "rankText") await user.type(screen.getByRole("textbox"), "r");
+			if (callback === "select") await user.click(screen.getByRole("option", { name: /Crash row/ }));
+		},
+		alive() {
+			// The highlight splits a ranked name into spans, so read the row's text, not its accessible name.
+			expect(screen.getAllByRole("option").map((option) => option.textContent)).toContain("Project");
+		},
+		logs: `[goToSources] ${callback} of go-to source crash:source threw`,
 	})),
 	{
 		slot: "terminalCompanion",

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
 import { useEpics } from "../hooks/useEpics";
-import type { Project, Space, Task } from "../../shared/types";
-import { getTaskTitle, isBuiltinOpsProject, projectDisplayName } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 import { useT, type TranslationKey } from "../i18n";
 import { useAgents } from "../hooks/useAgents";
 import { api } from "../rpc";
@@ -10,12 +9,12 @@ import { useSpaces } from "../useSpaces";
 import { buildFacetResolver } from "../utils/facetResolver";
 import { useTaskLineage } from "../hooks/useTaskLineage";
 import { fuzzyScore } from "../utils/fuzzyMatch";
-import { projectSearchHaystack } from "../utils/projectSearchHaystack";
 import { getRecentTaskIds } from "../utils/recentTasks";
 import { orderByRecency } from "../utils/recentProjects";
 import { orderByNavRecency } from "../utils/recentNav";
 import { taskQueryContext } from "../utils/taskFacets";
-import { FACET_KEYS, matchesTaskQuery, parseTaskQuery, type TaskQueryContext } from "../utils/taskSearch";
+import { FACET_KEYS, parseTaskQuery, type TaskQueryContext } from "../utils/taskSearch";
+import { getGoToSourceRegistry, guardGoToSource, reportGoToSourceFailure, type AnyGoToSource, type GoToData, type GoToQuery, type GoToRow, type GoToView } from "../go-to-sources/registry";
 import { PaletteShell } from "./PaletteShell";
 
 /** The three modes of the "Go to" palette. ⇧⌘K/J/L open each; Tab cycles them. */
@@ -35,11 +34,27 @@ const NO_RESULTS_KEY: Record<GoToMode, TranslationKey> = {
 	combined: "goTo.noResults.combined",
 };
 
-/** A palette row: a project board, a space board, or a task. */
-type GoItem =
-	| { kind: "project"; id: string; project: Project }
-	| { kind: "space"; id: string; space: Space }
-	| { kind: "task"; id: string; task: Task };
+/** A palette row and the `goToSources` item that produced it. */
+interface GoItem {
+	id: string;
+	text: string;
+	row: GoToRow;
+	source: AnyGoToSource;
+}
+
+/** A row whose trailing content crashes on render loses only that content. */
+class RightBoundary extends Component<{ source: AnyGoToSource; children: ReactNode }, { failed: boolean }> {
+	state = { failed: false };
+	static getDerivedStateFromError() {
+		return { failed: true };
+	}
+	componentDidCatch(error: Error, _info: ErrorInfo) {
+		reportGoToSourceFailure(this.props.source, "render", error);
+	}
+	render() {
+		return this.state.failed ? null : this.props.children;
+	}
+}
 
 interface GoToPaletteProps {
 	mode: GoToMode;
@@ -130,69 +145,70 @@ function GoToPalette({
 		[tasks],
 	);
 
+	const registry = getGoToSourceRegistry();
+	const sources = useSyncExternalStore(registry.subscribe, registry.list);
+
+	const data = useMemo<GoToData>(
+		() => ({
+			projects,
+			spaces,
+			tasks: orderedTasks,
+			projectById,
+			t,
+			taskContext: (task) => ctxByTask.get(task.id) ?? taskQueryContext(task, resolver),
+		}),
+		[projects, spaces, orderedTasks, projectById, t, ctxByTask, resolver],
+	);
+
+	// The open callbacks change with every App render; reading them through a ref keeps rows stable.
+	const open = useRef({ onSelectProject, onSelectSpace, onSelectTask });
+	open.current = { onSelectProject, onSelectSpace, onSelectTask };
+	const view: GoToView = {
+		...data,
+		privacy,
+		shortcutIndexById,
+		openProject: (id) => open.current.onSelectProject(id),
+		openSpace: (id) => open.current.onSelectSpace(id),
+		openTask: (task) => open.current.onSelectTask(task),
+	};
+
 	// The current task is always the most recent visit, so leaving it on top would
 	// make Enter on an empty query a no-op. Sink it instead (VS Code's Ctrl+P does the same).
 	const currentKey = currentTaskId ? `t:${currentTaskId}` : null;
-	const sinkCurrent = (list: GoItem[]): GoItem[] =>
-		currentKey ? [...list.filter((it) => it.id !== currentKey), ...list.filter((it) => it.id === currentKey)] : list;
 
+	// Rows come from the slot snapshot, rebuilt when a source or its data changes — never per keystroke.
 	const items = useMemo<GoItem[]>(() => {
-		const projectItems: GoItem[] = projects.map((p) => ({ kind: "project", id: `p:${p.id}`, project: p }));
-		const spaceItems: GoItem[] = spaces.map((s) => ({ kind: "space", id: `space:${s.id}`, space: s }));
-		const taskItems: GoItem[] = orderedTasks.map((task) => ({ kind: "task", id: `t:${task.id}`, task }));
-		if (mode === "project") return [...projectItems, ...spaceItems];
-		if (mode === "task") return sinkCurrent(taskItems);
-		// Combined ("All"): interleave projects and tasks by one visit timeline
-		// (e.g. Project1 · Task4 · Project3), then spaces/never-visited at the tail.
-		return sinkCurrent(orderByNavRecency([...projectItems, ...taskItems, ...spaceItems]));
-	}, [mode, projects, spaces, orderedTasks, currentKey]);
-
-	const displayText = (it: GoItem): string =>
-		it.kind === "space"
-			? it.space.name
-			: it.kind === "project"
-				? projectDisplayName(it.project, t("ops.boardName"))
-				: getTaskTitle(it.task);
-
-	// Project haystack starts with the display name, so fuzzy indices stay aligned
-	// with `displayText` (the one highlighted). Tasks rank/highlight on the title.
-	const projectHaystack = (project: Project): string =>
-		isBuiltinOpsProject(project)
-			? projectDisplayName(project, t("ops.boardName"))
-			: projectSearchHaystack(project.name, spaces, project.id);
+		const merged = sources
+			.filter(({ def }) => def.modes.includes(mode))
+			.flatMap(({ def }) => guardGoToSource(def, "rows", () => def.rows(data), []).map((row) => ({ id: row.id, text: row.text, row, source: def })));
+		// "All" interleaves every source by one visit timeline (e.g. Project1 · Task4 · Project3).
+		const ordered = mode === "combined" ? orderByNavRecency(merged) : merged;
+		return currentKey ? [...ordered.filter((it) => it.id !== currentKey), ...ordered.filter((it) => it.id === currentKey)] : ordered;
+	}, [sources, mode, data, currentKey]);
 
 	const filterRank = useMemo(
 		() => (q: string, list: GoItem[]) => {
 			const parsed = parseTaskQuery(q);
-			const hasTaskFacet = FACET_KEYS.some((f) => parsed.facets[f].length > 0);
-			const free = parsed.freeText.trim();
-
-			const kept = list.filter((it) => {
-				if (it.kind === "task") {
-					return matchesTaskQuery(it.task, q, ctxByTask.get(it.task.id) ?? taskQueryContext(it.task, resolver));
-				}
-				// A project/space has no facets: a task-only token (label:, status:, …)
-				// excludes it. Otherwise it is a plain fuzzy match on its name.
-				if (hasTaskFacet) return false;
-				return free === "" || fuzzyScore(free, it.kind === "project" ? projectHaystack(it.project) : it.space.name).matched;
-			});
+			const query: GoToQuery = { raw: q, free: parsed.freeText.trim(), hasTaskFacet: FACET_KEYS.some((f) => parsed.facets[f].length > 0) };
+			const kept = list.filter((it) => guardGoToSource(it.source, "matches", () => it.source.matches(it.row, query, data), false));
 
 			// Empty free text keeps the input (recency) order.
-			if (free === "") return kept.map((item) => ({ item, indices: [] }));
+			if (query.free === "") return kept.map((item) => ({ item, indices: [] }));
 
 			// Rank by the free-text match on the highlighted display text; a row kept
 			// by a non-title match (description, #seq, PR) stays, just below, via the
 			// stable sort on an equal −1 score.
 			return kept
 				.map((item) => {
-					const target = item.kind === "task" ? getTaskTitle(item.task) : item.kind === "project" ? projectHaystack(item.project) : item.space.name;
-					const m = fuzzyScore(free, target);
+					const { source, row } = item;
+					const target = source.rankText ? guardGoToSource(source, "rankText", () => source.rankText!(row, data), row.text) : row.text;
+					const m = fuzzyScore(query.free, target);
 					return { item, score: m.matched ? m.score : -1, indices: m.matched ? m.indices : [] };
 				})
 				.sort((a, b) => b.score - a.score)
 				.map(({ item, indices }) => ({ item, indices }));
 		},
-		[ctxByTask, resolver, spaces, t],
+		[data],
 	);
 
 	const loading = needsTasks && tasks === null;
@@ -228,36 +244,19 @@ function GoToPalette({
 		</div>
 	);
 
-	const lockGlyph = (ariaKey: TranslationKey) => (
-		<span aria-label={t(ariaKey)} className="text-fg-muted text-xs flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-			{"\u{F033E}"}
-		</span>
-	);
-
 	return (
 		<PaletteShell<GoItem>
 			key={mode}
 			items={items}
 			getKey={(it) => it.id}
-			getText={displayText}
+			getText={(it) => it.text}
 			filterRank={filterRank}
 			query={query}
 			onQueryChange={setQuery}
 			onTab={cycle}
 			header={header}
-			getTextClassName={(it) => {
-				if (it.kind === "project") return privacy.maskClass(it.project);
-				if (it.kind === "task") {
-					const proj = projectById.get(it.task.projectId);
-					return proj ? privacy.maskClass(proj) : "";
-				}
-				return "";
-			}}
-			onSelect={(it) => {
-				if (it.kind === "project") onSelectProject(it.project.id);
-				else if (it.kind === "space") onSelectSpace(it.space.id);
-				else onSelectTask(it.task);
-			}}
+			getTextClassName={(it) => (it.source.textClassName ? guardGoToSource(it.source, "textClassName", () => it.source.textClassName!(it.row, view), "") : "")}
+			onSelect={(it) => guardGoToSource(it.source, "select", () => it.source.select(it.row, view), undefined)}
 			onClose={onClose}
 			placeholder={placeholder}
 			ariaLabel={t("goTo.title")}
@@ -265,32 +264,10 @@ function GoToPalette({
 			noResults={noResults}
 			testId="go-to-palette"
 			renderItemRight={(it, _i, q) => {
-				if (it.kind === "space") {
-					const idx = shortcutIndexById?.[it.space.id];
-					return (
-						<span className="flex items-center gap-2 text-fg-3 text-xs flex-shrink-0">
-							{t("spaces.boardSubtitle")}
-							{idx !== undefined && idx < 9 && q.length === 0 ? <span>⌘{idx + 1}</span> : null}
-						</span>
-					);
-				}
-				if (it.kind === "project") {
-					const p = it.project;
-					if (privacy.isLocked(p)) return lockGlyph("streamer.projectLocked");
-					if (q.length === 0 && isBuiltinOpsProject(p)) return <span className="text-fg-3 text-xs flex-shrink-0">⌘0</span>;
-					const idx = shortcutIndexById?.[p.id];
-					return idx !== undefined && idx < 9 && q.length === 0 ? <span className="text-fg-3 text-xs flex-shrink-0">⌘{idx + 1}</span> : null;
-				}
-				const proj = projectById.get(it.task.projectId);
-				return (
-					<span className="flex items-center gap-2 flex-shrink-0 min-w-0 max-w-[45%] text-xs">
-						{proj && privacy.isLocked(proj) && lockGlyph("streamer.projectLocked")}
-						<span className={`text-fg-3 truncate ${proj ? privacy.maskClass(proj) : ""}`}>
-							{proj ? projectDisplayName(proj, t("ops.boardName")) : ""} · #{it.task.seq}
-						</span>
-						{it.task.hidden && <span className="text-fg-muted">{t("coordinatorFinder.state.hidden")}</span>}
-					</span>
-				);
+				const { source } = it;
+				if (!source.right) return null;
+				const right = guardGoToSource(source, "right", () => source.right!(it.row, q, view), null);
+				return right === null ? null : <RightBoundary source={source}>{right}</RightBoundary>;
 			}}
 		/>
 	);

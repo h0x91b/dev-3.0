@@ -148,7 +148,9 @@ explorer's row menu and a window tab's menu draw from the internal `fileMenu` an
 slots, which share `taskMenu`'s guarded row helper (`src/mainview/plugins/menu-rows.ts`,
 `decisions/2026/11/22/file-and-window-menu-slots.md`). The "Did you know?"
 tips are data registered into the internal `tips` contribution slot (`src/mainview/tips/`, `decisions/2026/11/22/tips-slot.md`);
-rotation, cool-down and snooze stay in the host. The public
+rotation, cool-down and snooze stay in the host. The Go-to
+palette's rows (projects, tasks, spaces) come from the internal `goToSources` contribution slot; the host merges, orders
+and ranks them (`src/mainview/go-to-sources/`, `decisions/2026/11/22/go-to-sources-slot.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:

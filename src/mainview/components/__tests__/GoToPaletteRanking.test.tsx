@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import GoToPalette, { type GoToMode } from "../GoToPalette";
+import { installGoToSourceBuiltins } from "../../go-to-sources/__tests__/install-builtins";
 import type { Project, Space, Task } from "../../../shared/types";
 import { recordNavVisit } from "../../utils/recentNav";
 import { recordTaskVisit } from "../../utils/recentTasks";
@@ -83,7 +84,8 @@ async function resultsFor(mode: GoToMode, currentTaskId?: string): Promise<Recor
 	return out;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+	await installGoToSourceBuiltins();
 	localStorage.clear();
 	// One visit timeline: projects and tasks interleaved, newest last.
 	for (const key of ["p:p2", "t:c", "p:p1", "t:a", "t:f"]) recordNavVisit(key);
