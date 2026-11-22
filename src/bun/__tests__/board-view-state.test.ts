@@ -14,6 +14,7 @@ import {
 	withNamedViewApplied,
 	withNamedViewRenamed,
 	withNamedViewUpdated,
+	withNamedViewsFrom,
 	withoutNamedView,
 	withViewType,
 } from "../../shared/board-view-state";
@@ -159,5 +160,34 @@ describe("named saved views", () => {
 			],
 		});
 		expect(mixed.slots).toEqual({ wide: "sv-default", narrow: "sv-default" });
+	});
+
+	it("Revert clears a layout the saved view never had, so the view reads clean again", () => {
+		const { state, id } = withNamedViewAdded(defaultBoardViewState(), "wide", "Mine", "");
+		const collapsed = withLayout(state, "wide", KANBAN_VIEW_ID, { collapsed: ["todo"] });
+		expect(namedViewModified(collapsed, "wide", id, "")).toBe(true);
+		const reverted = withNamedViewApplied(collapsed, "wide", id);
+		expect(activeSavedView(reverted, "wide").layouts).not.toHaveProperty(KANBAN_VIEW_ID);
+		expect(namedViewModified(reverted, "wide", id, "")).toBe(false);
+	});
+
+	it("re-applying a view the board already shows changes nothing", () => {
+		const { state, id } = withNamedViewAdded(tableState(), "wide", "Done", "");
+		expect(withNamedViewApplied(state, "wide", id)).toBe(state);
+	});
+
+	it("never reuses an id, even after a delete", () => {
+		const first = withNamedViewAdded(defaultBoardViewState(), "wide", "A", "");
+		const second = withNamedViewAdded(withoutNamedView(first.state, first.id), "wide", "B", "");
+		expect(second.id).not.toBe(first.id);
+		expect(second.id).toMatch(/^sv-named-[0-9a-f]{16}$/);
+	});
+
+	it("withNamedViewsFrom takes working views from one state and named views from the other", () => {
+		const disk = withNamedViewAdded(defaultBoardViewState(), "wide", "Disk", "").state;
+		const client = withNamedViewAdded(tableState(), "wide", "Client", "").state;
+		const merged = withNamedViewsFrom(client, disk);
+		expect(namedSavedViews(merged).map((view) => view.name)).toEqual(["Disk"]);
+		expect(activeSavedView(merged, "wide").viewType).toBe("builtin:table");
 	});
 });

@@ -5,16 +5,16 @@ import {
 	defaultBoardViewState,
 	namedSavedViews,
 	namedViewModified,
+	applyNamedViewChange,
+	namedViewAddChange,
+	namedViewUpdateChange,
 	withLayout,
-	withNamedViewAdded,
 	withNamedViewApplied,
-	withNamedViewRenamed,
-	withNamedViewUpdated,
-	withoutNamedView,
 	withViewType,
 	type BoardFormFactor,
 	type BoardRef,
 	type BoardViewState,
+	type NamedViewChange,
 	type SavedBoardView,
 } from "../../shared/board-view-state";
 
@@ -150,7 +150,11 @@ export function useBoardViewStateReady(board: BoardRef): boolean {
  * written through on every change. A failed read or write keeps the in-memory
  * state: a view preference must never block the board.
  */
-export function useBoardViewState(board: BoardRef, formFactor: BoardFormFactor): BoardViewStateHandle {
+export function useBoardViewState(
+	board: BoardRef,
+	formFactor: BoardFormFactor,
+	options?: { onNamedChangeFailed?: () => void },
+): BoardViewStateHandle {
 	const key = boardKey(board);
 	const state = useSyncExternalStore(subscribe, () => cache.get(key)) ?? DEFAULT_STATE;
 	const boardKind = board.kind;
@@ -161,20 +165,52 @@ export function useBoardViewState(board: BoardRef, formFactor: BoardFormFactor):
 
 	const stateRef = useRef(state);
 	stateRef.current = state;
+	// Applies `next` at once, then sends it. The host's answer replaces the cache only
+	// if nothing changed meanwhile: it carries named views other windows saved.
+	const onNamedFailedRef = useRef(options?.onNamedChangeFailed);
+	onNamedFailedRef.current = options?.onNamedChangeFailed;
+	const commit = useCallback((next: BoardViewState, send: () => Promise<BoardViewState>, named = false) => {
+		let failed = false;
+		stateRef.current = next;
+		cache.set(key, next);
+		const editsAtSend = (editCounts.get(key) ?? 0) + 1;
+		editCounts.set(key, editsAtSend);
+		notify();
+		savesInFlight.set(key, (savesInFlight.get(key) ?? 0) + 1);
+		Promise.resolve()
+			.then(send)
+			.then((saved) => {
+				const settledHere = (savesInFlight.get(key) ?? 1) === 1 && editCounts.get(key) === editsAtSend;
+				if (settledHere && saved && JSON.stringify(cache.get(key)) !== JSON.stringify(saved)) {
+					cache.set(key, saved);
+					notify();
+				}
+			})
+			.catch((err) => {
+				failed = true;
+				console.warn("[board-views] failed to save view state:", err);
+			})
+			.finally(() => {
+				savesInFlight.set(key, (savesInFlight.get(key) ?? 1) - 1);
+				// A named view is the user's content: say it did not save, and show the file as it is.
+				if (failed && named) {
+					onNamedFailedRef.current?.();
+					void readViewState({ kind: boardKind, id: boardId });
+				}
+			});
+	}, [key, boardKind, boardId]);
 	const update = useCallback((change: (state: BoardViewState) => BoardViewState) => {
 		const base = stateRef.current;
 		const next = change(base);
 		if (next === base) return;
-		stateRef.current = next;
-		cache.set(key, next);
-		editCounts.set(key, (editCounts.get(key) ?? 0) + 1);
-		notify();
-		savesInFlight.set(key, (savesInFlight.get(key) ?? 0) + 1);
-		Promise.resolve()
-			.then(() => api.request.setBoardViewState({ board: { kind: boardKind, id: boardId }, state: next }))
-			.catch((err) => console.warn("[board-views] failed to save view state:", err))
-			.finally(() => savesInFlight.set(key, (savesInFlight.get(key) ?? 1) - 1));
-	}, [key, boardKind, boardId]);
+		commit(next, () => api.request.setBoardViewState({ board: { kind: boardKind, id: boardId }, state: next }));
+	}, [commit, boardKind, boardId]);
+	const changeNamed = useCallback((change: NamedViewChange) => {
+		const base = stateRef.current;
+		const next = applyNamedViewChange(base, change);
+		if (next === base) return;
+		commit(next, () => api.request.changeNamedBoardView({ board: { kind: boardKind, id: boardId }, change }), true);
+	}, [commit, boardKind, boardId]);
 
 	const view = activeSavedView(state, formFactor);
 	const layout = useCallback((viewId: string) => view.layouts[viewId], [view]);
@@ -205,14 +241,10 @@ export function useBoardViewState(board: BoardRef, formFactor: BoardFormFactor):
 		[state, formFactor, appliedNamedId],
 	);
 	const saveNamed = useCallback((name: string, query: string) => {
-		let created: string | null = null;
-		update((current) => {
-			const next = withNamedViewAdded(current, formFactor, name, query);
-			created = next.id;
-			return next.state;
-		});
-		if (created) setApplied(created);
-	}, [update, formFactor, setApplied]);
+		const change = namedViewAddChange(stateRef.current, formFactor, name, query);
+		changeNamed(change);
+		setApplied(change.view.id);
+	}, [changeNamed, formFactor, setApplied]);
 	const applyNamed = useCallback((id: string) => {
 		const named = namedSavedViews(stateRef.current).find((candidate) => candidate.id === id);
 		if (!named) return null;
@@ -221,14 +253,18 @@ export function useBoardViewState(board: BoardRef, formFactor: BoardFormFactor):
 		return named.query;
 	}, [update, formFactor, setApplied]);
 	const updateNamed = useCallback(
-		(id: string, query: string) => update((current) => withNamedViewUpdated(current, formFactor, id, query)),
-		[update, formFactor],
+		(id: string, query: string) => changeNamed(namedViewUpdateChange(stateRef.current, formFactor, id, query)),
+		[changeNamed, formFactor],
 	);
-	const renameNamed = useCallback((id: string, name: string) => update((current) => withNamedViewRenamed(current, id, name)), [update]);
+	const renameNamed = useCallback((id: string, name: string) => changeNamed({ kind: "rename", id, name }), [changeNamed]);
 	const deleteNamed = useCallback((id: string) => {
-		update((current) => withoutNamedView(current, id));
-		if (appliedNamed.get(appliedKey) === id) setApplied(null);
-	}, [update, appliedKey, setApplied]);
+		changeNamed({ kind: "delete", id });
+		// Both form factors: a stale entry must not survive to claim a view saved later.
+		for (const [appliedKeyOf, appliedIdOf] of appliedNamed) {
+			if (appliedIdOf === id && appliedKeyOf.startsWith(`${key}:`)) appliedNamed.delete(appliedKeyOf);
+		}
+		notify();
+	}, [changeNamed, key]);
 
 	return {
 		viewType: view.viewType, layout, setLayout, setViewType,

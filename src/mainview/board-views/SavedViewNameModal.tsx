@@ -61,12 +61,13 @@ export function SavedViewNameModal({ mode, initialName, takenNames, onSubmit, on
 						placeholder={t("boardView.saved.namePlaceholder")}
 						aria-label={t("boardView.saved.namePlaceholder")}
 						aria-invalid={taken}
+						aria-describedby="saved-view-name-hint"
 						maxLength={SAVED_VIEW_NAME_MAX}
 						autoFocus
 						className="w-full bg-elevated border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
 						data-testid="saved-view-name-input"
 					/>
-					<p className={`text-xs ${taken ? "text-danger" : "text-fg-3"}`} role={taken ? "alert" : undefined}>
+					<p id="saved-view-name-hint" className={`text-xs ${taken ? "text-danger" : "text-fg-3"}`} role={taken ? "alert" : undefined}>
 						{t(taken ? "boardView.saved.nameTaken" : "boardView.saved.nameHint")}
 					</p>
 				</form>

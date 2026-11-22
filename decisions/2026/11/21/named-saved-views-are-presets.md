@@ -10,10 +10,12 @@
 - Applying copies the named view's view type and layouts into the form factor's working view (`withNamedViewApplied`) and the host sets the board query from it. Later edits change only the working view and the in-memory query; the switcher shows the name with a dot while `namedViewModified` is true, and offers Update and Revert.
 - Which named view is applied is session memory per board and form factor (`appliedNamed` in `useBoardViewState.ts`), like the query. A fresh launch opens the working view with an empty query, as `board-host-cordis-provision` requires.
 - Picking a view type in the switcher leaves the applied named view. Names are unique per board, case-insensitive, capped at 60 characters. Delete goes through `confirm()`.
+- Named edits are their own RPC, `changeNamedBoardView`, applied to the file under its lock (`src/bun/board-view-state-data.ts`). A plain `setBoardViewState` keeps the named views already on disk (`withNamedViewsFrom`), so a window or a timed-out read holding an older copy cannot add or drop one. Ids are random (`newNamedViewId`), never reused.
+- A named view whose view type the board does not offer (narrow, disabled or uninstalled extension) is a disabled row that explains itself with a toast.
 
 ## Risks
 
-An older app version reads the named entries as extra saved views it never shows and keeps them on write, so no data is lost, but it ignores them. A view whose layout is rewritten on mount without a user change would show as edited right after applying; no built-in view does this today.
+An older app version on the same machine writes the whole file. If it read the file before a named view was saved, its next write drops that view; reading after keeps it. The query is shared by both form factors, so a view applied in one can read as edited in the other. With one offered view and no saved views the switcher stays hidden, so Save is not offered there. A hand-edited file that lists a named view first can, after an older build edits it, gain a same-named copy; this build never writes that order.
 
 ## Alternatives considered
 

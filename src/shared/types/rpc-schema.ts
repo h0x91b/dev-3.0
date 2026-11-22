@@ -38,7 +38,7 @@ import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, Confi
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
 import type { BoardFilterState } from "../board-filter-state";
-import type { BoardRef, BoardViewState } from "../board-view-state";
+import type { BoardRef, BoardViewState, NamedViewChange } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
@@ -157,6 +157,11 @@ export type AppRPCSchema = {
 			};
 			setBoardViewState: {
 				params: { board: BoardRef; state: BoardViewState };
+				response: BoardViewState;
+			};
+			/** One named saved view edit, applied to the file under its lock; returns the new state. */
+			changeNamedBoardView: {
+				params: { board: BoardRef; change: NamedViewChange };
 				response: BoardViewState;
 			};
 			/** Persisted Active | All visibility of one board (`board-filters.json`). */

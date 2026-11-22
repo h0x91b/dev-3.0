@@ -20,13 +20,18 @@ const RENAME_VIEW = "__rename-view__";
 const DELETE_VIEW = "__delete-view__";
 const NAMED_PREFIX = "named:";
 
+/** Saved views add up to six action rows under the views; keep them on screen instead of behind the 18rem scroll. */
+const SWITCHER_LIST_MAX_HEIGHT = "min(36rem, calc(100vh - 1rem))";
+
 /** What the switcher needs to list named saved views and act on the applied one. */
 export interface SavedViewsSwitcherProps {
-	named: readonly { id: string; name: string }[];
+	named: readonly { id: string; name: string; viewType: string }[];
 	/** The named view the board shows, if any. */
 	appliedId: string | null;
 	modified: boolean;
 	onApply: (id: string) => void;
+	/** A saved view whose view type this board cannot show here (narrow, disabled, uninstalled). */
+	onUnavailable: () => void;
 	onSave: () => void;
 	onUpdate: (id: string) => void;
 	onRevert: (id: string) => void;
@@ -49,6 +54,7 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: 
 	const labelOf = useViewLabel();
 	const applied = saved.appliedId ? saved.named.find((view) => view.id === saved.appliedId) ?? null : null;
 	const grouped = saved.named.length > 0;
+	const offeredIds = new Set(views.map((view) => view.def.id));
 	const actions: SelectOption[] = [];
 	if (applied && saved.modified) {
 		actions.push({ value: UPDATE_VIEW, label: t("boardView.saved.update", { name: applied.name }) });
@@ -66,6 +72,7 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: 
 			value: `${NAMED_PREFIX}${view.id}`,
 			label: view.id === applied?.id && saved.modified ? t("boardView.saved.modifiedName", { name: view.name }) : view.name,
 			section: t("boardView.saved.section"),
+			disabled: !offeredIds.has(view.viewType),
 		})),
 		...views.map((view) => ({ value: view.def.id, label: labelOf(view), ...(grouped ? { section: t("boardView.saved.viewsSection") } : {}) })),
 		...actions,
@@ -93,7 +100,9 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: 
 				onChange={choose}
 				ariaLabel={t("boardView.switcherAria")}
 				renderOption={(option) => (option.value === MANAGE_VIEWS ? <ManageViewsOption label={option.label} /> : option.label)}
+				onOptionDisabledClick={saved.onUnavailable}
 				growList
+				maxListHeight={SWITCHER_LIST_MAX_HEIGHT}
 			/>
 		</div>
 	);

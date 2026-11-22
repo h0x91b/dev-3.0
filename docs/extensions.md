@@ -107,7 +107,7 @@ Bundling JSX or TypeScript is fine — emit one ESM file with `react`, `react-do
 - **`ctx.board`** — the board on screen: `scope`, `formFactor` (`wide` / `narrow`), `query` / `setQuery()`,
   `tasks()` (board scope ∩ the user's Active | All switch ∩ board query, so it may omit completed and cancelled tasks; for every status read `scopeTasks()` and filter with `matches(task, query)`), `scopeTasks()` (board scope, unfiltered), `visibility()` (`"active"` / `"all"`: the user's Active | All switch that `tasks()` honours; added in API 1.1.0), `matches(task, query)`, `columns()`, `labels()`,
   `agents()`, `projects()`, `preferences()`, `layout(viewId)` / `setLayout(viewId, value)` (persisted per board and
-  form factor), `TaskCard` (the real dev3 card component), and the actions `openTask`, `openContextMenu`, `moveTask`,
+  form factor; applying a saved view replaces it, so read it on every render rather than caching it), `TaskCard` (the real dev3 card component), and the actions `openTask`, `openContextMenu`, `moveTask`,
   `setPriority`, `setLabels`, `createLabel`, `createTask`, `launch`, `remove`. Destructive actions still go through
   dev3's own confirmations.
 - **`ctx.on("board/changed", fn)`** fires after every change to the board's data.

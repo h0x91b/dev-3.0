@@ -5,7 +5,15 @@ import { withFileLock } from "./file-lock";
 import { getProject } from "./data";
 import { projectSlug } from "./git";
 import { DEV3_HOME } from "./paths";
-import { isSafeBoardId, normalizeBoardViewState, type BoardRef, type BoardViewState } from "../shared/board-view-state";
+import {
+	applyNamedViewChange,
+	isSafeBoardId,
+	normalizeBoardViewState,
+	withNamedViewsFrom,
+	type BoardRef,
+	type BoardViewState,
+	type NamedViewChange,
+} from "../shared/board-view-state";
 
 // Both are NEW files (AGENTS.md on-disk rules 2 and 5): older app versions never
 // read them, nothing is renamed, and nothing is written until the user changes a view.
@@ -41,12 +49,26 @@ export async function loadBoardViewState(board: BoardRef): Promise<BoardViewStat
 	return readState(await boardViewStatePath(board));
 }
 
-export async function saveBoardViewState(board: BoardRef, state: BoardViewState): Promise<BoardViewState> {
+async function rewriteState(board: BoardRef, change: (onDisk: BoardViewState) => BoardViewState): Promise<BoardViewState> {
 	const filePath = await boardViewStatePath(board);
-	const normalized = normalizeBoardViewState(state);
-	await withFileLock(filePath, async () => {
+	return withFileLock(filePath, async () => {
+		const next = normalizeBoardViewState(change(await readState(filePath)));
 		await mkdir(dirname(filePath), { recursive: true });
-		await atomicWriteFile(filePath, JSON.stringify(normalized, null, 2));
+		await atomicWriteFile(filePath, JSON.stringify(next, null, 2));
+		return next;
 	});
-	return normalized;
+}
+
+/**
+ * Saves the working views and slots. Named views always come from the file: a
+ * window holding an older copy must not drop one another window just saved.
+ */
+export async function saveBoardViewState(board: BoardRef, state: BoardViewState): Promise<BoardViewState> {
+	const incoming = normalizeBoardViewState(state);
+	return rewriteState(board, (onDisk) => withNamedViewsFrom(incoming, onDisk));
+}
+
+/** Adds, updates, renames or deletes one named view against the file as it is now. */
+export async function changeNamedBoardView(board: BoardRef, change: NamedViewChange): Promise<BoardViewState> {
+	return rewriteState(board, (onDisk) => applyNamedViewChange(onDisk, change));
 }

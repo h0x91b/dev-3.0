@@ -116,7 +116,7 @@ function useBoardViewCommands(boardKey: string, offered: readonly RegisteredBoar
 	const latest = useRef({ boardKey, offered, activeId, pick, t });
 	latest.current = { boardKey, offered, activeId, pick, t };
 	useEffect(() => registerBoardViewCommandHandler((command: BoardViewCommand, queued: boolean) => {
-		const { boardKey: key, offered: views, activeId: current, pick: choose, t: translate } = latest.current;
+		const { boardKey: key, offered: views, pick: choose, t: translate } = latest.current;
 		const isOffered = (id: string | undefined) => !!id && views.some((view) => view.def.id === id);
 		let target: string | undefined;
 		if (command.kind === "pick") {
@@ -132,14 +132,14 @@ function useBoardViewCommands(boardKey: string, offered: readonly RegisteredBoar
 			target = previousViews.get(key);
 			if (!isOffered(target)) return true;
 		}
-		if (target && target !== current) choose(target);
+		if (target) choose(target);
 		return true;
 	}), []);
 	useEffect(flushPendingBoardViewCommand, [offered]);
 }
 
 /** The switcher's saved-view callbacks plus the name dialog they open. */
-function useSavedViewActions(viewState: BoardViewStateHandle, query: string, setQuery: (query: string) => void): {
+function useSavedViewActions(viewState: BoardViewStateHandle, query: string, setQuery: (query: string) => void, offered: readonly RegisteredBoardView[]): {
 	switcher: SavedViewsSwitcherProps;
 	dialog: ReactNode;
 } {
@@ -148,15 +148,19 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 	const { namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed } = viewState;
 	const nameOf = (id: string) => namedViews.find((view) => view.id === id)?.name ?? "";
 
+	const unavailable = () => toast.info(t("boardView.unavailable"));
 	const apply = (id: string) => {
+		const viewType = namedViews.find((view) => view.id === id)?.viewType;
+		if (!viewType || !offered.some((view) => view.def.id === viewType)) return unavailable();
 		const savedQuery = applyNamed(id);
 		if (savedQuery !== null) setQuery(savedQuery);
 	};
 	const switcher: SavedViewsSwitcherProps = {
-		named: namedViews.map((view) => ({ id: view.id, name: view.name ?? "" })),
+		named: namedViews.map((view) => ({ id: view.id, name: view.name ?? "", viewType: view.viewType })),
 		appliedId: appliedNamedId,
 		modified: appliedNamedModified(query),
 		onApply: apply,
+		onUnavailable: unavailable,
 		onSave: () => setNaming({ mode: "new" }),
 		onUpdate: (id) => updateNamed(id, query),
 		onRevert: apply,
@@ -207,7 +211,8 @@ function BoardHost(props: BoardHostProps) {
 		() => (space ? { kind: "space", id: space.id } : { kind: "project", id: project.id }),
 		[space, project.id],
 	);
-	const viewState = useBoardViewState(boardRef, formFactor);
+	const onNamedChangeFailed = useCallback(() => toast.error(t("boardView.saved.saveFailed")), [t]);
+	const viewState = useBoardViewState(boardRef, formFactor, { onNamedChangeFailed });
 
 	const preferences = useBoardPreferences();
 	const isStreamerOn = useStreamerMode();
@@ -393,18 +398,20 @@ function BoardHost(props: BoardHostProps) {
 	const kanbanFallback = <SlotComponent ctx={root} component={KanbanView} />;
 
 	const { setViewType, clearApplied } = viewState;
+	const savedViewType = viewState.viewType;
 	const pickView = useCallback((viewId: string) => {
 		// Picking a view type leaves the applied saved view: the switcher then shows that view type.
 		clearApplied();
+		if (viewId === savedViewType) return;
 		setViewType(viewId);
 		// Telemetry rule 1: a built-in id or `third_party`, never an extension's id or name.
 		trackEvent("board_view_selected", { view: boardViewTelemetryId(viewId) });
-	}, [setViewType, clearApplied]);
+	}, [setViewType, clearApplied, savedViewType]);
 	useBoardViewCommands(`${boardRef.kind}:${boardRef.id}`, offered, active?.def.id, pickView);
 	const manageViews = useCallback(() => {
 		window.dispatchEvent(new CustomEvent<OpenSettingsSectionDetail>(OPEN_SETTINGS_SECTION_EVENT, { detail: "extensions" }));
 	}, []);
-	const savedViews = useSavedViewActions(viewState, filter.query, filter.setQuery);
+	const savedViews = useSavedViewActions(viewState, filter.query, filter.setQuery, offered);
 	const showSwitcher = !simplified && (offered.length > 1 || viewState.namedViews.length > 0);
 	const switcher = showSwitcher && active ? (
 		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} saved={savedViews.switcher} />

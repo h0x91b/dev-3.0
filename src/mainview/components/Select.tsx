@@ -77,6 +77,7 @@ interface ListboxProps {
 	value: string;
 	activeIndex: number;
 	grow?: boolean;
+	maxHeight?: string;
 	renderOption?: (option: SelectOption) => ReactNode;
 	onHover: (index: number) => void;
 	onPick: (index: number) => void;
@@ -108,6 +109,7 @@ function SelectListbox({
 	value,
 	activeIndex,
 	grow,
+	maxHeight,
 	renderOption,
 	onHover,
 	onPick,
@@ -269,7 +271,7 @@ function SelectListbox({
 
 	if (!search) {
 		return createPortal(
-			<div ref={panelRef} id={listboxId} role="listbox" style={panelStyle} className={`${panelClass} overflow-y-auto max-h-72`}>
+			<div ref={panelRef} id={listboxId} role="listbox" style={maxHeight ? { ...panelStyle, maxHeight } : panelStyle} className={`${panelClass} overflow-y-auto max-h-72`}>
 				{rows}
 			</div>,
 			document.body,
@@ -313,6 +315,7 @@ function Select({
 	onChange,
 	renderOption,
 	growList,
+	maxListHeight,
 	onOptionDisabledClick,
 	searchable,
 	allowCustom,
@@ -333,6 +336,8 @@ function Select({
 	/** Let the open list be wider than the trigger, up to a cap. For a field whose
 	 *  rows carry a caption the trigger has no room for. */
 	growList?: boolean;
+	/** Replaces the open list's 18rem height cap, for a list whose last rows are actions that must stay in view. No effect with a filter field. */
+	maxListHeight?: string;
 	/** Called when a `disabled` option is clicked (instead of `onChange`). */
 	onOptionDisabledClick?: (value: string) => void;
 	/** Show a filter field inside the panel. Implied by `allowCustom`. */
@@ -539,6 +544,7 @@ function Select({
 					value={value}
 					activeIndex={activeIndex}
 					grow={growList}
+					maxHeight={maxListHeight}
 					renderOption={renderOption}
 					onHover={setActiveIndex}
 					onPick={commitOption}

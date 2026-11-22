@@ -65,8 +65,14 @@ function normalizeSavedView(value: unknown): SavedBoardView | null {
  */
 export function normalizeBoardViewState(value: unknown): BoardViewState {
 	if (!isRecord(value) || value.version !== 1) return defaultBoardViewState();
+	const seen = new Set<string>();
+	// First entry wins a duplicated id, so a slot can never resolve to the wrong view.
 	const savedViews = Array.isArray(value.savedViews)
-		? value.savedViews.map(normalizeSavedView).filter((view): view is SavedBoardView => view !== null)
+		? value.savedViews.map(normalizeSavedView).filter((view): view is SavedBoardView => {
+			if (!view || seen.has(view.id)) return false;
+			seen.add(view.id);
+			return true;
+		})
 		: [];
 	if (savedViews.length === 0) return defaultBoardViewState();
 	// A slot shows a working view, never a named preset: re-add one if a hand edit left none.
@@ -130,65 +136,125 @@ export function namedSavedViews(state: BoardViewState): SavedBoardView[] {
 export const SAVED_VIEW_NAME_MAX = 60;
 
 export function cleanSavedViewName(name: string): string {
-	return name.trim().replace(/\s+/g, " ").slice(0, SAVED_VIEW_NAME_MAX);
+	// Whole code points up to the input's own UTF-16 cap, so an emoji is never split in half.
+	let clean = "";
+	for (const char of name.trim().replace(/\s+/g, " ")) {
+		if (clean.length + char.length > SAVED_VIEW_NAME_MAX) break;
+		clean += char;
+	}
+	return clean.trim();
 }
 
-function nextNamedViewId(state: BoardViewState): string {
-	const taken = new Set(state.savedViews.map((view) => view.id));
-	for (let n = 1; ; n++) if (!taken.has(`sv-named-${n}`)) return `sv-named-${n}`;
+/** Random, so two windows saving at once never share an id. `getRandomValues` also works off a secure context. */
+export function newNamedViewId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(8));
+	return `sv-named-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function cloneLayouts(layouts: Record<string, unknown>): Record<string, unknown> {
 	return JSON.parse(JSON.stringify(layouts)) as Record<string, unknown>;
 }
 
-/** Saves what a form factor shows, plus the board query, as a new named view. */
-export function withNamedViewAdded(
-	state: BoardViewState,
-	formFactor: BoardFormFactor,
-	name: string,
-	query: string,
-): { state: BoardViewState; id: string } {
+/**
+ * One edit to the named views. The host applies it to the file under its lock
+ * (`changeNamedBoardView`), so a window holding an older copy cannot undo it.
+ */
+export type NamedViewChange =
+	| { kind: "add"; view: SavedBoardView }
+	| { kind: "update"; id: string; viewType: string; query: string; layouts: Record<string, unknown> }
+	| { kind: "rename"; id: string; name: string }
+	| { kind: "delete"; id: string };
+
+function hasNamed(state: BoardViewState, id: string): boolean {
+	return state.savedViews.some((view) => view.id === id && view.name !== null);
+}
+
+export function applyNamedViewChange(state: BoardViewState, change: NamedViewChange): BoardViewState {
+	switch (change.kind) {
+		case "add": {
+			const view = normalizeSavedView(change.view);
+			const name = view ? cleanSavedViewName(view.name ?? "") : "";
+			if (!view || !name || state.savedViews.some((other) => other.id === view.id)) return state;
+			return { ...state, savedViews: [...state.savedViews, { ...view, name, query: view.query.trim() }] };
+		}
+		case "update": {
+			if (!hasNamed(state, change.id) || typeof change.viewType !== "string" || !change.viewType || !isRecord(change.layouts)) return state;
+			const query = typeof change.query === "string" ? change.query.trim() : "";
+			return {
+				...state,
+				savedViews: state.savedViews.map((view) => (view.id === change.id
+					? { ...view, viewType: change.viewType, query, layouts: cloneLayouts(change.layouts) }
+					: view)),
+			};
+		}
+		case "rename": {
+			const name = typeof change.name === "string" ? cleanSavedViewName(change.name) : "";
+			if (!name || !hasNamed(state, change.id)) return state;
+			return { ...state, savedViews: state.savedViews.map((view) => (view.id === change.id ? { ...view, name } : view)) };
+		}
+		case "delete":
+			if (!hasNamed(state, change.id)) return state;
+			return { ...state, savedViews: state.savedViews.filter((view) => view.id !== change.id) };
+		default:
+			return state;
+	}
+}
+
+/** `state`'s working views and slots with `source`'s named views: a plain save never adds or drops a named view. */
+export function withNamedViewsFrom(state: BoardViewState, source: BoardViewState): BoardViewState {
+	const named = namedSavedViews(source);
+	const namedIds = new Set(named.map((view) => view.id));
+	// A working view reusing a named view's id loses: the named view is the user's content.
+	const working = state.savedViews.filter((view) => view.name === null && !namedIds.has(view.id));
+	return normalizeBoardViewState({ ...state, savedViews: [...working, ...named] });
+}
+
+/** The change that saves what a form factor shows, plus the board query, as a new named view. */
+export function namedViewAddChange(state: BoardViewState, formFactor: BoardFormFactor, name: string, query: string, id = newNamedViewId()): NamedViewChange & { kind: "add" } {
 	const active = activeSavedView(state, formFactor);
-	const id = nextNamedViewId(state);
-	const view: SavedBoardView = { id, name: cleanSavedViewName(name), viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) };
-	return { state: { ...state, savedViews: [...state.savedViews, view] }, id };
+	return { kind: "add", view: { id, name: cleanSavedViewName(name), viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) } };
 }
 
-function mapNamed(state: BoardViewState, id: string, update: (view: SavedBoardView) => SavedBoardView): BoardViewState {
-	if (!state.savedViews.some((view) => view.id === id && view.name !== null)) return state;
-	return { ...state, savedViews: state.savedViews.map((view) => (view.id === id ? update(view) : view)) };
+/** The change that overwrites a named view with what the form factor shows now. */
+export function namedViewUpdateChange(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): NamedViewChange & { kind: "update" } {
+	const active = activeSavedView(state, formFactor);
+	return { kind: "update", id, viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) };
 }
 
-/** Overwrites a named view with what the form factor shows now. */
+export function withNamedViewAdded(state: BoardViewState, formFactor: BoardFormFactor, name: string, query: string): { state: BoardViewState; id: string } {
+	const change = namedViewAddChange(state, formFactor, name, query);
+	return { state: applyNamedViewChange(state, change), id: change.view.id };
+}
+
 export function withNamedViewUpdated(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): BoardViewState {
-	const active = activeSavedView(state, formFactor);
-	return mapNamed(state, id, (view) => ({ ...view, viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) }));
+	return applyNamedViewChange(state, namedViewUpdateChange(state, formFactor, id, query));
 }
 
 export function withNamedViewRenamed(state: BoardViewState, id: string, name: string): BoardViewState {
-	const clean = cleanSavedViewName(name);
-	if (!clean) return state;
-	return mapNamed(state, id, (view) => ({ ...view, name: clean }));
+	return applyNamedViewChange(state, { kind: "rename", id, name });
 }
 
 export function withoutNamedView(state: BoardViewState, id: string): BoardViewState {
-	if (!state.savedViews.some((view) => view.id === id && view.name !== null)) return state;
-	return { ...state, savedViews: state.savedViews.filter((view) => view.id !== id) };
+	return applyNamedViewChange(state, { kind: "delete", id });
 }
 
 /**
- * Loads a named view's view type and layouts into the form factor's working view.
- * The query is the caller's to apply: the board query lives in memory, not here.
+ * Loads a named view into the form factor's working view: its view type, and that
+ * view type's layout exactly (absent when the named view has none). Other view
+ * types keep their layouts. The query is the caller's: the board query lives in memory.
  */
 export function withNamedViewApplied(state: BoardViewState, formFactor: BoardFormFactor, id: string): BoardViewState {
 	const named = state.savedViews.find((view) => view.id === id && view.name !== null);
 	if (!named) return state;
-	return updateActive(state, formFactor, (view) => ({
-		...view,
-		viewType: named.viewType,
-		layouts: { ...view.layouts, ...cloneLayouts(named.layouts) },
-	}));
+	const active = activeSavedView(state, formFactor);
+	const savedLayout = named.layouts[named.viewType];
+	if (active.viewType === named.viewType && JSON.stringify(active.layouts[named.viewType] ?? null) === JSON.stringify(savedLayout ?? null)) return state;
+	return updateActive(state, formFactor, (view) => {
+		const layouts = { ...view.layouts };
+		if (savedLayout === undefined) delete layouts[named.viewType];
+		else layouts[named.viewType] = JSON.parse(JSON.stringify(savedLayout));
+		return { ...view, viewType: named.viewType, layouts };
+	});
 }
 
 /** True when the form factor no longer shows what the named view holds: its view type, that view's layout, or the query. */
