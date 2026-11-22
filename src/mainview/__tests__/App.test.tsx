@@ -344,6 +344,17 @@ async function settleDigitJump() {
 	});
 }
 
+/** The next board read finds an ordinary active task on each of these projects. */
+function boardsWithWork(...projectIds: string[]) {
+	vi.mocked(api.request.getAllProjectTasks).mockResolvedValueOnce(
+		projectIds.map((projectId) => ({
+			projectId,
+			tasks: [{ id: `w-${projectId}`, seq: 1, projectId, title: "work", status: "in-progress" }],
+			todoCount: 0,
+		})) as never,
+	);
+}
+
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
 		// These assert the DESKTOP keymap (⌘Q, ⌘N, zoom, ⌘1–9). happy-dom looks like
@@ -1001,6 +1012,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(follow);
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			boardsWithWork("p1");
 			const digit = alphaDigit(follow);
 			press({ key: digit, code: `Digit${digit}`, metaKey: true });
 			await settleDigitJump();
@@ -1179,6 +1191,27 @@ describe("App keyboard shortcuts", () => {
 				expect(project()).toHaveAttribute("data-project-id", "p3");
 				expect(project()).toHaveAttribute("data-space-id", "sp_a");
 				expect(project()).toHaveAttribute("data-active-task-id", "c5");
+			});
+
+			it("a space digit keeps the task view when only a non-anchor member has work", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("w3", "p3", { taskType: undefined })] });
+				await renderWith(true);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p2");
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "true");
+			});
+
+			it("a target with only hidden or hibernated tasks lands on its board", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("w1", "p3", { taskType: undefined, hidden: true }), coordinator("w2", "p3", { taskType: undefined, hibernated: true })] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).not.toHaveAttribute("data-task-view", "true");
 			});
 
 			it("from a board the digit still opens the board, not the coordinator", async () => {
@@ -1603,6 +1636,7 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(before).toHaveAttribute("data-project-id", "p1");
 			expect(before).toHaveAttribute("data-active-task-id", "t1");
 
+			boardsWithWork("p2");
 			await userEvent.keyboard("{Meta>}2{/Meta}");
 			await settleDigitJump();
 
@@ -1621,12 +1655,45 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			await renderApp();
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
+			boardsWithWork("p2");
 			await userEvent.keyboard("{Meta>}2{/Meta}");
 			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
 			expect(after).toHaveAttribute("data-task-view", "true");
+		});
+
+		it.each([
+			["Active Tasks", { screen: "project", projectId: "p1", activeTaskId: "t1" }],
+			["a full-page task", { screen: "task", projectId: "p1", taskId: "t1" }],
+		])("from %s, Cmd+2 onto a project with no active task lands on its board", async (_from, route) => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: JSON.stringify(route) });
+			await renderApp();
+
+			boardsWithWork("p1");
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).not.toHaveAttribute("data-task-view", "true");
+			expect(after).toHaveAttribute("data-active-task-id", "");
+		});
+
+		it("keeps the view when the board read fails", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+			await renderApp();
+
+			vi.mocked(api.request.getAllProjectTasks).mockRejectedValueOnce(new Error("boom"));
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
+
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-view", "true");
 		});
 
 		it("fullscreen mode: Cmd+1 on the full-page task of that project goes to its Kanban board", async () => {

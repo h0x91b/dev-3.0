@@ -22,7 +22,7 @@ const keymap = {
 	"keymap.shortcut.forward": "Adelante",
 	"keymap.shortcut.previousVariant": "Variante activa anterior",
 	"keymap.shortcut.nextVariant": "Siguiente variante activa",
-	"keymap.shortcut.switchProject": "Cambiar al proyecto o espacio 1–9 (mantener vista; desde una tarea, abrir su coordinador)",
+	"keymap.shortcut.switchProject": "Cambiar al proyecto o espacio 1–9 (mantener vista; desde una tarea, abrir su coordinador, o su tablero si no tiene tareas activas)",
 	"keymap.shortcut.switchProjectFlip": "Cambiar al proyecto o espacio 1–9 (alternar vista tablero/tarea)",
 	"keymap.shortcut.jumpOperations": "Ir al tablero de Operaciones",
 	"keymap.shortcut.taskSwitcher": "Cambiar entre tareas activas (este proyecto)",

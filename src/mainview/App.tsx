@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, routeIsTaskView, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { digitTargets, isDigitTargetOnScreen, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
-import { digitCoordinator } from "./utils/coordinatorFinder";
+import { digitCoordinator, hasListedActiveTask } from "./utils/coordinatorFinder";
 import { useDigitSpacesFile } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
@@ -1234,9 +1234,9 @@ function App() {
 		[navigate, state.route, state.projects, goToProjectView],
 	);
 	// From a task view (Active Tasks or a full-page task) the digit opens the target's
-	// most recent coordinator; with none, or when it is the task already open, it falls
-	// through to the board as before. A lookup is dropped once a later digit press or any
-	// navigation since the press has overtaken it.
+	// most recent coordinator; with none, or when it is the task already open, it keeps the
+	// view, and a target with no listed active task lands on its board. A lookup is dropped once a
+	// later digit press or any navigation since the press has overtaken it.
 	const digitJumpRef = useRef(0);
 	const goToProjectBoardIndex = useCallback(
 		(target: MixedEntry, view: "project" | "task" | "preserve") => {
@@ -1257,17 +1257,23 @@ function App() {
 			const projectIds = target.kind === "project" ? [target.project.id] : target.projects.map((p) => p.id);
 			const currentTaskId = routeTaskId(pressedRoute);
 			const mru = state.taskMru;
-			const loadActiveTasks = async (): Promise<Task[]> => {
+			const loadActiveTasks = async (): Promise<Task[] | null> => {
 				try {
 					return (await api.request.getAllProjectTasks()).flatMap((r) => r.tasks);
 				} catch {
-					return []; // unreadable boards just have no coordinator to offer
+					return null; // unreadable boards: keep the view, as before the lookup existed
 				}
 			};
 			void loadActiveTasks().then((tasks) => {
 				if (token !== digitJumpRef.current || routeRef.current !== pressedRoute) return;
+				if (!tasks) return goToProjectBoardIndex(target, view);
 				const coordinator = digitCoordinator(tasks, projectIds, currentTaskId, mru);
-				if (!coordinator || coordinator.id === currentTaskId) return goToProjectBoardIndex(target, view);
+				if (!coordinator || coordinator.id === currentTaskId) {
+					// Nothing the task view would list on the target: show its board instead.
+					const hasSomethingToPick = hasListedActiveTask(tasks, projectIds) || isDigitTargetOnScreen(target, pressedRoute);
+					const landingView = hasSomethingToPick ? view : "project";
+					return goToProjectBoardIndex(target, landingView);
+				}
 				const route = taskOpenRoute(coordinator.id, coordinator.projectId, getTaskOpenMode(), false);
 				const spaceId = target.kind === "space" ? target.space.id : undefined;
 				navigate(spaceId && (route.screen === "task" || route.screen === "project") ? { ...route, spaceId } : route, { inheritSpace: false });
