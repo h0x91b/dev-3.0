@@ -132,6 +132,10 @@ enable them.
 - A view that throws while rendering falls back to Kanban on its own; your view choice is kept.
 - A view whose extension failed to load also falls back to Kanban, with a notice naming the extension; the reason
   is under its row in Settings → Extensions and in the console as `[extensions] <id> failed to load: …`.
+- Known gap: a plugin whose `apply()` throws after the extension has loaded (with `inject: ["board", …]` it
+  starts only once a board opens) is not reported. The extension stays **Active**, the view drops out of the
+  switcher, the board shows Kanban with no notice and nothing is logged. Catch and log inside `apply` while
+  debugging; reporting it is tracked for the opening track.
 
 ## Privacy
 

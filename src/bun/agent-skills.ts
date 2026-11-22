@@ -819,7 +819,7 @@ Where errors surface today — check all three, they do not overlap:
 - **Settings → Extensions** — the status chip and, for **Failed to load**, the error text under the row. The
   only place that always has a load failure.
 - **Browser console** (\`agent-browser console\`, not \`errors\`) — \`[extensions] <id> failed to load: …\` for a
-  load failure, and \`[board-views] view <id> crashed: …\` with a stack for a render crash.
+  load failure, and \`[slots] boardViews item <id> crashed: …\` with a stack for a render crash.
 - **The board** — a red notice when it shows Kanban instead of the picked view: "This board view failed to
   load…" for a render crash, "The <name> extension failed to load…" (with a **Manage views…** button) for a load
   failure.
@@ -836,8 +836,9 @@ There is no log file and no CLI for it yet.
 | **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |
 | **Failed to load**, "registered an undeclared board view …"; the view vanished from the switcher, Kanban with "The <name> extension failed to load…" | Registered id ≠ \`<id>:<view id>\` from the manifest | Make them match; the saved view choice comes back once it loads |
 | **Failed to load**, "tried to register board view …, which another view already owns" | Id collides with a built-in or another extension | Use your own prefix |
-| **Failed to load**, "its plugin failed to start (see the console)" | \`apply\` threw | Read the console error above it |
-| Board shows Kanban with a red "This board view failed to load…" notice; Settings still says **Active** | The component threw while rendering; the choice of view is kept | \`[board-views] view … crashed:\` in the console has the stack |
+| **Failed to load**, "its plugin failed to start (see the console)" | \`apply\` threw while the extension loaded (a plugin injecting \`board\` starts later: next row) | The original error is not printed yet: wrap \`apply\`'s body in try/catch and \`console.error\` it |
+| **Active**, Kanban with no notice, the view missing from the switcher, nothing in the console | \`apply\` threw. With \`inject: ["board", ...]\` it runs only once a board opens, and that throw is not reported yet (known gap, tracked for the opening track) | Wrap \`apply\`'s body in try/catch and \`console.error\` it yourself while debugging |
+| Board shows Kanban with a red "This board view failed to load…" notice; Settings still says **Active** | The component threw while rendering; the choice of view is kept | \`[slots] boardViews item … crashed:\` in the console has the stack |
 | View missing from the switcher, status **Active** | Board is narrow and \`supportsNarrow\` is false, or the view is on another board type | Check \`formFactor\`, widen the window |
 | Status **Extensions off** | Kill switch off, or the app was launched with \`DEV3_EXTENSIONS=off\` | Turn on Settings → Extensions → "Third-party extensions" (desktop only) |
 | Rendered once, never updates | Not subscribed to \`board/changed\`, or cached \`tasks()\` | Use \`useBoard(ctx)\` and read in render |
