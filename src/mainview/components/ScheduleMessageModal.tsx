@@ -185,7 +185,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				baseVersionRef.current = latestVersionRef.current;
 				setError(t("scheduleMessage.draftChanged"));
 			} else {
-				setError(String(err));
+				setError(t("scheduleMessage.failed", { error: String(err) }));
 			}
 			submittingRef.current = false;
 			setSubmitting(false);
@@ -356,7 +356,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				{/* Error */}
 				{error && (
 					<div className="px-6 py-2 text-danger text-sm">
-						{t("scheduleMessage.failed", { error })}
+						{error}
 					</div>
 				)}
 
