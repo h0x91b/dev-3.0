@@ -152,7 +152,10 @@ rotation, cool-down and snooze stay in the host. The Go-to
 palette's rows (projects, tasks, spaces) come from the internal `goToSources` contribution slot; the host merges, orders
 and ranks them (`src/mainview/go-to-sources/`, `decisions/2026/11/22/go-to-sources-slot.md`). The "Open in…" rows are data from the internal
 `openInTargets` contribution slot (`src/mainview/open-in-targets/`, `decisions/2026/11/22/open-in-targets-slot.md`);
-the host opens a row only by app id. The public
+the host opens a row only by app id.
+The file preview's body comes from the internal `fileViewers`
+contribution slot, first match by `order`; review-comment anchoring stays in the host (`src/mainview/file-viewers/`,
+`decisions/2026/11/22/file-viewers-slot.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:
@@ -177,6 +180,9 @@ the host opens a row only by app id. The public
   path: `saveGlobalSettings` accepts `externalApps` unvalidated, so renderer code can add an app and then open it by
   id. Before opening, either extensions must not reach `saveGlobalSettings` or raw `api.request` at all (today they
   share the renderer's JS realm), or bun must validate `externalApps` writes.
+- Before `fileViewers` opens, its anchoring contract (`data-preview-line` marks, `imageRef` on the picture) is public
+  API and must be documented in `docs/extensions.md`, and an extension viewer that matches every file must not hide
+  dev3's own viewers (rank built-ins first for kinds they own, or scope extension matchers by path).
 
 ## Tech debt
 

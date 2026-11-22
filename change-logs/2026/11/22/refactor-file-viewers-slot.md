@@ -1,0 +1,1 @@
+File preview bodies (markdown, code, image, media and the not-shown notices) now come from an internal fileViewers slot, with no visible change; review comments still anchor to lines and image regions in the host. A crashing viewer falls back to the built-in preview under a short notice.

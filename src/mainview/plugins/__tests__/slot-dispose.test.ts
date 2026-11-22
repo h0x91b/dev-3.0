@@ -16,6 +16,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	openInTargets: "open-in-targets/__tests__/open-in-targets.test.tsx",
 	destinationBodies: "destination-bodies/__tests__/destination-body.test.tsx",
 	fileMenu: "file-menu/__tests__/file-menu-slot.test.tsx",
+	fileViewers: "file-viewers/__tests__/file-viewers.test.tsx",
 	goToSources: "go-to-sources/__tests__/go-to-sources.test.tsx",
 	settingsSections: "settings-sections/__tests__/settings-sections.test.tsx",
 	sidebar: "sidebar/__tests__/sidebar-slot.test.tsx",
