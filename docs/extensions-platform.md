@@ -166,6 +166,9 @@ the internal `projectActions` contribution slot; reorder and the danger group st
 **Opening-track preconditions.** Before any contribution slot opens to extensions:
 - A render crash of an extension's item must be reported into that extension's failure state, so its Extensions
   row shows the reason (today the item only vanishes).
+- A plugin whose `apply()` throws after load (it injects `board`, so it starts only once a board opens) must be
+  reported the same way: today `loadExtension` (`plugins/runtime.ts`) checks for a failed start only while loading,
+  so the extension stays **Active** with no notice and no console line.
 - A page-shaped slot (settings sections) must place built-ins before extensions by origin, not by numeric `order` alone.
 - The extension guard rescans every item of every slot on each slot change (`enforceDeclaredItems` in
   `plugins/runtime.ts`), so loading grows superlinearly (indicative, one dev laptop, 2026-11-22: 100 extensions ~25 ms, 400 ~300 ms). Before slots
