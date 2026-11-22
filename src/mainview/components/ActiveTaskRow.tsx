@@ -23,7 +23,8 @@ import PortBadgeList from "./PortBadgeList";
 import PriorityBadge from "./PriorityBadge";
 import CompletionOfferMark from "./CompletionOfferMark";
 import StatusMenuPortal from "./StatusMenuPortal";
-import TaskAgeStamps from "./TaskAgeStamps";
+import { LiveTaskAgeStamps } from "./TaskAgeStamps";
+
 import TaskCardRail from "./TaskCardRail";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskPrBadges from "./TaskPrBadges";
@@ -33,6 +34,9 @@ import Tooltip from "./Tooltip";
 import { EyeIcon } from "./TaskIcons";
 import VariantDots from "./VariantDots";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+
+/** The sidebar counts seconds; the stamps subscribe themselves, so a tick never re-renders the row. */
+const SIDEBAR_AGE_TICK_MS = 1000;
 
 interface ActiveTaskRowProps {
 	task: Task;
@@ -52,8 +56,6 @@ interface ActiveTaskRowProps {
 	statusColors: Record<TaskStatus, string>;
 	/** Custom-column colour when parked in one, else the built-in status hue. */
 	color: string;
-	/** Shared clock tick so every row's age badge updates on the same frame. */
-	now: number;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	onOpen: () => void;
@@ -89,7 +91,6 @@ export default function ActiveTaskRow({
 	prInfo,
 	statusColors,
 	color,
-	now,
 	dispatch,
 	navigate,
 	onOpen,
@@ -425,7 +426,7 @@ export default function ActiveTaskRow({
 						<div className="min-w-0 flex-1 truncate text-nano font-mono text-fg-muted">{agentSummary}</div>
 					</div>
 				</Tooltip>
-				<TaskAgeStamps task={task} now={now} testId={`sidebar-age-${task.id}`} />
+				<LiveTaskAgeStamps task={task} tickMs={SIDEBAR_AGE_TICK_MS} testId={`sidebar-age-${task.id}`} />
 				</div>
 
 				{ports && ports.length > 0 && <PortBadgeList ports={ports} testId={`sidebar-ports-${task.id}`} />}

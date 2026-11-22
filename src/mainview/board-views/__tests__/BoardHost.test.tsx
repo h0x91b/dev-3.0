@@ -51,6 +51,20 @@ vi.mock("../../rpc", () => ({
 
 vi.mock("../../analytics", () => ({ trackEvent: vi.fn() }));
 
+// Counts card renders: every TaskCard renders exactly one PriorityBadge.
+const priorityBadgeRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../../components/PriorityBadge", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../components/PriorityBadge")>();
+	const Real = actual.default;
+	return {
+		...actual,
+		default: (props: React.ComponentProps<typeof Real>) => {
+			priorityBadgeRenders.count++;
+			return <Real {...props} />;
+		},
+	};
+});
+
 // Kanban is covered by its own suites (rendered through this host); here it
 // only has to prove which tasks `ctx.board` handed it.
 vi.mock("../kanban/KanbanView", async () => {
@@ -86,6 +100,8 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
 const tasks = [makeTask("t1", "alpha"), makeTask("t2", "beta", { status: "completed" })];
 
 function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispatch<AppAction>; project?: Project; space?: Space; allProjects?: Project[] } = {}) {
+	const dispatch = props.dispatch ?? vi.fn();
+	const navigate = vi.fn();
 	const tree = (list: Task[]) => (
 		<I18nProvider>
 			<BoardHost
@@ -94,8 +110,8 @@ function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispat
 				memberProjects={props.space ? [props.project ?? project] : undefined}
 				allProjects={props.allProjects}
 				tasks={list}
-				dispatch={props.dispatch ?? vi.fn()}
-				navigate={vi.fn()}
+				dispatch={dispatch}
+				navigate={navigate}
 				bellCounts={new Map()}
 				taskPorts={new Map()}
 				taskDevServers={new Map()}
@@ -497,6 +513,29 @@ describe("BoardHost", () => {
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:cards"));
 		renderHost();
 		expect(await screen.findByText("alpha")).toBeInTheDocument();
+	});
+
+	it("re-renders only the card whose task changed, not every card on the board", async () => {
+		const onDragStart = () => {};
+		function Cards() {
+			const board = useBoard();
+			const Card = board.TaskCard;
+			return <>{board.tasks().map((task) => <Card key={task.id} task={task} onDragStart={onDragStart} />)}</>;
+		}
+		registerView("ext:cards", { component: Cards });
+		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:cards"));
+		const list = Array.from({ length: 20 }, (_, i) => makeTask(`t${i + 1}`, `task ${i + 1}`));
+		const { rerenderWith } = renderHost({ tasks: list });
+		expect(await screen.findByText("task 20")).toBeInTheDocument();
+		await act(async () => {});
+
+		priorityBadgeRenders.count = 0;
+		rerenderWith(list.map((task) => (task.id === "t7" ? { ...task, title: "renamed" } : task)));
+		expect(await screen.findByText("renamed")).toBeInTheDocument();
+		await act(async () => {});
+
+		// A fresh closure, a board-wide Map, or a dropped memo each re-render all 20 cards.
+		expect(priorityBadgeRenders.count).toBe(1);
 	});
 
 	it("moves to a custom column optimistically, reporting progress, and reverts on failure", async () => {

@@ -135,7 +135,7 @@ afterEach(() => {
 const surfaces: [string, () => ReactNode][] = [
 	["board", () => tasks("todo").map((task) => (
 		<Profiler key={task.id} id="row" onRender={onRow}>
-			<TaskCard task={task} project={project} dispatch={vi.fn()} navigate={vi.fn()} agents={agents} onLaunchVariants={vi.fn()} onAddAttempts={vi.fn()} onDragStart={vi.fn()} siblingMap={new Map()} />
+			<TaskCard task={task} project={project} dispatch={vi.fn()} navigate={vi.fn()} agents={agents} onLaunchVariants={vi.fn()} onAddAttempts={vi.fn()} onDragStart={vi.fn()} />
 		</Profiler>
 	))],
 	["sidebar", () => (

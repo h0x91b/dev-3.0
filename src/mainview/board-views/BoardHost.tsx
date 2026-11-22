@@ -20,6 +20,7 @@ import TaskDetailModal from "../components/TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useAgents } from "../hooks/useAgents";
+import { useLatestCallback } from "../hooks/useLatestCallback";
 import { boardFilterKey, rememberFilter } from "../hooks/useRememberedFilter";
 import { childrenFilterToken, lineageChildren, lineageNodeOf, lineageParent, parentSeqLabel, type CardLineage } from "../utils/taskLineage";
 import { requestTaskLaunch } from "../utils/moveTaskToStatus";
@@ -276,6 +277,11 @@ function BoardHost(props: BoardHostProps) {
 		};
 	}, [lineage, knownProjects, applyChildrenFilter, lineageTitleHidden]);
 
+	// Stable identities: every card receives these, and a new closure would re-render all of them.
+	const onLaunchVariants = useLatestCallback((task: Task, targetStatus: TaskStatus) => launch(task, targetStatus));
+	const onAddAttempts = useLatestCallback((task: Task) => launch(task, task.status, "addAttempts"));
+	const onEditDraft = useLatestCallback((task: Task) => setEditDraftTaskId(task.id));
+
 	const cardBindings = useMemo<BoardCardBindings>(() => ({
 		projectOf,
 		showProjectMark: !!space,
@@ -293,11 +299,11 @@ function BoardHost(props: BoardHostProps) {
 		taskPrMap: filter.taskPrMap,
 		lineageFor,
 		onFilterByEpic: filter.applyEpicFilter,
-		onLaunchVariants: (task, targetStatus) => launch(task, targetStatus),
-		onAddAttempts: (task) => launch(task, task.status, "addAttempts"),
-		onEditDraft: (task) => setEditDraftTaskId(task.id),
+		onLaunchVariants,
+		onAddAttempts,
+		onEditDraft,
 		onOpenUnresolvedComments: props.onOpenUnresolvedComments,
-	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, dependencyMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
+	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, dependencyMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, onLaunchVariants, onAddAttempts, onEditDraft, props.onOpenUnresolvedComments]);
 
 	// Written during render so a view rendering in this same pass already reads it.
 	const sourceRef = useRef<BoardModelSource | null>(null);
