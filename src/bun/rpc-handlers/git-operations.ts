@@ -33,6 +33,8 @@ import {
 	scheduleMessage as scheduleMessageCore,
 	cancelScheduledMessage as cancelScheduledMessageCore,
 	sendScheduledMessageNow as sendScheduledMessageNowCore,
+	saveMessageDraft as saveMessageDraftCore,
+	sendMessageDraft as sendMessageDraftCore,
 } from "../scheduled-message-scheduler";
 import { Semaphore } from "../concurrency";
 import { syncTaskBranchName } from "../task-branch-sync";
@@ -1165,6 +1167,18 @@ async function sendScheduledMessageNow(params: { taskId: string; projectId: stri
 	return sendScheduledMessageNowCore(project, params.taskId, params.messageId);
 }
 
+/** Save or clear the task's message draft (Send later modal autosave). */
+async function saveMessageDraft(params: { taskId: string; projectId: string; text: string; sendOnStop?: boolean; expectedUpdatedAt?: string | null; strict?: boolean }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	return saveMessageDraftCore(project, params.taskId, { text: params.text, sendOnStop: params.sendOnStop, expectedUpdatedAt: params.expectedUpdatedAt, strict: params.strict });
+}
+
+/** Send the saved message draft now (modal "Send" / chip "Send now"). */
+async function sendMessageDraft(params: { taskId: string; projectId: string }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	return sendMessageDraftCore(project, params.taskId);
+}
+
 export const gitOperationHandlers = {
 	getBranchStatus,
 	getUnsavedWork,
@@ -1191,4 +1205,6 @@ export const gitOperationHandlers = {
 	scheduleMessage,
 	cancelScheduledMessage,
 	sendScheduledMessageNow,
+	saveMessageDraft,
+	sendMessageDraft,
 };

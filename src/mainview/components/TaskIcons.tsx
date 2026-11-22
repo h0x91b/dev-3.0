@@ -1,7 +1,7 @@
 import type { SVGProps } from "react";
 
 /**
- * Hand-drawn glyphs for the task header row (TaskInfoPanel and its sub-panels:
+ * Hand-drawn glyphs for the task header row (TaskHeader and its sub-panels:
  * the watch toggle, bug-hunter and spawn-agent buttons, worktree settings,
  * TaskOpenIn, TaskScripts, TaskExposedPorts, TaskSharedImages, TaskArtifacts, and the
  * fullscreen / collapse panel chrome). They replace the old Nerd Font glyphs

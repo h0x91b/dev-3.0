@@ -112,6 +112,16 @@ describe("handleCopilotHook", () => {
 		expect(mockSend.mock.calls[1]?.[2]).toMatchObject({ event: "PostToolUse" });
 	});
 
+	it("names the tool, so only ask_user's own postToolUse ends the question's hold", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCopilotHook("preToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
+		await handleCopilotHook("postToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PermissionRequest", toolName: "ask_user" });
+		expect(mockSend.mock.calls[1]?.[2]).toMatchObject({ event: "PostToolUse", toolName: "ask_user" });
+	});
+
 	it("ignores permissionRequest — Copilot fires it even when nothing asks the user", async () => {
 		await handleCopilotHook("permissionRequest", payload({ toolName: "bash" }), SOCKET, CONTEXT);
 

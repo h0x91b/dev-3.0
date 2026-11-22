@@ -5,7 +5,7 @@ import type { Route } from "../state";
 import type { ChangelogEntry } from "../../shared/types";
 import { api } from "../rpc";
 
-interface ChangelogProps {
+export interface ChangelogProps {
 	navigate: (route: Route) => void;
 	goBack: () => void;
 	canGoBack: boolean;

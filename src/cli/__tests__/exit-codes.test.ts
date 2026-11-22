@@ -28,6 +28,11 @@ describe("CLI exit code registry", () => {
 		expect(exitCodes.CLI_EXIT_CODE_WORKTREE_HALF_REMOVED).toBe(48);
 	});
 
+	it("gives a refused project setting its own codes", () => {
+		expect(exitCodes.CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN).toBe(49);
+		expect(exitCodes.CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE).toBe(50);
+	});
+
 	it("documents every registered exit code in docs/cli-exit-codes.md", () => {
 		const doc = readFileSync(DOC_PATH, "utf-8");
 

@@ -5,6 +5,7 @@
 export type {
 	AgentAdapter,
 	AdapterLaunchOptions,
+	AgyLaunchRuntime,
 	CodexLaunchRuntime,
 	HooksSpec,
 	TrustKind,
@@ -27,4 +28,5 @@ export { cursorAdapter } from "./cursor";
 export { opencodeAdapter } from "./opencode";
 export { ompAdapter } from "./omp";
 export { piAdapter } from "./pi";
+export { agyAdapter, agySessionSettings } from "./agy";
 export { genericAdapter } from "./generic";

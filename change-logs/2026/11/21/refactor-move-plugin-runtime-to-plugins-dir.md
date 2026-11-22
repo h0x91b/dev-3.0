@@ -1,0 +1,1 @@
+Moved the Cordis plugin runtime out of the board views into a general `src/mainview/plugins/` module (`getAppRoot()` in `root.ts`, the extension loader in `runtime.ts`, the generic React bridge in `react.tsx`), with no change in behaviour.

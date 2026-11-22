@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Dispatch } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
+import { isSpaceSensitive } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskAgentless, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -11,20 +12,25 @@ import { toast } from "../toast";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/spaceGroups";
+import { ProjectFoldersRows, ProjectFoldersToggle } from "./DashboardProjectFolders";
 import ProjectSpaceChips from "./ProjectSpaceChips";
 import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
 import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import SpaceGroupedProjects, { DigitHint, MIXED_SCOPE_KEY, type RowReorderCtx } from "./SpaceGroupedProjects";
-import { mixedEntryId, movedIds, resolveMixedOrder, steppedIds } from "../utils/digitOrder";
-import { commitMixedOrder, useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
-import { isRemote } from "../utils/platform";
+import { DIGIT_KEY_GROUP, DigitKeyControl, DigitKeysContext, type DigitKeys } from "./DigitKeyControl";
+import { digitPinPool, digitTargets, mixedEntryId, movedIds, pinnedSlots, resolveDigitPins, resolveMixedOrder, steppedIds } from "../utils/digitOrder";
+import { commitDigitSlots, commitMixedOrder, useDigitSpacesFile, useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
+import { digitKeyLabel, isRemote } from "../utils/platform";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useReorderDrag, type ReorderScope } from "../hooks/useReorderDrag";
 import { statusKey } from "../i18n/status";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import ProjectActionButtons from "./ProjectActionButtons";
+import { runMenuItem, type MenuRow } from "../plugins/menu-rows";
+import { resolveProjectActions, type ProjectActionItem, type ProjectActionRows, type ProjectActionScope } from "../project-actions/registry";
+import { useProjectActionEntries } from "../project-actions/useProjectActions";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import PriorityBadge from "./PriorityBadge";
@@ -57,6 +63,10 @@ interface ActivityOverviewProps {
 	/** "Number keys follow spaces": one top-level list of spaces and standalone projects, draggable. */
 	digitsFollowSpaces?: boolean;
 }
+
+const NO_PROJECT_ACTIONS: ProjectActionRows = { actions: [], foreign: [], danger: [] };
+/** Extension actions a project's sheet shows before Remove; the rest are cut (docs/extensions-platform.md). */
+const SHEET_EXTENSION_ACTION_LIMIT = 5;
 
 /** Statuses worth their own row — they're waiting on a human (questions, your
  * review, or an open PR review). Tasks parked in a custom column always get a
@@ -144,6 +154,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// touch, so per-project actions + reorder collapse into a single kebab that
 	// opens this action sheet (the project whose id is set here).
 	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
+	// One subscription per dashboard: every row's cluster and the sheet draw from these entries.
+	const projectActionEntries = useProjectActionEntries(true);
 	// The space whose block the sheet's row sat in, if any: its Move up / down steps there.
 	const [actionSheetSpaceId, setActionSheetSpaceId] = useState<string | null>(null);
 	// The order the sheet just sent for a space, while that request is out: taps
@@ -167,6 +179,25 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		() => (digitsFollowSpaces ? resolveMixedOrder(projects, withPendingMixedOrder(spacesFile, mixedPending)) : []),
 		[digitsFollowSpaces, projects, spacesFile, mixedPending],
 	);
+	const sensitiveProjectIds = useMemo(() => new Set(projects.filter((p) => p.sensitive).map((p) => p.id)), [projects]);
+	// What ⌘1–9 open (pins over the default order). Every row and space header
+	// shows its key as a chip that opens the keypad to change it.
+	const digitFile = useDigitSpacesFile(spacesFile);
+	const digitKeys = useMemo<DigitKeys>(() => {
+		const pins = resolveDigitPins(projects, digitFile);
+		// Written from the pins that resolve, so an id that no longer does is dropped, not carried forward.
+		const live = pins.map((pin) => (pin ? mixedEntryId(pin) : null));
+		return {
+			targets: digitTargets(projects, digitFile, digitsFollowSpaces),
+			pins,
+			anyStored: (digitFile.digitSlots ?? []).some((id) => id !== null),
+			pinnable: new Set(digitPinPool(projects, digitFile).map(mixedEntryId)),
+			isMasked: (entry) => privacy.streamerMode && (entry.kind === "space" ? isSpaceSensitive(entry.space, sensitiveProjectIds) : privacy.isLocked(entry.project)),
+			onPin: (index, id) => commitDigitSlots(pinnedSlots(live, index, id)),
+			onUnpinAll: () => commitDigitSlots([]),
+		};
+	}, [projects, digitFile, digitsFollowSpaces, privacy, sensitiveProjectIds]);
+
 	const mixedOrder = {
 		entries: mixedEntries,
 		reorder: (sourceId: string, targetId: string, side: "before" | "after") => {
@@ -389,13 +420,11 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	});
 	// Search and the rail filter show a subset, so there is no whole list to drag in.
 	const mixedActive = digitsFollowSpaces && selectedSpaceId === null && projectQuery.trim() === "";
-	const showDigitHints = mixedActive && !isRemote();
 	// ⌘0 is Operations whenever the setting is on, search and filter included.
 	const opsDigitHint = digitsFollowSpaces && !isRemote();
 	// With the setting on, the flat project order is not what ⌘1–9 follow, so the
 	// rows outside the mixed list and outside a space block offer no reorder.
 	const flatReorderOff = digitsFollowSpaces && !mixedActive;
-	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
 	const hasPinnedBuiltin = visibleProjects.length > 0 && isBuiltinOpsProject(visibleProjects[0]);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
@@ -406,7 +435,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		: null;
 	const sheetIndex = sheetProject ? visibleProjects.findIndex((p) => p.id === sheetProject.id) : -1;
 	const sheetIsVirtual = sheetProject?.kind === "virtual";
-	const sheetIsBuiltin = sheetProject ? isBuiltinOpsProject(sheetProject) : false;
 	// A standalone project in the mixed list steps within that list, not the flat project order.
 	const sheetMixedIndex = mixedActive && sheetProject
 		? mixedOrder.entries.findIndex((e) => e.kind === "project" && e.project.id === sheetProject.id)
@@ -432,6 +460,30 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 			? sheetMixedIndex === mixedOrder.entries.length - 1
 			: sheetIndex === visibleProjects.length - 1 || !!sheetIsVirtual;
 	const sheetOffersReorder = !!onReorderProjects && (sheetInSpace || sheetInMixed || !digitsFollowSpaces);
+	// The sheet's actions come from the projectActions slot; reorder stays the dashboard's own list mechanics.
+	const sheetScope: ProjectActionScope | null = sheetProject && {
+		project: sheetProject,
+		placement: "sheet",
+		t,
+		navigate,
+		removeProject: onRemoveProject ? () => onRemoveProject(sheetProject.id) : undefined,
+		anchor: null,
+	};
+	const sheetRows = sheetScope ? resolveProjectActions(projectActionEntries, sheetScope) : NO_PROJECT_ACTIONS;
+	function sheetButton(row: MenuRow<ProjectActionItem>, danger = false) {
+		return (
+			<ActionSheetButton
+				key={row.key}
+				glyph={row.item.glyph}
+				label={row.label}
+				danger={danger}
+				onClick={() => {
+					closeActionSheet();
+					if (sheetScope) runMenuItem("projectActions", row.item.id, row.item.run, sheetScope);
+				}}
+			/>
+		);
+	}
 
 	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
 		const ids = visibleProjects.map((project) => project.id);
@@ -573,7 +625,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				data-reorder-placeholder={isDragged || undefined}
 			>
 				{/* Project header */}
-				<div data-project-row-header className={`group flex items-center gap-2 px-3 md:px-5 ${compact ? "py-1.5" : hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+				<div data-project-row-header className={`group ${DIGIT_KEY_GROUP} flex items-center gap-2 px-3 md:px-5 ${compact ? "py-1.5" : hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
 					{/* Reorder cluster — desktop only. On touch, drag and the
 					    step buttons are unusable; reorder lives in the action sheet. */}
 					{/* A grouped row alone in its space has nothing to reorder. */}
@@ -672,7 +724,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						    link emphasis on row hover. Without it the only cue was the
 						    background lifting one step, which reads as "row", not "link". */}
 						<span className={`truncate select-text ${locked || compact ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{projectDisplayName(project, t("ops.boardName"))}</span>
-									{reorder?.digitHint && !compact && <DigitHint digit={reorder.digitHint} />}
 									{!isBuiltinOps && !compact && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
@@ -691,7 +742,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									<span className="hidden md:inline-flex"><DigitHint digit="0" /></span>
 								)}
 								{isBuiltinOps && !compact && !opsDigitHint && (
-									<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
+									<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">{digitKeyLabel(0)}</span>
 								)}
 							</div>
 							{/* Subtitle (path / virtual hint) is dead weight on a phone —
@@ -703,10 +754,13 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							)}
 						</div>
 					</button>
+					{!compact && !isBuiltinOps && <DigitKeyControl id={project.id} name={project.name} masked={locked} />}
+					{!compact && <ProjectFoldersToggle project={project} />}
 					{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
 					<div className={compact ? "hidden" : "hidden md:flex"}>
 						<ProjectActionButtons
 							project={project}
+							entries={projectActionEntries}
 							navigate={navigate}
 							onRemove={onRemoveProject}
 							onOpenSpaces={allSpaceGroups !== null ? openSpacesPicker : undefined}
@@ -744,6 +798,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					)}
 				</div>
 
+				{!compact && <ProjectFoldersRows project={project} navigate={navigate} />}
 				{hasActiveTasks && !compact && (
 					<div className="border-t border-edge">
 						<DashboardCoordinatorRows
@@ -945,6 +1000,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	}
 
 	return (
+		<DigitKeysContext.Provider value={digitKeys}>
 		<div className="h-full overflow-y-auto p-3 md:p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
 				{noRepositoryYet ? (
@@ -1119,7 +1175,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								onReorder: mixedOrder.reorder,
 								onStep: mixedOrder.step,
 								drag: reorderDrag,
-								showDigitHints,
 							} : undefined}
 							renderProject={(p, ctx, spaceId) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), ctx, spaceId)}
 							renderBottomBlockProject={(p, block) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), undefined, undefined, flatScope(block.map((b) => b.id), "no-space"))}
@@ -1148,42 +1203,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						testId="activity-project-action-sheet"
 					>
 						<div className="flex flex-col">
-							<ActionSheetButton
-								glyph={""}
-								label={t("activity.openBoard")}
-								onClick={() => {
-									closeActionSheet();
-									openProject(sheetProject.id);
-								}}
-							/>
-							<ActionSheetButton
-								glyph={"\u{F0493}"}
-								label={t("header.projectSettings")}
-								onClick={() => {
-									closeActionSheet();
-									navigate({ screen: "project-settings", projectId: sheetProject.id });
-								}}
-							/>
-							{!sheetIsVirtual && (
-								<ActionSheetButton
-									glyph={"\u{F115}"}
-									label={t("dashboard.openInFinder")}
-									onClick={() => {
-										closeActionSheet();
-										api.request.openFolder({ path: sheetProject.path }).catch(() => {});
-									}}
-								/>
-							)}
-							{!sheetIsVirtual && (
-								<ActionSheetButton
-									glyph={"\u{F489}"}
-									label={t("activity.openTerminal")}
-									onClick={() => {
-										closeActionSheet();
-										navigate({ screen: "project-terminal", projectId: sheetProject.id });
-									}}
-								/>
-							)}
+							{sheetRows.actions.map((row) => sheetButton(row))}
 							{sheetOffersReorder && (
 								<>
 									<ActionSheetButton
@@ -1200,22 +1220,14 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									/>
 								</>
 							)}
-							{onRemoveProject && !sheetIsBuiltin && (
-								<ActionSheetButton
-									glyph={"\u{F0A79}"}
-									label={t("dashboard.remove")}
-									danger
-									onClick={() => {
-										closeActionSheet();
-										void onRemoveProject(sheetProject.id);
-									}}
-								/>
-							)}
+							{sheetRows.foreign.slice(0, SHEET_EXTENSION_ACTION_LIMIT).map((row) => sheetButton(row))}
+							{sheetRows.danger.map((row) => sheetButton(row, true))}
 						</div>
 					</BottomSheet>
 				)}
 			</div>
 		</div>
+		</DigitKeysContext.Provider>
 	);
 }
 

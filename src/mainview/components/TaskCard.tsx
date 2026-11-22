@@ -1,4 +1,4 @@
-import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
+import { Fragment, memo, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
@@ -31,8 +31,7 @@ import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
 import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
-import NativeBackendMark from "./NativeBackendMark";
-import ForeignCodeMark from "./ForeignCodeMark";
+import { TaskMarkers } from "../task-markers/TaskMarkers";
 import CompletionOfferMark from "./CompletionOfferMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
@@ -53,6 +52,7 @@ import { useMobile } from "../hooks/useMobile";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
+import HeldMessagesChip from "./HeldMessagesChip";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import { taskCardAgent } from "../utils/taskCardAgent";
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
@@ -89,7 +89,8 @@ interface TaskCardProps {
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
-	siblingMap?: Map<string, Task[]>;
+	/** The task's variant group, when it has one. Per card, not the board's whole map, so one task's change leaves other cards' props equal. */
+	groupMembers?: Task[];
 	prInfo?: TaskPRBadgeInfo;
 	/** Opens the selected task's diff at its first unresolved review thread. */
 	onOpenUnresolvedComments?: (task: Task) => void;
@@ -109,7 +110,7 @@ interface TaskCardProps {
 	onFilterByEpic?: (epic: Epic) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, dependency, onFilterByEpic }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, groupMembers: groupMembersProp, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, dependency, onFilterByEpic }: TaskCardProps) {
 	const { byId: epicsById } = useEpics();
 	const epic = task.epicId ? epicsById.get(task.epicId) : undefined;
 	const t = useT();
@@ -130,9 +131,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	/** Mobile has no "+ Add label" button, so the picker anchors to the chip row. */
 	const labelRowRef = useRef<HTMLDivElement>(null);
 
-	const groupMembers = task.groupId && siblingMap
-		? (siblingMap.get(task.groupId) ?? [])
-		: [];
+	const groupMembers = task.groupId ? (groupMembersProp ?? EMPTY_GROUP) : EMPTY_GROUP;
 
 	const preview = useTerminalPreview();
 	const cardRef = useRef<HTMLDivElement>(null);
@@ -711,7 +710,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 	if (!isTodo) {
 		timeSignals.push(
-			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" />,
+			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" onOpen={preview.close} />,
+			<HeldMessagesChip key="held" taskId={task.id} placement="up" />,
 		);
 	}
 	const variantDots = (
@@ -1051,8 +1051,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
-				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
-				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
+				<TaskMarkers task={task} surface="card" />
 				<CompletionOfferMark task={task} testId="task-card-completion-offer" />
 				{/* A PR review is an ordinary task with a job, so it is named and not
 				    boxed — no band, nothing that competes with a role. */}
@@ -1488,4 +1487,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	);
 }
 
-export default TaskCard;
+const EMPTY_GROUP: Task[] = [];
+
+// Every board-level change re-renders the host; memo keeps that to the cards whose own props changed.
+export default memo(TaskCard);

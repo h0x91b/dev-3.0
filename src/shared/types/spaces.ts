@@ -33,6 +33,12 @@ export interface SpacesFile {
 	 * longer resolve are skipped; entries not listed follow in derived order.
 	 */
 	mixedOrder?: string[];
+	/**
+	 * Explicit ⌘1–⌘9 assignment, index = digit − 1: the id of a space or a project,
+	 * or null for "follow the default order". Mode-independent; unresolvable ids
+	 * fall back to the default. See decisions/2026/11/22/digit-slot-pins-over-default-order.md.
+	 */
+	digitSlots?: (string | null)[];
 }
 
 export const EMPTY_SPACES_FILE: SpacesFile = Object.freeze({
@@ -58,7 +64,7 @@ export function orderSpaces(spaces: Space[], order: string[]): Space[] {
 }
 
 /** Every non-deleted space the project belongs to, in input order. */
-export function spacesOfProject(spaces: Space[], projectId: string): Space[] {
+export function spacesOfProject(spaces: readonly Space[], projectId: string): Space[] {
 	return spaces.filter((s) => !s.deleted && s.projectIds.includes(projectId));
 }
 

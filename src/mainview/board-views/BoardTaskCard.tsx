@@ -57,7 +57,7 @@ export function BoardTaskCard({ task, onDragStart, isMoving = false, onSetMoving
 			isActiveInSplit={task.id === host.activeTaskId}
 			isMoving={isMoving}
 			onSetMoving={onSetMoving}
-			siblingMap={host.siblingMap}
+			groupMembers={task.groupId ? host.siblingMap.get(task.groupId) : undefined}
 			lineage={host.lineageFor(task)}
 			dependency={host.dependencyMap.get(task.id)}
 			onFilterByEpic={host.onFilterByEpic}

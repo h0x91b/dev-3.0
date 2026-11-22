@@ -117,6 +117,7 @@ describe.skipIf(isWindows)("the generated pi extension at runtime", () => {
 
 		expect((await h.reports()).map((r) => r.event))
 			.toEqual(["SessionStart", "UserPromptSubmit", "PermissionRequest", "PostToolUse", "Stop"]);
+		expect((await h.reports())[3]!.promptEnd).toBe(true);
 	});
 
 	it("settles again when a prompt is answered while pi is idle", async () => {

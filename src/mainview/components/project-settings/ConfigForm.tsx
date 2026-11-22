@@ -26,9 +26,11 @@ interface ConfigFormProps {
 	envStorageScope: EnvStorageScope;
 	/** Reports whether the env textarea currently holds unparseable lines. */
 	onEnvErrorChange?: (hasError: boolean) => void;
+	/** The form edits a task worktree's own `.dev3` files, which project-only fields never read. */
+	worktreeLayer?: boolean;
 }
 
-export function ConfigForm({ config, onChange, inherited, projectId, projectPath, envStorageScope, onEnvErrorChange }: ConfigFormProps) {
+export function ConfigForm({ config, onChange, inherited, projectId, projectPath, envStorageScope, onEnvErrorChange, worktreeLayer = false }: ConfigFormProps) {
 	const t = useT();
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
@@ -199,7 +201,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 				onErrorChange={onEnvErrorChange}
 			/>
 			</div>
-			<SchemaConfigFields section="scripts" config={config} onChange={onChange} inherited={inherited} />
+			<SchemaConfigFields section="scripts" config={config} onChange={onChange} inherited={inherited} worktreeLayer={worktreeLayer} />
 			</SettingsSection>
 
 			<SettingsSection
@@ -304,7 +306,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					className="w-20 px-3 py-1.5 rounded-lg bg-base border border-edge text-fg text-sm tabular-nums outline-none focus:border-accent transition-colors"
 				/>
 			</div>
-			<SchemaConfigFields section="worktree" config={config} onChange={onChange} inherited={inherited} />
+			<SchemaConfigFields section="worktree" config={config} onChange={onChange} inherited={inherited} worktreeLayer={worktreeLayer} />
 			</SettingsSection>
 
 			<SettingsSection
@@ -374,7 +376,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 				</div>
 				{(config.autoReviewEnabled ?? false) && <WarningNote>{t("projectSettings.autoReviewWarning")}</WarningNote>}
 			</div>
-			<SchemaConfigFields section="git" config={config} onChange={onChange} inherited={inherited} />
+			<SchemaConfigFields section="git" config={config} onChange={onChange} inherited={inherited} worktreeLayer={worktreeLayer} />
 			</SettingsSection>
 		</div>
 	);

@@ -10,6 +10,7 @@ import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 import { type HookCliDialect, hookCliDialect } from "./dev3-cli-path";
 import { symlinkOnWritePath } from "./symlink-write-guard";
+import { quoteIfUnsafe } from "./agent-adapters/shell";
 import { resolveDev3Home } from "./dev3-home";
 
 /** Dialect of the machine generating the hooks (the frozen POSIX string on macOS/Linux). */
@@ -332,6 +333,15 @@ export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
  * busy agent its held `dev3 message`s at its next tool call. Always exits 0.
  */
 export const CLAUDE_POST_TOOL_HOOK_SUBCOMMAND = "hook claude-post-tool";
+
+/** Claude's PostToolUseFailure: the failed call leaves the prompt ledger, nothing else (#2342). */
+export const CLAUDE_POST_TOOL_FAILED_HOOK_SUBCOMMAND = "hook claude-post-tool-failed";
+/**
+ * Claude's PermissionRequest: the Has Questions move plus the prompt ledger, which keeps
+ * every `dev3 message` out of the pane until the menu or picker is answered (#2342).
+ * Always exits 0.
+ */
+export const CLAUDE_PERMISSION_HOOK_SUBCOMMAND = "hook claude-permission";
 /** `resume` is left out: the resumed transcript already holds the block it was given. */
 export const CLAUDE_SESSION_START_MATCHER = "startup|clear|compact";
 /**
@@ -490,6 +500,16 @@ function withTaskEnvGuard(command: string, dialect: HookCliDialect): string {
 }
 
 /**
+ * `||` reaches the plain move only when the installed CLI predates the subcommand.
+ * Windows has no shell for `||`, and its native panes need the gate too, so it calls
+ * the subcommand alone, asking the CLI itself to tolerate an offline app.
+ */
+function claudePermissionCommand(questionsCmd: string, dialect: HookCliDialect): string {
+	if (!dialect.posixShell) return withAppOfflineTolerance(`${dialect.cli} ${CLAUDE_PERMISSION_HOOK_SUBCOMMAND}`, dialect);
+	return `${dialect.cli} ${CLAUDE_PERMISSION_HOOK_SUBCOMMAND} || ${questionsCmd}`;
+}
+
+/**
  * True when `folder` is a working directory dev3 created and removes with the
  * task: a worktree or ops folder under the dev3 home, or an in-project task dir.
  */
@@ -545,7 +565,7 @@ function buildUnguardedClaudeHooks(
 			},
 		],
 		PreToolUse: [
-			{ hooks: [{ type: "command", command: beforeTool }] },
+			{ hooks: [{ type: "command", command: beforeTool, timeout: 5 }] },
 			...(options?.fileLeases
 				? [{
 					matcher: CLAUDE_CLAIM_MATCHER,
@@ -556,15 +576,18 @@ function buildUnguardedClaudeHooks(
 		PostToolUse: [
 			{ hooks: [{ type: "command", command: withAppOfflineTolerance(`${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND}`, dialect) }] },
 		],
-		PostToolUseFailure: [{ hooks: [{ type: "command", command: beforeTool }] }],
-		SubagentStop: [{ hooks: [{ type: "command", command: beforeTool }] }],
-		TeammateIdle: [{ hooks: [{ type: "command", command: beforeTool }] }],
+		// A failed call is over too: its prompt leaves the ledger and its owner's wait clears (#2342).
+		PostToolUseFailure: [
+			{ hooks: [{ type: "command", command: withAppOfflineTolerance(`${dialect.cli} ${CLAUDE_POST_TOOL_FAILED_HOOK_SUBCOMMAND}`, dialect), timeout: 5 }] },
+		],
+		SubagentStop: [{ hooks: [{ type: "command", command: beforeTool, timeout: 5 }] }],
+		TeammateIdle: [{ hooks: [{ type: "command", command: beforeTool, timeout: 5 }] }],
 		PermissionRequest: [
-			{ hooks: [{ type: "command", command: beforeTool }] },
+			{ hooks: [{ type: "command", command: claudePermissionCommand(withAppOfflineTolerance(`${dialect.cli} task move --status user-questions`, dialect), dialect), timeout: 5 }] },
 		],
 		Notification: [{
 			matcher: "permission_prompt|elicitation_dialog",
-			hooks: [{ type: "command", command: beforeTool }],
+			hooks: [{ type: "command", command: beforeTool, timeout: 5 }],
 		}],
 		Stop: buildStopGroups(stopTarget, dialect),
 		SessionEnd: [{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 }] }],
@@ -576,6 +599,91 @@ function buildUnguardedClaudeHooks(
 			{ hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND}`, timeout: 5 }] },
 		],
 	};
+}
+
+/**
+ * The Antigravity CLI (`agy`) lifecycle events dev3 subscribes to. agy has no
+ * hook for a tool-approval wait and none for a session end, so the board learns
+ * only that a session started, that the model is being invoked, and that a turn
+ * stopped.
+ */
+export const AGY_HOOK_EVENTS = ["SessionStart", "PreInvocation", "Stop"] as const;
+export type AgyHookEvent = typeof AGY_HOOK_EVENTS[number];
+
+/** The key of dev3's entry in agy's `hooks.json`; every other key belongs to the user. */
+export const AGY_HOOK_NAME = "dev3";
+
+/** agy reads `hooks.json` from a customization root; the worktree's own one is `.agents/`. */
+export const AGY_CONFIG_DIR = ".agents";
+
+/**
+ * How agy's commands spell the dev3 CLI. agy expands `~` itself, and a launcher
+ * that overrides HOME turns the frozen `~/.dev3.0/bin/dev3` into a path under the
+ * launcher's private home, where dev3 never runs. So on POSIX the backend passes
+ * the ACCOUNT home (not `$HOME`, not a redirected `DEV3_HOME`: the machine-wide CLI
+ * lives only at `<account home>/.dev3.0/bin/dev3`) and the CLI is spelled as that
+ * absolute path. Windows keeps its absolute exe path; `POSIX_DEV3_CLI` stays as it
+ * is for every other agent.
+ */
+export function agyHookDialect(accountHome: string): HookCliDialect {
+	if (!DEFAULT_DIALECT.posixShell) return DEFAULT_DIALECT;
+	return { cli: quoteIfUnsafe(`${accountHome.replace(/\/+$/, "")}/.dev3.0/bin/dev3`), posixShell: true };
+}
+
+/** `sh -c '<script>'`, with a quote inside the script (a quoted CLI path) escaped. */
+function posixShellC(script: string): string {
+	return `sh -c '${script.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The command dev3 declares for one agy hook.
+ *
+ * agy parses the hook's stdout as JSON, so the env guard answers `{}` instead of
+ * printing nothing; without DEV3_TASK_ID (an agy the user started by hand in a
+ * dev3 worktree) no dev3 process is spawned at all. agy runs the command with
+ * `sh -c` (`cmd /c` on Windows, where a POSIX guard is not valid, so the bare
+ * command stays: `dev3 hook agy` answers `{}` and exits 0 outside a task).
+ */
+export function agyHookCommand(event: AgyHookEvent, dialect: HookCliDialect = DEFAULT_DIALECT): string {
+	const run = `${dialect.cli} hook agy ${event}`;
+	if (!dialect.posixShell) return run;
+	return posixShellC(`[ -z "$${CODEX_HOOK_SESSION_ENV}" ] && echo {} || exec ${run}`);
+}
+
+/**
+ * The statusLine command agy runs on every refresh (passed through the per-session
+ * `--settings`). It prints nothing, so agy's own line stays; `--no-limits` keeps the
+ * quota out of the dump while rate-limit tracking is off. The guard keeps it inert
+ * outside a dev3 task, like the hook commands.
+ */
+export function agyStatusLineCommand(options?: { trackLimits?: boolean; dialect?: HookCliDialect }): string {
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
+	const run = `${dialect.cli} statusline agy${options?.trackLimits === false ? " --no-limits" : ""}`;
+	if (!dialect.posixShell) return run;
+	return posixShellC(`[ -z "$${CODEX_HOOK_SESSION_ENV}" ] || exec ${run}`);
+}
+
+/** The value of dev3's named entry in agy's `hooks.json`. */
+export function buildAgyHooks(options?: { dialect?: HookCliDialect }): Record<string, unknown> {
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
+	const handler = (event: AgyHookEvent, timeout: number) => ({
+		type: "command",
+		command: agyHookCommand(event, dialect),
+		timeout,
+	});
+	return {
+		SessionStart: [handler("SessionStart", 10)],
+		PreInvocation: [handler("PreInvocation", 5)],
+		Stop: [handler("Stop", 5)],
+	};
+}
+
+/** Set dev3's named entry and keep every other hook the user has. */
+export function mergeAgyHooks(
+	existing: Record<string, unknown>,
+	options?: { dialect?: HookCliDialect },
+): Record<string, unknown> {
+	return { ...asRecord(existing), [AGY_HOOK_NAME]: buildAgyHooks(options) };
 }
 
 /**
@@ -851,6 +959,36 @@ export function writeClaudeHooks(
 	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
 }
 
+/** Refresh inherited dev3 pre-tool hooks before Cursor imports Claude settings. */
+export function refreshClaudePreToolHooks(worktreePath: string): ClaudeHooksWriteResult {
+	const path = join(worktreePath, ".claude", "settings.local.json");
+	const skippedSymlink = symlinkOnWritePath(worktreePath, path);
+	if (skippedSymlink) return { written: false, skippedSymlink };
+	if (!existsSync(path)) return { written: false, skippedSymlink: null };
+	const previous = readSettingsFile(path);
+	const hooks = asRecord(previous.hooks);
+	if (!Array.isArray(hooks.PreToolUse)) return { written: false, skippedSymlink: null };
+	const command = `${DEFAULT_DIALECT.cli} hook claude-pre-tool`;
+	const updated = {
+		...previous,
+		hooks: {
+			...hooks,
+			PreToolUse: hooks.PreToolUse.map((group: unknown) => {
+				const entry = asRecord(group);
+				const refresh = (hook: unknown) => {
+					const record = asRecord(hook);
+					return mentionsDev3Cli(record.command as string | undefined) &&
+						typeof record.command === "string" && record.command.includes("task move --status in-progress")
+						? { ...record, command, timeout: 5 }
+						: hook;
+				};
+				return Array.isArray(entry.hooks) ? { ...entry, hooks: entry.hooks.map(refresh) } : refresh(group);
+			}),
+		},
+	};
+	return { written: writeIfChanged(path, updated, previous), skippedSymlink: null };
+}
+
 /** Claude Code keeps its global state file inside the dir `CLAUDE_CONFIG_DIR` names; a repo's own `.claude/` never has one. */
 function isClaudeConfigDir(dir: string): boolean {
 	return existsSync(join(dir, ".claude.json"));
@@ -957,4 +1095,37 @@ export function writeCodexHooks(worktreePath: string): string | null {
 	if (JSON.stringify(updated) === JSON.stringify(settings)) return null;
 	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 	return null;
+}
+
+export interface AgyHooksWriteResult {
+	written: boolean;
+	skippedSymlink: string | null;
+	/** The worktree already has a `.agents/hooks.json` that is not a JSON object; it is left alone. */
+	skippedUnreadable: boolean;
+}
+
+/**
+ * Merge dev3's entry into the worktree's `.agents/hooks.json`: agy walks up from
+ * its cwd, so this is the one hook source a launch under an overridden HOME still
+ * sees. Every other hook in the file stays; a file that does not parse is never
+ * replaced.
+ */
+export function writeAgyHooks(worktreePath: string, options?: { dialect?: HookCliDialect }): AgyHooksWriteResult {
+	const dir = join(worktreePath, AGY_CONFIG_DIR);
+	const hooksPath = join(dir, "hooks.json");
+	const skippedSymlink = symlinkOnWritePath(worktreePath, hooksPath);
+	if (skippedSymlink) return { written: false, skippedSymlink, skippedUnreadable: false };
+
+	let previous: Record<string, unknown> = {};
+	if (existsSync(hooksPath)) {
+		try {
+			const parsed: unknown = JSON.parse(readFileSync(hooksPath, "utf-8").replace(/^﻿/, ""));
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+			previous = parsed as Record<string, unknown>;
+		} catch {
+			return { written: false, skippedSymlink: null, skippedUnreadable: true };
+		}
+	}
+	mkdirSync(dir, { recursive: true });
+	return { written: writeIfChanged(hooksPath, mergeAgyHooks(previous, options), previous), skippedSymlink: null, skippedUnreadable: false };
 }

@@ -8,6 +8,8 @@ import type { AgentFamily } from "./types";
  * - `agent-latest`: no id at all — the harness picks its own latest, and may start a new conversation.
  * - `fresh-session`: nothing of this pane's conversation survives and every transcript belongs to
  *   another pane, so it reopens on a new id of its own rather than duplicating one (#1950).
+ *   Also the main pane whose first launch never created a conversation: it starts on a new id
+ *   with the original task prompt, since there is nothing to resume.
  * - `fresh`: the harness cannot resume at all, so it starts over from the task description.
  */
 export type ResumePaneMode = "exact" | "substituted" | "unverified" | "agent-latest" | "fresh-session" | "fresh";
@@ -49,7 +51,9 @@ export type ResumeUnavailableReason =
 	/** A requested account cannot apply: unknown, "auto", or no saved pane runs Claude. */
 	| "account-invalid"
 	/** The requested account's config dir has no transcript for a saved Claude conversation. */
-	| "account-cannot-see-conversation";
+	| "account-cannot-see-conversation"
+	/** A conversation store exists but cannot be read now, so no pane may be moved off its saved conversation. */
+	| "history-unreadable";
 
 export type CliResumeOutcome =
 	| { outcome: "resumed"; resume: TaskResumeResult }
@@ -65,6 +69,8 @@ export interface ResumeDialogPane {
 	sessionId: string | null;
 	/** The saved account: undefined follows the default, null is the system login. */
 	accountId?: string | null;
+	/** The main agent never created its conversation: the resume starts it again on the task prompt. */
+	neverStarted?: boolean;
 	/** The saved command, so the dialog knows which panes an account choice reaches. */
 	agentCmd: string;
 	agentFamily?: AgentFamily | null;

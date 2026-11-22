@@ -3,7 +3,7 @@
  * Regenerates the "Show all tips" list inside docs/index.html from the in-app
  * tip registry, so the landing page stays in sync with the real feature tips.
  *
- * Reads src/mainview/tips.ts (order + score) and the English strings in
+ * Reads src/mainview/tips/builtins.ts (order + score) and the English strings in
  * src/mainview/i18n/translations/en/tips.ts, then rewrites the block between
  * the <!-- TIPS:FULL:START --> / <!-- TIPS:FULL:END --> sentinels and updates
  * the "Show all N tips" count. Run after adding or editing tips:
@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const TIPS_TS = join(ROOT, "src/mainview/tips.ts");
+const TIPS_TS = join(ROOT, "src/mainview/tips/builtins.ts");
 const EN_TIPS = join(ROOT, "src/mainview/i18n/translations/en/tips.ts");
 const INDEX = join(ROOT, "docs/index.html");
 

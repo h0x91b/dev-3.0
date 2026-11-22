@@ -5,7 +5,7 @@ import { spacesOfProject, type Space } from "../../shared/types";
  * indices stay aligned with the rendered label), then its space names —
  * typing a space name surfaces every member project.
  */
-export function projectSearchHaystack(name: string, spaces: Space[], projectId: string): string {
+export function projectSearchHaystack(name: string, spaces: readonly Space[], projectId: string): string {
 	const spaceNames = spacesOfProject(spaces, projectId)
 		.map((s) => s.name)
 		.join(" ");

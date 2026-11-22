@@ -1,0 +1,1 @@
+The Go-to palette's project, task and space rows now come from an internal plugin slot, with the palette merging and ranking them. Results, their order, the keyboard and the empty states are unchanged.

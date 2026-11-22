@@ -95,6 +95,7 @@ export async function spawnAgentInTask(params: {
 		sessionId: freshSessionId,
 		accountId: params.accountId,
 		projectEnv,
+		foreignCode: task.foreignCode,
 		bedrockProfile: params.bedrockProfile !== undefined ? params.bedrockProfile : task.bedrockProfile,
 		autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
 		protocolMode: taskProtocolMode(project, task),

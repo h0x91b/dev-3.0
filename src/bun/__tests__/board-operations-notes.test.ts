@@ -88,14 +88,16 @@ describe("board operations — notes", () => {
 		expect(ports.pushes).toEqual([]);
 	});
 
-	it("refuses an empty note", async () => {
+	it("accepts an empty note: the GUI's + Add Note creates a blank note to type into", async () => {
 		board = await createBoard();
 		const notes = await import("../board-operations/task-notes");
 		const { USER_ACTOR } = await import("../board-operations/types");
 		const ports = recordingPorts();
 
-		await expect(notes.addNote(ports, board.project, "task-1", "", USER_ACTOR)).rejects.toThrow("content is required");
-		expect(ports.pushes).toEqual([]);
+		const result = await notes.addNote(ports, board.project, "task-1", "", USER_ACTOR);
+
+		expect(result.task.notes?.map((n) => [n.content, n.source])).toEqual([["", "user"]]);
+		expect(ports.pushes).toHaveLength(1);
 	});
 });
 

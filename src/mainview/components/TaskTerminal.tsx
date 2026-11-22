@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
 import { getTaskTitle, isAttachedRepoInTaskFolder, taskUsesWorktree } from "../../shared/types";
+import { mainAgentNeverStarted } from "../../shared/agent-launch-failure";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { debugLog } from "../debug-log";
@@ -10,7 +11,7 @@ import { trackEvent } from "../analytics";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
-import TaskInfoPanel from "./TaskInfoPanel";
+import TaskHeader from "./TaskHeader";
 import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskPreparingView from "./TaskPreparingView";
 import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
@@ -66,6 +67,27 @@ const FOCUS_REQUEST_TTL_MS = 15_000;
 
 type ErrorKind = "worktree-gone" | "worktree-unreadable" | "session-ended";
 
+function launchFailureTitle(t: ReturnType<typeof useT>, failure: NonNullable<Task["launchFailure"]>): string {
+	const code = failure.exitCode === null ? null : String(failure.exitCode);
+	if (failure.neverStarted) return code === null ? t("terminal.launchFailedTitle_noCode") : t("terminal.launchFailedTitle", { code });
+	return code === null ? t("terminal.agentFailedTitle_noCode") : t("terminal.agentFailedTitle", { code });
+}
+
+function LaunchFailureBlock({ failure, showTitle = true }: { failure: NonNullable<Task["launchFailure"]>; showTitle?: boolean }) {
+	const t = useT();
+	return (
+		<div className="space-y-2">
+			{showTitle && <p className="text-fg-2 text-sm font-medium">{launchFailureTitle(t, failure)}</p>}
+			<pre
+				data-testid="terminal-launch-failure"
+				className="block bg-base text-fg-3 text-xs px-3 py-2 rounded border border-edge whitespace-pre-wrap break-words max-h-64 overflow-auto font-mono select-text"
+			>
+				{failure.output ?? t("terminal.launchFailureNoOutput")}
+			</pre>
+		</div>
+	);
+}
+
 function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, hideInfoPanel }: TaskTerminalProps) {
 	const t = useT();
 	const touchInput = !isElectrobun && isTouchPrimary();
@@ -98,9 +120,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const project = projects.find((p) => p.id === projectId);
 	const isPreparing = task?.preparing === true;
 	// Completed/cancelled by design: the worktree and the session are gone on
-	// purpose, so every recovery offer in here would be a lie. This view has one
-	// honest exit, and it must win over the error and restart screens below.
-	const isClosed = task?.status === "completed" || task?.status === "cancelled";
+	// purpose, so every recovery offer in here would be a lie. This view offers only
+	// the way back and a reopen, and it must win over the error and restart screens below.
+	// A reopen keeps this screen up (button disabled) until the server reports the
+	// preparation: the optimistic in-progress snapshot has no workspace yet, and a
+	// session read in that window would land on the environment-error screen.
+	const [reopenFrom, setReopenFrom] = useState<"completed" | "cancelled" | null>(null);
+	const isReopening = reopenFrom !== null && !isPreparing;
+	const isClosed = task?.status === "completed" || task?.status === "cancelled" || isReopening;
 	// Teardown snapshots still carry the old status and worktree, so without this the
 	// pane reattaches to a dying PTY and flashes a recovery card. `shuttingDown` rides
 	// only on the first push; the persisted runtime covers every later one until it fails.
@@ -139,6 +166,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// act that clears the flag.
 	const [hibernated, setHibernated] = useState(false);
 	const [restarting, setRestarting] = useState(false);
+	// A refused Start again leaves Start Fresh as the explicit way to abandon the saved panes.
+	const [startAgainRefused, setStartAgainRefused] = useState(false);
 	// A `setupScript` that exits non-zero leaves a live shell behind, so nothing
 	// else in here reads as broken. What the pane may OFFER depends on whether the
 	// agent was already running when it failed — see `setupFailedAgentRunning`.
@@ -514,6 +543,34 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		});
 	}
 
+	/**
+	 * Reopen a closed task from its dead-end screen. The lifecycle rebuilds the
+	 * workspace and resumes the saved agent conversation, as the board's
+	 * "Reopen as" menu does, so the view stays here and attaches when it is ready.
+	 */
+	function handleReopen() {
+		if (!task || !project || reopenFrom !== null) return;
+		if (task.status !== "completed" && task.status !== "cancelled") return;
+		setReopenFrom(task.status);
+		setPtyUrl(null);
+		setError(null);
+		setRecoverable(null);
+		void moveTaskToStatus({
+			task,
+			project,
+			newStatus: "in-progress",
+			dispatch,
+			t,
+			onSuccess: () => setReopenFrom(null),
+			onFailure: () => setReopenFrom(null),
+		});
+	}
+
+	// The server's preparing snapshot takes over from the held closed screen.
+	useEffect(() => {
+		if (isPreparing) setReopenFrom(null);
+	}, [isPreparing]);
+
 	/** A restarted app has forgotten the session; ask for it again so the open view reconnects. */
 	async function reregisterTmuxSession(): Promise<boolean> {
 		const result = await api.request.getPtyUrl({ taskId });
@@ -584,11 +641,19 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
-	async function handleResumeSession() {
-		const accountId = resumeAccount;
+	// A canvas mounted before the relaunch returns connects to a session not yet
+	// registered, gets "Unknown session" and never retries; mount it after the URL.
+	function leaveRecoveryForRelaunch() {
 		setRestarting(true);
+		setError(null);
 		setRecoverable(null);
 		setHibernated(false);
+		if (!isNative) setPtyUrl(null);
+	}
+
+	async function handleResumeSession() {
+		const accountId = resumeAccount;
+		leaveRecoveryForRelaunch();
 		try {
 			const url = await api.request.resumeTask({ taskId, ...(accountId !== undefined ? { accountId } : {}) });
 			setResumeAccount(undefined);
@@ -598,9 +663,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		} catch (err) {
 			console.error("[TaskTerminal] Resume session failed:", err);
 			toast.error(err instanceof Error ? err.message : String(err));
-			// A refused account choice launched nothing, so the server still offers the same
-			// screen; any later failure is classified like a resume without one.
-			if (accountId !== undefined && await showRecoveryIfOffered()) return;
+			setStartAgainRefused(true);
+			// A refused resume launched nothing, so the server still offers the same screen:
+			// Start fresh stays an explicit choice next to the reason in the toast.
+			if (await showRecoveryIfOffered()) return;
 			await classifyAndSetError();
 		} finally {
 			setRestarting(false);
@@ -609,9 +675,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	/** The wake screen's plain shell: no agent, and the saved panes stay resumable. */
 	async function handleWakeShell() {
-		setRestarting(true);
-		setRecoverable(null);
-		setHibernated(false);
+		leaveRecoveryForRelaunch();
 		try {
 			const url = await api.request.wakeTaskShell({ taskId });
 			if (isNative) await fetchPaneState(taskId);
@@ -627,9 +691,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	async function handleStartFresh() {
-		setRestarting(true);
-		setRecoverable(null);
-		setHibernated(false);
+		leaveRecoveryForRelaunch();
 		try {
 			const url = await api.request.restartTask({ taskId });
 			if (isNative) await fetchPaneState(taskId);
@@ -770,16 +832,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		</>
 	);
 
-	// A closed task has no workspace left to recover, so the only thing this pane
-	// owes the user is the way out — same empty state the task view shows when no
-	// task is selected.
+	// A closed task has no workspace left to recover: this pane offers the way out,
+	// the same empty state the task view shows when no task is selected, plus a
+	// reopen that builds a new session instead of recovering the old one.
 	if (isClosed) {
+		const closedAs = reopenFrom ?? task?.status;
 		return (
 			<BackToKanbanEmptyState
 				testId="terminal-task-closed-screen"
-				message={task?.status === "cancelled" ? t("terminal.taskCancelledTitle") : t("terminal.taskCompletedTitle")}
+				message={closedAs === "cancelled" ? t("terminal.taskCancelledTitle") : t("terminal.taskCompletedTitle")}
 				hint={t("terminal.taskClosedHint")}
 				onBack={() => navigate({ screen: "project", projectId })}
+				action={{ label: t("task.reopenTask"), onClick: handleReopen, testId: "terminal-task-reopen", disabled: reopenFrom !== null }}
 			/>
 		);
 	}
@@ -787,7 +851,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	if (isShuttingDown) {
 		return (
 			<div className="h-full w-full flex flex-col overflow-hidden">
-				{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				{!hideInfoPanel && task && project && <TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
 				<div className="relative flex-1 min-h-0" data-testid="terminal-task-shutting-down">
 					<TaskShutdownOverlay />
 				</div>
@@ -801,7 +865,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	if (isPreparing && task && project) {
 		return (
 			<div className="h-full w-full flex flex-col overflow-hidden">
-				{!hideInfoPanel && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				{!hideInfoPanel && <TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
 				<div className="flex-1 min-h-0 overflow-hidden">
 					<TaskPreparingView
 						task={task}
@@ -819,20 +883,24 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	if (recoverable) {
 		// A hibernated task with no stored panes has no conversation to resume —
 		// only the plain-shell button is honest there.
+		const launchFailure = task?.launchFailure;
+		// The conversation was never created, so there is nothing to resume: only a fresh start helps.
+		const neverStarted = !hibernated && !!task && mainAgentNeverStarted(task);
 		const canResume = !hibernated || recoverable.panes.length > 0;
 		return (
 			<div className="flex items-center justify-center h-full">
 				<div
 					data-testid={hibernated ? "terminal-wake-screen" : "terminal-recovery-screen"}
-					className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4"
+					className={`bg-raised border border-edge rounded-lg p-6 w-full space-y-4 ${launchFailure ? "max-w-2xl" : "max-w-md"}`}
 				>
 					<div className="flex items-center gap-2 font-medium text-fg">
 						<span className="text-lg">{"\u{F0645}"}</span>
-						<span>{hibernated ? t("terminal.hibernatedTitle") : t("terminal.recoveryTitle")}</span>
+						<span>{hibernated ? t("terminal.hibernatedTitle") : neverStarted && launchFailure ? launchFailureTitle(t, launchFailure) : t("terminal.recoveryTitle")}</span>
 					</div>
 					<p className="text-fg-3 text-sm">
-						{hibernated ? t("terminal.hibernatedDesc") : t("terminal.recoveryDesc")}
+						{hibernated ? t("terminal.hibernatedDesc") : neverStarted ? t("terminal.launchFailedRecoveryDesc") : t("terminal.recoveryDesc")}
 					</p>
+					{launchFailure && <LaunchFailureBlock failure={launchFailure} showTitle={!neverStarted} />}
 					{canResume && (
 						<ResumeAccountPicker
 							panes={recoverable.panes}
@@ -840,6 +908,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 							value={resumeAccount !== undefined ? resumeAccount : savedResumeAccount(recoverable.panes, task?.accountId)}
 							onChange={setResumeAccount}
 							projectId={project?.id}
+							taskId={task?.id}
 						/>
 					)}
 					<div className="space-y-3 pt-2">
@@ -850,16 +919,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 									disabled={restarting}
 									className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 								>
-									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : t("terminal.resumeSession")}
+									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : neverStarted ? t("terminal.launchAgain") : t("terminal.resumeSession")}
 								</button>
 							)}
-							<button
-								onClick={hibernated ? handleWakeShell : handleStartFresh}
-								disabled={restarting}
-								className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
-							>
-								{hibernated ? t("terminal.wakeShell") : t("terminal.startFresh")}
-							</button>
+							{(!neverStarted || startAgainRefused) && (
+								<button
+									onClick={hibernated ? handleWakeShell : handleStartFresh}
+									disabled={restarting}
+									className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
+								>
+									{hibernated ? t("terminal.wakeShell") : t("terminal.startFresh")}
+								</button>
+							)}
 						</div>
 						<p className="text-fg-muted text-xs">{hibernated ? t("terminal.wakeShellDesc") : t("terminal.startFreshDesc")}</p>
 					</div>
@@ -889,9 +960,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	if (error) {
 		const isSessionEnded = error.kind === "session-ended";
+		const launchFailure = isSessionEnded ? task?.launchFailure : undefined;
+		const neverStarted = isSessionEnded && !!task && mainAgentNeverStarted(task);
 		return (
 			<div className="flex items-center justify-center h-full">
-				<div className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4">
+				<div className={`bg-raised border border-edge rounded-lg p-6 w-full space-y-4 ${launchFailure ? "max-w-2xl" : "max-w-md"}`}>
 					<div className={`flex items-center gap-2 font-medium ${isSessionEnded ? "text-fg" : "text-danger"}`}>
 						<span className="text-lg">{isSessionEnded ? "⏹" : "⚠"}</span>
 						<span>{isSessionEnded ? t("terminal.sessionEnded") : t("terminal.envError")}</span>
@@ -907,14 +980,15 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<p className="text-fg-3 text-sm">
 						{isSessionEnded ? t("terminal.sessionEndedDesc") : t("terminal.worktreeNotFound")}
 					</p>
+					{launchFailure && <LaunchFailureBlock failure={launchFailure} />}
 					<div className="flex gap-3 pt-2">
 						{isSessionEnded && (
 							<button
-								onClick={handleRestart}
+								onClick={neverStarted ? handleResumeSession : handleRestart}
 								disabled={restarting}
 								className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 							>
-								{restarting ? t("terminal.connecting") : t("terminal.resumeAgentSession")}
+								{restarting ? t("terminal.connecting") : neverStarted ? t("terminal.launchAgain") : t("terminal.resumeAgentSession")}
 							</button>
 						)}
 						<button
@@ -1135,7 +1209,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				<div className="relative h-full w-full flex flex-col overflow-hidden">
 					{!hideInfoPanel && task && project && (
 						<div className="contents" data-collapse-on-compose>
-							<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+							<TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 						</div>
 					)}
 					{activePaneUrl && focusPaneId && (
@@ -1183,7 +1257,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			<div className="relative h-full w-full flex flex-col overflow-hidden">
 				{!hideInfoPanel && task && project && (
 					<div className="contents" data-collapse-on-compose>
-						<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+						<TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 					</div>
 				)}
 				{focusPaneId && paneUrls.has(focusPaneId) && (
@@ -1318,7 +1392,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		<div className="relative h-full w-full flex flex-col overflow-hidden">
 			{!hideInfoPanel && task && project && (
 				<div className="contents" data-collapse-on-compose>
-					<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+					<TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 				</div>
 			)}
 			{ptyUrl && (

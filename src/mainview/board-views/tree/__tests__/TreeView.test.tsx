@@ -3,9 +3,8 @@ import { Context } from "cordis";
 import type { Epic, Project, Task } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
 import { BoardService, type BoardActions, type BoardAllActions, type BoardLineageNode, type BoardModel } from "../../board-service";
-import { BoardViewSlot } from "../../BoardViewChrome";
+import { SlotComponent } from "../../../plugins/SlotHost";
 import { BoardViewRegistry } from "../../registry";
-import "../../root";
 import { installTreeView, TREE_VIEW_ID } from "..";
 import { TreeOptions } from "../TreeOptions";
 
@@ -76,7 +75,7 @@ async function renderTree(setup: Setup = {}) {
 	const view = await vi.waitFor(() => root.boardViews.get(TREE_VIEW_ID) ?? Promise.reject(new Error("not registered")));
 	const ui$ = render(
 		<I18nProvider>
-			<BoardViewSlot ctx={view.ctx} component={view.def.component} />
+			<SlotComponent ctx={view.ctx} component={view.def.component} />
 		</I18nProvider>,
 	);
 	const rerender = () => act(() => {
@@ -84,7 +83,7 @@ async function renderTree(setup: Setup = {}) {
 	});
 	const renderOptions = () => render(
 		<I18nProvider>
-			<BoardViewSlot ctx={view.ctx} component={TreeOptions} />
+			<SlotComponent ctx={view.ctx} component={TreeOptions} />
 		</I18nProvider>,
 	);
 	return { ...ui$, view, model, actions: act$, layouts, rerender, renderOptions };

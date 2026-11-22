@@ -15,6 +15,7 @@ import type {
 	TaskStatus,
 } from "../../shared/types";
 import {
+	armedDraftFiresOn,
 	buildTaskDialogSubject,
 	DEFAULT_REVIEW_AGENT_ID,
 	DEFAULT_REVIEW_CONFIG_ID,
@@ -1532,6 +1533,12 @@ export async function executeLifecycleEffect(
 			return launchColumnAgentEffect(ctx, effect.column);
 		case "notifyStatusChange":
 			notifyWatchedTaskStatusChange(ctx.task, effect.from, effect.to, ctx.project.name);
+			if (armedDraftFiresOn(effect.to) && ctx.task.messageDraft?.sendOnStop) {
+				// Lazy: the scheduler reaches the rpc-handlers barrel, which leads back here.
+				void import("../scheduled-message-scheduler")
+					.then((m) => m.fireArmedMessageDraft(ctx.project, ctx.task.id))
+					.catch((err) => log.warn("Armed message draft could not be fired", { taskId: ctx.task.id.slice(0, 8), error: String(err) }));
+			}
 			return {};
 		case "raisePrAttention":
 			pushCliAttention({ taskId: ctx.task.id, projectId: ctx.task.projectId, reason: effect.reason });

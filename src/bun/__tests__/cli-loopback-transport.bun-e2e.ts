@@ -16,7 +16,7 @@
  * Windows carrier but the proof is platform-independent)
  */
 
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:net";
@@ -30,6 +30,7 @@ import {
 	type CliEndpointRecord,
 } from "../../shared/cli-endpoint";
 import type { CliRequest, CliResponse } from "../../shared/types";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -197,7 +198,7 @@ async function run(): Promise<void> {
 		for (const listener of listeners) {
 			try { listener.stop(); } catch { /* already stopped */ }
 		}
-		rmSync(socketsDir, { recursive: true, force: true });
+		removeTempTree(socketsDir);
 	}
 }
 

@@ -1,0 +1,1 @@
+The file explorer's crash notices are now accurate and keyboard-friendly: a crash of the built-in explorer no longer claims a replacement failed, dismissing a notice keeps the tree's scroll and selection, and the notice buttons show a focus ring.

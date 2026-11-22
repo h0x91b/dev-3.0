@@ -5,13 +5,14 @@
  * path. Run: `bun run test:tmux-guarded-send-e2e`.
  */
 
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TmuxClient } from "../client";
 import { PANE_ID_FORMAT, PANE_IN_MODE_FORMAT, PANE_PID_FORMAT } from "../formats";
 import { isTmuxError } from "../errors";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 const SOCKET = `dev3-live-guarded-${process.pid}`;
 const client = new TmuxClient({ socket: SOCKET });
@@ -111,7 +112,7 @@ async function tearDown(): Promise<void> {
 	}
 	// The pid-keyed socket FILE outlives the server unless we unlink it.
 	await client.killServer({ socket: SOCKET });
-	rmSync(root, { recursive: true, force: true });
+	removeTempTree(root);
 }
 
 /** The exact bytes arrive, quoting hazards and multibyte text included. */

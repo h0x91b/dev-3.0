@@ -71,7 +71,7 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.UserPromptSubmit).toEqual([{ hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-prompt`, timeout: 5 }] }]);
 	});
 
-	it("PreToolUse delegates to the subagent-aware status adapter", () => {
+	it("PreToolUse uses the owner-aware JSON adapter that owns the review guard", () => {
 		const hooks = buildClaudeHooks();
 		const cmd = hooks.PreToolUse[0].hooks[0].command;
 
@@ -117,16 +117,16 @@ describe("buildClaudeHooks", () => {
 		const hooks = buildClaudeHooks();
 		expect(hooks.Notification).toEqual([{
 			matcher: "permission_prompt|elicitation_dialog",
-			hooks: [{ type: "command", command: hooks.PermissionRequest[0].hooks[0].command }],
+			hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`, timeout: 5 }],
 		}]);
 	});
 
-	it("PermissionRequest reports approval ownership to the status adapter", () => {
+	it("PermissionRequest hook reports the prompt and its owner, falling back to the plain user-questions move", () => {
 		const hooks = buildClaudeHooks();
 		const cmd = hooks.PermissionRequest[0].hooks[0].command;
 
-		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("hook claude-pre-tool");
+		expect(cmd.startsWith(`${DEV3_CLI} hook claude-permission || `)).toBe(true);
+		expect(cmd).toContain("--status user-questions");
 	});
 
 	it.each(["review-by-user", "review-by-ai", "user-questions"] as const)("Stop uses one atomic adapter with stop target %s", stopTarget => {
@@ -216,16 +216,14 @@ describe("buildClaudeHooks", () => {
 	it("working hooks use adapters that tolerate an offline app", () => {
 		const hooks = buildClaudeHooks();
 
-		for (const event of ["PreToolUse", "PostToolUse"] as const) {
-			const cmd = hooks[event][0].hooks[0].command;
-			expect(cmd).toContain(event === "PreToolUse" ? "hook claude-pre-tool" : "hook claude-post-tool");
-		}
+		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || [ $? -eq 2 ]`);
 	});
 
 	it("PermissionRequest adapter also tolerates older offline CLIs", () => {
 		const hooks = buildClaudeHooks();
 		const cmd = hooks.PermissionRequest[0].hooks[0].command;
-		expect(cmd).toContain("hook claude-pre-tool");
+		expect(cmd).toContain("hook claude-permission");
 		expect(cmd).toContain("|| [ $? -eq 2 ]");
 	});
 });
@@ -914,7 +912,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || [ $? -eq 2 ]`);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
-			`${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`,
+			`${DEV3_CLI} hook claude-permission || ${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
 		);
 		expect(hooks.Stop[0].hooks[0].command).toBe(
 			`${DEV3_CLI} hook claude-turn-ended --stop-target review-by-ai || [ $? -eq 2 ]`,
@@ -950,9 +948,7 @@ describe("Windows hook output", () => {
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${cli} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${cli} hook claude-pre-tool --tolerate-app-offline`);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${cli} hook claude-post-tool --tolerate-app-offline`);
-		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
-			`${cli} hook claude-pre-tool --tolerate-app-offline`,
-		);
+		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(`${cli} hook claude-permission --tolerate-app-offline`);
 		expect(hooks.Stop[0].hooks[0].command).toBe(
 			`${cli} hook claude-turn-ended --stop-target review-by-ai --tolerate-app-offline`,
 		);

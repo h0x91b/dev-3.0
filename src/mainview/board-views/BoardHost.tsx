@@ -8,7 +8,6 @@ import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
-import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "./plugins";
 import LabelFilterBar from "../components/LabelFilterBar";
 import BoardVisibilitySwitch from "../components/BoardVisibilitySwitch";
 import HiddenByVisibilityNotice from "../components/HiddenByVisibilityNotice";
@@ -21,6 +20,8 @@ import TaskDetailModal from "../components/TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useAgents } from "../hooks/useAgents";
+import { useLatestCallback } from "../hooks/useLatestCallback";
+import { sameJson, useStableMap, useVariantGroups } from "../hooks/useStableMap";
 import { boardFilterKey, rememberFilter } from "../hooks/useRememberedFilter";
 import { childrenFilterToken, lineageChildren, lineageNodeOf, lineageParent, parentSeqLabel, type CardLineage } from "../utils/taskLineage";
 import { requestTaskLaunch } from "../utils/moveTaskToStatus";
@@ -28,12 +29,13 @@ import { useStreamerMode } from "../streamer-mode";
 import { HIDDEN_CONTROLS_CHANGED_EVENT, isSimplifyViewApplied } from "../hidden-controls";
 import { BoardService, type BoardLineageNode, type BoardModel, type BoardModelSource, type BoardPreferences } from "./board-service";
 import { BoardCardBindingsContext, BoardTaskCard, type BoardCardBindings } from "./BoardTaskCard";
-import { getBoardRoot } from "./root";
+import { getAppRoot } from "../plugins/root";
+import { SlotComponent, SlotHost } from "../plugins/SlotHost";
 import { useRegisteredBoardViews } from "./react";
 import { useBoardFilter } from "./useBoardFilter";
 import { useBoardViewState } from "./useBoardViewState";
 import { useBoardActions } from "./useBoardActions";
-import { BoardViewErrorBoundary, BoardViewOptionsButton, BoardViewSlot, BoardViewSwitcher } from "./BoardViewChrome";
+import { BoardViewOptionsButton, BoardViewSwitcher } from "./BoardViewChrome";
 import { KanbanView } from "./kanban";
 import { TREE_VIEW_ID } from "./tree/TreeView";
 import { READABLE_GUTTER } from "./readable-width";
@@ -237,18 +239,9 @@ function BoardHost(props: BoardHostProps) {
 		void requestTaskLaunch({ task, project: projectOf(task), targetStatus, dispatch, t, mode });
 	}, [projectOf, dispatch, t]);
 
-	const siblingMap = useMemo(() => {
-		const map = new Map<string, Task[]>();
-		for (const task of tasks) {
-			if (!task.groupId) continue;
-			const group = map.get(task.groupId);
-			if (group) group.push(task);
-			else map.set(task.groupId, [task]);
-		}
-		return map;
-	}, [tasks]);
+	const siblingMap = useVariantGroups(tasks);
 
-	const dependencyMap = useMemo(() => {
+	const freshDependencyMap = useMemo(() => {
 		const map = new Map<string, DependencySummary>();
 		const index = indexDependencies(tasks);
 		for (const task of tasks) {
@@ -256,8 +249,16 @@ function BoardHost(props: BoardHostProps) {
 		}
 		return map;
 	}, [tasks]);
+	const dependencyMap = useStableMap(freshDependencyMap, sameJson);
 
-	const { lineage, knownProjects, applyChildrenFilter } = filter;
+	const { lineage, knownProjects } = filter;
+	// Cards are memoized: hand each one the same lineage object (and closures) until its data changes.
+	const applyChildrenFilter = useLatestCallback(filter.applyChildrenFilter);
+	const lineageCache = useRef(new Map<string, { key: string; value: CardLineage }>());
+	useEffect(() => {
+		const live = new Set(tasks.map((task) => task.id));
+		for (const id of lineageCache.current.keys()) if (!live.has(id)) lineageCache.current.delete(id);
+	}, [tasks]);
 	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
 		const parent = lineageParent(task, lineage);
 		const childCount = lineageChildren(task, lineage).length;
@@ -265,16 +266,30 @@ function BoardHost(props: BoardHostProps) {
 		const parentNode = parent && parent !== "deleted" ? parent : null;
 		const parentProject = parentNode ? knownProjects.find((p) => p.id === parentNode.projectId) : undefined;
 		const shareable = parentNode && !lineageTitleHidden(parentNode.projectId);
-		return {
-			parentLabel: parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null,
-			parentTitle: shareable && parentNode
-				? (parentNode.projectId === task.projectId ? parentNode.title : `${parentProject?.name ?? ""} · ${parentNode.title}`)
-				: null,
+		const parentLabel = parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null;
+		const parentTitle = shareable && parentNode
+			? (parentNode.projectId === task.projectId ? parentNode.title : `${parentProject?.name ?? ""} · ${parentNode.title}`)
+			: null;
+		const parentRef = parentNode ? { projectId: parentNode.projectId, seq: parentNode.seq } : null;
+		const selfRef = { projectId: task.projectId, seq: task.seq };
+		const key = JSON.stringify([parentLabel, parentTitle, childCount, parentRef, selfRef]);
+		const cached = lineageCache.current.get(task.id);
+		if (cached?.key === key) return cached.value;
+		const value: CardLineage = {
+			parentLabel,
+			parentTitle,
 			childCount,
-			onFilterByParent: parentNode ? () => applyChildrenFilter(parentNode) : null,
-			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(task) : null,
+			onFilterByParent: parentRef ? () => applyChildrenFilter(parentRef) : null,
+			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(selfRef) : null,
 		};
+		lineageCache.current.set(task.id, { key, value });
+		return value;
 	}, [lineage, knownProjects, applyChildrenFilter, lineageTitleHidden]);
+
+	// Stable identities: every card receives these, and a new closure would re-render all of them.
+	const onLaunchVariants = useLatestCallback((task: Task, targetStatus: TaskStatus) => launch(task, targetStatus));
+	const onAddAttempts = useLatestCallback((task: Task) => launch(task, task.status, "addAttempts"));
+	const onEditDraft = useLatestCallback((task: Task) => setEditDraftTaskId(task.id));
 
 	const cardBindings = useMemo<BoardCardBindings>(() => ({
 		projectOf,
@@ -293,11 +308,11 @@ function BoardHost(props: BoardHostProps) {
 		taskPrMap: filter.taskPrMap,
 		lineageFor,
 		onFilterByEpic: filter.applyEpicFilter,
-		onLaunchVariants: (task, targetStatus) => launch(task, targetStatus),
-		onAddAttempts: (task) => launch(task, task.status, "addAttempts"),
-		onEditDraft: (task) => setEditDraftTaskId(task.id),
+		onLaunchVariants,
+		onAddAttempts,
+		onEditDraft,
 		onOpenUnresolvedComments: props.onOpenUnresolvedComments,
-	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, dependencyMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
+	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, dependencyMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, onLaunchVariants, onAddAttempts, onEditDraft, props.onOpenUnresolvedComments]);
 
 	// Written during render so a view rendering in this same pass already reads it.
 	const sourceRef = useRef<BoardModelSource | null>(null);
@@ -306,7 +321,7 @@ function BoardHost(props: BoardHostProps) {
 
 	// `ctx.board` exists while the host is mounted. A layout effect, so the
 	// provision lands before the first paint and the view never renders without it.
-	const root = getBoardRoot();
+	const root = getAppRoot();
 	const [provided, setProvided] = useState(false);
 	useLayoutEffect(() => {
 		const dispose = root.provide("board", new BoardService(sourceRef.current!, BoardTaskCard));
@@ -327,9 +342,7 @@ function BoardHost(props: BoardHostProps) {
 	);
 	const active = offered.find((view) => view.def.id === viewState.viewType)
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
-	const kanbanFallback = <BoardViewSlot ctx={root} component={KanbanView} />;
-	const plugins = useSyncExternalStore(subscribeBoardPlugins, getBoardPluginsSnapshot);
-	const failedExtension = active?.def.id === viewState.viewType ? null : failedExtensionForView(plugins, viewState.viewType);
+	const kanbanFallback = <SlotComponent ctx={root} component={KanbanView} />;
 
 	const { setViewType } = viewState;
 	const pickView = useCallback((viewId: string) => {
@@ -400,31 +413,17 @@ function BoardHost(props: BoardHostProps) {
 					onShowAll={() => filter.setVisibility("all")}
 				/>
 			)}
-			{provided && failedExtension && (
-				<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs flex items-center gap-3">
-					<span>{t("boardView.extensionFailed", { name: failedExtension })}</span>
-					<button type="button" onClick={manageViews} className="ml-auto shrink-0 underline underline-offset-2 hover:text-fg">
-						{t("boardView.manage")}
-					</button>
-				</div>
-			)}
-			{provided && filter.visibilityReady && (
-				<BoardViewErrorBoundary
-					viewId={active?.def.id ?? KANBAN_VIEW_ID}
-					fallback={() => (
-						<>
-							<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs">
-								{t("boardView.crashed")}
-							</div>
-							{kanbanFallback}
-						</>
-					)}
-				>
-					{/* Until the built-in plugins have registered (a cold start's first
-					    frames), Kanban renders as the same component type, so the hand-over
-					    keeps its state and nothing flashes. */}
-					{active ? <BoardViewSlot ctx={active.ctx} component={active.def.component} /> : kanbanFallback}
-				</BoardViewErrorBoundary>
+			{provided && (
+				<SlotHost
+					slot="boardViews"
+					requestedId={viewState.viewType}
+					active={active}
+					fallback={kanbanFallback}
+					ready={filter.visibilityReady}
+					crashedMessage={t("boardView.crashed")}
+					failedMessage={(name) => t("boardView.extensionFailed", { name })}
+					manageAction={{ label: t("boardView.manage"), onClick: manageViews }}
+				/>
 			)}
 			{overlay}
 			{editDraftTask && (

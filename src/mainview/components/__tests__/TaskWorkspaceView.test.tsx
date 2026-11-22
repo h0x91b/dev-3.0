@@ -33,7 +33,7 @@ vi.mock("../../analytics", () => ({
 const mountLog: string[] = [];
 const unmountLog: string[] = [];
 
-vi.mock("../TaskInfoPanel", () => ({
+vi.mock("../TaskHeader", () => ({
 	default: ({ onOpenInlineDiff }: { onOpenInlineDiff?: (request: { mode: "branch"; compareLabel: string; focusFile?: string }) => void }) => (
 		<button onClick={() => onOpenInlineDiff?.({ mode: "branch", compareLabel: "origin/main" })}>
 			Open Inline Diff
@@ -119,7 +119,7 @@ describe("TaskWorkspaceView", () => {
 	// project's tasks were never loaded into currentProjectTasks (quick-shell
 	// scratch op, toast / notification click into another project). Before the
 	// fix the view never fetched them, so `task` stayed undefined and the header
-	// chrome (TaskInfoPanel) silently disappeared. It must load its project's
+	// chrome (TaskHeader) silently disappeared. It must load its project's
 	// tasks on mount and hydrate the store so the chrome renders.
 	it("loads its project's tasks on mount and hydrates the store", async () => {
 		const dispatch = vi.fn();

@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "../toast";
-import type { ExternalApp } from "../../shared/types";
 import type { TranslationKey } from "../i18n";
-import { useAvailableApps } from "../hooks/useAvailableApps";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useFocusTrap } from "../utils/useFocusTrap";
-import { OPEN_IN_APP_ICONS, OPEN_IN_APP_ICON_FALLBACK, brandColorForApp, isCustomOpenInApp, openInAppCategory } from "./openInAppIcons";
+import { OPEN_IN_ICON_FALLBACK, openInRow, useOpenInRows, type OpenInRow } from "../open-in-targets/rows";
 import { useT } from "../i18n";
-import { api } from "../rpc";
 
 interface OpenInPickerModalProps {
 	/** Absolute project or worktree path to open. */
@@ -19,7 +16,7 @@ interface OpenInPickerModalProps {
 	onClose: () => void;
 }
 
-const CATEGORY_KEY: Record<ReturnType<typeof openInAppCategory>, TranslationKey> = {
+const CATEGORY_KEY: Record<OpenInRow["category"], TranslationKey> = {
 	files: "openIn.cat.files",
 	editor: "openIn.cat.editor",
 	terminal: "openIn.cat.terminal",
@@ -35,7 +32,7 @@ const CATEGORY_KEY: Record<ReturnType<typeof openInAppCategory>, TranslationKey>
  */
 export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPickerModalProps) {
 	const t = useT();
-	const apps = useAvailableApps();
+	const apps = useOpenInRows();
 	const dialogRef = useFocusTrap<HTMLDivElement>();
 	const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const [query, setQuery] = useState("");
@@ -52,10 +49,10 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 		rowRefs.current[active]?.scrollIntoView({ block: "nearest" });
 	}, [active]);
 
-	async function handleOpen(app: ExternalApp) {
+	async function handleOpen(app: OpenInRow) {
 		onClose();
 		try {
-			await api.request.openInApp({ appName: app.macAppName, path });
+			await openInRow(app, path);
 		} catch (err) {
 			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId });
 		}
@@ -145,11 +142,10 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 				) : (
 					<div className="p-2 max-h-[19rem] overflow-auto" role="listbox" aria-label={t("openIn.menuTitle")}>
 						{filtered.map((app, index) => {
-							const glyph = OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK;
-							const custom = isCustomOpenInApp(app.id);
+							const custom = app.custom;
 							return (
 								<button
-									key={app.id}
+									key={app.appId}
 									ref={(el) => {
 										rowRefs.current[index] = el;
 									}}
@@ -163,15 +159,15 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 								>
 									<span
 										className="flex items-center justify-center w-7 h-7 rounded-[27%] text-white shadow-inner flex-shrink-0"
-										style={{ background: brandColorForApp(app.id) }}
+										style={{ background: app.brandColor }}
 									>
 										<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-											{isCustomOpenInApp(app.id) && !OPEN_IN_APP_ICONS[app.id] ? app.name.slice(0, 1).toUpperCase() : glyph}
+											{custom && !app.icon ? app.name.slice(0, 1).toUpperCase() : app.icon ?? OPEN_IN_ICON_FALLBACK}
 										</span>
 									</span>
 									<span className="flex-1 min-w-0">
 										<span className="block text-sm-plus font-semibold text-fg truncate">{app.name}</span>
-										<span className="block text-micro text-fg-muted">{t(CATEGORY_KEY[openInAppCategory(app.id)])}</span>
+										<span className="block text-micro text-fg-muted">{t(CATEGORY_KEY[app.category])}</span>
 									</span>
 									<span className="flex items-center gap-1.5 flex-shrink-0">
 										{custom && (

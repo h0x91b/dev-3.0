@@ -18,7 +18,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import HelpSpot from "./HelpSpot";
 
-interface ProductivityStatsViewProps {
+export interface ProductivityStatsViewProps {
 	navigate: (route: Route) => void;
 	goBack: () => void;
 	canGoBack: boolean;
@@ -130,15 +130,24 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 				? rows
 				: rows.filter((r) => r.startMs >= data.periodFrom && r.startMs < data.periodTo);
 		let tokens = 0;
-		let cost = 0;
+		let apiCost = 0;
+		let subscriptionCost = 0;
+		let unclassifiedCost = 0;
 		let fullyPriced = true;
 		for (const r of inPeriod) {
 			tokens += r.inputTokens + r.outputTokens + r.cacheCreationInputTokens + r.cacheReadInputTokens;
-			cost += r.costUsd;
+			apiCost += r.apiCostUsd;
+			subscriptionCost += r.subscriptionCostUsd;
+			unclassifiedCost += r.unclassifiedCostUsd;
 			if (!r.fullyPriced) fullyPriced = false;
 		}
-		return { tokens, cost, fullyPriced, hasData: rows.length > 0 };
+		return { tokens, apiCost, subscriptionCost, unclassifiedCost, fullyPriced, hasData: rows.length > 0 };
 	}, [usage, range, data.periodFrom, data.periodTo]);
+
+	const costHint = (what: string) =>
+		[what, t("stats.counters.costHintRates"), usagePeriod.fullyPriced ? "" : t("stats.counters.costHintPartial")]
+			.filter(Boolean)
+			.join(" ");
 
 	const rangeLabels: Record<StatsRange, string> = {
 		day: t("stats.range.day"),
@@ -483,15 +492,26 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 										format={compact}
 									/>
 									<Counter
-										value={usagePeriod.cost}
-										label={t("stats.counters.apiCost")}
-										hint={
-											usagePeriod.fullyPriced
-												? t("stats.counters.apiCostHint")
-												: `${t("stats.counters.apiCostHint")} ${t("stats.counters.apiCostHintPartial")}`
-										}
+										value={usagePeriod.apiCost}
+										label={t("stats.counters.apiSpend")}
+										hint={costHint(t("stats.counters.apiSpendHint"))}
 										format={fmtUsd}
 									/>
+									<Counter
+										value={usagePeriod.subscriptionCost}
+										label={t("stats.counters.subscriptionValue")}
+										hint={costHint(t("stats.counters.subscriptionValueHint"))}
+										format={fmtUsd}
+									/>
+									{/* Unknown billing is never folded into either figure; it shows only when there is some. */}
+									{usagePeriod.unclassifiedCost >= 0.005 && (
+										<Counter
+											value={usagePeriod.unclassifiedCost}
+											label={t("stats.counters.unclassifiedCost")}
+											hint={costHint(t("stats.counters.unclassifiedCostHint"))}
+											format={fmtUsd}
+										/>
+									)}
 								</>
 							)}
 						</div>

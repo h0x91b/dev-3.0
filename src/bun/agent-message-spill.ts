@@ -21,6 +21,7 @@ import {
 	wrapHeldBatchPointer,
 } from "../shared/agent-message-envelope";
 import { utf8Length } from "../shared/pane-input";
+import { qualifyRefsFor } from "../shared/task-refs";
 import * as data from "./data";
 import { taskDir } from "./git";
 import { createLogger } from "./logger";
@@ -90,8 +91,10 @@ export async function spillOversizedAgentMessage(
 ): Promise<SpilledAgentMessage> {
 	if (typedBytes(task, text, envelope) <= AGENT_MESSAGE_SPILL_THRESHOLD_BYTES) return { text, spilledPath: null };
 
-	const bytes = utf8Length(text);
-	const path = await writeTaskMessageFile(task, "message", text);
+	// The receiver reads the file on its own board, so the sender's refs carry their project.
+	const body = qualifyRefsFor(text, envelope?.source?.projectId, task.projectId);
+	const bytes = utf8Length(body);
+	const path = await writeTaskMessageFile(task, "message", body);
 	log.info("Agent message spilled to file", { taskId: task.id.slice(0, 8), bytes, path });
 	return { text: spillPointerText(path, bytes), spilledPath: path };
 }

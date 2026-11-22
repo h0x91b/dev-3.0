@@ -99,10 +99,17 @@ export function GaugeDemo({ navigate }: GaugeDemoProps) {
 	const [pg, setPg] = useState<PlaygroundState>(DEFAULT_PLAYGROUND);
 	const [gaugeTheme, setGaugeTheme] = useState<GaugeTheme>("auto");
 	const originalThemeRef = useRef<string | null>(null);
+	const originalPaletteRef = useRef<string | undefined>(undefined);
+
+	const restorePalette = () => {
+		if (originalPaletteRef.current) document.documentElement.dataset.palette = originalPaletteRef.current;
+		else delete document.documentElement.dataset.palette;
+	};
 
 	// On mount, save original app theme. On unmount, restore it.
 	useEffect(() => {
 		originalThemeRef.current = document.documentElement.dataset.theme || null;
+		originalPaletteRef.current = document.documentElement.dataset.palette;
 		return () => {
 			// Restore original theme when leaving the page
 			if (originalThemeRef.current) {
@@ -110,6 +117,7 @@ export function GaugeDemo({ navigate }: GaugeDemoProps) {
 			} else {
 				delete document.documentElement.dataset.theme;
 			}
+			restorePalette();
 		};
 	}, []);
 
@@ -120,8 +128,10 @@ export function GaugeDemo({ navigate }: GaugeDemoProps) {
 			if (originalThemeRef.current) {
 				document.documentElement.dataset.theme = originalThemeRef.current;
 			}
+			restorePalette();
 		} else {
 			document.documentElement.dataset.theme = gaugeTheme;
+			delete document.documentElement.dataset.palette;
 		}
 	}, [gaugeTheme]);
 

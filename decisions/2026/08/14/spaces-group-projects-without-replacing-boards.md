@@ -1,5 +1,7 @@
 # Spaces group projects without replacing project boards
 
+> Superseded in part on 2026-11-22 by `decisions/2026/11/22/digits-follow-dashboard-order.md`: with spaces, `Cmd+1..9` now index the dashboard's grouped top-to-bottom order, not the flat board order.
+
 ## Context
 
 [Issue #1295](https://github.com/h0x91b/dev-3.0/issues/1295) (proposed by @arditti) asks for

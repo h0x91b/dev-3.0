@@ -88,6 +88,16 @@ describe("handleExtensionHook (omp)", () => {
 		expect(mockSend.mock.calls[1]![2]).not.toHaveProperty("prompt");
 	});
 
+	it("passes the end-of-prompt mark on a PostToolUse only", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleExtensionHook("omp", JSON.stringify({ event: "PostToolUse", sessionId: "s", promptEnd: true }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "Stop", sessionId: "s", promptEnd: true }), SOCKET, CONTEXT);
+
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "PostToolUse", promptEnd: true });
+		expect(mockSend.mock.calls[1]![2]).not.toHaveProperty("promptEnd");
+	});
+
 	it("is a successful no-op outside a dev3 task and when the app is offline", async () => {
 		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), SOCKET, null);
 		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), null, CONTEXT);

@@ -1,5 +1,6 @@
-import { digitBadgeById, digitTargets, isDigitTargetOnScreen, mixedEntryId, resolveMixedOrder, type MixedEntry } from "../digitOrder";
+import { dashboardProjectOrder, digitBadgeById, digitCandidates, digitPinPool, digitTargets, pinnedSlots, resolveDigitPins, type DigitSlot, isDigitTargetOnScreen, mixedEntryId, resolveMixedOrder, type MixedEntry } from "../digitOrder";
 import type { Project, Space, SpacesFile } from "../../../shared/types";
+import { groupProjectsForDashboard } from "../spaceGroups";
 
 const proj = (id: string, over?: Partial<Project>): Project => ({
 	id,
@@ -29,7 +30,7 @@ const fileOf = (spaces: Space[], mixedOrder?: string[]): SpacesFile => ({
 	...(mixedOrder ? { mixedOrder } : {}),
 });
 
-const ids = (entries: ReturnType<typeof resolveMixedOrder>) => entries.map(mixedEntryId);
+const ids = (entries: DigitSlot[]) => entries.map((entry) => (entry ? mixedEntryId(entry) : null));
 
 // The real board: one space "hands.ru" holding five of the nine projects.
 const names = ["chisim", "polymarket", "bus", "pollex", "Nerd-Dictum", "voxscript", "ds_api", "dev-3.0", "aux"];
@@ -133,19 +134,101 @@ describe("resolveMixedOrder", () => {
 });
 
 describe("digitTargets", () => {
-	it("off: ordinary projects in board order, Operations and deleted ones excluded, capped at nine", () => {
+	it("off, no spaces: ordinary projects in board order, Operations and deleted ones excluded, capped at nine", () => {
 		const ops = proj("ops", { kind: "virtual", builtin: true });
 		const projects = [ops, proj("x", { deleted: true }), ...board, proj("extra")];
-		const targets = digitTargets(projects, fileOf([hands]), false);
+		const targets = digitTargets(projects, fileOf([]), false);
 		expect(targets).toHaveLength(9);
-		expect(targets.every((t) => t.kind === "project")).toBe(true);
+		expect(targets.every((t) => t?.kind === "project")).toBe(true);
 		expect(ids(targets)).toEqual(names);
+	});
+
+	it("off, with spaces: the dashboard's top-to-bottom order — space members first, then Home", () => {
+		expect(ids(digitTargets(board, fileOf([hands]), false))).toEqual([
+			"bus", "pollex", "voxscript", "ds_api", "aux", "chisim", "polymarket", "Nerd-Dictum", "dev-3.0",
+		]);
+	});
+
+	it("off, with spaces: follows the rail order and each space's own member order", () => {
+		const work = sp("work", ["gamma", "alpha"]);
+		const media = sp("media", ["delta"]);
+		const projects = ["alpha", "video-editor", "base44-debug", "gamma", "delta"].map((n) => proj(n));
+		const file = { ...fileOf([work, media]), order: ["media", "work"] };
+		expect(ids(digitTargets(projects, file, false))).toEqual(["delta", "gamma", "alpha", "video-editor", "base44-debug"]);
+	});
+
+	it("off: matches the groups the dashboard renders, a project in two spaces counted once", () => {
+		const a = sp("a", ["pollex", "bus"]);
+		const b = sp("b", ["bus", "chisim"]);
+		const file = fileOf([a, b]);
+		const rendered = (groupProjectsForDashboard(board, file) ?? []).flatMap((g) => g.projects.map((p) => p.id));
+		const firstSeen = rendered.filter((id, i) => rendered.indexOf(id) === i);
+		expect(dashboardProjectOrder(board, file).map((p) => p.id)).toEqual(firstSeen);
+		expect(firstSeen.slice(0, 3)).toEqual(["pollex", "bus", "chisim"]);
+	});
+
+	it("off: a deleted space falls back out of the order", () => {
+		const gone = sp("gone", ["dev-3.0"], { deleted: true });
+		expect(ids(digitTargets(board, fileOf([gone]), false))).toEqual(names);
 	});
 
 	it("on: the first nine mixed entries", () => {
 		const many = Array.from({ length: 12 }, (_, i) => proj(`p${i}`));
 		expect(ids(digitTargets(many, fileOf([]), true))).toEqual(many.slice(0, 9).map((p) => p.id));
 		expect(ids(digitTargets(board, fileOf([hands]), true))).toEqual(["chisim", "polymarket", "hands.ru", "Nerd-Dictum", "dev-3.0"]);
+	});
+});
+
+describe("digitCandidates", () => {
+	it("is the uncapped list digitTargets takes its nine from", () => {
+		const many = Array.from({ length: 12 }, (_, i) => proj(`p${i}`));
+		expect(ids(digitCandidates(many, fileOf([]), false))).toEqual(many.map((p) => p.id));
+		expect(ids(digitCandidates(many, fileOf([]), true))).toHaveLength(12);
+	});
+});
+
+describe("digit pins", () => {
+	const pinned = (slots: (string | null)[], extra: Space[] = [hands]): SpacesFile => ({ ...fileOf(extra), digitSlots: slots });
+
+	it("a pinned slot opens its pin and the others fill from the default order, skipping it", () => {
+		// Off with a space: the default is the dashboard's grouped order, the space's members first.
+		expect(ids(digitTargets(board, pinned([null, "aux"]), false))).toEqual(["bus", "aux", "pollex", "voxscript", "ds_api", "chisim", "polymarket", "Nerd-Dictum", "dev-3.0"]);
+	});
+
+	it("a project past the ninth can be pinned, pushing the last default entry off", () => {
+		const many = Array.from({ length: 11 }, (_, i) => proj(`p${i}`));
+		expect(ids(digitTargets(many, pinned(["p10"], []), false))).toEqual(["p10", "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7"]);
+	});
+
+	it("pins work in either mode: a space in project mode, a member project in spaces mode", () => {
+		expect(ids(digitTargets(board, pinned(["hands.ru"]), false)).slice(0, 2)).toEqual(["hands.ru", "bus"]);
+		expect(ids(digitTargets(board, pinned([null, null, null, null, null, "bus"]), true))).toEqual(["chisim", "polymarket", "hands.ru", "Nerd-Dictum", "dev-3.0", "bus"]);
+	});
+
+	it("keeps a pinned slot's position past the default list, leaving the gap empty", () => {
+		const two = [proj("a"), proj("b"), proj("c")];
+		expect(ids(digitTargets(two, pinned([null, null, null, null, "c"], []), false))).toEqual(["a", "b", null, null, "c"]);
+	});
+
+	it("a pin that no longer resolves (deleted project, Operations, unknown id) falls back to the default", () => {
+		const projects = [proj("ops", { kind: "virtual", builtin: true }), proj("gone", { deleted: true }), proj("a"), proj("b")];
+		expect(ids(digitTargets(projects, pinned(["gone", "ops", "zzz"], []), false))).toEqual(["a", "b"]);
+		expect(resolveDigitPins(projects, pinned(["gone", "a"], []))).toEqual([null, { kind: "project", project: projects[2] }, null, null, null, null, null, null, null]);
+	});
+
+	it("the pool lists spaces with a live member first, then every ordinary project", () => {
+		const empty = sp("empty", ["missing"]);
+		expect(ids(digitPinPool(board, fileOf([hands, empty])))).toEqual(["hands.ru", ...names]);
+	});
+});
+
+describe("pinnedSlots", () => {
+	it("pins into nine slots and moves an id off any other slot it held", () => {
+		expect(pinnedSlots(["a", "b"], 3, "a")).toEqual([null, "b", null, "a", null, null, null, null, null]);
+	});
+
+	it("null clears the slot", () => {
+		expect(pinnedSlots(["a", "b"], 1, null)).toEqual(["a", null, null, null, null, null, null, null, null]);
 	});
 });
 

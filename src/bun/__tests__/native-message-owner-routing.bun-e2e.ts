@@ -44,10 +44,11 @@
  * Both halves own listeners and timers, so each ends in an explicit process.exit.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 const ENTRY = fileURLToPath(import.meta.url);
 const IS_OWNER = process.argv.includes("--role=owner");
@@ -561,7 +562,7 @@ async function runSender(): Promise<void> {
 		// and tmux never unlinks one. The name is pid-keyed, so nothing else owns it.
 		await tmux.killServer({ socket: sentinelSocket });
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}

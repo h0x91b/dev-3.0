@@ -1,4 +1,5 @@
 import codexQuestionHookTrace from "./fixtures/codex-0.154-question-hooks.json";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFIX, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type TaskMovement, type SharedArtifact, type SharedImage } from "../../shared/types";
 
@@ -13,7 +14,7 @@ vi.mock("../task-workspace-guard", async (importOriginal) => ({
 // Pane placement is tested here; the Codex store guard has its own fixture suites
 // and must never scan this machine's real stores from a suite without a temp HOME.
 vi.mock("../codex-resume-home", () => ({ isInteractiveCodexConversation: vi.fn(async () => true) }));
-vi.mock("../codex-task-selection", () => ({ configuredCodexHomes: vi.fn(async () => []), chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+vi.mock("../codex-task-selection", () => ({ configuredCodexHomes: vi.fn(async () => []), chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 
 vi.mock("../data", () => ({
 	loadProjects: vi.fn(),
@@ -891,6 +892,68 @@ describe("task.agentHook", () => {
 			expect(storedTask.status).toBe(initialStatus === "review-by-ai" ? "review-by-user" : "review-by-ai");
 		},
 	);
+
+	it("gates an omp pane from its approval until the extension marks the approval's end", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+		const hook = (event: string, extra: Record<string, unknown> = {}) => handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, harness: "omp", paneId: "%7", event, ...extra,
+		}));
+		try {
+			await hook("PermissionRequest");
+			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(true);
+			await hook("PostToolUse");
+			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(true);
+			await hook("PostToolUse", { promptEnd: true });
+			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(false);
+		} finally {
+			agentPromptLedger.reset();
+		}
+	});
+
+	it("lets an agy pane's messages through when its approval ends, though another pane still waits", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+		const hook = (paneId: string, event: string) => handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, harness: "agy", paneId, event,
+		}));
+		try {
+			await hook("%7", "PermissionRequest");
+			await hook("%8", "PermissionRequest");
+			await hook("%7", "PostToolUse");
+			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(false);
+			expect(agentPromptLedger.isPromptOpen(task.id, "%8")).toBe(true);
+		} finally {
+			agentPromptLedger.reset();
+		}
+	});
+
+	it("answers a session-less Codex async question whether or not its hooks name the pane", async () => {
+		const project = makeProject();
+		let storedTask = makeTask({ status: "in-progress" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockImplementation(async () => [storedTask]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator: any) => {
+			const { updates, result } = await mutator(storedTask);
+			storedTask = { ...storedTask, ...updates };
+			return { task: storedTask, result };
+		});
+		const hook = async (params: Record<string, unknown>) => {
+			const response = await handleRequest(makeRequest("task.agentHook", { taskId: storedTask.id, projectId: project.id, ...params }));
+			expect(response.ok).toBe(true);
+			storedTask = response.data as Task;
+		};
+		try {
+			await hook({ event: "PostToolUse", toolName: "request_user_input_async", toolUseId: "q1", paneId: "%3" });
+			expect(storedTask.status).toBe("user-questions");
+			await hook({ event: "UserPromptSubmit" });
+			expect(storedTask.status).toBe("in-progress");
+		} finally {
+			agentPromptLedger.reset();
+		}
+	});
 
 	it("parks a Codex Stop that waits on an approval reply in user-questions and names the reply", async () => {
 		const project = makeProject();

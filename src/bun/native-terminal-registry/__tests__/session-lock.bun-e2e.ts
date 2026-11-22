@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { spawn } from "../../spawn";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 const DEADLINE_MS = 10_000;
 
@@ -156,7 +157,7 @@ async function main(): Promise<void> {
 		check(readdirSync(join(root, "locks")).length === 0, "canonical, candidate, and claim artifacts were all retired");
 	} finally {
 		await Promise.all([stop(b), stop(c), stop(d)]);
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 }
 

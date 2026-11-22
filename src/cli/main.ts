@@ -43,7 +43,9 @@ import { handleShowArtifact } from "./commands/show-artifact";
 import { handleLive } from "./commands/live";
 import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
+import { handleAgyStatusLine } from "./commands/agy-statusline";
 import { handleStatusLine } from "./commands/statusline";
+import { handleAgyHook } from "./commands/agy-hook";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleCursorUsage } from "./commands/cursor-usage";
@@ -51,6 +53,8 @@ import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudePreTool } from "./commands/claude-pre-tool";
 import { handleClaudePostTool } from "./commands/claude-post-tool";
+import { handleClaudePermission } from "./commands/claude-permission";
+import { handleClaudePostToolFailed } from "./commands/claude-post-tool-failed";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeClaim } from "./commands/claude-claim";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
@@ -178,6 +182,8 @@ Commands:
                                          Register a local git repo as a project, optionally in spaces (exit 33 if already registered)
   dev3 projects clone <git-url> [--dir <parent>] [--name "..."] [--space ...] [--new-space ...] [--no-space] [--json]
                                          Clone a repo into the app's clone folder (or --dir) and register it
+  dev3 projects get [<key>] [--project <id>] [--json]  Machine-local Project Settings switches (gitWorkflow, storageRoot, ...)
+  dev3 projects set <key> <value> [--project <id>]  Change one (user or coordinator only; exit 49 otherwise)
   dev3 spaces list [--json]             List spaces with their projects and ids
   dev3 spaces create "name" [--project <id>]...  Create a space (never empty: defaults to the current project)
   dev3 spaces set|add|remove <space>... [--project <id>]  Change a project's spaces (set REPLACES; set --no-space = none)
@@ -302,6 +308,16 @@ async function main(): Promise<void> {
 	if (command === "install-hooks") {
 		return await handleInstallHooks({ removeCursor: args.flags["remove-cursor"] === "true" });
 	}
+	if (command === "statusline" && subcommand === "agy") {
+		// Internal: Antigravity's statusLine (see commands/agy-statusline.ts). Prints
+		// nothing and always exits 0, so it can never disturb agy's own status line.
+		return await handleAgyStatusLine(
+			await Bun.stdin.text(),
+			{ noLimits: args.flags["no-limits"] === "true" },
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
 	if (command === "statusline") {
 		// Internal: Claude Code statusLine wrapper (see commands/statusline.ts).
 		// Reads stdin, dumps rate limits, delegates to the user's original
@@ -312,6 +328,16 @@ async function main(): Promise<void> {
 		// Internal lifecycle adapter. It intentionally remains successful when
 		// the app is offline so a status-sync failure can never block Codex.
 		return await handleCodexHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "agy") {
+		// Internal lifecycle adapter. Answers SessionStart with the dev3 protocol and
+		// stays successful whatever happens, so agy is never blocked.
+		return await handleAgyHook(
+			rawArgs[2] ?? "",
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,
 			context,
@@ -362,9 +388,17 @@ async function main(): Promise<void> {
 	if (command === "hook" && subcommand === "claude-pre-tool") {
 		return await handleClaudePreTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
+	if (command === "hook" && subcommand === "claude-permission") {
+		// A prompt is on screen: Has Questions, and nothing typed into that pane.
+		return await handleClaudePermission(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
 	if (command === "hook" && subcommand === "claude-post-tool") {
 		// Status move plus the hook mailbox, in one request per tool call.
 		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
+	if (command === "hook" && subcommand === "claude-post-tool-failed") {
+		// The failed call leaves the prompt ledger; nothing moves.
+		return await handleClaudePostToolFailed(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
 		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context, process.env, args.flags["stop-target"]);
@@ -504,7 +538,7 @@ async function main(): Promise<void> {
 			// natural mistype and used to answer "Unknown command" with no hint —
 			// the same forwarding `task list` already does for `tasks list`.
 			case "project":
-				return await handleProjects(subcommand, args, socketPath);
+				return await handleProjects(subcommand, args, socketPath, context);
 			case "spaces":
 			case "space":
 				return await handleSpaces(subcommand, args, socketPath, context);

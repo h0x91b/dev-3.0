@@ -163,6 +163,8 @@ describe.skipIf(isWindows)("the generated extension at runtime", () => {
 
 		expect((await h.reports()).map((r) => r.event))
 			.toEqual(["SessionStart", "PermissionRequest", "PostToolUse", "Stop"]);
+		// Only the approval's end may reopen the pane to typed messages, not a tool's end.
+		expect((await h.reports())[2]!.promptEnd).toBe(true);
 	});
 
 	it("ignores another session's approval and an agent_end omp will continue from", async () => {

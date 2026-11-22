@@ -6,11 +6,14 @@ import { getPushMessage, moveTask, notifyFromCliDesktop, isNotificationSuppresse
 import { recordTerminalPromptSubmission } from "../agent-terminal-prompt-log";
 import type { PromptSubmitHarness } from "../../shared/agent-terminal-prompt";
 import { loadSettings } from "../settings";
-import { CodexQuestionState } from "../codex-question-state";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
-import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
+import { agentSessionRecord, isLatestAgentLaunch, noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
+import { forgetApprovalResumeStatus, getApprovalResumeStatus, rememberResumeStatus } from "../approval-resume-status";
+import { forgetAgyPane, addAgyPending, agyPendingSessionsOf, forgetReplacedAgyConversations, removeAgyPending } from "../agy-session-state";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
+import { recordLaunchFailure } from "../agent-launch-failure";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, resumeAccountParam, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
@@ -20,11 +23,10 @@ import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
 import { applyClaudeHookStatus } from "./claude-hook-status";
 import { claudeApprovals } from "../claude-approval-state";
-
-const codexQuestions = new CodexQuestionState();
+import { recordTaskActivity } from "../task-activity";
 
 async function claudeReturnedToInput(event: ClaudeIdleEvent): Promise<void> {
-	await codexQuestions.run(event.taskId, async () => {
+	await agentPromptLedger.run(event.taskId, async () => {
 		const { project, task } = await resolveTaskFromParams({ projectId: event.projectId, taskId: event.taskId });
 		if (!claudeSessionWatches.isCurrentIdle(event)) return;
 		if (task.status !== "in-progress" && task.status !== "review-by-ai") return;
@@ -59,7 +61,7 @@ async function parkFailedTurn(project: Project, task: Task, reason: string): Pro
 }
 
 async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
-	await codexQuestions.run(failure.taskId, async () => {
+	await agentPromptLedger.run(failure.taskId, async () => {
 		const { project, task } = await resolveTaskFromParams({ projectId: failure.projectId, taskId: failure.taskId });
 		if (task.status !== "in-progress" && task.status !== "review-by-ai") return;
 		if (task.hibernated) return;
@@ -71,35 +73,11 @@ async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
 	});
 }
 
-// An approval temporarily moves a task to user-questions. Remember which
-// active lane that Codex/omp session came from so PostToolUse can restore a
-// review agent to review-by-ai instead of misclassifying it as the primary agent.
-const APPROVAL_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
-
-const approvalResumeStatuses = new Map<
-	string,
-	{ status: "in-progress" | "review-by-ai"; expiresAt: number }
->();
-
-function rememberResumeStatus(key: string, status: "in-progress" | "review-by-ai"): void {
-	approvalResumeStatuses.set(key, { status, expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS });
-}
-
-function getApprovalResumeStatus(
-	key: string | null,
-): "in-progress" | "review-by-ai" | undefined {
-	if (!key) return undefined;
-	const entry = approvalResumeStatuses.get(key);
-	if (!entry) return undefined;
-	if (entry.expiresAt <= Date.now()) {
-		approvalResumeStatuses.delete(key);
-		return undefined;
-	}
-	return entry.status;
-}
+/** An agy conversation id is spliced into the resume command line, so only a plain token is taken. */
+const AGY_CONVERSATION_ID = /^[A-Za-z0-9._-]+$/;
 
 export const agentHandlers: Record<string, Handler> = {
-	"task.claudeTurnEnded": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"task.claudeTurnEnded": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { task } = await resolveTaskFromParams(params);
 		if (typeof params.sessionId === "string") {
 			const sessionId = params.sessionId;
@@ -123,6 +101,7 @@ export const agentHandlers: Record<string, Handler> = {
 		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
+			agentPromptLedger.claudeSessionReturned(task.id, params.sessionId);
 			noteAgentSessionActive(task.id, params.sessionId, params.paneId);
 		}
 		return { ok: true };
@@ -141,15 +120,30 @@ export const agentHandlers: Record<string, Handler> = {
 	// SessionStart, or with a non-zero code under any harness — fires no hook that
 	// moves the card, so it would otherwise read "Agent is Working" forever.
 	// `sessionId` is the launch id the wrapper was minted with.
-	"agent.exited": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"agent.exited": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
 		if (!sessionId) throw new Error("sessionId is required");
 		const exitCode = typeof params.exitCode === "number" ? params.exitCode : null;
 		forgetClaudeSessionDump(task.id);
+		// Judged before the exit is recorded: only the launch the task answers to may clear its pane's
+		// agy state, so the late exit of a replaced or earlier agent cannot wipe the current one's.
+		const answersForTask = isLatestAgentLaunch(task.id, sessionId);
+		const exitedPane = typeof params.paneId === "string" && params.paneId.trim() ? params.paneId.trim() : null;
+		if (answersForTask && exitedPane) {
+			const conversationId = task.sessionState?.panes.find((pane) => pane.paneId === exitedPane)?.sessionId ?? null;
+			forgetAgyPane(task.id, { paneId: exitedPane, conversationId });
+		}
+		// The agent is gone, and so is any menu it showed: nothing is left to answer.
+		const promptPane = exitedPane ?? agentSessionRecord(task.id, sessionId)?.paneId ?? null;
+		if (promptPane) agentPromptLedger.closePane(task.id, promptPane);
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
+		// Before the card moves: the pane still shows what the agent printed.
+		const stillCurrent = await recordLaunchFailure(project, task, { exitCode, sessionId, neverStarted: verdict === "early" }, (payload) => getPushMessage()?.("taskUpdated", payload));
+		// A launch that started during the capture replaced this agent: its exit says nothing about the new one.
+		if (!stillCurrent) return { moved: false };
 		if (task.status !== "in-progress" || task.hibernated) return { moved: false };
 		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
 		const code = exitCode === null ? "" : ` (exit code ${exitCode})`;
@@ -209,7 +203,7 @@ export const agentHandlers: Record<string, Handler> = {
 		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}), ...approvalReasonFromParams(params) });
 	}),
 
-	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"task.agentHook": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const event = params.event as AgentStatusHookEvent;
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(event)) {
@@ -217,23 +211,99 @@ export const agentHandlers: Record<string, Handler> = {
 		}
 		// The CLI that reports is the managed copy under ~/.dev3.0/bin, which a
 		// worktree build does not replace; one from before Copilot names no harness.
-		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "pi" || params.harness === "copilot"
+		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "pi" || params.harness === "copilot" || params.harness === "agy"
 			? params.harness
 			: "codex";
-		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
-		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
-		const rememberedResumeStatus = getApprovalResumeStatus(resumeKey);
-
-		const questionState = codexQuestions.apply(
-			task.id,
-			sessionId ?? "unknown",
+		let sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
+		if (harness === "agy" && sessionId && !AGY_CONVERSATION_ID.test(sessionId)) sessionId = null;
+		// A wait that goes on: refresh its liveness, move nothing. One the app no longer holds (expired
+		// meanwhile) is a wait coming back, and takes the ordinary PermissionRequest path below.
+		if (params.heartbeat === true) {
+			if (harness !== "agy") return task;
+			const heartbeatPane = typeof params.paneId === "string" ? params.paneId : null;
+			const heartbeatKey = sessionId ?? heartbeatPane ?? "unknown";
+			if (agyPendingSessionsOf(task.id).has(heartbeatKey)) {
+				addAgyPending(task.id, heartbeatKey, Date.now(), heartbeatPane);
+				return task;
+			}
+		}
+		// A conversation starting in a pane ends whatever an earlier agent in that pane was waiting on.
+		if (harness === "agy" && event === "SessionStart" && sessionId && typeof params.paneId === "string" && params.paneId) {
+			forgetReplacedAgyConversations(task.id, params.paneId, sessionId);
+		}
+		// A report that only names the session: record it on the pane, move nothing.
+		if (params.captureOnly === true) {
+			if (!sessionId) return task;
+			const paneId = typeof params.paneId === "string" ? params.paneId : null;
+			await capturePaneSession(project, task.id, paneId, sessionId, harness);
+			rememberTaskSession(project, task, sessionId);
+			return task;
+		}
+		recordTaskActivity(task.id);
+		// The prompt gate first: agy's PostToolUse branch below may return before the card logic.
+		const hookPane = typeof params.paneId === "string" && params.paneId ? params.paneId : null;
+		agentPromptLedger.applyStatusHookGate({
+			taskId: task.id,
+			// With no session id, one pane's events must not close another pane's prompt.
+			sessionId: sessionId ?? (hookPane ? `pane:${hookPane}` : "unknown"),
 			event,
-			task.status === "user-questions" ? rememberedResumeStatus ?? task.status : task.status,
-			typeof params.toolName === "string" ? params.toolName : undefined,
-			typeof params.toolUseId === "string" ? params.toolUseId : undefined,
-			Array.isArray(params.questionIds) ? params.questionIds.filter((id): id is string => typeof id === "string") : undefined,
-			typeof params.answeredQuestionId === "string" ? params.answeredQuestionId : undefined,
-		);
+			harness,
+			paneId: hookPane,
+			toolName: typeof params.toolName === "string" ? params.toolName : undefined,
+			toolUseId: typeof params.toolUseId === "string" ? params.toolUseId : undefined,
+			promptEnd: params.promptEnd === true,
+			heartbeat: params.heartbeat === true,
+		});
+		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
+		const agyWaitKey = sessionId ?? (typeof params.paneId === "string" ? params.paneId : "unknown");
+		if (harness === "agy" && event === "PermissionRequest" && resumeKey && task.status === "user-questions"
+			&& !getApprovalResumeStatus(resumeKey)) {
+			// A second pane's wait joins one already parked: its end hands the card back the same way.
+			for (const other of agyPendingSessionsOf(task.id)) {
+				const inherited = getApprovalResumeStatus(`${task.id}:${other}`);
+				if (inherited) { rememberResumeStatus(resumeKey, inherited); break; }
+			}
+		}
+		let rememberedResumeStatus = getApprovalResumeStatus(resumeKey);
+		let agyHold = false;
+		if (harness === "agy") {
+			if (event === "PermissionRequest") addAgyPending(task.id, agyWaitKey, Date.now(), typeof params.paneId === "string" ? params.paneId : null);
+			if (event === "Stop" || event === "SessionEnd" || event === "Interrupt" || event === "SessionStart") {
+				removeAgyPending(task.id, agyWaitKey);
+				if (resumeKey) forgetApprovalResumeStatus(resumeKey);
+			}
+			// A started session has no tool waiting: a resumed, idle agy leaves a parked card where it is.
+			if (event === "SessionStart") rememberedResumeStatus = undefined;
+			// This session's own turn moves on, but another pane's wait still parks the card.
+			if (event === "UserPromptSubmit" && removeAgyPending(task.id, agyWaitKey) > 0 && task.status === "user-questions") {
+				agyHold = true;
+				if (resumeKey) forgetApprovalResumeStatus(resumeKey);
+			}
+			// The statusLine says a tool wait ended, and can say it late (after Esc or a reject, or once the
+			// agent finished): the wait is dropped first, then only a card parked by that very wait goes
+			// back, and only when no other pane of the task still waits.
+			if (event === "PostToolUse") {
+				const stillWaiting = removeAgyPending(task.id, agyWaitKey);
+				if (task.status !== "user-questions" || !rememberedResumeStatus) return task;
+				if (stillWaiting > 0) {
+					if (resumeKey) forgetApprovalResumeStatus(resumeKey);
+					return task;
+				}
+			}
+		}
+
+		const questionState = agentPromptLedger.applyStatusHook({
+			taskId: task.id,
+			sessionId: sessionId ?? "unknown",
+			event,
+			status: task.status === "user-questions" ? rememberedResumeStatus ?? task.status : task.status,
+			harness,
+			paneId: hookPane,
+			toolName: typeof params.toolName === "string" ? params.toolName : undefined,
+			toolUseId: typeof params.toolUseId === "string" ? params.toolUseId : undefined,
+			questionIds: Array.isArray(params.questionIds) ? params.questionIds.filter((id): id is string => typeof id === "string") : undefined,
+			answeredQuestionId: typeof params.answeredQuestionId === "string" ? params.answeredQuestionId : undefined,
+		});
 		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
 			? questionState.resumeStatus : task.status;
 		let target = getAgentHookTargetStatus(event, currentStatus, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType), rememberedResumeStatus);
@@ -245,7 +315,7 @@ export const agentHandlers: Record<string, Handler> = {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
 		}
 		// A To Do card has no run to report on — not even a pending question.
-		if (task.status === "todo") target = null;
+		if (task.status === "todo" || agyHold) target = null;
 		const resumeStatus = (event === "PermissionRequest" || approvalHold)
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status
@@ -270,7 +340,7 @@ export const agentHandlers: Record<string, Handler> = {
 		if (resumeKey && resumeStatus && moveAccepted) {
 			rememberResumeStatus(resumeKey, resumeStatus);
 		} else if (resumeKey && clearResumeStatus && moveAccepted) {
-			approvalResumeStatuses.delete(resumeKey);
+			forgetApprovalResumeStatus(resumeKey);
 		}
 
 		if (approvalHold && updated.status === "user-questions") {
@@ -339,8 +409,9 @@ export const agentHandlers: Record<string, Handler> = {
 	 * Returns the verdict rather than a bare ok, so a suppressed submission is
 	 * distinguishable from a recorded one in the hook's own logs and tests.
 	 */
-	"task.promptSubmitted": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"task.promptSubmitted": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
+		recordTaskActivity(task.id);
 		const harness: PromptSubmitHarness = params.harness === "codex" || params.harness === "copilot"
 			? params.harness
 			: "claude";
@@ -350,6 +421,7 @@ export const agentHandlers: Record<string, Handler> = {
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.
 		if (harness === "claude" && sessionId) {
+			agentPromptLedger.claudeSessionReturned(task.id, sessionId);
 			noteAgentSessionActive(task.id, sessionId, typeof params.paneId === "string" && params.paneId ? params.paneId : null);
 		}
 		if (harness === "claude" && sessionId && typeof params.paneId === "string" && params.paneId) {

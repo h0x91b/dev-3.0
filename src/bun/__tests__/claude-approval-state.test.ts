@@ -96,4 +96,18 @@ describe("ClaudeApprovalState", () => {
 		expect(state.apply("t", "user-questions", "PreToolUse", parent)).toBe("user-questions");
 		expect(state.apply("t", "user-questions", "PostToolUse", child)).toBe("in-progress");
 	});
+
+	it("clears a parent's own wait on a failed call without claiming the idle agent is working", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PermissionRequest", parent);
+		expect(state.apply("t", "user-questions", "PostToolUseFailure", parent)).toBeNull();
+		expect(state.apply("t", "review-by-user", "PostToolUseFailure", parent)).toBeNull();
+		expect(state.apply("t", "user-questions", "PreToolUse", parent)).toBe("in-progress");
+	});
+
+	it("resumes a background agent whose own wait ends in a failed call", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PermissionRequest", child);
+		expect(state.apply("t", "user-questions", "PostToolUseFailure", child)).toBe("in-progress");
+	});
 });

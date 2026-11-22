@@ -1,0 +1,1 @@
+The file explorer beside the task terminal and on the Repo screen now renders from an internal plugin slot, with no change to where it sits or how it behaves. If the explorer itself crashes, a short notice with a Hide button appears in its column and the terminal keeps running.

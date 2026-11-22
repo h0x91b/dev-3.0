@@ -6,7 +6,7 @@
 import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
 import { loadSpacesFile } from "./spaces-data";
 import type { Project } from "../shared/types";
-import type { DeepLinkNav, DeepLinkTarget } from "../shared/deep-link";
+import { taskDeepLinkNav, type DeepLinkNav, type DeepLinkTarget } from "../shared/deep-link";
 
 // Git projects + virtual ("Operations") boards, same merge the UI uses.
 async function allProjects(): Promise<Project[]> {
@@ -21,9 +21,8 @@ export async function resolveDeepLink(target: DeepLinkTarget): Promise<DeepLinkN
 		case "task": {
 			for (const project of projects) {
 				const tasks = await loadTasks(project);
-				if (tasks.some((t) => t.id === target.taskId)) {
-					return { kind: "task", taskId: target.taskId, projectId: project.id };
-				}
+				const task = tasks.find((t) => t.id === target.taskId);
+				if (task) return taskDeepLinkNav(task.id, project.id, task.status);
 			}
 			return null;
 		}

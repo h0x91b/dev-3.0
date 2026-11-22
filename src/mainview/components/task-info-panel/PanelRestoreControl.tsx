@@ -1,30 +1,55 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useT, type TranslationKey } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useViewportClamp } from "../../hooks/useViewportClamp";
 import { useHiddenControls } from "../../hooks/useIsControlHidden";
 import { restoreControl, showAllControls } from "../../hidden-controls";
-import { PANEL_BAR_OF_CONTROL, type HideableControlId } from "../../hideable-controls";
+import type { TaskHeaderItemId } from "../../hideable-controls";
+import { getTaskHeaderRegistry, TASK_HEADER_REGIONS, type TaskHeaderRegion } from "../../task-header/registry";
 import Tooltip from "../Tooltip";
 import { EyeIcon } from "../TaskIcons";
 
-export type PanelHideableEntry = {
-	id: HideableControlId;
-	label: string;
-	onRun: () => void;
-};
-
-const BAR_LABEL_KEY: Record<string, TranslationKey> = {
-	context: "infoPanel.barContext",
-	"session-agent": "infoPanel.barSessionAgent",
+const BAR_LABEL_KEY: Record<TaskHeaderRegion, TranslationKey> = {
+	status: "infoPanel.barContext",
+	session: "infoPanel.barSessionAgent",
+	git: "infoPanel.barGit",
 	runtime: "infoPanel.barRuntime",
 };
 
+/** A hidden task-header item, under the bar it belongs to (a group's items under the group's bar). */
+export interface HiddenHeaderItem {
+	id: TaskHeaderItemId;
+	bar: TaskHeaderRegion;
+	label: TranslationKey;
+}
+
+/** Every hidden item the registry knows, grouped by bar in the header's order. */
+export function useHiddenHeaderItems(): [TaskHeaderRegion, HiddenHeaderItem[]][] {
+	const hidden = useHiddenControls();
+	const registry = getTaskHeaderRegistry();
+	// Subscribed, so a hidden extension item that loads later is listed.
+	useSyncExternalStore(registry.subscribe, () => registry.list());
+	const groups = new Map<TaskHeaderRegion, HiddenHeaderItem[]>(TASK_HEADER_REGIONS.map((bar) => [bar, []]));
+	for (const id of hidden) {
+		const def = registry.get(id)?.def;
+		if (!def) continue;
+		const bar = def.region.split(".")[0] as TaskHeaderRegion;
+		groups.get(bar)?.push({ id: id as TaskHeaderItemId, bar, label: def.label });
+	}
+	return [...groups.entries()].filter(([, rows]) => rows.length > 0);
+}
+
+export function barLabelKey(bar: TaskHeaderRegion): TranslationKey {
+	return BAR_LABEL_KEY[bar];
+}
+
 /**
- * The task info panel's ONE restore control (PRODUCT_UX_BIBLE.md §5.10 / §5.1
- * chrome). Lives in panel chrome next to the worktree-settings gear and the
- * collapse toggle — never inside a bar, and never more than one per panel.
+ * The task header's ONE restore control (PRODUCT_UX_BIBLE.md §5.10 / §5.1 chrome): every
+ * hidden header item, grouped by bar. Lives in panel chrome next to the worktree-settings
+ * gear and the collapse toggle — never inside a bar, and never more than one per panel.
+ * A row runs the item's action where it has a single one (`actions`), else restores it;
+ * the trailing icon always restores.
  *
  * Portaled to `document.body` with a fixed position (same pattern as
  * `DevServerMenu`/`StatusMenuPortal`), not an in-tree `absolute` child: the
@@ -32,9 +57,9 @@ const BAR_LABEL_KEY: Record<string, TranslationKey> = {
  * can paint over an in-tree dropdown that would otherwise extend past the
  * panel's own box.
  */
-export default function PanelRestoreControl({ entries }: { entries: PanelHideableEntry[] }) {
+export default function PanelRestoreControl({ actions }: { actions: Partial<Record<TaskHeaderItemId, () => void>> }) {
 	const t = useT();
-	const hidden = useHiddenControls();
+	const groups = useHiddenHeaderItems();
 	const [open, setOpen] = useState(false);
 	const btnRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -42,16 +67,7 @@ export default function PanelRestoreControl({ entries }: { entries: PanelHideabl
 	const { position: menuPos, visible } = useViewportClamp(menuRef, anchorPos);
 	useEscapeKey(() => setOpen(false), { enabled: open });
 
-	const visibleEntries = entries.filter((entry) => hidden.has(entry.id));
-	if (visibleEntries.length === 0) return null;
-
-	const groups = new Map<string, PanelHideableEntry[]>();
-	for (const entry of visibleEntries) {
-		const bar = PANEL_BAR_OF_CONTROL[entry.id] ?? "context";
-		const rows = groups.get(bar) ?? [];
-		rows.push(entry);
-		groups.set(bar, rows);
-	}
+	if (groups.length === 0) return null;
 
 	function toggleOpen() {
 		if (!open && btnRef.current) {
@@ -85,37 +101,40 @@ export default function PanelRestoreControl({ entries }: { entries: PanelHideabl
 						className="fixed z-[201] w-56 max-h-[70vh] overflow-y-auto rounded-xl border border-edge bg-overlay py-1 shadow-2xl"
 						style={{ top: menuPos.top, left: menuPos.left, visibility: visible ? "visible" : "hidden" }}
 					>
-						{[...groups.entries()].map(([bar, rows]) => (
-							<div key={bar}>
-								<div className="px-3 pt-2 pb-1 text-micro font-semibold uppercase tracking-wider text-fg-muted">
-									{t(BAR_LABEL_KEY[bar] ?? "infoPanel.barContext")}
+						{groups.map(([bar, rows]) => (
+							<div key={bar} role="group" aria-label={t(BAR_LABEL_KEY[bar])}>
+								<div className="px-3 pt-2 pb-1 text-micro font-semibold uppercase tracking-wider text-fg-muted" aria-hidden="true">
+									{t(BAR_LABEL_KEY[bar])}
 								</div>
-								{rows.map((entry) => (
-									<div key={entry.id} className="group flex items-center">
-										<button
-											type="button"
-											role="menuitem"
-											onClick={() => {
-												entry.onRun();
-												setOpen(false);
-											}}
-											className="flex-1 min-w-0 text-left px-3 py-1.5 text-xs text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors truncate"
-										>
-											{entry.label}
-										</button>
-										<button
-											type="button"
-											onClick={() => restoreControl(entry.id)}
-											aria-label={t("infoPanel.restoreOne", { name: entry.label })}
-											className="mr-1 flex-shrink-0 p-1 rounded text-fg-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-fg hover:bg-fg/10 transition-opacity"
-										>
-											<svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-												<path d="M3 12a9 9 0 1 0 3-6.7" />
-												<path d="M3 4v5h5" />
-											</svg>
-										</button>
-									</div>
-								))}
+								{rows.map((row) => {
+									const label = t(row.label);
+									return (
+										<div key={row.id} className="group flex items-center">
+											<button
+												type="button"
+												role="menuitem"
+												onClick={() => {
+													(actions[row.id] ?? (() => void restoreControl(row.id)))();
+													setOpen(false);
+												}}
+												className="flex-1 min-w-0 text-left px-3 py-1.5 [@media(pointer:coarse)]:min-h-[44px] text-xs text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors truncate"
+											>
+												{label}
+											</button>
+											<button
+												type="button"
+												onClick={() => restoreControl(row.id)}
+												aria-label={t("infoPanel.restoreOne", { name: label })}
+												className="mr-1 flex-shrink-0 p-1 rounded text-fg-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-fg hover:bg-fg/10 transition-opacity"
+											>
+												<svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+													<path d="M3 12a9 9 0 1 0 3-6.7" />
+													<path d="M3 4v5h5" />
+												</svg>
+											</button>
+										</div>
+									);
+								})}
 							</div>
 						))}
 						<div className="my-1 border-t border-edge" />
@@ -126,7 +145,7 @@ export default function PanelRestoreControl({ entries }: { entries: PanelHideabl
 								showAllControls();
 								setOpen(false);
 							}}
-							className="w-full text-left px-3 py-1.5 text-xs text-accent hover:bg-elevated transition-colors"
+							className="w-full text-left px-3 py-1.5 [@media(pointer:coarse)]:min-h-[44px] text-xs text-accent hover:bg-elevated transition-colors"
 						>
 							{t("infoPanel.showAllHidden")}
 						</button>

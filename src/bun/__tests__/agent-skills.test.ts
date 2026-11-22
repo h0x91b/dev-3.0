@@ -1,4 +1,6 @@
 import { CONFIG_KEYS, describeType, getFieldSpec } from "../../shared/config-schema";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BoardService } from "../../mainview/board-views/board-service";
 import { EXTENSION_API_VERSION, satisfiesRange, validateExtensionManifest } from "../../shared/extensions";
@@ -35,7 +37,7 @@ import {
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
-import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillPrLinkInstruction } from "../../shared/agent-skill-content";
+import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillBodyFor, skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
 import { parseSkillFrontmatter } from "../skills-catalog";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -191,11 +193,26 @@ describe("dev3 skill content", () => {
 		}
 	});
 
+	it("has the agent request completion itself, except where the user owns completion", () => {
+		for (const family of ["claude", "codex", "omp", "pi", "agy", "generic"] as const) {
+			for (const mode of ["worktree", "shared-folder"] as const) {
+				const skill = skillBodyFor(family, mode);
+				// Codex read "allowed" as "wait for the user" and told them to close the task by hand.
+				expect(skill).toContain("Gate met → run it yourself");
+				expect(skill).toContain("never tell the user to close it by hand");
+				// taskCompletionOwner() hands these to the user; `dev3 current` is where the agent sees it.
+				expect(skill).toContain("`dev3 current` shows `Manual completion: on` → the user closes it");
+				expect(skill).toContain("`cancelled` asks the same way, only if the user wants it dropped");
+				expect(skill).not.toContain("flow below stay allowed");
+			}
+		}
+	});
+
 	it("tells the agent its exit hooks run before the worktree is destroyed", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			// Harness-neutral on purpose: the quit command differs per CLI (`/exit` vs
 			// `/quit`) and only Claude Code calls its exit hooks "SessionEnd".
-			expect(skill).toContain("your CLI is asked to quit first, so its exit hooks run (30 s bound)");
+			expect(skill).toContain("your CLI quits first (exit hooks run, 30 s bound)");
 			expect(skill).not.toContain("SessionEnd");
 		}
 	});
@@ -1013,6 +1030,25 @@ describe("dev3-extensions skill content", () => {
 		expect(skill).toContain("**Never write trust into the user's real `~/.dev3.0/extensions-state.json` yourself**");
 		expect(skill).toContain("scoped home ONLY");
 		expect(skill).toContain("**Streamer mode (`&streamer=on`) is mandatory**");
+	});
+
+	it("names the render-crash console line the slot host really prints", () => {
+		const skill = getExtensionsSkillContent();
+		const slotHost = readFileSync(join(__dirname, "../../mainview/plugins/SlotHost.tsx"), "utf8");
+
+		expect(slotHost).toContain("`[slots] ${this.props.slot} item ${");
+		expect(skill).toContain("`[slots] boardViews item <id> crashed: …`");
+		expect(skill).not.toContain("[board-views] view");
+	});
+
+	it("does not promise Failed to load for an apply() that throws after load", () => {
+		const skill = getExtensionsSkillContent();
+		const docs = readFileSync(join(__dirname, "../../../docs/extensions.md"), "utf8");
+		const platform = readFileSync(join(__dirname, "../../../docs/extensions-platform.md"), "utf8");
+
+		expect(skill).toContain("that throw is not reported yet (known gap, tracked for the opening track)");
+		expect(docs).toContain("Known gap: a plugin whose `apply()` throws after the extension has loaded");
+		expect(platform).toContain("A plugin whose `apply()` throws after load");
 	});
 
 	it("names the missing tooling plainly, in one replaceable section", () => {

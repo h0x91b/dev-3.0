@@ -7,6 +7,13 @@ import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { toast } from "../../toast";
+import type { Context } from "cordis";
+import type { NavigationGuard } from "../../navigation-guard";
+import { getAppRoot } from "../../plugins/root";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN } from "../../settings-sections/project-builtins";
+
+beforeAll(() => applyBuiltinPlugins([], [BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN]));
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -389,6 +396,17 @@ describe("ProjectSettings", () => {
 			await vi.waitFor(() => {
 				expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
 			});
+		});
+
+		it("counts an emptied extraFolders list as unsaved, since [] hides a lower layer's list", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			await user.click(screen.getByRole("button", { name: "+ Add entry" }));
+			await user.click(screen.getByRole("button", { name: "Remove entry" }));
+
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
 		});
 
 		it("saves a selected base branch from the filtered branch picker", async () => {
@@ -1197,6 +1215,76 @@ describe("environment variables editor", () => {
 			expect(screen.queryByText(/These settings are overridden by/i)).not.toBeInTheDocument();
 		});
 
+		// `dev3 projects set useRepoConfig` (or another window) flips the flag while
+		// this tab is open: the form must not keep values resolved the other way.
+		describe("flipped outside this tab", () => {
+			const repoResolved = { ...mockProject, devScript: "bun dev" };
+			const fileless = { ...mockProject, useRepoConfig: false, devScript: "" };
+
+			function tree(project: Project) {
+				return (
+					<I18nProvider>
+						<ProjectSettings projectId={project.id} projects={[project]} tasks={mockTasks} dispatch={vi.fn()} navigate={vi.fn()} />
+					</I18nProvider>
+				);
+			}
+			const devScriptField = () => within(screen.getByTestId("dev-server-row-dev")).getByLabelText("Script of the dev server dev");
+
+			it("reseeds the form, so Save cannot copy repo values into projects.json", async () => {
+				const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+				mockSave.mockClear();
+				mockSave.mockResolvedValue(fileless);
+				const warn = vi.spyOn(toast, "warning");
+				const user = userEvent.setup();
+				const view = await renderProjectSettings(repoResolved);
+				await goToProjectTab();
+				expect(devScriptField()).toHaveValue("bun dev");
+
+				await act(async () => view.rerender(tree(fileless)));
+				expect(devScriptField()).toHaveValue("");
+				expect(warn).not.toHaveBeenCalled();
+
+				const cleanup = screen.getByLabelText("Cleanup Script");
+				await user.clear(cleanup);
+				await user.type(cleanup, "echo bye");
+				await user.click(screen.getByRole("button", { name: /^Save$/i }));
+				await vi.waitFor(() => expect(mockSave).toHaveBeenCalled());
+				expect(mockSave.mock.calls[0]![0]).toMatchObject({ devScript: "", cleanupScript: "echo bye" });
+				warn.mockRestore();
+			});
+
+			it("says so when the reseed drops unsaved edits", async () => {
+				const warn = vi.spyOn(toast, "warning");
+				const user = userEvent.setup();
+				const view = await renderProjectSettings(repoResolved);
+				await goToProjectTab();
+				await user.type(screen.getByLabelText("Cleanup Script"), " && echo typed");
+
+				await act(async () => view.rerender(tree(fileless)));
+				expect(screen.getByLabelText("Cleanup Script")).toHaveValue("rm -rf dist");
+				expect(warn).toHaveBeenCalledWith(expect.stringMatching(/switched outside this tab/i), expect.anything());
+				warn.mockRestore();
+			});
+
+			it("does not warn for this tab's own flip, even when its push lands before the reply", async () => {
+				const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+				const warn = vi.spyOn(toast, "warning");
+				const user = userEvent.setup();
+				const view = await renderProjectSettings(repoResolved);
+				await goToProjectTab();
+				await user.type(screen.getByLabelText("Cleanup Script"), " && echo typed");
+				mockSave.mockImplementationOnce(async () => {
+					view.rerender(tree(fileless));
+					return fileless;
+				});
+
+				await user.click(screen.getByLabelText("Use repository dev3 configuration"));
+				await vi.waitFor(() => expect(devScriptField()).toHaveValue(""));
+				expect(warn).not.toHaveBeenCalled();
+				warn.mockRestore();
+			});
+		});
+
 		it("replaces the worktree config editor with an explanation instead of hiding the tab", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, { useRepoConfig: false }, [mockTaskWithWorktree]);
@@ -1462,5 +1550,165 @@ describe("project storage section", () => {
 		await user.click(screen.getByRole("switch", { name: label }));
 		expect(mockSave).not.toHaveBeenCalled();
 		expect(errorSpy).toHaveBeenCalledWith("1 task is still running. Finish it, then try again.", { projectId: "proj-1" });
+	});
+});
+
+describe("unsaved-changes guard over the settings-sections slot", () => {
+	async function renderWithGuard(tasks: Task[] = mockTasks) {
+		const guardRef: { current: NavigationGuard | null } = { current: null };
+		const view = await act(async () =>
+			render(
+				<I18nProvider>
+					<ProjectSettings
+						projectId={mockProject.id}
+						projects={[{ ...mockProject, setupScript: "original" }]}
+						tasks={tasks}
+						dispatch={vi.fn() as unknown as React.Dispatch<AppAction>}
+						navigate={vi.fn() as (route: Route) => void}
+						navigationGuardRef={guardRef}
+					/>
+				</I18nProvider>,
+			),
+		);
+		return { guardRef, view };
+	}
+
+	async function editSetupScript() {
+		const user = userEvent.setup();
+		const textarea = screen.getByDisplayValue("original");
+		await user.clear(textarea);
+		await user.type(textarea, "changed");
+	}
+
+	it("reports the Project tab's edits to the navigation guard, and saves them through it", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const { guardRef } = await renderWithGuard();
+		await goToProjectTab();
+		expect(guardRef.current?.isDirty()).toBe(false);
+
+		await editSetupScript();
+		expect(guardRef.current?.isDirty()).toBe(true);
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+		expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ projectId: "proj-1", setupScript: "changed" }));
+	});
+
+	it("counts only the open tab, and keeps the edits for when the user comes back", async () => {
+		const user = userEvent.setup();
+		const { guardRef } = await renderWithGuard();
+		await goToProjectTab();
+		await editSetupScript();
+		expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+
+		await user.click(screen.getByText("Board"));
+		expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(false);
+
+		await goToProjectTab();
+		expect(screen.getByDisplayValue("changed")).toBeInTheDocument();
+		expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(true);
+	});
+
+	it("refuses to save the Project tab through the guard while env lines are invalid", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		const { guardRef } = await renderWithGuard();
+		await goToProjectTab();
+		await user.type(screen.getByLabelText("Environment Variables"), "FOO=bar{Enter}not a var");
+		expect(screen.getByText(/Invalid lines: 2/)).toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(true);
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+
+	it("refuses to save the Worktree tab through the guard while env lines are invalid", async () => {
+		(api.request.getProjectConfigs as ReturnType<typeof vi.fn>).mockResolvedValue({ repo: {}, local: {} });
+		const mockSaveRepo = api.request.saveRepoConfig as ReturnType<typeof vi.fn>;
+		mockSaveRepo.mockClear();
+		const user = userEvent.setup();
+		const { guardRef } = await renderWithGuard([mockTaskWithWorktree]);
+		await user.click(screen.getByText("Worktree Config"));
+		await user.type(await screen.findByLabelText("Environment Variables"), "FOO=bar{Enter}not a var");
+		expect(screen.getByText(/Invalid lines: 2/)).toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(true);
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+		expect(mockSaveRepo).not.toHaveBeenCalled();
+	});
+
+	it("drops the guard when the page goes away", async () => {
+		const { guardRef, view } = await renderWithGuard();
+		expect(guardRef.current).not.toBeNull();
+		view.unmount();
+		expect(guardRef.current).toBeNull();
+	});
+
+	it("isolates a tab body that throws: a notice in its place, the tab bar still works", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		function Broken(): never {
+			throw new Error("boom");
+		}
+		const fiber = getAppRoot().plugin({
+			name: "test:broken-project-section",
+			inject: ["settingsSections"],
+			apply(ctx: Context) {
+				ctx.settingsSections.register({ id: "builtin:broken", region: "projectSettings.global", order: -1, entries: [], component: Broken });
+			},
+		});
+		try {
+			await renderWithGuard();
+			expect(screen.getByRole("alert")).toHaveTextContent("This section could not be shown.");
+			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
+			await goToProjectTab();
+			expect(screen.getByDisplayValue("original")).toBeInTheDocument();
+		} finally {
+			await fiber.dispose();
+		}
+	});
+});
+
+describe("deep links into a tab (route.tab)", () => {
+	async function renderAt(initialTab: "global" | "project" | "worktree" | "automations", project: Project = mockProject) {
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<ProjectSettings
+						projectId={project.id}
+						projects={[project]}
+						tasks={[mockTaskWithWorktree]}
+						dispatch={vi.fn() as unknown as React.Dispatch<AppAction>}
+						navigate={vi.fn() as (route: Route) => void}
+						initialTab={initialTab}
+					/>
+				</I18nProvider>,
+			);
+		});
+	}
+
+	it.each([
+		["global", "Board"],
+		["project", "Project Config"],
+		["worktree", "Worktree Config"],
+		["automations", "Automations"],
+	] as const)("opens on the %s tab with its body", async (tab, label) => {
+		await renderAt(tab);
+		expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
+		expect(document.querySelector(`[data-slot="settingsSections"][data-region="projectSettings.${tab}"]`)?.childElementCount).toBeGreaterThan(0);
+	});
+
+	it("never strands an Operations board on a git-only tab", async () => {
+		await renderAt("project", { ...mockProject, kind: "virtual" });
+		expect(screen.getByRole("tab", { name: "Board" })).toHaveAttribute("aria-selected", "true");
+		expect(screen.queryByRole("tab", { name: "Project Config" })).toBeNull();
 	});
 });

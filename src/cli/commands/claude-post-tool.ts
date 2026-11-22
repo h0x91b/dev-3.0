@@ -2,6 +2,7 @@ import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 import { claudeHookPaneId } from "./claude-prompt";
 import { parseClaudeToolStatus } from "../../shared/claude-status-hook";
+import { claudeToolHookFields } from "./claude-tool-fields";
 
 /**
  * The hook output that hands Claude the drained messages next to the tool result.
@@ -36,12 +37,16 @@ export async function handleClaudePostTool(
 	const status = parseClaudeToolStatus(rawInput);
 	if (!status || status.event !== "PostToolUse") return;
 	const paneId = !status.agentId ? claudeHookPaneId(env) : undefined;
+	// The call it reports on closes its prompt in the ledger, a subagent's included.
+	const { toolName, toolUseId } = claudeToolHookFields(rawInput, env);
 	try {
 		const response = await sendRequest(socketPath, "task.claudePostToolUse", {
 			taskId: context.taskId,
 			...(context.projectId ? { projectId: context.projectId } : {}),
 			...status,
 			...(paneId ? { paneId } : {}),
+			...(toolName ? { toolName } : {}),
+			...(toolUseId ? { toolUseId } : {}),
 		});
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude tool hook: ${response.error || "request failed"}\n`);

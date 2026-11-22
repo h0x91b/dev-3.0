@@ -20,7 +20,7 @@
  *     preserved; force is still the floor, never the first move.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "../../spawn";
@@ -29,6 +29,7 @@ import { isProcessAlive } from "../process-identity";
 import { readRecord } from "../record";
 import { start, stop } from "../registry";
 import { defaultNativeShellLaunchSpec, defineShellLaunchSpec } from "../shell-launch";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 /**
  * Budget for one graceful stop. Measured p95 on an idle macOS dev machine is
@@ -182,7 +183,7 @@ async function run(): Promise<void> {
 			}
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}

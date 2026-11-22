@@ -1,5 +1,7 @@
 # File explorer panel beside the task terminal and the Repo screen
 
+> Extended on 2026-11-15 by `decisions/2026/11/15/project-extra-folders.md`: a project can add extra folders, each listed as its own section of the same tree.
+
 ## Context
 
 Browsing a task's files meant the inspector "Files" button, which split a tmux pane running yazi. yazi is a brew dependency the in-app updater never installs, it does not exist on native-backend (Windows) tasks, and nothing showed the project's own checkout. dev3 is a cockpit for agents, not an IDE, so a file tree has to earn its place without growing into an editor.

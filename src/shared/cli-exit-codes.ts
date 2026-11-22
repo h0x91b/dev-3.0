@@ -47,6 +47,8 @@ export const CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN = 45;
 export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
 export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
 export const CLI_EXIT_CODE_WORKTREE_HALF_REMOVED = 48;
+export const CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN = 49;
+export const CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE = 50;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -240,7 +242,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_RESUME_UNAVAILABLE",
 		code: CLI_EXIT_CODE_RESUME_UNAVAILABLE,
 		description:
-			"`dev3 agent resume` found nothing it can safely resume, and NOTHING was launched: the task is a draft or not active, it has no worktree, it has no saved agent session, a saved pane runs an agent CLI dev3 cannot resume (it would start over from the task description; `--allow-agent-latest` does not change that), or (without `--allow-agent-latest`) a saved pane has no conversation id, so its harness would pick its own latest conversation and might start a new one. With `--account`, it also refuses an account that cannot apply (`account-invalid`: unknown, not signed in, or no saved pane runs Claude) or whose config folder cannot see a saved Claude conversation (`account-cannot-see-conversation`). With `--json` the result carries a `reason` (`draft`, `not-active`, `no-worktree`, `no-saved-session`, `harness-cannot-resume`, `session-id-unknown`, `account-invalid`, `account-cannot-see-conversation`). It never re-runs the task description; Start Fresh stays an explicit choice in the app. The one pane that does open a new, empty conversation is reported as `fresh-session`: nothing of its own survives and every transcript belongs to another pane, so reopening any of them would duplicate it. Distinct from exit 1, which means a resume was attempted and failed.",
+			"`dev3 agent resume` found nothing it can safely resume, and NOTHING was launched: the task is a draft or not active, it has no worktree, it has no saved agent session, a saved pane runs an agent CLI dev3 cannot resume (it would start over from the task description; `--allow-agent-latest` does not change that), or (without `--allow-agent-latest`) a saved pane has no conversation id, so its harness would pick its own latest conversation and might start a new one. With `--account`, it also refuses an account that cannot apply (`account-invalid`: unknown, not signed in, or no saved pane runs Claude) or whose config folder cannot see a saved Claude conversation (`account-cannot-see-conversation`), or a conversation store exists but cannot be read right now (`history-unreadable`: no pane is moved off its saved conversation; restore access and retry). With `--json` the result carries a `reason` (`draft`, `not-active`, `no-worktree`, `no-saved-session`, `harness-cannot-resume`, `session-id-unknown`, `account-invalid`, `account-cannot-see-conversation`, `history-unreadable`). It never re-runs the task description, except for a main agent that never started (no conversation was created): that one is launched fresh with the task prompt. Start Fresh stays an explicit choice in the app. The one pane that does open a new conversation is reported as `fresh-session` (empty, or on the task prompt for a never-started main agent): nothing of its own survives and every transcript belongs to another pane, so reopening any of them would duplicate it. Distinct from exit 1, which means a resume was attempted and failed.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED",
@@ -337,5 +339,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_WORKTREE_HALF_REMOVED,
 		description:
 			"`dev3 task move --status completed|cancelled` was approved, but tearing the task down stopped half way: git already dropped the worktree's link while files (often a large untracked tree such as a `.venv`) are still in its folder, so the task did NOT move and stays in its column. The message names the folder. Run the same move again to finish it, or delete that folder yourself. Distinct from exit 1 so an agent knows the approval landed and only the cleanup is left.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN",
+		code: CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN,
+		description:
+			"`dev3 projects set` ran inside a task that is not a coordinator. These switches (`gitWorkflow`, `storageRoot`, `useRepoConfig`, `boardCopy` and the rest) change how every task of the project runs, so only the user (outside any task) and coordinator tasks may change them; **nothing** was changed. Ask the user to switch it in Project Settings or to run the command from a terminal outside any task. Distinct from exit 1 so an agent stops instead of retrying.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE",
+		code: CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE,
+		description:
+			"`dev3 projects set` asked for a switch the project cannot take in its current state, so **nothing** was changed: `boardCopyMessages on` while `boardCopy` is off (turn `boardCopy` on first), or `boardCopy on` on an operations board, which has no project folder to copy into. Project Settings hides the same toggles in that state. Distinct from exit 1 so an agent changes the prerequisite instead of retrying.",
 	},
 ] as const;

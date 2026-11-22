@@ -182,6 +182,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 							agentId={agentId}
 							configId={configId}
 							agentAvailability={agentAvailability}
+							installedFirst
 							onChange={(next) => {
 								setAgentId(next.agentId);
 								setConfigId(next.configId);

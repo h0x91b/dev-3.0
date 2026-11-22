@@ -464,17 +464,18 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			expect(within(menu).getAllByText("Project Delta")).toHaveLength(1);
 		});
 
-		it("keeps the ⌘N badge on board order, not on the regrouped row order", async () => {
+		it("badges ⌘N in dashboard order, not on the hoisted row order", async () => {
 			withSpaces();
 			const menu = await openSwitcher();
 			await within(menu).findByText("Dev Space");
 			const rows = within(menu).getAllByRole("button");
 			const badgeOf = (name: string) =>
 				rows.find((r) => r.textContent?.includes(name))?.querySelector("kbd")?.textContent;
-			// p1 is board index 0 → ⌘1, even though it now sits under a hoisted space.
-			expect(badgeOf("Project Alpha")).toBe("⌘1");
-			expect(badgeOf("Project Beta")).toBe("⌘2");
-			expect(badgeOf("Project Delta")).toBe("⌘3");
+			// Dashboard: Other Space (Beta), Dev Space (Alpha, Beta again), Home (Delta).
+			// The switcher hoists Dev Space; the digits stay on the dashboard.
+			expect(badgeOf("Project Beta")).toBe("G 1");
+			expect(badgeOf("Project Alpha")).toBe("G 2");
+			expect(badgeOf("Project Delta")).toBe("G 3");
 		});
 
 		it("with number keys following spaces, badges the space heading and standalone projects, not the members", async () => {
@@ -486,11 +487,11 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			await within(menu).findByText("Dev Space");
 			const kbdOf = (el: HTMLElement) => el.querySelector("kbd")?.textContent;
 			// Board order: sp_dev (slot of Alpha), then sp_other (slot of Beta), then Delta.
-			expect(kbdOf(screen.getByTestId("switcher-space-sp_dev"))).toBe("⌘1");
-			expect(kbdOf(screen.getByTestId("switcher-space-sp_other"))).toBe("⌘2");
+			expect(kbdOf(screen.getByTestId("switcher-space-sp_dev"))).toBe("G 1");
+			expect(kbdOf(screen.getByTestId("switcher-space-sp_other"))).toBe("G 2");
 			const rows = within(menu).getAllByTestId("switcher-row");
 			const rowOf = (name: string) => rows.find((r) => r.textContent?.includes(name))!;
-			expect(kbdOf(rowOf("Project Delta"))).toBe("⌘3");
+			expect(kbdOf(rowOf("Project Delta"))).toBe("G 3");
 			expect(kbdOf(rowOf("Project Alpha"))).toBeUndefined();
 			expect(kbdOf(rowOf("Project Beta"))).toBeUndefined();
 		});
@@ -538,6 +539,104 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			expect(within(menu).queryByText("Home")).not.toBeInTheDocument();
 			// The search row's ⇧⌘K button is not a project row — count the rows only.
 			expect(within(menu).getAllByTestId("switcher-row")).toHaveLength(3);
+		});
+
+		describe("collapsing groups", () => {
+			const KEY = "dev3-switcher-collapsed-groups";
+			beforeEach(() => localStorage.clear());
+			afterEach(() => localStorage.clear());
+
+			/** Row labels in render order. */
+			function rowNames(menu: HTMLElement) {
+				return within(menu).queryAllByTestId("switcher-row").map((row) => row.querySelector("span.flex-1")?.textContent ?? "");
+			}
+
+			it("starts expanded and folds a group from its chevron, keeping the heading", async () => {
+				withSpaces();
+				const user = userEvent.setup();
+				const navigate = vi.fn();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Other Space");
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta", "Project Beta", "Project Delta"]);
+
+				const toggle = screen.getByTestId("switcher-group-toggle-sp_other");
+				expect(toggle).toHaveAttribute("aria-expanded", "true");
+				await user.click(toggle);
+
+				expect(toggle).toHaveAttribute("aria-expanded", "false");
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta", "Project Delta"]);
+				expect(within(menu).getByText("Other Space")).toBeInTheDocument();
+				// The chevron folds only; it never opens the board the heading names.
+				expect(navigate).not.toHaveBeenCalled();
+				expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(["sp_other"]);
+				expect(localStorage.getItem("dev3-collapsed-spaces")).toBeNull();
+			});
+
+			it("folds Home too", async () => {
+				withSpaces();
+				const user = userEvent.setup();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Home");
+				await user.click(screen.getByTestId("switcher-group-toggle-home"));
+				expect(rowNames(menu)).not.toContain("Project Delta");
+				expect(within(menu).getByText("Home")).toBeInTheDocument();
+			});
+
+			it("restores a stored fold and ignores the dashboard's own key", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["home"]));
+				localStorage.setItem("dev3-collapsed-spaces", JSON.stringify(["sp_other"]));
+				const menu = await openSwitcher();
+				await within(menu).findByText("Other Space");
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta", "Project Beta"]);
+			});
+
+			it("keeps the current project's group open and its chevron inert", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["sp_dev"]));
+				const user = userEvent.setup();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Dev Space");
+				const toggle = screen.getByTestId("switcher-group-toggle-sp_dev");
+				expect(toggle).toHaveAttribute("aria-disabled", "true");
+				expect(toggle).toHaveAttribute("aria-expanded", "true");
+				await user.click(toggle);
+				expect(rowNames(menu)).toContain("Project Alpha");
+				expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(["sp_dev"]);
+			});
+
+			it("shows every hit while a search is active, folded or not", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["home"]));
+				const user = userEvent.setup();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Home");
+				await user.type(screen.getByTestId("project-switcher-search"), "delta");
+				expect(rowNames(menu)).toEqual(["Project Delta"]);
+				expect(screen.getByTestId("switcher-group-toggle-home")).toHaveAttribute("aria-disabled", "true");
+			});
+
+			it("skips folded rows on the arrow keys and Enter", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["sp_other"]));
+				const user = userEvent.setup();
+				const navigate = vi.fn();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Other Space");
+				// Rows: Alpha, Beta (Dev Space), Delta. Unfolded, step two would be Beta under Other Space.
+				await user.type(screen.getByTestId("project-switcher-search"), "{ArrowDown}{ArrowDown}{Enter}");
+				expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p4" });
+			});
 		});
 	});
 
@@ -1757,11 +1856,11 @@ describe("GlobalHeader — virtual (Operations) board git affordances", () => {
 		const rows = screen.getAllByRole("button").filter((b) => /Operations|Project Alpha|Project Beta/.test(b.textContent ?? ""));
 		// First dropdown row is the pinned Operations board.
 		expect(rows[0].textContent).toContain("[ Operations ]");
-		expect(rows[0].textContent).toContain("⌘0");
+		expect(rows[0].textContent).toContain("G 0");
 		expect(rows[0].textContent).toContain("System");
-		// Ordinary projects keep ⌘1, ⌘2.
-		expect(rows[1].textContent).toContain("⌘1");
-		expect(rows[2].textContent).toContain("⌘2");
+		// Ordinary projects keep 1, 2 (spelled G N on this remote test page).
+		expect(rows[1].textContent).toContain("G 1");
+		expect(rows[2].textContent).toContain("G 2");
 	});
 });
 

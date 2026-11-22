@@ -11,6 +11,14 @@ export interface StatusHookReport {
 	prompt?: string;
 	/** The harness's own per-submission identity — how a redelivered report is recognised. */
 	turnId?: string;
+	/** Record the session on the pane and move nothing: for a report that is not a lifecycle event. */
+	captureOnly?: boolean;
+	/** The wait this report names is still going: refresh it, move nothing. */
+	heartbeat?: boolean;
+	/** This PostToolUse ends a prompt (an approval or extension prompt), not a tool call. */
+	promptEnd?: boolean;
+	/** Say nothing on stderr either, for a caller whose output reaches the user's screen. */
+	quiet?: boolean;
 }
 
 /**
@@ -34,9 +42,8 @@ export async function reportStatusHookEvent(
 	// recovery — essential when several sessions share one worktree. omp takes
 	// no session id at launch, so this post-hoc capture is the only way to
 	// resume the exact session per pane.
-	const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE
-		? process.env.TMUX_PANE
-		: undefined;
+	// Native panes export DEV3_PANE_ID instead of TMUX_PANE.
+	const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim() || undefined;
 	try {
 		const response = await sendRequest(socketPath, "task.agentHook", {
 			taskId: context.taskId,
@@ -49,11 +56,15 @@ export async function reportStatusHookEvent(
 			// second dev3 process; what happens to it is decided app-side.
 			...(report.event === "UserPromptSubmit" && report.prompt ? { prompt: report.prompt } : {}),
 			...(report.turnId ? { turnId: report.turnId } : {}),
+			...(report.captureOnly ? { captureOnly: true } : {}),
+			...(report.heartbeat ? { heartbeat: true } : {}),
+			...(report.promptEnd ? { promptEnd: true } : {}),
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
-		if (!response.ok) {
+		if (!response.ok && !report.quiet) {
 			process.stderr.write(`dev3 ${report.harness} hook: ${response.error || "status update failed"}\n`);
 		}
 	} catch (error) {
+		if (report.quiet) return;
 		process.stderr.write(
 			`dev3 ${report.harness} hook: ${error instanceof Error ? error.message : String(error)}\n`,
 		);

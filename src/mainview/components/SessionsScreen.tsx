@@ -46,7 +46,7 @@ function matches(session: AgentSessionStats, query: string): boolean {
 	);
 }
 
-interface SessionsScreenProps {
+export interface SessionsScreenProps {
 	/** The project the user came from; the initial scope. Null starts on all projects. */
 	projectId: string | null;
 	projectName: string | null;

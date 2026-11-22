@@ -38,6 +38,8 @@ export class ClaudeApprovalState {
 		const key = JSON.stringify([owner.sessionId ?? "unknown", owner.agentId ?? null]);
 		const waiting = event === "PermissionRequest" || event === "Notification";
 		const stopped = event === "SubagentStop" || event === "TeammateIdle";
+		// An interrupted parent call leaves the agent idle: it ends a wait but resumes nothing.
+		const failedParent = event === "PostToolUseFailure" && !owner.agentId;
 		let activity = this.tasks.get(taskId);
 		if (!activity && (waiting || owner.agentId)) {
 			activity = { waiting: new Set(), background: new Set(), resumeStatus: status === "review-by-ai" ? status : "in-progress" };
@@ -48,7 +50,7 @@ export class ClaudeApprovalState {
 				if (stopped) activity.background.delete(key);
 				else activity.background.add(key);
 				if (status === "review-by-user" && !stopped) activity.stoppedStatus = status;
-			} else {
+			} else if (!failedParent) {
 				activity.stoppedStatus = undefined;
 			}
 			if (waiting) {
@@ -60,12 +62,14 @@ export class ClaudeApprovalState {
 			if (activity.waiting.size) return "user-questions";
 			const stoppedStatus = activity.stoppedStatus;
 			this.forgetEmpty(taskId, activity);
+			if (failedParent) return null;
 			if (stopped) {
 				if (stoppedStatus) return activity.background.size ? "in-progress" : stoppedStatus;
 				return resumed && status === "user-questions" ? activity.resumeStatus : null;
 			}
 			if (resumed && status === "user-questions") return activity.resumeStatus;
 		}
+		if (failedParent) return null;
 		if (owner.agentId && status === "user-questions") return null;
 		return status === "review-by-ai" ? null : "in-progress";
 	}

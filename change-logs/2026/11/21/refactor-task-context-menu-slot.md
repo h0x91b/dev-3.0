@@ -1,0 +1,1 @@
+The task context menu on cards, sidebar rows and board views now draws its rows from an internal taskMenu slot: each built-in row registers itself and runs its own action, with the same items, order and states as before.

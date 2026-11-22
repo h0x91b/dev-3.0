@@ -1,17 +1,8 @@
-import { createContext, useContext, useEffect, useReducer, useSyncExternalStore } from "react";
-import type { Context } from "cordis";
+import { useEffect, useReducer, useSyncExternalStore } from "react";
 import type { BoardService } from "./board-service";
 import type { RegisteredBoardView } from "./registry";
-import { getBoardViewRegistry } from "./root";
-
-/** The Cordis context a board view renders under — the registering plugin's own. */
-export const CordisContext = createContext<Context | null>(null);
-
-export function useCordis(): Context {
-	const ctx = useContext(CordisContext);
-	if (!ctx) throw new Error("useCordis() outside a board view");
-	return ctx;
-}
+import { getBoardViewRegistry } from "./registry";
+import { useCordis } from "../plugins/react";
 
 /** `ctx.board`, re-rendering the caller on every `board/changed`. */
 export function useBoard(): BoardService {

@@ -1,0 +1,1 @@
+The "Did you know?" tips now come from an internal tips slot, with rotation, cool-down and snooze unchanged and pinned by a test. A throwing or malformed tip is hidden and logged once instead of breaking the tip card.

@@ -15,11 +15,12 @@ import {
 import { useT } from "../i18n";
 import FileExplorer, { ExplorerRailGlyph } from "./FileExplorer";
 import Tooltip from "./Tooltip";
+import { SlotErrorBoundary } from "../plugins/SlotHost";
 
 const HOVER_OPEN_DELAY_MS = 150;
 const HOVER_CLOSE_DELAY_MS = 300;
 
-interface FileExplorerFrameProps {
+export interface FileExplorerFrameProps {
 	projectId: string;
 	taskId?: string | null;
 	rootLabel: string;
@@ -28,6 +29,11 @@ interface FileExplorerFrameProps {
 	/** Show the explorer on every entry (the Repo screen), whatever the last visit left. */
 	openOnEnter?: boolean;
 	onOpenYazi?: () => void;
+	/** Opens the project settings where the extra folders are edited. */
+	onEditFolders?: () => void;
+	rootSectionLabel?: string;
+	/** A host notice shown above the tree, inside its column (a crashed replacement). */
+	notice?: ReactNode;
 	children: ReactNode;
 }
 
@@ -36,7 +42,7 @@ interface FileExplorerFrameProps {
  * the content gives up width. Auto-hidden, only a rail is docked and the tree
  * slides over the content, so a terminal behind it never changes size.
  */
-export default function FileExplorerFrame({ projectId, taskId, rootLabel, enabled, openOnEnter, onOpenYazi, children }: FileExplorerFrameProps) {
+export default function FileExplorerFrame({ projectId, taskId, rootLabel, enabled, openOnEnter, onOpenYazi, onEditFolders, rootSectionLabel, notice, children }: FileExplorerFrameProps) {
 	const t = useT();
 	const prefs = useFileExplorerPrefs();
 	const mode = enabled ? prefs.mode : "hidden";
@@ -157,18 +163,30 @@ export default function FileExplorerFrame({ projectId, taskId, rootLabel, enable
 		setFileExplorerWidth(drag.lastWidth);
 	}, []);
 
+	// The explorer crashes inside its own column: the terminal beside it never remounts for it.
+	const tree = (
+		<SlotErrorBoundary slot="terminalCompanion" resetKey={`${projectId}/${taskId ?? ""}`} fallback={() => <ExplorerCrashed />}>
+			<FileExplorer
+				projectId={projectId}
+				taskId={taskId}
+				rootLabel={rootLabel}
+				pinned={mode === "pinned"}
+				onTogglePin={() => setFileExplorerMode(mode === "pinned" ? "autohide" : "pinned")}
+				onHide={() => setFileExplorerMode("hidden")}
+				onHandOff={mode === "autohide" ? () => setRevealed(null) : undefined}
+				onOpenYazi={onOpenYazi}
+				onEditFolders={onEditFolders}
+				rootSectionLabel={rootSectionLabel}
+				focusSignal={focusSignal}
+			/>
+		</SlotErrorBoundary>
+	);
+	// One wrapper whether or not a notice shows, so dismissing it never remounts the tree.
 	const explorer = mode === "hidden" ? null : (
-		<FileExplorer
-			projectId={projectId}
-			taskId={taskId}
-			rootLabel={rootLabel}
-			pinned={mode === "pinned"}
-			onTogglePin={() => setFileExplorerMode(mode === "pinned" ? "autohide" : "pinned")}
-			onHide={() => setFileExplorerMode("hidden")}
-			onHandOff={mode === "autohide" ? () => setRevealed(null) : undefined}
-			onOpenYazi={onOpenYazi}
-			focusSignal={focusSignal}
-		/>
+		<div className="flex h-full min-h-0 flex-col">
+			{notice}
+			<div className="flex min-h-0 flex-1 flex-col">{tree}</div>
+		</div>
 	);
 
 	// `children` keeps the same slot in every mode: a terminal that remounted on
@@ -255,6 +273,21 @@ export default function FileExplorerFrame({ projectId, taskId, rootLabel, enable
 						{explorer}
 					</div>
 				)}
+			</div>
+		</div>
+	);
+}
+
+/** A crashed explorer says so in its column, wrapped to fit the narrowest width, and can be hidden. */
+function ExplorerCrashed() {
+	const t = useT();
+	return (
+		<div className="h-full min-h-0 overflow-y-auto bg-raised p-2">
+			<div role="alert" data-testid="file-explorer-crashed" className="flex flex-col items-start gap-1.5 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger [overflow-wrap:anywhere]">
+				<span>{t("fileExplorer.crashed")}</span>
+				<button type="button" onClick={() => setFileExplorerMode("hidden")} className="rounded-md underline underline-offset-2 hover:text-fg active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
+					{t("fileExplorer.hide")}
+				</button>
 			</div>
 		</div>
 	);
