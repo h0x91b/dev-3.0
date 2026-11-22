@@ -149,6 +149,11 @@ export function routeTaskId(route: Route): string | null {
 	return null;
 }
 
+/** True on the Active Tasks layout (a task picked or not) and on a full-page task. */
+export function routeIsTaskView(route: Route): boolean {
+	return route.screen === "task" || (route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+}
+
 /** The inline-diff request a route carries, or null when the diff is closed. */
 export function routeDiffRequest(route: Route): TaskInlineDiffRequest | null {
 	if (route.screen === "task") return route.diff ?? null;

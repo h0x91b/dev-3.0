@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Task } from "../../../shared/types";
-import { coordinatorCandidates } from "../coordinatorFinder";
+import { coordinatorCandidates, digitCoordinator } from "../coordinatorFinder";
 
 function task(id: string, over: Partial<Task> = {}): Task {
 	return {
@@ -59,5 +59,27 @@ describe("coordinatorCandidates", () => {
 	it("orders by MRU inside a band, then newest seq", () => {
 		const tasks = [task("t1"), task("t2"), task("t3")];
 		expect(coordinatorCandidates(tasks, null, ["t1"]).map((c) => c.task.id)).toEqual(["t1", "t3", "t2"]);
+	});
+});
+
+describe("digitCoordinator", () => {
+	it("picks the first candidate among the target's projects only", () => {
+		const tasks = [task("t1", { projectId: "p1" }), task("t2", { projectId: "p2", hibernated: true }), task("t3", { projectId: "p2" })];
+		expect(digitCoordinator(tasks, ["p2"], null, [])?.id).toBe("t3");
+	});
+
+	it("prefers the most recently used one inside a band", () => {
+		const tasks = [task("t1", { projectId: "p2" }), task("t2", { projectId: "p2" })];
+		expect(digitCoordinator(tasks, ["p2"], null, ["t1", "t2"])?.id).toBe("t1");
+	});
+
+	it("spans every member project of a space", () => {
+		const tasks = [task("t1", { projectId: "p3" })];
+		expect(digitCoordinator(tasks, ["p2", "p3"], null, [])?.id).toBe("t1");
+	});
+
+	it("is null with no active coordinator", () => {
+		const tasks = [task("t1", { projectId: "p2", status: "completed" }), task("t2", { projectId: "p2", taskType: undefined })];
+		expect(digitCoordinator(tasks, ["p2"], null, [])).toBeNull();
 	});
 });

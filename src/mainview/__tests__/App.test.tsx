@@ -337,6 +337,13 @@ function fakePlatform(os: "mac" | "linux") {
 	Object.defineProperty(globalThis, "navigator", { value, writable: true, configurable: true });
 }
 
+/** ⌘/g + digit from a task view looks the target's coordinator up first; let that land. */
+async function settleDigitJump() {
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+}
+
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
 		// These assert the DESKTOP keymap (⌘Q, ⌘N, zoom, ⌘1–9). happy-dom looks like
@@ -914,9 +921,9 @@ describe("App keyboard shortcuts", () => {
 			order: ["sp_a"],
 		};
 
-		async function renderWith(follow: boolean) {
+		async function renderWith(follow: boolean, spaces: object = spacesFile) {
 			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
-			vi.mocked(api.request.getSpaces).mockResolvedValue(spacesFile as never);
+			vi.mocked(api.request.getSpaces).mockResolvedValue(spaces as never);
 			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
@@ -996,6 +1003,7 @@ describe("App keyboard shortcuts", () => {
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			const digit = alphaDigit(follow);
 			press({ key: digit, code: `Digit${digit}`, metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-space-id", "");
 			expect(project()).toHaveAttribute("data-task-view", "true");
@@ -1009,6 +1017,7 @@ describe("App keyboard shortcuts", () => {
 			await renderWith(false);
 			await userEvent.click(screen.getByTestId("mock-make-dirty"));
 			press({ key: "3", code: "Digit3", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
 			expect(project()).toHaveAttribute("data-project-id", "p1");
@@ -1060,6 +1069,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(false);
 			press({ key: "3", code: "Digit3", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1071,6 +1081,7 @@ describe("App keyboard shortcuts", () => {
 			await renderWith(false);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "3", code: "Digit3" });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1081,6 +1092,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(true);
 			press({ key: "2", code: "Digit2", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p3");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1091,6 +1103,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(true);
 			press({ key: "2", code: "Digit2", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p2");
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			expect(project()).toHaveAttribute("data-active-task-id", "");
@@ -1103,11 +1116,124 @@ describe("App keyboard shortcuts", () => {
 			await renderWith(true);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "3", code: "Digit3" });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p4");
 			expect(project()).toHaveAttribute("data-active-task-id", "");
 		});
 
-		it("digits follow the order just chosen, before the host has stored it", async () => {
+		describe("from a task view, the digit opens the target's coordinator", () => {
+			const coordinator = (id: string, projectId: string, over: Record<string, unknown> = {}) => ({
+				id, seq: Number(id.replace(/\D/g, "")), projectId, title: id, status: "in-progress", taskType: "coordinator", worktreePath: `/w/${id}`, ...over,
+			});
+			function mockBoards(boards: Record<string, unknown[]>) {
+				vi.mocked(api.request.getAllProjectTasks).mockResolvedValue(
+					Object.entries(boards).map(([projectId, tasks]) => ({ projectId, tasks, todoCount: 0 })) as never,
+				);
+			}
+			afterEach(() => {
+				vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([]);
+				localStorage.removeItem("dev3-task-open-mode");
+			});
+			// With follow off the dashboard order makes Gamma (p3) digit 2.
+			const fromTask = () =>
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
+				});
+
+			it("⌘2 lands on the live coordinator, not a hibernated or finished one", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c1", "p3", { hibernated: true }), coordinator("c2", "p3"), coordinator("c3", "p3", { status: "completed" })] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "c2");
+			});
+
+			it("a pinned key opens the coordinator of the project pinned to it", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c2", "p3")], p4: [coordinator("c4", "p4")] });
+				await renderWith(false, { ...spacesFile, digitSlots: ["p4"] });
+				press({ key: "1", code: "Digit1", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p4");
+				expect(project()).toHaveAttribute("data-active-task-id", "c4");
+			});
+
+			it("g then 2 does the same", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "2", code: "Digit2" });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-active-task-id", "c2");
+			});
+
+			it("a space digit finds the coordinator on any member and keeps the space", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c5", "p3")] });
+				await renderWith(true);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-active-task-id", "c5");
+			});
+
+			it("from a board the digit still opens the board, not the coordinator", async () => {
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "");
+			});
+
+			it("⇧⌘2 from a task still opens the board", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "@", code: "Digit2", metaKey: true, shiftKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			});
+
+			it("on the target's own coordinator, full-page, the digit still leads to its board", async () => {
+				localStorage.setItem("dev3-task-open-mode", "fullscreen");
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "task", projectId: "p3", taskId: "c2" }),
+				});
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			});
+
+			it("drops a lookup that lands after the user navigated elsewhere", async () => {
+				fromTask();
+				let resolve: (value: unknown) => void = () => {};
+				await renderWith(false);
+				vi.mocked(api.request.getAllProjectTasks).mockReturnValueOnce(new Promise((r) => { resolve = r; }) as never);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				press({ key: "g", code: "KeyG" });
+				press({ key: "d", code: "KeyD" });
+				expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+				await act(async () => {
+					resolve([{ projectId: "p3", tasks: [coordinator("c2", "p3")], todoCount: 0 }]);
+				});
+				await settleDigitJump();
+				expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+				expect(screen.queryByTestId("project-screen")).toBeNull();
+			});
+		});
+
+it("digits follow the order just chosen, before the host has stored it", async () => {
 			await renderWith(true);
 			act(() => commitMixedOrder(["sp_a", "p1", "p4"]));
 			press({ key: "1", code: "Digit1", metaKey: true });
@@ -1478,6 +1604,7 @@ describe("App keyboard shortcuts", () => {
 			expect(before).toHaveAttribute("data-active-task-id", "t1");
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
@@ -1495,6 +1622,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
@@ -1512,6 +1640,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Meta>}1{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p1");
@@ -1548,6 +1677,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
@@ -1566,6 +1696,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
