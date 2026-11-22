@@ -1,0 +1,2021 @@
+{
+ "tips": [
+  {
+   "id": "diff-review-persists",
+   "titleKey": "tip.diffReviewPersists.title",
+   "bodyKey": "tip.diffReviewPersists.body",
+   "icon": "󰆓",
+   "score": 3,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "create-task-inline-label",
+   "titleKey": "tip.createTaskInlineLabel.title",
+   "bodyKey": "tip.createTaskInlineLabel.body",
+   "icon": "󰐃",
+   "score": 2,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "back-forward-nav",
+   "titleKey": "tip.backForwardNav.title",
+   "bodyKey": "tip.backForwardNav.body",
+   "icon": "󰅁",
+   "score": 2,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "status-age-badge",
+   "titleKey": "tip.statusAgeBadge.title",
+   "bodyKey": "tip.statusAgeBadge.body",
+   "icon": "󰥔",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "cmd-switch-keeps-view",
+   "titleKey": "tip.cmdSwitchKeepsView.title",
+   "bodyKey": "tip.cmdSwitchKeepsView.body",
+   "icon": "󰘀",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "project-quick-switch",
+   "titleKey": "tip.projectQuickSwitch.title",
+   "bodyKey": "tip.projectQuickSwitch.body",
+   "icon": "󰥩",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "command-palette",
+   "titleKey": "tip.commandPalette.title",
+   "bodyKey": "tip.commandPalette.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal",
+    "diff"
+   ]
+  },
+  {
+   "id": "agent-create-tasks",
+   "titleKey": "tip.agentCreateTasks.title",
+   "bodyKey": "tip.agentCreateTasks.body",
+   "icon": "󰈙",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "agent-sees-tasks",
+   "titleKey": "tip.agentSeesTasks.title",
+   "bodyKey": "tip.agentSeesTasks.body",
+   "icon": "󰺠",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "agent-notes",
+   "titleKey": "tip.agentNotes.title",
+   "bodyKey": "tip.agentNotes.body",
+   "icon": "󰧭",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "double-click-todo",
+   "titleKey": "tip.doubleClickTodo.title",
+   "bodyKey": "tip.doubleClickTodo.body",
+   "icon": "󰩹",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "right-click-open",
+   "titleKey": "tip.rightClickOpen.title",
+   "bodyKey": "tip.rightClickOpen.body",
+   "icon": "󰍹",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "terminal-preview",
+   "titleKey": "tip.terminalPreview.title",
+   "bodyKey": "tip.terminalPreview.body",
+   "icon": "󰒉",
+   "score": 5,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "task-overview-hover",
+   "titleKey": "tip.taskOverviewHover.title",
+   "bodyKey": "tip.taskOverviewHover.body",
+   "icon": "󰋼",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "multi-variant-tasks",
+   "titleKey": "tip.multiVariantTasks.title",
+   "bodyKey": "tip.multiVariantTasks.body",
+   "icon": "󰈙",
+   "score": 5,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "task-labels",
+   "titleKey": "tip.taskLabels.title",
+   "bodyKey": "tip.taskLabels.body",
+   "icon": "󰬅",
+   "score": 2,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "task-search",
+   "titleKey": "tip.taskSearch.title",
+   "bodyKey": "tip.taskSearch.body",
+   "icon": "󰍉",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "push-and-create-pr",
+   "titleKey": "tip.pushAndCreatePr.title",
+   "bodyKey": "tip.pushAndCreatePr.body",
+   "icon": "󰚩",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "create-pr-auto-merge",
+   "titleKey": "tip.createPrAutoMerge.title",
+   "bodyKey": "tip.createPrAutoMerge.body",
+   "icon": "󰘣",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "project-github-account",
+   "titleKey": "tip.projectGitHubAccount.title",
+   "bodyKey": "tip.projectGitHubAccount.body",
+   "icon": "󰍰",
+   "score": 2,
+   "contexts": [
+    "settings"
+   ]
+  },
+  {
+   "id": "pr-badge-on-card",
+   "titleKey": "tip.prBadgeOnCard.title",
+   "bodyKey": "tip.prBadgeOnCard.body",
+   "icon": "󰐁",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "show-diff-button",
+   "titleKey": "tip.showDiffButton.title",
+   "bodyKey": "tip.showDiffButton.body",
+   "icon": "󰑋",
+   "score": 4,
+   "contexts": [
+    "terminal",
+    "diff"
+   ]
+  },
+  {
+   "id": "diff-exclude-tests",
+   "titleKey": "tip.diffExcludeTests.title",
+   "bodyKey": "tip.diffExcludeTests.body",
+   "icon": "󰙨",
+   "score": 3,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "inline-diff-comments",
+   "titleKey": "tip.inlineDiffComments.title",
+   "bodyKey": "tip.inlineDiffComments.body",
+   "icon": "󰉻",
+   "score": 4,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "inline-diff-review-export",
+   "titleKey": "tip.inlineDiffReviewExport.title",
+   "bodyKey": "tip.inlineDiffReviewExport.body",
+   "icon": "󰆘",
+   "score": 4,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "unpushed-diff",
+   "titleKey": "tip.unpushedDiff.title",
+   "bodyKey": "tip.unpushedDiff.body",
+   "icon": "󰟧",
+   "score": 3,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "image-paste-attach",
+   "titleKey": "tip.imagePasteAttach.title",
+   "bodyKey": "tip.imagePasteAttach.body",
+   "icon": "󰈟",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "custom-columns",
+   "titleKey": "tip.customColumns.title",
+   "bodyKey": "tip.customColumns.body",
+   "icon": "󰍉",
+   "score": 4,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "clone-from-url",
+   "titleKey": "tip.cloneFromUrl.title",
+   "bodyKey": "tip.cloneFromUrl.body",
+   "icon": "󰊢",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "terminal-drag-drop-file-path",
+   "titleKey": "tip.terminalDragDropFilePath.title",
+   "bodyKey": "tip.terminalDragDropFilePath.body",
+   "icon": "󰔥",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "file-explorer-insert-path",
+   "titleKey": "tip.fileExplorerInsertPath.title",
+   "bodyKey": "tip.fileExplorerInsertPath.body",
+   "icon": "",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "review-mode-branch",
+   "titleKey": "tip.reviewModeBranch.title",
+   "bodyKey": "tip.reviewModeBranch.body",
+   "icon": "󰠄",
+   "score": 4,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "auto-complete-on-pr-merge",
+   "titleKey": "tip.autoCompleteOnPrMerge.title",
+   "bodyKey": "tip.autoCompleteOnPrMerge.body",
+   "icon": "󰎂",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "expose-task-ports",
+   "titleKey": "tip.exposeTaskPorts.title",
+   "bodyKey": "tip.exposeTaskPorts.body",
+   "icon": "󰅨",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "resume-agent-session",
+   "titleKey": "tip.resumeAgentSession.title",
+   "bodyKey": "tip.resumeAgentSession.body",
+   "icon": "󰐊",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "tmux-action-buttons",
+   "titleKey": "tip.tmuxActionButtons.title",
+   "bodyKey": "tip.tmuxActionButtons.body",
+   "icon": "󰅖",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "configurable-agents",
+   "titleKey": "tip.configurableAgents.title",
+   "bodyKey": "tip.configurableAgents.body",
+   "icon": "󰈙",
+   "score": 4,
+   "contexts": [
+    "settings"
+   ],
+   "settingsSection": "agents"
+  },
+  {
+   "id": "git-branch-status",
+   "titleKey": "tip.gitBranchStatus.title",
+   "bodyKey": "tip.gitBranchStatus.body",
+   "icon": "󰘬",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "warn-before-complete",
+   "titleKey": "tip.warnBeforeComplete.title",
+   "bodyKey": "tip.warnBeforeComplete.body",
+   "icon": "󰼉",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "cow-clone-paths",
+   "titleKey": "tip.cowClonePaths.title",
+   "bodyKey": "tip.cowClonePaths.body",
+   "icon": "󰆘",
+   "score": 5,
+   "contexts": [
+    "settings"
+   ]
+  },
+  {
+   "id": "keyboard-shortcuts-panel",
+   "titleKey": "tip.keyboardShortcutsPanel.title",
+   "bodyKey": "tip.keyboardShortcutsPanel.body",
+   "icon": "󰌍",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal",
+    "diff"
+   ]
+  },
+  {
+   "id": "tmux-session-manager",
+   "titleKey": "tip.tmuxSessionManager.title",
+   "bodyKey": "tip.tmuxSessionManager.body",
+   "icon": "󰌓",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "cli-tool",
+   "titleKey": "tip.cliTool.title",
+   "bodyKey": "tip.cliTool.body",
+   "icon": "󰪞",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "cli-dev-server",
+   "titleKey": "tip.cliDevServer.title",
+   "bodyKey": "tip.cliDevServer.body",
+   "icon": "󰪞",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "diff-snapshots",
+   "titleKey": "tip.diffSnapshots.title",
+   "bodyKey": "tip.diffSnapshots.body",
+   "icon": "󰠄",
+   "score": 4,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "branch-selector-task-creation",
+   "titleKey": "tip.branchSelectorTaskCreation.title",
+   "bodyKey": "tip.branchSelectorTaskCreation.body",
+   "icon": "󰘬",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "resume-conversation-on-reopen",
+   "titleKey": "tip.resumeConversationOnReopen.title",
+   "bodyKey": "tip.resumeConversationOnReopen.body",
+   "icon": "󰐊",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "custom-task-title",
+   "titleKey": "tip.customTaskTitle.title",
+   "bodyKey": "tip.customTaskTitle.body",
+   "icon": "󰭛",
+   "score": 2,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "spawn-extra-agent",
+   "titleKey": "tip.spawnExtraAgent.title",
+   "bodyKey": "tip.spawnExtraAgent.body",
+   "icon": "󰈙",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "task-open-mode",
+   "titleKey": "tip.taskOpenMode.title",
+   "bodyKey": "tip.taskOpenMode.body",
+   "icon": "󰄤",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "fork-branch-support",
+   "titleKey": "tip.forkBranchSupport.title",
+   "bodyKey": "tip.forkBranchSupport.body",
+   "icon": "󰘬",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "restart-task-from-scratch",
+   "titleKey": "tip.restartTaskFromScratch.title",
+   "bodyKey": "tip.restartTaskFromScratch.body",
+   "icon": "󰑐",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "shell-after-agent-exit",
+   "titleKey": "tip.shellAfterAgentExit.title",
+   "bodyKey": "tip.shellAfterAgentExit.body",
+   "icon": "󰌓",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "worktree-file-filter",
+   "titleKey": "tip.worktreeFileFilter.title",
+   "bodyKey": "tip.worktreeFileFilter.body",
+   "icon": "󰉋",
+   "score": 3,
+   "contexts": [
+    "diff"
+   ]
+  },
+  {
+   "id": "repo-local-config",
+   "titleKey": "tip.repoLocalConfig.title",
+   "bodyKey": "tip.repoLocalConfig.body",
+   "icon": "󰒓",
+   "score": 4,
+   "contexts": [
+    "settings"
+   ]
+  },
+  {
+   "id": "ai-review-drag",
+   "titleKey": "tip.aiReviewDrag.title",
+   "bodyKey": "tip.aiReviewDrag.body",
+   "icon": "󰠄",
+   "score": 5,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "ai-review-customize",
+   "titleKey": "tip.aiReviewCustomize.title",
+   "bodyKey": "tip.aiReviewCustomize.body",
+   "icon": "󰒓",
+   "score": 3,
+   "contexts": [
+    "settings"
+   ]
+  },
+  {
+   "id": "custom-column-agents",
+   "titleKey": "tip.customColumnAgents.title",
+   "bodyKey": "tip.customColumnAgents.body",
+   "icon": "󰈙",
+   "score": 4,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "rename-builtin-columns",
+   "titleKey": "tip.renameBuiltinColumns.title",
+   "bodyKey": "tip.renameBuiltinColumns.body",
+   "icon": "󰭛",
+   "score": 2,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "worktree-config",
+   "titleKey": "tip.worktreeConfig.title",
+   "bodyKey": "tip.worktreeConfig.body",
+   "icon": "󰙅",
+   "score": 3,
+   "contexts": [
+    "settings"
+   ]
+  },
+  {
+   "id": "project-terminal",
+   "titleKey": "tip.projectTerminal.title",
+   "bodyKey": "tip.projectTerminal.body",
+   "icon": "󰒉",
+   "score": 3,
+   "contexts": [
+    "terminal",
+    "board"
+   ]
+  },
+  {
+   "id": "port-allocation",
+   "titleKey": "tip.portAllocation.title",
+   "bodyKey": "tip.portAllocation.body",
+   "icon": "󰌗",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "resource-usage-badge",
+   "titleKey": "tip.resourceUsageBadge.title",
+   "bodyKey": "tip.resourceUsageBadge.body",
+   "icon": "󰍛",
+   "score": 3,
+   "contexts": [
+    "terminal",
+    "board"
+   ]
+  },
+  {
+   "id": "task-watch-notifications",
+   "titleKey": "tip.taskWatch.title",
+   "bodyKey": "tip.taskWatch.body",
+   "icon": "󰂚",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "prevent-sleep",
+   "titleKey": "tip.preventSleep.title",
+   "bodyKey": "tip.preventSleep.body",
+   "icon": "",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "copy-worktree-path",
+   "titleKey": "tip.copyWorktreePath.title",
+   "bodyKey": "tip.copyWorktreePath.body",
+   "icon": "󰆘",
+   "score": 2,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "folder-picker-paste-path",
+   "titleKey": "tip.folderPickerPastePath.title",
+   "bodyKey": "tip.folderPickerPastePath.body",
+   "icon": "󰝰",
+   "score": 2,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "kanban-git-pull",
+   "titleKey": "tip.kanbanGitPull.title",
+   "bodyKey": "tip.kanbanGitPull.body",
+   "icon": "󰅤",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "init-new-project",
+   "titleKey": "tip.initNewProject.title",
+   "bodyKey": "tip.initNewProject.body",
+   "icon": "󰐕",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "sidebar-global-scope",
+   "titleKey": "tip.sidebarGlobalScope.title",
+   "bodyKey": "tip.sidebarGlobalScope.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "scratch-task",
+   "titleKey": "tip.scratchTask.title",
+   "bodyKey": "tip.scratchTask.body",
+   "icon": "󰆍",
+   "score": 4,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "bug-hunters-lightbox",
+   "titleKey": "tip.bugHunters.title",
+   "bodyKey": "tip.bugHunters.body",
+   "icon": "",
+   "score": 5,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "multi-window",
+   "titleKey": "tip.multiWindow.title",
+   "bodyKey": "tip.multiWindow.body",
+   "icon": "󰗂",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "multi-folder-add-project",
+   "titleKey": "tip.multiFolderAddProject.title",
+   "bodyKey": "tip.multiFolderAddProject.body",
+   "icon": "󰝰",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "skill-autocomplete",
+   "titleKey": "tip.skillAutocomplete.title",
+   "bodyKey": "tip.skillAutocomplete.body",
+   "icon": "󰍉",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "projects-daily-backup",
+   "titleKey": "tip.projectsDailyBackup.title",
+   "bodyKey": "tip.projectsDailyBackup.body",
+   "icon": "󰁯",
+   "score": 3,
+   "contexts": [
+    "board",
+    "settings"
+   ]
+  },
+  {
+   "id": "agent-completion-request",
+   "titleKey": "tip.agentCompletionRequest.title",
+   "bodyKey": "tip.agentCompletionRequest.body",
+   "icon": "󰚩",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "task-switcher-option-tab",
+   "titleKey": "tip.taskSwitcher.title",
+   "bodyKey": "tip.taskSwitcher.body",
+   "icon": "󰌌",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "paste-large-text",
+   "titleKey": "tip.pasteLargeText.title",
+   "bodyKey": "tip.pasteLargeText.body",
+   "icon": "󰆒",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "task-hint-nav",
+   "titleKey": "tip.taskHintNav.title",
+   "bodyKey": "tip.taskHintNav.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "keyboard-go-to",
+   "titleKey": "tip.keyboardGoTo.title",
+   "bodyKey": "tip.keyboardGoTo.body",
+   "icon": "",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "terminal-select-copies",
+   "titleKey": "tip.terminalSelectCopies.title",
+   "bodyKey": "tip.terminalSelectCopies.body",
+   "icon": "󰆘",
+   "score": 5,
+   "contexts": [
+    "terminal",
+    "preparing"
+   ]
+  },
+  {
+   "id": "agent-can-ping-you",
+   "titleKey": "tip.agentCanPingYou.title",
+   "bodyKey": "tip.agentCanPingYou.body",
+   "icon": "󰂚",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "focus-mode-mutes-pings",
+   "titleKey": "tip.focusModeMutesPings.title",
+   "bodyKey": "tip.focusModeMutesPings.body",
+   "icon": "󰮰",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ],
+   "settingsSection": "notifications"
+  },
+  {
+   "id": "pr-ci-review-badges",
+   "titleKey": "tip.prCiReviewBadges.title",
+   "bodyKey": "tip.prCiReviewBadges.body",
+   "icon": "󰸝",
+   "score": 4,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "operations-board",
+   "titleKey": "tip.operationsBoard.title",
+   "bodyKey": "tip.operationsBoard.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "operations-history",
+   "titleKey": "tip.operationsHistory.title",
+   "bodyKey": "tip.operationsHistory.body",
+   "icon": "󰊗",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "browser-notifications",
+   "titleKey": "tip.browserNotifications.title",
+   "bodyKey": "tip.browserNotifications.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "settings",
+    "board"
+   ],
+   "settingsSection": "notifications"
+  },
+  {
+   "id": "remote-detach-lifecycle",
+   "titleKey": "tip.remoteDetachLifecycle.title",
+   "bodyKey": "tip.remoteDetachLifecycle.body",
+   "icon": "󰒍",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "productivity-stats",
+   "titleKey": "tip.productivityStats.title",
+   "bodyKey": "tip.productivityStats.body",
+   "icon": "󰓅",
+   "score": 4,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "mobile-pane-pager",
+   "titleKey": "tip.mobilePanePager.title",
+   "bodyKey": "tip.mobilePanePager.body",
+   "icon": "󰯊",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "alt-click-move-cursor",
+   "titleKey": "tip.altClickMoveCursor.title",
+   "bodyKey": "tip.altClickMoveCursor.body",
+   "icon": "󰑓",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "stats-token-cost",
+   "titleKey": "tip.statsTokenCost.title",
+   "bodyKey": "tip.statsTokenCost.body",
+   "icon": "󰯅",
+   "score": 3,
+   "contexts": [
+    "board"
+   ]
+  },
+  {
+   "id": "agent-show-image",
+   "titleKey": "tip.agentShowImage.title",
+   "bodyKey": "tip.agentShowImage.body",
+   "icon": "󰋩",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "mobile-composer",
+   "titleKey": "tip.mobileComposer.title",
+   "bodyKey": "tip.mobileComposer.body",
+   "icon": "󰌌",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "close-pane-picker",
+   "titleKey": "tip.closePanePicker.title",
+   "bodyKey": "tip.closePanePicker.body",
+   "icon": "󰅖",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "help-mode",
+   "titleKey": "tip.helpMode.title",
+   "bodyKey": "tip.helpMode.body",
+   "icon": "󰋽",
+   "score": 4,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "automations",
+   "titleKey": "tip.automations.title",
+   "bodyKey": "tip.automations.body",
+   "icon": "󰅐",
+   "score": 4,
+   "contexts": [
+    "board",
+    "settings"
+   ]
+  },
+  {
+   "id": "makefile-targets",
+   "titleKey": "tip.makefileTargets.title",
+   "bodyKey": "tip.makefileTargets.body",
+   "icon": "󰌓",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "cli-doctor",
+   "titleKey": "tip.cliDoctor.title",
+   "bodyKey": "tip.cliDoctor.body",
+   "icon": "",
+   "score": 3,
+   "contexts": [
+    "board",
+    "settings"
+   ]
+  },
+  {
+   "id": "llm-provider",
+   "titleKey": "tip.llmProvider.title",
+   "bodyKey": "tip.llmProvider.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "settings"
+   ],
+   "settingsSection": "agents"
+  },
+  {
+   "id": "filter-tokens",
+   "titleKey": "tip.filterTokens.title",
+   "bodyKey": "tip.filterTokens.body",
+   "icon": "󰈲",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "cycle-task-variants",
+   "titleKey": "tip.cycleTaskVariants.title",
+   "bodyKey": "tip.cycleTaskVariants.body",
+   "icon": "󰘀",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "mobile-task-git",
+   "titleKey": "tip.mobileTaskGit.title",
+   "bodyKey": "tip.mobileTaskGit.body",
+   "icon": "󰘬",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "terminal-search",
+   "titleKey": "tip.terminalSearch.title",
+   "bodyKey": "tip.terminalSearch.body",
+   "icon": "󰍉",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "terminal-path-links",
+   "titleKey": "tip.terminalPathLinks.title",
+   "bodyKey": "tip.terminalPathLinks.body",
+   "icon": "󰈙",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ],
+   "settingsSection": "terminal"
+  },
+  {
+   "id": "streamer-mode",
+   "titleKey": "tip.streamerMode.title",
+   "bodyKey": "tip.streamerMode.body",
+   "icon": "󰕧",
+   "score": 3,
+   "contexts": [
+    "settings",
+    "board"
+   ],
+   "settingsSection": "appearance"
+  },
+  {
+   "id": "cli-doctor-worktrees",
+   "titleKey": "tip.cliDoctorWorktrees.title",
+   "bodyKey": "tip.cliDoctorWorktrees.body",
+   "icon": "",
+   "score": 4,
+   "contexts": [
+    "board",
+    "settings"
+   ]
+  },
+  {
+   "id": "share-artifact-link",
+   "titleKey": "tip.shareArtifactLink.title",
+   "bodyKey": "tip.shareArtifactLink.body",
+   "icon": "󰌷",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "model-catalog-roles",
+   "titleKey": "tip.modelCatalogRoles.title",
+   "bodyKey": "tip.modelCatalogRoles.body",
+   "icon": "󰯅",
+   "score": 4,
+   "contexts": [
+    "settings",
+    "board"
+   ],
+   "settingsSection": "models"
+  },
+  {
+   "id": "spaceSearch",
+   "titleKey": "tip.spaceSearch.title",
+   "bodyKey": "tip.spaceSearch.body",
+   "icon": "󰹶",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "remote-self-update",
+   "titleKey": "tip.remoteSelfUpdate.title",
+   "bodyKey": "tip.remoteSelfUpdate.body",
+   "icon": "󰚰",
+   "score": 3,
+   "contexts": [
+    "board",
+    "settings"
+   ],
+   "settingsSection": "system"
+  },
+  {
+   "id": "agent-traffic-log",
+   "titleKey": "tip.agentTrafficLog.title",
+   "bodyKey": "tip.agentTrafficLog.body",
+   "icon": "󰇙",
+   "score": 3,
+   "contexts": [
+    "board",
+    "terminal"
+   ]
+  },
+  {
+   "id": "continue-in-another-agent",
+   "titleKey": "tip.continueInAnotherAgent.title",
+   "bodyKey": "tip.continueInAnotherAgent.body",
+   "icon": "󰑐",
+   "score": 4,
+   "contexts": [
+    "terminal"
+   ]
+  },
+  {
+   "id": "rename-terminal-window",
+   "titleKey": "tip.renameTerminalWindow.title",
+   "bodyKey": "tip.renameTerminalWindow.body",
+   "icon": "󰭛",
+   "score": 3,
+   "contexts": [
+    "terminal"
+   ]
+  }
+ ],
+ "drains": {
+  "(none)": [
+   "multi-variant-tasks",
+   "bug-hunters-lightbox",
+   "ai-review-drag",
+   "cow-clone-paths",
+   "terminal-preview",
+   "terminal-select-copies",
+   "browser-notifications",
+   "custom-column-agents",
+   "sidebar-global-scope",
+   "port-allocation",
+   "command-palette",
+   "task-switcher-option-tab",
+   "paste-large-text",
+   "cli-tool",
+   "help-mode",
+   "expose-task-ports",
+   "resume-conversation-on-reopen",
+   "image-paste-attach",
+   "continue-in-another-agent",
+   "pr-ci-review-badges",
+   "automations",
+   "mobile-composer",
+   "agent-sees-tasks",
+   "skill-autocomplete",
+   "cli-doctor-worktrees",
+   "inline-diff-review-export",
+   "operations-board",
+   "show-diff-button",
+   "llm-provider",
+   "inline-diff-comments",
+   "resume-agent-session",
+   "repo-local-config",
+   "configurable-agents",
+   "diff-snapshots",
+   "multi-window",
+   "push-and-create-pr",
+   "agent-can-ping-you",
+   "model-catalog-roles",
+   "custom-columns",
+   "terminal-drag-drop-file-path",
+   "productivity-stats",
+   "agent-show-image",
+   "scratch-task",
+   "agent-create-tasks",
+   "spawn-extra-agent",
+   "alt-click-move-cursor",
+   "task-hint-nav",
+   "agent-notes",
+   "auto-complete-on-pr-merge",
+   "terminal-path-links",
+   "focus-mode-mutes-pings",
+   "review-mode-branch",
+   "create-pr-auto-merge",
+   "task-open-mode",
+   "double-click-todo",
+   "share-artifact-link",
+   "warn-before-complete",
+   "branch-selector-task-creation",
+   "projects-daily-backup",
+   "init-new-project",
+   "resource-usage-badge",
+   "git-branch-status",
+   "remote-self-update",
+   "agent-traffic-log",
+   "task-overview-hover",
+   "remote-detach-lifecycle",
+   "project-quick-switch",
+   "rename-terminal-window",
+   "project-terminal",
+   "restart-task-from-scratch",
+   "multi-folder-add-project",
+   "worktree-file-filter",
+   "ai-review-customize",
+   "diff-review-persists",
+   "close-pane-picker",
+   "keyboard-shortcuts-panel",
+   "clone-from-url",
+   "filter-tokens",
+   "spaceSearch",
+   "file-explorer-insert-path",
+   "right-click-open",
+   "prevent-sleep",
+   "fork-branch-support",
+   "mobile-pane-pager",
+   "makefile-targets",
+   "agent-completion-request",
+   "kanban-git-pull",
+   "task-search",
+   "shell-after-agent-exit",
+   "keyboard-go-to",
+   "pr-badge-on-card",
+   "tmux-action-buttons",
+   "streamer-mode",
+   "operations-history",
+   "stats-token-cost",
+   "mobile-task-git",
+   "unpushed-diff",
+   "cycle-task-variants",
+   "cli-dev-server",
+   "diff-exclude-tests",
+   "task-watch-notifications",
+   "status-age-badge",
+   "tmux-session-manager",
+   "terminal-search",
+   "cmd-switch-keeps-view",
+   "cli-doctor",
+   "worktree-config",
+   "copy-worktree-path",
+   "create-task-inline-label",
+   "rename-builtin-columns",
+   "folder-picker-paste-path",
+   "project-github-account",
+   "task-labels",
+   "custom-task-title",
+   "back-forward-nav"
+  ],
+  "board": [
+   "terminal-preview",
+   "ai-review-drag",
+   "multi-variant-tasks",
+   "agent-can-ping-you",
+   "scratch-task",
+   "automations",
+   "productivity-stats",
+   "focus-mode-mutes-pings",
+   "task-hint-nav",
+   "pr-ci-review-badges",
+   "command-palette",
+   "operations-board",
+   "browser-notifications",
+   "multi-window",
+   "cli-doctor-worktrees",
+   "custom-column-agents",
+   "task-switcher-option-tab",
+   "custom-columns",
+   "model-catalog-roles",
+   "help-mode",
+   "task-open-mode",
+   "streamer-mode",
+   "cmd-switch-keeps-view",
+   "projects-daily-backup",
+   "remote-self-update",
+   "pr-badge-on-card",
+   "stats-token-cost",
+   "task-overview-hover",
+   "share-artifact-link",
+   "task-search",
+   "fork-branch-support",
+   "kanban-git-pull",
+   "project-terminal",
+   "resource-usage-badge",
+   "multi-folder-add-project",
+   "double-click-todo",
+   "operations-history",
+   "agent-traffic-log",
+   "clone-from-url",
+   "warn-before-complete",
+   "cli-doctor",
+   "cycle-task-variants",
+   "init-new-project",
+   "status-age-badge",
+   "task-watch-notifications",
+   "filter-tokens",
+   "keyboard-go-to",
+   "project-quick-switch",
+   "branch-selector-task-creation",
+   "spaceSearch",
+   "remote-detach-lifecycle",
+   "keyboard-shortcuts-panel",
+   "right-click-open",
+   "prevent-sleep",
+   "create-task-inline-label",
+   "folder-picker-paste-path",
+   "task-labels",
+   "custom-task-title",
+   "rename-builtin-columns",
+   "back-forward-nav",
+   "bug-hunters-lightbox",
+   "cow-clone-paths",
+   "terminal-select-copies",
+   "terminal-path-links",
+   "create-pr-auto-merge",
+   "port-allocation",
+   "agent-notes",
+   "continue-in-another-agent",
+   "cli-tool",
+   "auto-complete-on-pr-merge",
+   "resume-conversation-on-reopen",
+   "expose-task-ports",
+   "resume-agent-session",
+   "agent-create-tasks",
+   "skill-autocomplete",
+   "image-paste-attach",
+   "inline-diff-review-export",
+   "agent-show-image",
+   "llm-provider",
+   "inline-diff-comments",
+   "push-and-create-pr",
+   "spawn-extra-agent",
+   "configurable-agents",
+   "sidebar-global-scope",
+   "paste-large-text",
+   "diff-snapshots",
+   "repo-local-config",
+   "agent-sees-tasks",
+   "review-mode-branch",
+   "alt-click-move-cursor",
+   "show-diff-button",
+   "terminal-drag-drop-file-path",
+   "mobile-composer",
+   "worktree-config",
+   "agent-completion-request",
+   "mobile-task-git",
+   "tmux-session-manager",
+   "makefile-targets",
+   "cli-dev-server",
+   "file-explorer-insert-path",
+   "worktree-file-filter",
+   "diff-review-persists",
+   "git-branch-status",
+   "terminal-search",
+   "unpushed-diff",
+   "rename-terminal-window",
+   "ai-review-customize",
+   "mobile-pane-pager",
+   "diff-exclude-tests",
+   "shell-after-agent-exit",
+   "close-pane-picker",
+   "restart-task-from-scratch",
+   "tmux-action-buttons",
+   "copy-worktree-path",
+   "project-github-account"
+  ],
+  "terminal": [
+   "terminal-preview",
+   "terminal-select-copies",
+   "bug-hunters-lightbox",
+   "multi-variant-tasks",
+   "terminal-drag-drop-file-path",
+   "alt-click-move-cursor",
+   "agent-can-ping-you",
+   "task-open-mode",
+   "port-allocation",
+   "spawn-extra-agent",
+   "command-palette",
+   "skill-autocomplete",
+   "task-switcher-option-tab",
+   "expose-task-ports",
+   "mobile-composer",
+   "image-paste-attach",
+   "cli-tool",
+   "create-pr-auto-merge",
+   "continue-in-another-agent",
+   "focus-mode-mutes-pings",
+   "agent-show-image",
+   "operations-board",
+   "agent-create-tasks",
+   "sidebar-global-scope",
+   "terminal-path-links",
+   "push-and-create-pr",
+   "multi-window",
+   "agent-notes",
+   "help-mode",
+   "show-diff-button",
+   "auto-complete-on-pr-merge",
+   "resume-conversation-on-reopen",
+   "resume-agent-session",
+   "agent-sees-tasks",
+   "paste-large-text",
+   "task-search",
+   "mobile-pane-pager",
+   "agent-traffic-log",
+   "warn-before-complete",
+   "keyboard-shortcuts-panel",
+   "cycle-task-variants",
+   "terminal-search",
+   "agent-completion-request",
+   "project-quick-switch",
+   "resource-usage-badge",
+   "mobile-task-git",
+   "makefile-targets",
+   "right-click-open",
+   "shell-after-agent-exit",
+   "rename-terminal-window",
+   "share-artifact-link",
+   "restart-task-from-scratch",
+   "tmux-session-manager",
+   "project-terminal",
+   "cmd-switch-keeps-view",
+   "spaceSearch",
+   "git-branch-status",
+   "cli-dev-server",
+   "keyboard-go-to",
+   "prevent-sleep",
+   "task-watch-notifications",
+   "tmux-action-buttons",
+   "filter-tokens",
+   "close-pane-picker",
+   "file-explorer-insert-path",
+   "copy-worktree-path",
+   "back-forward-nav",
+   "ai-review-drag",
+   "cow-clone-paths",
+   "repo-local-config",
+   "pr-ci-review-badges",
+   "custom-column-agents",
+   "scratch-task",
+   "inline-diff-comments",
+   "automations",
+   "configurable-agents",
+   "review-mode-branch",
+   "cli-doctor-worktrees",
+   "model-catalog-roles",
+   "custom-columns",
+   "inline-diff-review-export",
+   "browser-notifications",
+   "task-hint-nav",
+   "llm-provider",
+   "productivity-stats",
+   "diff-snapshots",
+   "init-new-project",
+   "double-click-todo",
+   "worktree-file-filter",
+   "kanban-git-pull",
+   "pr-badge-on-card",
+   "unpushed-diff",
+   "streamer-mode",
+   "multi-folder-add-project",
+   "projects-daily-backup",
+   "stats-token-cost",
+   "clone-from-url",
+   "cli-doctor",
+   "fork-branch-support",
+   "task-overview-hover",
+   "worktree-config",
+   "diff-review-persists",
+   "branch-selector-task-creation",
+   "remote-self-update",
+   "status-age-badge",
+   "remote-detach-lifecycle",
+   "ai-review-customize",
+   "operations-history",
+   "diff-exclude-tests",
+   "rename-builtin-columns",
+   "folder-picker-paste-path",
+   "project-github-account",
+   "task-labels",
+   "custom-task-title",
+   "create-task-inline-label"
+  ],
+  "diff": [
+   "show-diff-button",
+   "review-mode-branch",
+   "inline-diff-review-export",
+   "inline-diff-comments",
+   "command-palette",
+   "diff-snapshots",
+   "keyboard-shortcuts-panel",
+   "unpushed-diff",
+   "diff-exclude-tests",
+   "worktree-file-filter",
+   "diff-review-persists",
+   "ai-review-drag",
+   "bug-hunters-lightbox",
+   "multi-variant-tasks",
+   "terminal-select-copies",
+   "terminal-preview",
+   "cow-clone-paths",
+   "expose-task-ports",
+   "continue-in-another-agent",
+   "operations-board",
+   "help-mode",
+   "mobile-composer",
+   "agent-sees-tasks",
+   "paste-large-text",
+   "terminal-path-links",
+   "auto-complete-on-pr-merge",
+   "browser-notifications",
+   "image-paste-attach",
+   "llm-provider",
+   "terminal-drag-drop-file-path",
+   "spawn-extra-agent",
+   "multi-window",
+   "task-open-mode",
+   "custom-column-agents",
+   "task-switcher-option-tab",
+   "push-and-create-pr",
+   "agent-can-ping-you",
+   "model-catalog-roles",
+   "configurable-agents",
+   "cli-tool",
+   "productivity-stats",
+   "agent-show-image",
+   "skill-autocomplete",
+   "agent-notes",
+   "sidebar-global-scope",
+   "alt-click-move-cursor",
+   "focus-mode-mutes-pings",
+   "create-pr-auto-merge",
+   "repo-local-config",
+   "cli-doctor-worktrees",
+   "automations",
+   "resume-conversation-on-reopen",
+   "resume-agent-session",
+   "port-allocation",
+   "agent-create-tasks",
+   "pr-ci-review-badges",
+   "custom-columns",
+   "scratch-task",
+   "task-hint-nav",
+   "projects-daily-backup",
+   "prevent-sleep",
+   "tmux-session-manager",
+   "remote-self-update",
+   "agent-traffic-log",
+   "task-overview-hover",
+   "mobile-pane-pager",
+   "double-click-todo",
+   "rename-terminal-window",
+   "task-watch-notifications",
+   "shell-after-agent-exit",
+   "agent-completion-request",
+   "worktree-config",
+   "project-terminal",
+   "status-age-badge",
+   "makefile-targets",
+   "cli-dev-server",
+   "tmux-action-buttons",
+   "cycle-task-variants",
+   "spaceSearch",
+   "git-branch-status",
+   "right-click-open",
+   "init-new-project",
+   "restart-task-from-scratch",
+   "stats-token-cost",
+   "cli-doctor",
+   "keyboard-go-to",
+   "multi-folder-add-project",
+   "task-search",
+   "ai-review-customize",
+   "operations-history",
+   "pr-badge-on-card",
+   "warn-before-complete",
+   "share-artifact-link",
+   "remote-detach-lifecycle",
+   "close-pane-picker",
+   "terminal-search",
+   "file-explorer-insert-path",
+   "mobile-task-git",
+   "fork-branch-support",
+   "clone-from-url",
+   "kanban-git-pull",
+   "cmd-switch-keeps-view",
+   "branch-selector-task-creation",
+   "streamer-mode",
+   "project-quick-switch",
+   "filter-tokens",
+   "resource-usage-badge",
+   "copy-worktree-path",
+   "create-task-inline-label",
+   "rename-builtin-columns",
+   "folder-picker-paste-path",
+   "project-github-account",
+   "task-labels",
+   "custom-task-title",
+   "back-forward-nav"
+  ],
+  "settings": [
+   "cow-clone-paths",
+   "cli-doctor-worktrees",
+   "automations",
+   "browser-notifications",
+   "repo-local-config",
+   "model-catalog-roles",
+   "llm-provider",
+   "configurable-agents",
+   "cli-doctor",
+   "projects-daily-backup",
+   "ai-review-customize",
+   "streamer-mode",
+   "remote-self-update",
+   "worktree-config",
+   "project-github-account",
+   "multi-variant-tasks",
+   "ai-review-drag",
+   "terminal-preview",
+   "terminal-select-copies",
+   "bug-hunters-lightbox",
+   "alt-click-move-cursor",
+   "productivity-stats",
+   "agent-create-tasks",
+   "scratch-task",
+   "help-mode",
+   "image-paste-attach",
+   "task-hint-nav",
+   "show-diff-button",
+   "mobile-composer",
+   "inline-diff-comments",
+   "expose-task-ports",
+   "custom-column-agents",
+   "resume-agent-session",
+   "diff-snapshots",
+   "sidebar-global-scope",
+   "agent-notes",
+   "skill-autocomplete",
+   "continue-in-another-agent",
+   "custom-columns",
+   "terminal-drag-drop-file-path",
+   "focus-mode-mutes-pings",
+   "operations-board",
+   "multi-window",
+   "agent-sees-tasks",
+   "spawn-extra-agent",
+   "agent-can-ping-you",
+   "paste-large-text",
+   "push-and-create-pr",
+   "cli-tool",
+   "terminal-path-links",
+   "pr-ci-review-badges",
+   "auto-complete-on-pr-merge",
+   "review-mode-branch",
+   "resume-conversation-on-reopen",
+   "command-palette",
+   "agent-show-image",
+   "inline-diff-review-export",
+   "task-open-mode",
+   "port-allocation",
+   "task-switcher-option-tab",
+   "create-pr-auto-merge",
+   "tmux-action-buttons",
+   "spaceSearch",
+   "agent-traffic-log",
+   "task-overview-hover",
+   "keyboard-go-to",
+   "project-quick-switch",
+   "rename-terminal-window",
+   "project-terminal",
+   "cli-dev-server",
+   "prevent-sleep",
+   "fork-branch-support",
+   "restart-task-from-scratch",
+   "diff-review-persists",
+   "remote-detach-lifecycle",
+   "git-branch-status",
+   "unpushed-diff",
+   "makefile-targets",
+   "share-artifact-link",
+   "clone-from-url",
+   "double-click-todo",
+   "task-watch-notifications",
+   "tmux-session-manager",
+   "operations-history",
+   "stats-token-cost",
+   "init-new-project",
+   "kanban-git-pull",
+   "right-click-open",
+   "shell-after-agent-exit",
+   "multi-folder-add-project",
+   "pr-badge-on-card",
+   "file-explorer-insert-path",
+   "mobile-task-git",
+   "agent-completion-request",
+   "mobile-pane-pager",
+   "filter-tokens",
+   "warn-before-complete",
+   "cycle-task-variants",
+   "keyboard-shortcuts-panel",
+   "task-search",
+   "worktree-file-filter",
+   "status-age-badge",
+   "branch-selector-task-creation",
+   "terminal-search",
+   "cmd-switch-keeps-view",
+   "close-pane-picker",
+   "resource-usage-badge",
+   "diff-exclude-tests",
+   "create-task-inline-label",
+   "copy-worktree-path",
+   "folder-picker-paste-path",
+   "custom-task-title",
+   "task-labels",
+   "rename-builtin-columns",
+   "back-forward-nav"
+  ],
+  "preparing": [
+   "terminal-select-copies",
+   "ai-review-drag",
+   "cow-clone-paths",
+   "multi-variant-tasks",
+   "terminal-preview",
+   "bug-hunters-lightbox",
+   "browser-notifications",
+   "custom-column-agents",
+   "sidebar-global-scope",
+   "port-allocation",
+   "command-palette",
+   "task-switcher-option-tab",
+   "paste-large-text",
+   "cli-tool",
+   "help-mode",
+   "expose-task-ports",
+   "resume-conversation-on-reopen",
+   "image-paste-attach",
+   "continue-in-another-agent",
+   "pr-ci-review-badges",
+   "automations",
+   "mobile-composer",
+   "agent-sees-tasks",
+   "skill-autocomplete",
+   "cli-doctor-worktrees",
+   "inline-diff-review-export",
+   "operations-board",
+   "show-diff-button",
+   "llm-provider",
+   "inline-diff-comments",
+   "resume-agent-session",
+   "repo-local-config",
+   "configurable-agents",
+   "diff-snapshots",
+   "multi-window",
+   "push-and-create-pr",
+   "agent-can-ping-you",
+   "model-catalog-roles",
+   "custom-columns",
+   "terminal-drag-drop-file-path",
+   "productivity-stats",
+   "agent-show-image",
+   "scratch-task",
+   "agent-create-tasks",
+   "spawn-extra-agent",
+   "alt-click-move-cursor",
+   "task-hint-nav",
+   "agent-notes",
+   "auto-complete-on-pr-merge",
+   "terminal-path-links",
+   "focus-mode-mutes-pings",
+   "review-mode-branch",
+   "create-pr-auto-merge",
+   "task-open-mode",
+   "double-click-todo",
+   "share-artifact-link",
+   "warn-before-complete",
+   "branch-selector-task-creation",
+   "projects-daily-backup",
+   "init-new-project",
+   "resource-usage-badge",
+   "git-branch-status",
+   "remote-self-update",
+   "agent-traffic-log",
+   "task-overview-hover",
+   "remote-detach-lifecycle",
+   "project-quick-switch",
+   "rename-terminal-window",
+   "project-terminal",
+   "restart-task-from-scratch",
+   "multi-folder-add-project",
+   "worktree-file-filter",
+   "ai-review-customize",
+   "diff-review-persists",
+   "close-pane-picker",
+   "keyboard-shortcuts-panel",
+   "clone-from-url",
+   "filter-tokens",
+   "spaceSearch",
+   "file-explorer-insert-path",
+   "right-click-open",
+   "prevent-sleep",
+   "fork-branch-support",
+   "mobile-pane-pager",
+   "makefile-targets",
+   "agent-completion-request",
+   "kanban-git-pull",
+   "task-search",
+   "shell-after-agent-exit",
+   "keyboard-go-to",
+   "pr-badge-on-card",
+   "tmux-action-buttons",
+   "streamer-mode",
+   "operations-history",
+   "stats-token-cost",
+   "mobile-task-git",
+   "unpushed-diff",
+   "cycle-task-variants",
+   "cli-dev-server",
+   "diff-exclude-tests",
+   "task-watch-notifications",
+   "status-age-badge",
+   "tmux-session-manager",
+   "terminal-search",
+   "cmd-switch-keeps-view",
+   "cli-doctor",
+   "worktree-config",
+   "copy-worktree-path",
+   "create-task-inline-label",
+   "rename-builtin-columns",
+   "folder-picker-paste-path",
+   "project-github-account",
+   "task-labels",
+   "custom-task-title",
+   "back-forward-nav"
+  ]
+ },
+ "agentTrafficOff": [
+  "multi-variant-tasks",
+  "bug-hunters-lightbox",
+  "ai-review-drag",
+  "cow-clone-paths",
+  "terminal-preview",
+  "terminal-select-copies",
+  "browser-notifications",
+  "custom-column-agents",
+  "sidebar-global-scope",
+  "port-allocation",
+  "command-palette",
+  "task-switcher-option-tab",
+  "paste-large-text",
+  "cli-tool",
+  "help-mode",
+  "expose-task-ports",
+  "resume-conversation-on-reopen",
+  "image-paste-attach",
+  "continue-in-another-agent",
+  "pr-ci-review-badges",
+  "automations",
+  "mobile-composer",
+  "agent-sees-tasks",
+  "skill-autocomplete",
+  "cli-doctor-worktrees",
+  "inline-diff-review-export",
+  "operations-board",
+  "show-diff-button",
+  "llm-provider",
+  "inline-diff-comments",
+  "resume-agent-session",
+  "repo-local-config",
+  "configurable-agents",
+  "diff-snapshots",
+  "multi-window",
+  "push-and-create-pr",
+  "agent-can-ping-you",
+  "model-catalog-roles",
+  "custom-columns",
+  "terminal-drag-drop-file-path",
+  "productivity-stats",
+  "agent-show-image",
+  "scratch-task",
+  "agent-create-tasks",
+  "spawn-extra-agent",
+  "alt-click-move-cursor",
+  "task-hint-nav",
+  "agent-notes",
+  "auto-complete-on-pr-merge",
+  "terminal-path-links",
+  "focus-mode-mutes-pings",
+  "review-mode-branch",
+  "create-pr-auto-merge",
+  "task-open-mode",
+  "project-quick-switch",
+  "streamer-mode",
+  "warn-before-complete",
+  "cli-dev-server",
+  "multi-folder-add-project",
+  "kanban-git-pull",
+  "project-terminal",
+  "tmux-action-buttons",
+  "spaceSearch",
+  "remote-self-update",
+  "task-overview-hover",
+  "operations-history",
+  "double-click-todo",
+  "rename-terminal-window",
+  "resource-usage-badge",
+  "fork-branch-support",
+  "init-new-project",
+  "shell-after-agent-exit",
+  "worktree-file-filter",
+  "diff-review-persists",
+  "stats-token-cost",
+  "keyboard-shortcuts-panel",
+  "clone-from-url",
+  "cli-doctor",
+  "share-artifact-link",
+  "file-explorer-insert-path",
+  "right-click-open",
+  "prevent-sleep",
+  "restart-task-from-scratch",
+  "remote-detach-lifecycle",
+  "close-pane-picker",
+  "agent-completion-request",
+  "projects-daily-backup",
+  "task-search",
+  "ai-review-customize",
+  "task-watch-notifications",
+  "pr-badge-on-card",
+  "git-branch-status",
+  "terminal-search",
+  "mobile-pane-pager",
+  "keyboard-go-to",
+  "cycle-task-variants",
+  "unpushed-diff",
+  "filter-tokens",
+  "tmux-session-manager",
+  "cmd-switch-keeps-view",
+  "worktree-config",
+  "status-age-badge",
+  "branch-selector-task-creation",
+  "mobile-task-git",
+  "diff-exclude-tests",
+  "makefile-targets",
+  "rename-builtin-columns",
+  "copy-worktree-path",
+  "create-task-inline-label",
+  "custom-task-title",
+  "folder-picker-paste-path",
+  "task-labels",
+  "project-github-account",
+  "back-forward-nav"
+ ]
+}
