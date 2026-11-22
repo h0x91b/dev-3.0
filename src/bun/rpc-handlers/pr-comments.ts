@@ -1,4 +1,5 @@
 import type { PRReviewComment, PRReviewThread, PRReviewThreadSide, Project, Task, TaskPRCommentsPayload } from "../../shared/types";
+import { type SentAgentMessage, sentAgentMessage } from "../../shared/agent-prompt-delivery";
 import * as data from "../data";
 import * as github from "../github";
 import { sendMessageImmediately } from "../scheduled-message-scheduler";
@@ -228,14 +229,13 @@ async function getTaskPrComments(params: { taskId: string; projectId: string; fo
  * in and run while they watch. Holding it for a quiet pane made the button look
  * broken — nothing appeared, and people re-clicked or pasted by hand (#1495 fallout).
  */
-async function sendAgentMessageNow(params: { taskId: string; projectId: string; text: string }): Promise<{ spilledPath: string | null }> {
+async function sendAgentMessageNow(params: { taskId: string; projectId: string; text: string }): Promise<SentAgentMessage> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	// `origin: "user"` is provable here and only here-and-alike: this handler exists
 	// solely to serve a click in the app's own UI. Nothing infers it from the null
 	// sender, which artifact submits and dev3 hand-offs also have.
-	const { spilledPath } = await sendMessageImmediately(task, params.text, null, null, { hold: false, origin: "user" });
-	return { spilledPath };
+	return sentAgentMessage(await sendMessageImmediately(task, params.text, null, null, { hold: false, origin: "user" }));
 }
 
 export const prCommentsHandlers = {

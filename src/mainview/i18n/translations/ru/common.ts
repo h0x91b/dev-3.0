@@ -242,6 +242,7 @@ const common = {
 	"traffic.compose.send": "Отправить",
 	"traffic.compose.sending": "Отправка…",
 	"traffic.compose.sent": "Набрано в панели агента.",
+	"traffic.compose.heldBehindPrompt": "Ждёт, пока вы ответите на запрос агента; уйдёт после ответа.",
 	"traffic.compose.sentAsFile": "Слишком длинно для набора — агент получил файл {path}",
 	"traffic.compose.failed": "Не отправлено: {error}",
 	"traffic.compose.hint": "Ctrl+Enter — отправить · Enter — новая строка",

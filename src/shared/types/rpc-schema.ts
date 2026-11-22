@@ -15,7 +15,7 @@ import type { TaskPrRefPreview, TaskPrRefResolution } from "../task-refs";
 import type { ReviewComment, ReviewReplyAuthor } from "../review";
 import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
-import type { AgentPromptDelivery } from "../agent-prompt-delivery";
+import type { AgentPromptDelivery, SentAgentMessage } from "../agent-prompt-delivery";
 import type { SecretRequest } from "../secret-request";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
@@ -57,6 +57,14 @@ import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
 import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxRestartImpact, TmuxServerNotice } from "./environment";
 import type { ExplorerListing, FolderListing, ProjectFolder } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
+
+
+/** Renderer translation keys a host-raised toast may carry; the English `message` stays its fallback. */
+export type CliToastMessageKey =
+	| "kanban.launchAccountRemoved"
+	| "kanban.launchAwsProfileMissing"
+	| "kanban.awsProfilesChangedFromCli"
+	| "kanban.handoffHeldBehindPrompt";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -1420,7 +1428,7 @@ export type AppRPCSchema = {
 			 */
 			sendAgentMessageNow: {
 				params: { taskId: string; projectId: string; text: string };
-				response: { spilledPath: string | null };
+				response: SentAgentMessage;
 			};
 			/**
 			 * An artifact message: text a human submitted from inside an artifact,
@@ -1431,7 +1439,7 @@ export type AppRPCSchema = {
 			 */
 			sendArtifactMessageToAgent: {
 				params: { taskId: string; text: string; artifactTitle: string; version: number; versionCount: number };
-				response: { spilledPath: string | null };
+				response: SentAgentMessage;
 			};
 			/** Review comments (`Task.review`): one RPC per mutation so an agent resolving through the CLI never races a whole-array write. */
 			addReviewComment: {
@@ -2325,7 +2333,7 @@ export type AppRPCSchema = {
 				projectId: string | null;
 				message: string;
 				/** Renderer translation key for `message`, which stays the English fallback. */
-				messageKey?: "kanban.launchAccountRemoved";
+				messageKey?: CliToastMessageKey;
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;

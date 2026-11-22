@@ -18,6 +18,9 @@
  *    to go quiet, so a burst of `dev3 message` sends becomes one agent turn and no
  *    peer's text lands in the middle of the user's own line. Only the message paths
  *    ask for it; button hand-offs type and submit at once.
+ *  - …unless the pane they aim at shows a prompt (#2342). A digit typed into a menu
+ *    picks a row and the Enter approves it, so a hand-off into such a pane is held
+ *    behind the prompt like a message, and the user is told why nothing appeared.
  *  - A held message never follows focus. Task-addressed, it goes to the main
  *    agent; bound to one agent (`author`), to that agent only — checked again at
  *    release. Hand-offs keep the focus rule (`agent-message-target.ts`).
@@ -29,14 +32,23 @@
  */
 
 import type { ScheduledMessageAuthor, ScheduledMessageTarget, Task } from "../shared/types";
-import { type AgentPromptDelivery, agentPromptDeliveryFromPaneInput } from "../shared/agent-prompt-delivery";
-import { holdMessageForPane, sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
+import {
+	AGENT_PROMPT_HELD_BEHIND_PROMPT,
+	type AgentPromptDelivery,
+	agentPromptDeliveryFromPaneInput,
+	agentPromptHeld,
+} from "../shared/agent-prompt-delivery";
+import { holdMessageForPane, resolveHandoffPane, sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
 import { type HeldMessageTarget, addressedAgentRefusal, resolveMainAgentTarget } from "./agent-message-target";
-import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-prompt-native";
+import { resolveNativeAgentPane, sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-prompt-native";
+import { agentPromptLedger } from "./agent-prompt-ledger";
+import { createLogger } from "./logger";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { refreshClaudeHooksForTask } from "./agent-hooks-refresh";
 import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-prompt-claims";
-import type { HookDeliverable } from "./agent-message-hold";
+import { type HookDeliverable, agentMessageAlreadyHeld, agentMessageHoldKey, hasStrandedAgentMessage } from "./agent-message-hold";
+
+const log = createLogger("agent-prompt-delivery");
 
 /**
  * Text appended once at the end of the agent's turn, after every message in the
@@ -102,6 +114,8 @@ export async function deliverAgentPrompt(
 		// trailer beats a trailer that silently vanishes on the forwarding path.
 		return sendPromptToNativePane(task, bound.paneId, await withEpilogue(prompt, opts.epilogue), { hold: true, verify });
 	}
+	const gatedPane = await handoffPaneBehindPrompt(task, target, native);
+	if (gatedPane) return holdHandoffBehindPrompt(task, gatedPane, prompt, native, opts.epilogue);
 	if (native) {
 		const text = await withEpilogue(prompt, opts.epilogue);
 		return target.kind === "pane"
@@ -145,4 +159,70 @@ function hookOffer(
 async function heldMessagePane(task: Task, target: ScheduledMessageTarget, author: ScheduledMessageAuthor | null): Promise<HeldMessageTarget> {
 	if (target.kind === "pane") return { ok: true, paneId: target.paneId, author };
 	return resolveMainAgentTarget(task);
+}
+
+/**
+ * A hand-off aimed at a pane that shows a prompt joins that pane's hold. A re-click on
+ * the same text adds no second copy: nothing visible happened, so re-clicks are likely.
+ */
+async function holdHandoffBehindPrompt(
+	task: Task,
+	paneId: string,
+	prompt: string,
+	native: boolean,
+	epilogue: AgentPromptEpilogue | undefined,
+): Promise<AgentPromptDelivery> {
+	const text = native ? await withEpilogue(prompt, epilogue) : prompt;
+	const key = agentMessageHoldKey(native ? "native" : "tmux", task.id, paneId);
+	let delivery: AgentPromptDelivery;
+	if (agentMessageAlreadyHeld(key, text)) {
+		delivery = { ...agentPromptHeld(0, true), paneId };
+	} else {
+		delivery = native
+			? await sendPromptToNativePane(task, paneId, text, { hold: true })
+			: await holdMessageForPane(task, paneId, prompt, epilogue);
+		// A native pane owned by another app process holds it there and cannot say why;
+		// it was routed here only because this pane shows a prompt.
+		if (native && delivery.status === "held") delivery = { ...agentPromptHeld(0, true), paneId };
+	}
+	if (delivery.reason === AGENT_PROMPT_HELD_BEHIND_PROMPT) await announceHeldBehindPrompt(task);
+	return delivery;
+}
+
+/**
+ * The pane an unheld hand-off would type into, when that pane shows a prompt. Asked only
+ * when some pane of the task does, so the everyday hand-off resolves nothing extra.
+ */
+export async function handoffPaneBehindPrompt(
+	task: Task,
+	target: ScheduledMessageTarget,
+	native = taskTerminalBackendIdentity(task) === "native",
+): Promise<string | null> {
+	const prompted = agentPromptLedger.promptPanes(task.id);
+	if (prompted.size === 0) return null;
+	const paneId =
+		target.kind === "pane"
+			? target.paneId
+			: native
+				? await resolveNativeAgentPane(task.id)
+				: await resolveHandoffPane(task);
+	if (!paneId || !prompted.has(paneId)) return null;
+	// A stranded turn keeps its own refusal: the user has to press Enter there first.
+	return !native && hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, paneId)) ? null : paneId;
+}
+
+/** A click that typed nothing has to say so, or the button looks broken (#2342). */
+export async function announceHeldBehindPrompt(task: Task): Promise<void> {
+	try {
+		const { pushCliToast } = await import("./rpc-handlers/shared");
+		pushCliToast({
+			taskId: task.id,
+			projectId: task.projectId,
+			message: "The agent is showing a prompt. dev3 sends this after you answer it.",
+			messageKey: "kanban.handoffHeldBehindPrompt",
+			level: "info",
+		});
+	} catch (err) {
+		log.warn("could not announce a hand-off held behind a prompt", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
 }

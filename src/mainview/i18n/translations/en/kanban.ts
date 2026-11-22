@@ -30,6 +30,7 @@ const kanban = {
 	"kanban.columnAgentNoTerminal": "Can't start the \"{columnName}\" agent: this task's terminal isn't running. Open the task to start it, then try again.",
 	"kanban.columnAgentNoTerminalMoved": "Can't start the \"{columnName}\" agent: this task's terminal isn't running, so the task was moved to {status}. Open the task to start its terminal, then move it back.",
 	"kanban.launchAccountRemoved": "The account this task used was removed — launched on the default account.",
+	"kanban.handoffHeldBehindPrompt": "The agent is showing a prompt. dev3 sends this after you answer it.",
 	"kanban.launchAwsProfileMissing": "This task's AWS profile is no longer listed on its agent, so it launched on the project env. Restore the profile name in Settings to switch back.",
 	"kanban.awsProfilesChangedFromCli": "The dev3 CLI changed an agent's AWS profiles, which decide the AWS account its launches use. Check them in Settings → Agents.",
 	"kanban.badge.waitingForAnswer": "Waiting for your answer",

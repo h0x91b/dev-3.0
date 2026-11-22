@@ -2150,6 +2150,17 @@ describe("Agent traffic inspector composer", () => {
 		expect(statusLine()).toContain("Typed into the agent's pane");
 	});
 
+	it("says a send waits behind the agent's open prompt instead of claiming it was typed", async () => {
+		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValueOnce({ spilledPath: null, status: "held", reason: "behind-prompt" });
+		setPage([row()]);
+		renderLog();
+		await selectTask("#22");
+		await userEvent.type(box(), "rebase on main please");
+		await userEvent.click(sendButton());
+		await waitFor(() => expect(statusLine()).toContain("Waits behind the agent's open prompt"));
+		expect(statusLine()).not.toContain("Typed into the agent's pane");
+	});
+
 	it("addresses the selected task's own project while the scope spans several", async () => {
 		projectFixtures.value = [
 			{ id: "proj-1", name: "Project One" },

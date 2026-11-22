@@ -347,6 +347,9 @@ export function useTaskBranchStatus({
 				posthog.capture("pull_request_created", { auto_merge: autoMerge });
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.createPRAgentUnconfirmed"), { taskId: task.id });
+			} else if (delivery.status === "held") {
+				// The pane shows a prompt: the app's own toast says it waits for the answer.
+				posthog.capture("pull_request_created", { auto_merge: autoMerge });
 			} else {
 				toast.error(t(undeliveredMessageKey(delivery, "infoPanel.createPRAgentNoPane")), { taskId: task.id });
 			}
@@ -477,7 +480,7 @@ export function useTaskBranchStatus({
 					toast.info(t("infoPanel.rebaseAgentStarted"), { taskId: task.id });
 				} else if (delivery.status === "unconfirmed") {
 					toast.info(t("infoPanel.rebaseAgentUnconfirmed"), { taskId: task.id });
-				} else {
+				} else if (delivery.status !== "held") {
 					toast.error(t(undeliveredMessageKey(delivery, "infoPanel.rebaseAgentNoPane")), { taskId: task.id });
 				}
 			} else {
@@ -514,6 +517,8 @@ export function useTaskBranchStatus({
 				posthog.capture("task_commit_requested");
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.commitAgentUnconfirmed"), { taskId: task.id });
+			} else if (delivery.status === "held") {
+				posthog.capture("task_commit_requested");
 			} else {
 				toast.error(t(undeliveredMessageKey(delivery, "infoPanel.commitAgentNoPane")), { taskId: task.id });
 			}

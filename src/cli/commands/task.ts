@@ -600,6 +600,8 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 				? `printed below instead of typed into your own pane`
 				: roleDelivery === "unconfirmed"
 				? `sent the role change to the running agent, but the backend cannot confirm it landed — check the pane before relying on it`
+				: roleDelivery === "held"
+				? `the running agent is showing a prompt; the role change is sent after it is answered — do not paste it yourself`
 				: roleDelivery === "no-session"
 					? `no running agent to tell; it reads the new role from the description when it starts`
 					: `could NOT tell the running agent — it will keep behaving as before until you paste the new role in yourself`;

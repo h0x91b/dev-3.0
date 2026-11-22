@@ -1,4 +1,5 @@
 import { wrapArtifactMessage } from "../../shared/agent-message-envelope";
+import { type SentAgentMessage, sentAgentMessage } from "../../shared/agent-prompt-delivery";
 import * as data from "../data";
 import { sendMessageImmediately } from "../scheduled-message-scheduler";
 import { log } from "./shared";
@@ -20,7 +21,7 @@ async function sendArtifactMessageToAgent(params: {
 	artifactTitle: string;
 	version: number;
 	versionCount: number;
-}): Promise<{ spilledPath: string | null }> {
+}): Promise<SentAgentMessage> {
 	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	for (const project of projects) {
 		const task = (await data.loadTasks(project)).find((candidate) => candidate.id === params.taskId);
@@ -31,8 +32,7 @@ async function sendArtifactMessageToAgent(params: {
 			version: params.version,
 			versionCount: params.versionCount,
 		});
-		const { spilledPath } = await sendMessageImmediately(task, text, null, null, { hold: false });
-		return { spilledPath };
+		return sentAgentMessage(await sendMessageImmediately(task, text, null, null, { hold: false }));
 	}
 	throw new Error("Could not find the task this artifact belongs to.");
 }

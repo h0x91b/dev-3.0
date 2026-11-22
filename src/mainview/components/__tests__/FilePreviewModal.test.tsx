@@ -554,6 +554,29 @@ describe("FilePreviewModal review comments", () => {
 		await waitFor(() => expect(reviewApi().markReviewCommentsSent).toHaveBeenCalledTimes(1));
 	});
 
+	// Held behind the agent's open prompt: the host's toast says it waits, so no "sent" toast.
+	it("claims no success for a comment held behind the agent's prompt", async () => {
+		const user = userEvent.setup();
+		reviewApi().sendAgentMessageNow.mockResolvedValue({ spilledPath: null, status: "held", reason: "behind-prompt" });
+		toast.success.mockClear();
+		render(
+			<I18nProvider>
+				<FilePreviewModal path="/wt/src/a.ts" taskId="t1" projectId="p1" task={{ id: "t1" }} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(screen.getByTestId("file-preview-code")).toHaveAttribute("data-syntax", "true"));
+
+		selectLines(screen.getByText("two"), screen.getByText("three"), "two\nthree");
+		fireEvent.mouseUp(screen.getByText("two").closest("[data-preview-line]")!.parentElement!.parentElement as HTMLElement);
+		await user.click(await screen.findByTestId("file-preview-comment-selection"));
+		await screen.findByTestId("file-review-composer");
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename these");
+		await user.keyboard("{Control>}{Enter}{/Control}");
+
+		await waitFor(() => expect(reviewApi().markReviewCommentsSent).toHaveBeenCalledTimes(1));
+		expect(toast.success).not.toHaveBeenCalled();
+	});
+
 	it("shows no selection button without a project", async () => {
 		render(<I18nProvider><FilePreviewModal path="/wt/src/a.ts" taskId="t1" onClose={vi.fn()} /></I18nProvider>);
 		await waitFor(() => expect(screen.getByText("two")).toBeInTheDocument());

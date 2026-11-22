@@ -7,6 +7,7 @@ vi.mock("../agent-prompt", () => ({
 	sendPromptToAgentPane: vi.fn(async () => true),
 	sendPromptToPane: vi.fn(async () => true),
 	holdMessageForPane: vi.fn(async () => true),
+	resolveHandoffPane: vi.fn(async () => "%1"),
 }));
 vi.mock("../agent-message-target", () => ({
 	resolveMainAgentTarget: vi.fn(),
@@ -15,7 +16,9 @@ vi.mock("../agent-message-target", () => ({
 vi.mock("../agent-prompt-native", () => ({
 	sendPromptToNativeAgentPane: vi.fn(async () => true),
 	sendPromptToNativePane: vi.fn(async () => true),
+	resolveNativeAgentPane: vi.fn(async () => "pane-1"),
 }));
+vi.mock("../rpc-handlers/shared", () => ({ pushCliToast: vi.fn() }));
 vi.mock("../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	taskSessionName: (taskId: string) => `dev3-task-${taskId}`,
@@ -24,7 +27,12 @@ vi.mock("../agent-hooks-refresh", () => ({
 	refreshClaudeHooksForTask: vi.fn(async () => {}),
 }));
 
-import { holdMessageForPane, sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
+import { holdMessageForPane, resolveHandoffPane, sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
+import { agentPromptLedger } from "../agent-prompt-ledger";
+import * as holdModule from "../agent-message-hold";
+import { agentMessageHoldKey, holdAgentMessage, resetAgentMessageHolds } from "../agent-message-hold";
+import { pushCliToast } from "../rpc-handlers/shared";
+import { AGENT_PROMPT_HELD_BEHIND_PROMPT } from "../../shared/agent-prompt-delivery";
 import { addressedAgentRefusal, resolveMainAgentTarget } from "../agent-message-target";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import { refreshClaudeHooksForTask } from "../agent-hooks-refresh";
@@ -65,7 +73,12 @@ beforeEach(() => {
 	vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "%1", author: null });
 });
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+	vi.clearAllMocks();
+	vi.restoreAllMocks();
+	agentPromptLedger.reset();
+	resetAgentMessageHolds();
+});
 
 describe("deliverAgentPrompt — tmux tasks (regression)", () => {
 	it("routes an unmarked legacy task through the tmux path", async () => {
@@ -269,5 +282,87 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		});
 		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
 		expect(holdMessageForPane).not.toHaveBeenCalled();
+	});
+});
+
+/** A permission menu open in `paneId`, as a status hook reports it. */
+function openPrompt(paneId: string): void {
+	agentPromptLedger.applyStatusHookGate({ taskId: TASK_ID, sessionId: "s1", event: "PermissionRequest", harness: "codex", paneId, toolName: "shell" });
+}
+
+const HELD_BEHIND_PROMPT = { status: "held", reason: AGENT_PROMPT_HELD_BEHIND_PROMPT, detail: "held: the agent is showing a prompt" } as const;
+
+describe("deliverAgentPrompt — a hand-off into a pane showing a prompt (#2342)", () => {
+	it("holds a tmux hand-off behind the prompt instead of typing it, and says so", async () => {
+		openPrompt("%1");
+		vi.mocked(holdMessageForPane).mockResolvedValue(HELD_BEHIND_PROMPT);
+		await expect(deliverAgentPrompt(task(), "create the PR")).resolves.toEqual(HELD_BEHIND_PROMPT);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%1", "create the PR", undefined);
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ taskId: TASK_ID, messageKey: "kanban.handoffHeldBehindPrompt" }));
+	});
+
+	it("holds a concrete pane target that shows the prompt", async () => {
+		openPrompt("%2");
+		vi.mocked(holdMessageForPane).mockResolvedValue(HELD_BEHIND_PROMPT);
+		await deliverAgentPrompt(task(), "hunt bugs", { kind: "pane", paneId: "%2" });
+		expect(sendPromptToPane).not.toHaveBeenCalled();
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%2", "hunt bugs", undefined);
+	});
+
+	it("types at once when the prompt is in another pane", async () => {
+		openPrompt("%2");
+		await expect(deliverAgentPrompt(task(), "commit")).resolves.toEqual({ status: "delivered" });
+		expect(resolveHandoffPane).toHaveBeenCalled();
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+		expect(pushCliToast).not.toHaveBeenCalled();
+	});
+
+	it("resolves no pane at all when no prompt is open anywhere in the task", async () => {
+		await deliverAgentPrompt(task(), "commit");
+		expect(resolveHandoffPane).not.toHaveBeenCalled();
+		expect(sendPromptToAgentPane).toHaveBeenCalledTimes(1);
+	});
+
+	it("holds a native hand-off through the native arm's own hold", async () => {
+		agentPromptLedger.applyStatusHookGate({ taskId: TASK_ID, sessionId: "s1", event: "PermissionRequest", harness: "codex", paneId: "pane-1", toolName: "shell" });
+		vi.mocked(sendPromptToNativePane).mockResolvedValue(HELD_BEHIND_PROMPT);
+		await deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "rebase");
+		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
+		expect(sendPromptToNativePane).toHaveBeenCalledWith(expect.anything(), "pane-1", "rebase", { hold: true });
+	});
+
+	it("queues no second copy when the same hand-off is clicked again while it waits", async () => {
+		openPrompt("%1");
+		vi.mocked(holdMessageForPane).mockImplementation(async (_task, paneId, prompt) => {
+			holdAgentMessage(agentMessageHoldKey("tmux", TASK_ID, paneId), { text: prompt, bytes: prompt.length, deliver: () => "landed", submit: () => "landed" }, {});
+			return HELD_BEHIND_PROMPT;
+		});
+		await deliverAgentPrompt(task(), "commit");
+		await expect(deliverAgentPrompt(task(), "commit")).resolves.toMatchObject({ status: "held", reason: AGENT_PROMPT_HELD_BEHIND_PROMPT });
+		expect(holdMessageForPane).toHaveBeenCalledTimes(1);
+		expect(pushCliToast).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps the occupied-box refusal for a pane whose turn is stranded", async () => {
+		openPrompt("%1");
+		vi.spyOn(holdModule, "hasStrandedAgentMessage").mockReturnValue(true);
+		await deliverAgentPrompt(task(), "commit");
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+		expect(sendPromptToAgentPane).toHaveBeenCalledTimes(1);
+	});
+
+	it("names the prompt for a native hand-off another app process holds", async () => {
+		agentPromptLedger.applyStatusHookGate({ taskId: TASK_ID, sessionId: "s1", event: "PermissionRequest", harness: "codex", paneId: "pane-1", toolName: "shell" });
+		vi.mocked(sendPromptToNativePane).mockResolvedValue({ status: "held", detail: "held until the pane goes quiet" });
+		await expect(deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "rebase")).resolves.toMatchObject({ reason: AGENT_PROMPT_HELD_BEHIND_PROMPT });
+		expect(pushCliToast).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves a held dev3 message to the hold's own gate, with no toast", async () => {
+		openPrompt("%1");
+		await deliverAgentPrompt(task(), "peer report", { kind: "agent" }, { hold: true });
+		expect(resolveHandoffPane).not.toHaveBeenCalled();
+		expect(pushCliToast).not.toHaveBeenCalled();
 	});
 });

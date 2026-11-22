@@ -548,7 +548,7 @@ describe("TaskArtifactViewer agent messages", () => {
 		vi.mocked(toast.success).mockReset();
 		vi.mocked(toast.error).mockReset();
 		vi.mocked(mockedApi.request.sendArtifactMessageToAgent).mockReset();
-		vi.mocked(mockedApi.request.sendArtifactMessageToAgent).mockResolvedValue({ spilledPath: null });
+		vi.mocked(mockedApi.request.sendArtifactMessageToAgent).mockResolvedValue({ spilledPath: null, status: "delivered" });
 	});
 
 	it("delivers a send request to the owning task, names the artifact, and confirms it", async () => {
@@ -564,6 +564,16 @@ describe("TaskArtifactViewer agent messages", () => {
 		}));
 		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-send-result", id: 4, ok: true }, "*"));
 		await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Sent to the agent", { taskId: "task-7" }));
+	});
+
+	// Held behind the agent's open prompt: the host's own toast says it waits, so no "Sent".
+	it("tells the frame a send is held behind a prompt and claims no success", async () => {
+		vi.mocked(mockedApi.request.sendArtifactMessageToAgent).mockResolvedValueOnce({ spilledPath: null, status: "held", reason: "behind-prompt" });
+		const { frame, postMessage } = await openViewer();
+		send(frame);
+
+		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-send-result", id: 4, ok: true, held: true }, "*"));
+		expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
 	});
 
 	it("reports a delivery failure into the frame and to the user", async () => {

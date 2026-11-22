@@ -15,7 +15,8 @@ import {
 import * as data from "./data";
 import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import type { AgentMessageOrigin } from "../shared/agent-message-log";
-import { deliverAgentPrompt } from "./agent-prompt-delivery";
+import { announceHeldBehindPrompt, deliverAgentPrompt, handoffPaneBehindPrompt } from "./agent-prompt-delivery";
+import { agentPromptLedger } from "./agent-prompt-ledger";
 import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { type ExternalSenderStamp, wrapAgentMessage, wrapExternalSenderMessage } from "../shared/agent-message-envelope";
 import type { ExternalSender } from "../shared/external-senders";
@@ -482,13 +483,63 @@ export async function cancelScheduledMessageByRef(
 	return { task, message: result };
 }
 
+/**
+ * Send now on a saved draft or a queued message, clicked while the pane it goes to shows
+ * a prompt (#2342). The item stays on disk and is sent (held) once that pane's prompt
+ * closes: holding it in memory instead would lose the user's text to a restart or a dead
+ * pane. In memory itself, keyed per item so a re-click registers it once; a restart
+ * forgets the intent, never the text.
+ */
+const sendsAfterPrompt = new Map<string, { taskId: string; paneId: string; send: () => Promise<void> }>();
+
+agentPromptLedger.onPromptClosed((taskId, paneId) => {
+	for (const [key, pending] of sendsAfterPrompt) {
+		if (pending.taskId !== taskId || pending.paneId !== paneId) continue;
+		sendsAfterPrompt.delete(key);
+		void pending.send().catch((err) => log.warn("Send after prompt failed", { taskId: taskId.slice(0, 8), error: String(err) }));
+	}
+});
+
+/** Leave the item where it is and send it when `paneId`'s prompt closes; true when that is what happened. */
+async function deferBehindPrompt(task: Task, target: ScheduledMessageTarget, key: string, send: () => Promise<void>): Promise<boolean> {
+	if (isTerminal(task.status)) return false;
+	const paneId = await handoffPaneBehindPrompt(task, target);
+	if (!paneId) return false;
+	sendsAfterPrompt.set(key, { taskId: task.id, paneId, send });
+	log.info("Send now waits behind the agent's prompt; the item stays saved", { taskId: task.id.slice(0, 8), key: key.split(":").pop() ?? "" });
+	await announceHeldBehindPrompt(task);
+	return true;
+}
+
+/** Test seam: how many items wait for a prompt to close. */
+export function sendsAfterPromptCount(): number {
+	return sendsAfterPrompt.size;
+}
+
 /** Deliver a pending scheduled message immediately and remove it (chip "Send now"). */
 export async function sendScheduledMessageNow(project: Project, taskId: string, messageId: string): Promise<Task> {
 	const task = await data.getTask(project, taskId);
 	const message = (task.scheduledMessages ?? []).find((m) => m.id === messageId);
 	if (!message) throw new Error("Scheduled message not found");
+	if (await deferBehindPrompt(task, await scheduledMessagePaneTarget(task, message), `${taskId}:message:${messageId}`, () => sendQueuedAfterPrompt(project, taskId, messageId))) {
+		return task;
+	}
 	const { task: updated } = await fireScheduledMessage(project, task, message, { late: false, hold: false });
 	return updated;
+}
+
+/** Where a queued message would go: its author's own pane, else its target. */
+async function scheduledMessagePaneTarget(task: Task, message: ScheduledMessage): Promise<ScheduledMessageTarget> {
+	if (!message.author) return normalizeTarget(message.target);
+	const resolved = await resolveScheduledMessageAuthorPane(task, message.author);
+	return resolved.ok ? { kind: "pane", paneId: resolved.paneId } : normalizeTarget(message.target);
+}
+
+/** The prompt closed: fire the message if its own clock has not already. */
+async function sendQueuedAfterPrompt(project: Project, taskId: string, messageId: string): Promise<void> {
+	const task = await data.getTask(project, taskId);
+	const message = (task.scheduledMessages ?? []).find((m) => m.id === messageId);
+	if (message) await fireScheduledMessage(project, task, message, { late: false, hold: true });
 }
 
 /**
@@ -620,6 +671,11 @@ async function restoreDraft(project: Project, taskId: string, draft: TaskMessage
  * and the draft is then back on the task.
  */
 export async function sendMessageDraft(project: Project, taskId: string): Promise<Task> {
+	const current = await data.getTask(project, taskId);
+	const saved = current.messageDraft;
+	if (saved?.text.trim() && await deferBehindPrompt(current, { kind: "agent" }, `${taskId}:draft`, () => sendDraftAfterPrompt(project, taskId, saved.updatedAt))) {
+		return current;
+	}
 	const { task, draft } = await claimDraft(project, taskId, () => true);
 	if (!draft) throw new Error("There is no message draft to send");
 	try {
@@ -629,6 +685,25 @@ export async function sendMessageDraft(project: Project, taskId: string): Promis
 		throw err;
 	}
 	return data.getTask(project, taskId);
+}
+
+/**
+ * The prompt closed: send the draft the user clicked Send now on, through the hold. A
+ * draft edited since is a new text the user has not sent, so it stays.
+ */
+async function sendDraftAfterPrompt(project: Project, taskId: string, updatedAt: string): Promise<void> {
+	const { task, draft } = await claimDraft(project, taskId, (d, t) => d.updatedAt === updatedAt && !isTerminal(t.status));
+	if (!draft) return;
+	try {
+		await sendMessageImmediately(task, draft.text, null, null, { hold: true, origin: "user" });
+	} catch (err) {
+		await restoreDraft(project, taskId, draft, { keepArmed: true });
+		notifyOutcome(project, task, {
+			toast: `Draft not sent, it is still saved — ${err instanceof Error ? err.message : String(err)}`,
+			level: "error",
+			reason: `Draft not sent after the prompt closed (still saved): ${err instanceof Error ? err.message : String(err)}`,
+		});
+	}
 }
 
 /**

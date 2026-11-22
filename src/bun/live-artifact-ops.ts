@@ -1,6 +1,7 @@
 import type { Project, Task } from "../shared/types";
 import { TERMINAL_STATUSES } from "../shared/types";
 import { wrapArtifactMessage } from "../shared/agent-message-envelope";
+import { heldBehindPrompt } from "../shared/agent-prompt-delivery";
 import {
 	liveDeleteDoc,
 	liveEmit,
@@ -70,8 +71,9 @@ export async function runLiveOp(
 			if (!text) throw new LiveOpError("Nothing to send", "invalid");
 			const title = task.liveArtifact?.page.title ?? "Live page";
 			const rev = task.liveArtifact?.pageRev ?? 1;
-			await sendToAgent(task, wrapArtifactMessage(text, { title: `${title} (live)`, version: rev, versionCount: rev }));
-			return { sent: true };
+			const delivery = await sendToAgent(task, wrapArtifactMessage(text, { title: `${title} (live)`, version: rev, versionCount: rev }));
+			// The page can say "waits for the agent's prompt" instead of "sent".
+			return heldBehindPrompt(delivery as { status?: string; reason?: string } | null) ? { sent: true, held: true } : { sent: true };
 		}
 		if (op !== "set" && op !== "patch" && op !== "delete") throw new LiveOpError(`Unknown live operation "${op}"`, "invalid");
 		const write = {

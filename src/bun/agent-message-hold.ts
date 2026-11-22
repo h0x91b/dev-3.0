@@ -69,7 +69,8 @@
  *    `decisions/2026/08/23/hold-the-agent-message-not-just-its-enter.md`.
  *
  * Only `dev3 message` (immediate and "Send later") is held. Button hand-offs — Create
- * PR, commit, rebase, bug-hunter prompts — type and submit at once.
+ * PR, commit, rebase, bug-hunter prompts — type and submit at once, except into a pane
+ * showing a prompt: those join the hold behind it (`agent-prompt-delivery.ts`).
  */
 
 import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
@@ -980,6 +981,12 @@ function strand(key: string, hold: Hold, landedSteps: HeldDelivery[], rest: Held
  * Whether this pane's input box holds dev3 text that was never submitted. A direct
  * prompt must not be typed there: its Enter would submit that text and any draft behind it.
  */
+/** Whether this exact text already waits for the pane, so a repeated click queues no second copy. */
+export function agentMessageAlreadyHeld(key: string, text: string): boolean {
+	const hold = holds.get(key);
+	return hold !== undefined && unfold(hold.deliveries).some((delivery) => delivery.text === text);
+}
+
 export function hasStrandedAgentMessage(key: string): boolean {
 	return holds.get(key)?.stranded != null;
 }

@@ -224,6 +224,7 @@ const common = {
 	"traffic.compose.send": "Enviar",
 	"traffic.compose.sending": "Enviando…",
 	"traffic.compose.sent": "Escrito en el panel del agente.",
+	"traffic.compose.heldBehindPrompt": "Espera tras la pregunta abierta del agente; se envía cuando la respondas.",
 	"traffic.compose.sentAsFile": "Demasiado largo para escribirlo — el agente recibió el archivo {path}",
 	"traffic.compose.failed": "No enviado: {error}",
 	"traffic.compose.hint": "Ctrl+Intro envía · Intro crea una línea nueva",

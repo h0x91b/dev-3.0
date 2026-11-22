@@ -29,7 +29,7 @@ export { getSystemRequirements } from "../../shared/system-requirements";
 import { extname } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { dlopen, FFIType } from "bun:ffi";
-import type { RendererLogLevel, SharedArtifact, SharedImage, Task } from "../../shared/types";
+import type { CliToastMessageKey, RendererLogLevel, SharedArtifact, SharedImage, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { postNativeTaskNotification } from "../native-notifications";
@@ -150,7 +150,7 @@ export interface TerminalFocusToastPayload {
 	projectId: string | null;
 	message: string;
 	/** Renderer translation key for `message`, which stays the English fallback. */
-	messageKey?: "kanban.launchAccountRemoved" | "kanban.launchAwsProfileMissing" | "kanban.awsProfilesChangedFromCli";
+	messageKey?: CliToastMessageKey;
 	level: "info" | "success" | "error";
 	durationMs?: number;
 	taskSeq?: number;
