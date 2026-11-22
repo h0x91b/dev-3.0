@@ -37,7 +37,7 @@ import {
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
-import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillPrLinkInstruction } from "../../shared/agent-skill-content";
+import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillBodyFor, skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
 import { parseSkillFrontmatter } from "../skills-catalog";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -190,9 +190,20 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain("the user explicitly asks to complete it");
 			expect(skill).toContain("A local commit, passing tests, or an open unmerged PR is not enough");
 			expect(skill).toContain("Unclear destination or unpreserved work → keep the task open and ask");
-			// Codex read "allowed" as "wait for the user" and told them to close the task by hand.
-			expect(skill).toContain("Gate met → run it yourself");
-			expect(skill).toContain("never tell the user to close it by hand");
+		}
+	});
+
+	it("has the agent request completion itself, except where the user owns completion", () => {
+		for (const family of ["claude", "codex", "omp", "pi", "agy", "generic"] as const) {
+			for (const mode of ["worktree", "shared-folder"] as const) {
+				const skill = skillBodyFor(family, mode);
+				// Codex read "allowed" as "wait for the user" and told them to close the task by hand.
+				expect(skill).toContain("Gate met → run it yourself (`cancelled` too)");
+				expect(skill).toContain("never tell the user to close it by hand");
+				// taskCompletionOwner() hands these to the user: the agent must not open the dialog.
+				expect(skill).toContain("unless it completes manually (coordinator, board-cleanup, `--manual-completion on`)");
+				expect(skill).not.toContain("flow below stay allowed");
+			}
 		}
 	});
 
