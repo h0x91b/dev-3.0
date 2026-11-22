@@ -198,10 +198,11 @@ describe("dev3 skill content", () => {
 			for (const mode of ["worktree", "shared-folder"] as const) {
 				const skill = skillBodyFor(family, mode);
 				// Codex read "allowed" as "wait for the user" and told them to close the task by hand.
-				expect(skill).toContain("Gate met → run it yourself (`cancelled` too)");
+				expect(skill).toContain("Gate met → run it yourself");
 				expect(skill).toContain("never tell the user to close it by hand");
-				// taskCompletionOwner() hands these to the user: the agent must not open the dialog.
-				expect(skill).toContain("unless it completes manually (coordinator, board-cleanup, `--manual-completion on`)");
+				// taskCompletionOwner() hands these to the user; `dev3 current` is where the agent sees it.
+				expect(skill).toContain("`dev3 current` shows `Manual completion: on` → the user closes it");
+				expect(skill).toContain("`cancelled` asks the same way, only if the user wants it dropped");
 				expect(skill).not.toContain("flow below stay allowed");
 			}
 		}

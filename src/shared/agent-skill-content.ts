@@ -161,9 +161,10 @@ const SKILL_CUSTOM_COLUMNS = `
   dev3 task move --status <custom-column-id>
 `;
 
-// Codex read a bare "allowed" as "wait for the user"; user-owned completion stays the user's.
+// Codex read a bare "allowed" as "wait for the user". `dev3 current` prints the
+// Manual completion line only when the user owns completion (self-completion wins).
 const SKILL_COMPLETION_OWNER =
-	"Gate met → run it yourself (`cancelled` too), unless it completes manually (coordinator, board-cleanup, `--manual-completion on`): leave that to the user. The dialog is their approval — never tell the user to close it by hand.";
+	"Gate met → run it yourself; the dialog is their approval — never tell the user to close it by hand. `dev3 current` shows `Manual completion: on` → the user closes it. `cancelled` asks the same way, only if the user wants it dropped.";
 
 // What approval destroys, what must be preserved first, and whether a PR is the
 // expected route all depend on where the task runs.
@@ -185,7 +186,7 @@ ${skillPrLinkInstruction()}`,
 function skillCompletionRequest(mode: ProtocolMode): string {
 	const { approved, rest } = SKILL_COMPLETION_BY_MODE[mode];
 	return `
-### Completing a task (user approval required)
+### Completing a task
 
 \`dev3 task move --status completed\` asks the user to approve and **blocks up to 10 minutes**:
 
@@ -200,7 +201,7 @@ ${rest()}
 const SKILL_MANUAL_COMPLETION = `
 ### Merge completion planning
 
-A plan spanning several PRs, post-deploy checks or production commands gets \`dev3 task update --manual-completion on\` up front, so a merge does not offer to close it; turn it \`off\` before the final merge. Single-merge tasks never need it.
+A plan spanning several PRs, post-deploy checks or production commands gets \`dev3 task update --manual-completion on\` up front, so a merge does not offer to close it; turn it \`off\` once the last merge would finish the work. Ordinary single-merge tasks never need it.
 `;
 
 const SKILL_NOTES = `
@@ -406,7 +407,7 @@ dev3 injects trusted native hooks into every ${agent} pane. They own normal life
 
 **Never call \`dev3 task move\` for normal lifecycle transitions** — not \`in-progress\` at turn start, not \`review-by-ai\`/\`review-by-user\` when finishing. A stale-looking status is no licence to manage it: report it with \`dev3 notify "${agent} status hooks did not update the task" --level error\` and leave the evidence intact.
 
-The one exception is a semantic question that no native event can detect: needing user input or clarification (not a tool approval) → move to \`user-questions\` before your final response. Explicit custom-column moves and the \`completed\` request below stay yours.
+The one exception is a semantic question that no native event can detect: needing user input or clarification (not a tool approval) → move to \`user-questions\` before your final response. Custom-column moves and the \`completed\` request below stay yours.
 ${SKILL_CUSTOM_COLUMNS}${skillCompletionRequest(mode)}`;
 }
 

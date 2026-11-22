@@ -71,7 +71,7 @@ Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projec
 
   dev3 task move --status <custom-column-id>
 
-### Completing a task (user approval required)
+### Completing a task
 
 \`dev3 task move --status completed\` asks the user to approve and **blocks up to 10 minutes**:
 
@@ -79,7 +79,7 @@ Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projec
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
 - **Timeout** → a later approval still completes it.
 
-**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. Gate met → run it yourself (\`cancelled\` too), unless it completes manually (coordinator, board-cleanup, \`--manual-completion on\`): leave that to the user. The dialog is their approval — never tell the user to close it by hand.
+**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. Gate met → run it yourself; the dialog is their approval — never tell the user to close it by hand. \`dev3 current\` shows \`Manual completion: on\` → the user closes it. \`cancelled\` asks the same way, only if the user wants it dropped.
 
 **PRs are optional here.** This task has none of its own unless the user or the project's rules ask for one, and its PRs may live in other repositories. \`dev3 pr create\` (opens one from this folder's current branch, never a branch you create or switch to here) and \`dev3 pr watch --pr <N>\` are helpers, not requirements. A PR that needs a new branch needs its own worktree, or ask the user.
 
@@ -251,7 +251,7 @@ Approved → actual vs expected behavior, minimal reproduction, dev3 version and
 
 ### Merge completion planning
 
-A plan spanning several PRs, post-deploy checks or production commands gets \`dev3 task update --manual-completion on\` up front, so a merge does not offer to close it; turn it \`off\` before the final merge. Single-merge tasks never need it.
+A plan spanning several PRs, post-deploy checks or production commands gets \`dev3 task update --manual-completion on\` up front, so a merge does not offer to close it; turn it \`off\` once the last merge would finish the work. Ordinary single-merge tasks never need it.
 "
 `;
 
@@ -335,7 +335,7 @@ Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projec
 
   dev3 task move --status <custom-column-id>
 
-### Completing a task (user approval required)
+### Completing a task
 
 \`dev3 task move --status completed\` asks the user to approve and **blocks up to 10 minutes**:
 
@@ -343,7 +343,7 @@ Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projec
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
 - **Timeout** → a later approval still completes it.
 
-**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. Gate met → run it yourself (\`cancelled\` too), unless it completes manually (coordinator, board-cleanup, \`--manual-completion on\`): leave that to the user. The dialog is their approval — never tell the user to close it by hand.
+**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. Gate met → run it yourself; the dialog is their approval — never tell the user to close it by hand. \`dev3 current\` shows \`Manual completion: on\` → the user closes it. \`cancelled\` asks the same way, only if the user wants it dropped.
 
 **Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged] [--pr <N>]\` (\`--pr\`: any open PR, e.g. one you handed off): dev3 messages you; never poll gh or set timers. **It links the PR back to this task itself**, with the right id and the user's opt-out honoured — never hand-write that footer.
 
@@ -515,6 +515,6 @@ Approved → actual vs expected behavior, minimal reproduction, dev3 version and
 
 ### Merge completion planning
 
-A plan spanning several PRs, post-deploy checks or production commands gets \`dev3 task update --manual-completion on\` up front, so a merge does not offer to close it; turn it \`off\` before the final merge. Single-merge tasks never need it.
+A plan spanning several PRs, post-deploy checks or production commands gets \`dev3 task update --manual-completion on\` up front, so a merge does not offer to close it; turn it \`off\` once the last merge would finish the work. Ordinary single-merge tasks never need it.
 "
 `;
