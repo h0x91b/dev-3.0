@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Profiler } from "react";
 import type { Context } from "cordis";
 import TaskHeader from "../TaskHeader";
@@ -74,6 +74,9 @@ import { api } from "../../rpc";
 /** Measured ~50 ms in happy-dom on a dev laptop; generous headroom. */
 const MOUNT_CEILING_MS = 10_000;
 const HEADER_SUBSCRIPTION_BUDGET = 8;
+/** Commits for 4 collapse toggles with built-ins only: one pass each, as main measured it. */
+const COLLAPSE_TOGGLES = 4;
+const COLLAPSE_TOGGLE_COMMIT_BUDGET = 4;
 
 const project: Project = { id: "p1", name: "Test Project", path: "/tmp/test", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", defaultCompareRef: "origin/main", createdAt: "2025-01-01T00:00:00Z", labels: [] };
 const task = {
@@ -165,5 +168,24 @@ describe("task header budgets", () => {
 		// Its own slot re-renders it, in one pass.
 		expect(commits).toBeGreaterThan(0);
 		expect(commits).toBeLessThanOrEqual(2);
+	}, 60_000);
+
+	it("re-renders once per collapse toggle when only built-ins are drawn", async () => {
+		let commits = 0;
+		render(
+			<I18nProvider>
+				<Profiler id="header" onRender={() => commits++}>
+					<TaskHeader task={task} project={project} dispatch={vi.fn()} navigate={vi.fn()} />
+				</Profiler>
+			</I18nProvider>,
+		);
+		await settle();
+		commits = 0;
+		for (let toggle = 0; toggle < COLLAPSE_TOGGLES; toggle++) {
+			fireEvent.click(screen.getByRole("button", { name: /^(Expand|Collapse) panel$/ }));
+			await settle();
+		}
+		// A built-in that draws only while collapsed (file explorer) must not cost a second pass.
+		expect(commits).toBeLessThanOrEqual(COLLAPSE_TOGGLE_COMMIT_BUDGET);
 	}, 60_000);
 });

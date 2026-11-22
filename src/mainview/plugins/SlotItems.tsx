@@ -49,6 +49,8 @@ export interface SlotItemMenuRequest {
 	at: { top: number; left: number };
 	/** Gets focus back when the menu closes. */
 	returnFocus: HTMLElement | null;
+	/** The slot's own element: where focus goes when the menu removed `returnFocus`. */
+	host: HTMLElement | null;
 	/** Every registered item of the region, hidden ones included, in the order the user sees. */
 	order: readonly string[];
 	/** The inline items that actually render, left to right. */
@@ -150,13 +152,23 @@ function sameSet(a: ReadonlySet<string> | null, b: ReadonlySet<string>): boolean
 	return !!a && a.size === b.size && [...b].every((id) => a.has(id));
 }
 
+/** Shift+F10 or the Menu key: opened by hand, as macOS/WKWebView turns neither into `contextmenu`. */
+function isMenuKey(e: React.KeyboardEvent): boolean {
+	return e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey);
+}
+
+function belowElement(element: Element): { top: number; left: number } {
+	const rect = element.getBoundingClientRect();
+	return { top: rect.bottom + 4, left: rect.left };
+}
+
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_SLOP = 10;
 
 /**
- * Opens the host's item menu on right-click, on the keyboard's menu key (which fires
- * `contextmenu` on the focused control) and on a touch long-press, the touch path where
- * there is no right click. A long press swallows the click that ends it.
+ * Opens the host's item menu on right-click, on Shift+F10 / the Menu key and on a touch
+ * long-press, the touch path where there is no right click. A long press swallows the
+ * click that ends it.
  */
 function useItemMenuGesture(open: (at: { top: number; left: number }, returnFocus: HTMLElement | null) => void) {
 	const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
@@ -172,6 +184,13 @@ function useItemMenuGesture(open: (at: { top: number; left: number }, returnFocu
 			cancel();
 			const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 			open(contextMenuPosition(e), focused);
+		},
+		onKeyDown(e: React.KeyboardEvent) {
+			if (!isMenuKey(e) || !(e.target instanceof HTMLElement)) return;
+			e.preventDefault();
+			e.stopPropagation();
+			cancel();
+			open(belowElement(e.target), e.target);
 		},
 		onPointerDown(e: React.PointerEvent) {
 			if (e.pointerType !== "touch") return;
@@ -276,6 +295,10 @@ export function SlotItems<Scope>({ registry, region, scope, layout, budget, budg
 		(ids) => place(ids).inline.map((entry) => entry.def.id).join(" "),
 	);
 	const { inline, overflow } = place(rendered.ids);
+	const hostRef = useRef<HTMLElement | null>(null);
+	const setHost = useCallback((node: HTMLElement | null) => {
+		hostRef.current = node;
+	}, []);
 	const placed = useRef({ entries, inline, overflow, layout, place });
 	placed.current = { entries, inline, overflow, layout, place };
 	const openMenu = useCallback((id: string, placement: SlotItemPlacement, at: { top: number; left: number }, returnFocus: HTMLElement | null) => {
@@ -286,6 +309,7 @@ export function SlotItems<Scope>({ registry, region, scope, layout, budget, budg
 			placement,
 			at,
 			returnFocus,
+			host: hostRef.current,
 			order: sortSlotEntries(current.entries, current.layout?.order).map((entry) => entry.def.id),
 			drawn: current.inline.map((entry) => entry.def.id).filter((itemId) => drawnIds.has(itemId)),
 			overflow: current.overflow.map((entry) => entry.def.id),
@@ -293,7 +317,7 @@ export function SlotItems<Scope>({ registry, region, scope, layout, budget, budg
 		});
 	}, [onItemMenu, rendered]);
 	return (
-		<Wrapper className={className ?? "flex items-center gap-1.5"} data-slot={registry.name} data-region={region}>
+		<Wrapper ref={setHost} className={className ?? "flex items-center gap-1.5"} data-slot={registry.name} data-region={region}>
 			{inline.map((entry) => onItemMenu
 				? <FramedItem key={entry.def.id} slot={registry.name} entry={entry} frameRef={rendered.frameRef} onMenu={openMenu} />
 				: <Item key={entry.def.id} slot={registry.name} entry={entry} placement="inline" />)}
@@ -495,6 +519,12 @@ function OverflowPanel<Scope>({ slot, entries, triggerRef, onDismiss, onMenu }: 
 						e.preventDefault();
 						e.stopPropagation();
 						onMenu(entry.def.id, contextMenuPosition(e));
+					})}
+					onKeyDown={onMenu && ((e) => {
+						if (!isMenuKey(e)) return;
+						e.preventDefault();
+						e.stopPropagation();
+						onMenu(entry.def.id, belowElement(e.target as Element));
 					})}
 				>
 					<Item slot={slot} entry={entry} placement="overflow" />

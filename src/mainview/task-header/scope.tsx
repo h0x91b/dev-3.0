@@ -90,14 +90,17 @@ function isBar(region: TaskHeaderRegion | TaskHeaderGroup): region is TaskHeader
 
 /**
  * Focus goes back where the menu came from. When the menu removed that control (Hide,
- * Move to More, Show in bar), it lands on the first control left in the same bar.
+ * Move to More, Show in bar), it lands on the region's More trigger, else its first control.
  */
-function returnFocusAfterMenu(target: HTMLElement | null): void {
-	if (!target) return;
-	const bar = target.closest("[data-slot-item]")?.parentElement ?? target.parentElement;
-	target.focus();
+function returnFocusAfterMenu(request: SlotItemMenuRequest | null): void {
+	if (!request) return;
+	const { returnFocus: target, host } = request;
+	target?.focus();
 	requestAnimationFrame(() => {
-		if (!target.isConnected) bar?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
+		if (target?.isConnected || !host?.isConnected) return;
+		const fallback = host.querySelector<HTMLElement>('button[aria-haspopup="menu"]:not([disabled])')
+			?? host.querySelector<HTMLElement>("button:not([disabled])");
+		fallback?.focus();
 	});
 }
 
@@ -120,10 +123,10 @@ export function TaskHeaderRegionItems({ region, surface = "bar" }: { region: Tas
 		setMenu(request);
 	}, []);
 	const closeMenu = useCallback(() => {
-		const target = openRequest.current?.returnFocus ?? null;
+		const request = openRequest.current;
 		openRequest.current = null;
 		setMenu(null);
-		returnFocusAfterMenu(target);
+		returnFocusAfterMenu(request);
 	}, []);
 	const placement = isBar(region) ? { budget: TASK_HEADER_BAR_BUDGET, budgetExempt: TASK_HEADER_BUDGET_EXCEPTIONS } : { as: "span" as const };
 	const arranged = surface === "bar" && !layout.narrow;
