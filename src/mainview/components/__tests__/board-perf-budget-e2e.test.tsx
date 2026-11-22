@@ -174,9 +174,10 @@ describe(`${N}-task board budgets`, () => {
 			expect(renders.rail, `${slot} registration re-rendered rails`).toBe(0);
 		}
 
-		// A marker may apply to any task: it lands on every row in one commit, drawn once per row. A card
-		// reads it below its own render (no whole-card re-render); a sidebar row folds marker labels into
-		// its accessible name, so each row re-renders once.
+		// A marker may apply to any task: it is drawn once per row. A card reads it below its own render
+		// (no whole-card re-render); a sidebar row folds marker labels into its accessible name, so each
+		// row re-renders. The memoized row takes a second commit in which only its body re-runs — see
+		// decisions/2026/11/22/memoized-sidebar-row-marker-commit.md.
 		commits = 0;
 		renders.rail = 0;
 		renders.lateMarker = 0;
@@ -184,7 +185,7 @@ describe(`${N}-task board budgets`, () => {
 		registerLate("taskMarkers");
 		await settle();
 		expect(performance.now() - registered).toBeLessThan(REGISTRATION_CEILING_MS);
-		expect(commits).toBe(1);
+		expect(commits).toBe(surface === "board" ? 1 : 2);
 		expect(renders.lateMarker).toBe(N);
 		expect(screen.getAllByTestId("late-marker")).toHaveLength(N);
 		expect(renders.rail).toBe(surface === "board" ? 0 : N);

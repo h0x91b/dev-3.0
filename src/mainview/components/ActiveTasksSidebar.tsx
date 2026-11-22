@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
 import { useEpics } from "../hooks/useEpics";
 import { useTaskSortOrder } from "../hooks/useTaskSortOrder";
-import type { CodingAgent, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import type { CodingAgent, Label, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_PRIORITIES } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 import { groupTasksIntoTiers } from "./sidebarTiers";
@@ -9,6 +9,8 @@ import { toast } from "../toast";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
+import { useLatestCallback } from "../hooks/useLatestCallback";
+import { useVariantGroups } from "../hooks/useStableMap";
 import { api } from "../rpc";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
@@ -32,6 +34,8 @@ import SpaceIcon from "./SpaceIcon";
 import { spaceScopeProjectIds } from "../utils/spaceScope";
 
 type SidebarScope = "project" | "global" | "space";
+/** Shared so a project without labels hands every row the same array. */
+const NO_LABELS: Label[] = [];
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
 const LS_SIDEBAR_SHOW_HIDDEN = "dev3-sidebar-show-hidden";
 
@@ -430,19 +434,7 @@ function ActiveTasksSidebar({
 		activeTasks = activeTasks.filter((task) => matchesTaskQuery(task, searchQuery, taskQueryContext(task, resolver)));
 	}
 
-	const siblingMap = useMemo(() => {
-		const map = new Map<string, Task[]>();
-		for (const task of sourceTasks) {
-			if (!task.groupId) continue;
-			const existing = map.get(task.groupId);
-			if (existing) {
-				existing.push(task);
-			} else {
-				map.set(task.groupId, [task]);
-			}
-		}
-		return map;
-	}, [sourceTasks]);
+	const siblingMap = useVariantGroups(sourceTasks);
 
 	// Resolves a task's display color: its custom-column color when the task is
 	// parked in a custom column, otherwise its built-in status hue. Mirrors the
@@ -565,7 +557,7 @@ function ActiveTasksSidebar({
 		[dispatch, t],
 	);
 
-	function handleTaskClick(task: Task) {
+	const handleTaskClick = useLatestCallback((task: Task) => {
 		if (task.shuttingDown) return;
 		preview.close();
 		const targetProjectId = task.projectId || project?.id;
@@ -579,9 +571,11 @@ function ActiveTasksSidebar({
 			projectId: targetProjectId,
 			activeTaskId: task.id,
 		});
-	}
+	});
+	const handlePreviewEnter = useLatestCallback(preview.handlers.onMouseEnter);
+	const handlePreviewLeave = useLatestCallback(preview.handlers.onMouseLeave);
 
-	const projectLabels = project?.labels ?? [];
+	const projectLabels = project?.labels ?? NO_LABELS;
 
 	return (
 		<nav className="h-full flex flex-col bg-base" aria-label={t("nav.activeTasks")}>
@@ -860,16 +854,10 @@ function ActiveTasksSidebar({
 								const isActive = task.id === activeTaskId && task.projectId === project?.id;
 								const bellCount = bellCounts.get(task.id) ?? 0;
 								const { agent, configLabel } = getTaskAgentMeta(task, agents);
-								const taskLabelIds = task.labelIds ?? [];
 								const taskProject = projectById.get(task.projectId) ?? project;
 								// Dashboard mount: a task whose project is not in `allProjects`
 								// cannot be rendered (the row needs its project for labels).
 								if (!taskProject) return null;
-								const labelsPool = (taskProject?.labels ?? projectLabels) as typeof projectLabels;
-								const assignedLabels = taskLabelIds
-									.map((id) => labelsPool.find((l) => l.id === id))
-									.filter(Boolean) as typeof projectLabels;
-								const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
 								const showProjectBadge = effectiveScope !== "project" && task.projectId !== project?.id;
 
 								return (
@@ -886,8 +874,8 @@ function ActiveTasksSidebar({
 											agent={agent}
 											agents={agents}
 											configLabel={configLabel}
-											assignedLabels={assignedLabels}
-											groupMembers={groupMembers}
+											labelsPool={taskProject.labels ?? projectLabels}
+											groupMembers={task.groupId ? siblingMap.get(task.groupId) : undefined}
 											projectBadgeName={showProjectBadge ? taskProject?.name ?? t("sidebar.unknownProject") : undefined}
 											ports={taskPorts.get(task.id)}
 											prInfo={taskPrMap.get(task.id)}
@@ -895,12 +883,12 @@ function ActiveTasksSidebar({
 											color={taskColor(task)}
 											dispatch={dispatch}
 											navigate={navigate}
-											onOpen={() => handleTaskClick(task)}
-											onSetPriority={(p) => handleSetPriority(task, p)}
-											onSetHidden={() => handleSetHidden(task)}
+											onOpen={handleTaskClick}
+											onSetPriority={handleSetPriority}
+											onSetHidden={handleSetHidden}
 											animateOut={!task.hidden && !revealHidden}
-											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget, e.target)}
-											onMouseLeave={preview.handlers.onMouseLeave}
+											onMouseEnter={handlePreviewEnter}
+											onMouseLeave={handlePreviewLeave}
 											closePreview={preview.close}
 										/>
 									</div>

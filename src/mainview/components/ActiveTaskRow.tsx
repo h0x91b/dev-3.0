@@ -1,4 +1,4 @@
-import { useState, type Dispatch } from "react";
+import { memo, useMemo, useState, type Dispatch } from "react";
 import { COORDINATOR_TITLE, TaskRoleChip } from "./TaskRoleBand";
 import { TaskRefText } from "./TaskRefText";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
@@ -24,7 +24,6 @@ import PriorityBadge from "./PriorityBadge";
 import CompletionOfferMark from "./CompletionOfferMark";
 import StatusMenuPortal from "./StatusMenuPortal";
 import { LiveTaskAgeStamps } from "./TaskAgeStamps";
-
 import TaskCardRail from "./TaskCardRail";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskPrBadges from "./TaskPrBadges";
@@ -47,8 +46,10 @@ interface ActiveTaskRowProps {
 	agent?: CodingAgent | null;
 	agents: CodingAgent[];
 	configLabel?: string;
-	assignedLabels: Label[];
-	groupMembers: Task[];
+	/** Labels the task's ids resolve against: its own project's, else the sidebar's. */
+	labelsPool: Label[];
+	/** The task's variant group; omitted for a task that has none. */
+	groupMembers?: Task[];
 	projectBadgeName?: string;
 	ports?: PortInfo[];
 	/** The task's pull request, when anything has ever seen one. */
@@ -58,13 +59,15 @@ interface ActiveTaskRowProps {
 	color: string;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
-	onOpen: () => void;
-	onSetPriority: (priority: TaskPriority) => void;
-	onSetHidden: () => Promise<void>;
+	// Handlers take the task so the sidebar can pass one stable function to every
+	// row; a per-row closure would defeat the memo.
+	onOpen: (task: Task) => void;
+	onSetPriority: (task: Task, priority: TaskPriority) => void;
+	onSetHidden: (task: Task) => Promise<void>;
 	/** True when hiding this row will drop it out of the list, so it earns the
 	 *  exit animation. False in reveal mode, where it only dims in place. */
 	animateOut: boolean;
-	onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => void;
+	onMouseEnter: (taskId: string, anchor: HTMLElement, target: EventTarget | null) => void;
 	onMouseLeave: () => void;
 	/** Closes the hover terminal preview before navigating away. */
 	closePreview: () => void;
@@ -76,7 +79,7 @@ interface ActiveTaskRowProps {
  * title → signals → a muted identity line: the agent config is the least
  * discriminating thing on the row and no longer opens it.
  */
-export default function ActiveTaskRow({
+function ActiveTaskRow({
 	task,
 	taskProject,
 	isActive,
@@ -84,8 +87,8 @@ export default function ActiveTaskRow({
 	agent,
 	agents,
 	configLabel,
-	assignedLabels,
-	groupMembers,
+	labelsPool,
+	groupMembers: groupMembersProp,
 	projectBadgeName,
 	ports,
 	prInfo,
@@ -113,6 +116,13 @@ export default function ActiveTaskRow({
 	const [hiding, setHiding] = useState(false);
 	const reducedMotion = useReducedMotion();
 
+	const groupMembers = useMemo(() => groupMembersProp ?? [task], [groupMembersProp, task]);
+	const assignedLabels = useMemo(
+		() => (task.labelIds ?? []).flatMap((id) => labelsPool.find((label) => label.id === id) ?? []),
+		[task.labelIds, labelsPool],
+	);
+	const openTask = () => onOpen(task);
+
 	const displayTitle = getTaskTitle(task);
 	const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 	const busy = task.shuttingDown || task.preparing || moving;
@@ -135,7 +145,7 @@ export default function ActiveTaskRow({
 			newStatus,
 			dispatch,
 			t,
-			onOpenTask: onOpen,
+			onOpenTask: openTask,
 			alwaysConfirm: opts?.alwaysConfirm,
 			anchor: opts?.anchor,
 			onMovingChange: setMoving,
@@ -188,7 +198,7 @@ export default function ActiveTaskRow({
 				setHiding(true);
 				await new Promise((resolve) => setTimeout(resolve, 200));
 			}
-			await onSetHidden();
+			await onSetHidden(task);
 		} finally {
 			setHiding(false);
 		}
@@ -210,7 +220,7 @@ export default function ActiveTaskRow({
 			onClick={(e) => {
 				// A long press or a macOS Ctrl+click opened the menu; the click that follows it is not a tap.
 				if (contextMenu.swallowClick(e)) return;
-				onOpen();
+				openTask();
 			}}
 			{...contextMenu.handlers}
 			onContextMenu={(e) => {
@@ -229,11 +239,11 @@ export default function ActiveTaskRow({
 				}
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
-					onOpen();
+					openTask();
 				}
 			}}
 			onMouseEnter={(e) => {
-				if (!task.shuttingDown) onMouseEnter(e);
+				if (!task.shuttingDown) onMouseEnter(task.id, e.currentTarget, e.target);
 			}}
 			onMouseLeave={onMouseLeave}
 			className={`group relative flex w-full items-stretch text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
@@ -349,7 +359,7 @@ export default function ActiveTaskRow({
 
 				{/* SIGNALS — read-only facts, plus the priority picker. */}
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
-					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
+					<PriorityBadge priority={task.priority} onChange={(priority) => onSetPriority(task, priority)} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
 					<CompletionOfferMark task={task} testId={`sidebar-completion-offer-${task.id}`} />
 					{task.hidden && (
@@ -456,9 +466,11 @@ export default function ActiveTaskRow({
 				dispatch={dispatch}
 				pos={contextMenu.pos}
 				onClose={contextMenu.close}
-				onOpenTask={onOpen}
+				onOpenTask={openTask}
 				testId={`sidebar-task-menu-${task.id}`}
 			/>
 		</div>
 	);
 }
+
+export default memo(ActiveTaskRow);
