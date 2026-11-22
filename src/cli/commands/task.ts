@@ -506,6 +506,8 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (noStartAfter) params.noStartAfter = true;
 	// Armed from inside a task, the launch later asks the user the way that agent's own move would.
 	if (startAfter.startAfter !== undefined && context?.taskId) params.sourceTaskId = context.taskId;
+	// Text written from a task on another board gets that board's refs qualified.
+	if ((args.flags.title !== undefined || args.flags.description !== undefined) && context?.taskId) params.sourceTaskId = context.taskId;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 	// Tri-state semantics:

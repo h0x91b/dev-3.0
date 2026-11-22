@@ -1,6 +1,7 @@
 import type { AgentMessageSource, Project, Task, TaskEpicRef, TaskOriginParent } from "../../shared/types";
 import { getEpicById } from "../epics-data";
 import { seqIsShared } from "../../shared/agent-message-envelope";
+import { parseTaskHandle, projectMatchesQualifier } from "../../shared/task-refs";
 import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask, parentTaskIdOf } from "../../shared/types";
 import * as data from "../data";
 import { loadEffectiveTaskHistory } from "../task-blobs";
@@ -27,13 +28,38 @@ export function findByIdPrefix<T extends { id: string }>(items: T[], prefix: str
 }
 
 /**
- * Parse a stable `seq:<N>` task reference. Seq is printed by `task create` and
- * shown on every card; unlike the id it survives launches (all variants of one
- * logical task share it), so it is the safe handle for stored references.
+ * Parse a stable `seq:<N>` or `seq:<project>/<N>` task reference. Seq is printed by
+ * `task create` and shown on every card; unlike the id it survives launches.
  */
-export function parseSeqRef(ref: string): number | null {
-	const match = /^seq:(\d+)$/.exec(ref);
-	return match ? Number(match[1]) : null;
+export function parseSeqRef(ref: string): { seq: number; project?: string } | null {
+	return parseTaskHandle(ref);
+}
+
+/** Does `task` answer to a parsed seq ref? A qualified ref also names the task's board by id prefix. */
+export function taskMatchesSeqRef(task: Task, ref: { seq: number; project?: string }): boolean {
+	return task.seq === ref.seq && (!ref.project || projectMatchesQualifier({ id: task.projectId }, ref.project));
+}
+
+/** The boards a `seq:<project>/<N>` qualifier names: an id prefix or a project name. */
+async function projectsForQualifier(qualifier: string): Promise<Project[]> {
+	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+	return projects.filter((p) => projectMatchesQualifier(p, qualifier));
+}
+
+/**
+ * A qualified `taskId` (`seq:a1c9fe4e/60`) names its board, so it replaces the
+ * `projectId` the CLI stamped from the caller's worktree, and the handler gets `seq:60`.
+ */
+export async function withQualifiedTaskRef(params: Record<string, unknown>): Promise<Record<string, unknown>> {
+	const ref = typeof params?.taskId === "string" ? parseSeqRef(params.taskId) : null;
+	if (!ref?.project) return params;
+	const matches = await projectsForQualifier(ref.project);
+	if (matches.length === 0) throw new Error(`No project matches "${ref.project}" in ${String(params.taskId)}. Run \`dev3 projects list\`.`);
+	if (matches.length > 1) {
+		const shown = matches.map((p) => `${p.id.slice(0, 8)} (${p.name})`).join(", ");
+		throw new Error(`Project "${ref.project}" in ${String(params.taskId)} matches ${matches.length} projects (${shown}). Use the 8-char project id.`);
+	}
+	return { ...params, taskId: `seq:${ref.seq}`, projectId: matches[0].id };
 }
 
 const VARIANT_NEEDS_SEQ =
@@ -64,12 +90,12 @@ function describeLiveVariants(matches: Task[]): string {
  * `variantIndex` is permanent, the collision that minted it is not.
  */
 export function findTaskByRef(tasks: Task[], ref: string, variantIndex?: number): Task | null {
-	const seq = parseSeqRef(ref);
-	if (seq === null) {
+	const parsed = parseSeqRef(ref);
+	if (parsed === null) {
 		if (variantIndex !== undefined) throw new Error(VARIANT_NEEDS_SEQ);
 		return findByIdPrefix(tasks, ref, "task");
 	}
-	const matches = tasks.filter((t) => t.seq === seq);
+	const matches = tasks.filter((t) => taskMatchesSeqRef(t, parsed));
 	if (variantIndex !== undefined && matches.length > 0) {
 		const picked = matches.filter((t) => t.variantIndex === variantIndex);
 		if (picked.length === 0) {
@@ -253,18 +279,23 @@ export async function resolveReviewTask(taskId: string, projectId: string | unde
 export async function resolveTaskAcrossProjects(taskId: string, variantIndex?: number): Promise<{ project: Project; task: Task } | null> {
 	// Scan virtual ("Operations") boards too, so `dev3` commands run from inside
 	// an operation worktree (no explicit --project) can resolve their task.
-	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+	const seqRef = parseSeqRef(taskId);
+	// A qualified seq names its board, by id prefix or by name: only that board is scanned.
+	const projects = seqRef?.project
+		? await projectsForQualifier(seqRef.project)
+		: [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	// Raised here rather than inside the loop: the id-prefix path below swallows
 	// everything but "Ambiguous", so a `--variant` misuse would come back as a
 	// bare "task not found".
-	if (variantIndex !== undefined && parseSeqRef(taskId) === null) throw new Error(VARIANT_NEEDS_SEQ);
+	if (variantIndex !== undefined && seqRef === null) throw new Error(VARIANT_NEEDS_SEQ);
 
 	// Seq refs must collect matches across ALL projects instead of returning the
 	// first hit: every board counts 1..N, so cross-project collisions are routine
 	// and silently picking whichever project iterates first would mutate the
 	// wrong task. Id prefixes keep first-match-wins — UUIDs make cross-project
 	// collisions unrealistic, and the CLI already guards them (decision 102).
-	if (parseSeqRef(taskId) !== null) {
+	if (seqRef !== null) {
+		const boardRef = `seq:${seqRef.seq}`;
 		const matches: Array<{ project: Project; task: Task }> = [];
 		// A board carrying the seq but not that variant is a near miss, not a
 		// verdict: another board may hold the real group (seq collisions across
@@ -273,7 +304,7 @@ export async function resolveTaskAcrossProjects(taskId: string, variantIndex?: n
 		for (const project of projects) {
 			try {
 				const tasks = await data.loadTasks(project);
-				const task = findTaskByRef(tasks, taskId, variantIndex);
+				const task = findTaskByRef(tasks, boardRef, variantIndex);
 				if (task) matches.push({ project, task });
 			} catch (err) {
 				if (err instanceof VariantNotFoundError) {

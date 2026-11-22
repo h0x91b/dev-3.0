@@ -518,6 +518,8 @@ describe("expandShortId — prefix guards", () => {
 		// Even with a context task set, a seq ref is never rewritten.
 		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
 		expect(expandShortId("seq:5", ctx)).toBe("seq:5");
+		expect(expandShortId("seq:a1c9fe4e/5", ctx)).toBe("seq:a1c9fe4e/5");
+		expect(expandShortId("<seq:a1c9fe4e/5>", ctx)).toBe("seq:a1c9fe4e/5");
 	});
 });
 
