@@ -21,9 +21,11 @@ vi.mock("../../../rpc", () => ({
 }));
 
 vi.mock("../../../confirm", () => ({ confirm: vi.fn(async () => true) }));
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
 
 import { api } from "../../../rpc";
 import { confirm } from "../../../confirm";
+import { toast } from "../../../toast";
 
 /** Stub translator: keys make assertions stable and locale-agnostic. */
 const t = Object.assign(
@@ -101,6 +103,49 @@ describe("the proxy's state", () => {
 		expect(screen.queryByRole("button", { name: "catalog.startProxy" })).toBeNull();
 		await userEvent.click(stop);
 		expect(api.request.modelSidecarStop).toHaveBeenCalledOnce();
+	});
+
+	it("keeps Stop retrying while an automatic attempt is already running", async () => {
+		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(status({ starting: true, restart: { attempt: 3 } }));
+		vi.mocked(api.request.modelSidecarStop).mockResolvedValue(status());
+		renderSection();
+		const stop = await screen.findByRole("button", { name: "catalog.stopRetrying" });
+		expect(screen.getByText("catalog.proxyStarting")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "catalog.startProxy" })).toBeNull();
+		await userEvent.click(stop);
+		expect(api.request.modelSidecarStop).toHaveBeenCalledOnce();
+	});
+
+	it("offers Stop, not a second Start, while a manual start is running", async () => {
+		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(status({ starting: true }));
+		renderSection();
+		expect(await screen.findByRole("button", { name: "catalog.stopProxy" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "catalog.startProxy" })).toBeNull();
+	});
+
+	it("lets the user stop a Start this panel sent, without reporting it as a failure", async () => {
+		vi.useFakeTimers({ toFake: ["setInterval"] });
+		try {
+			let rejectStart!: (err: Error) => void;
+			vi.mocked(api.request.modelSidecarStart).mockImplementation(
+				() => new Promise((_, reject) => (rejectStart = reject)),
+			);
+			vi.mocked(api.request.modelSidecarStop).mockImplementation(async () => {
+				rejectStart(new Error("The model proxy start was stopped."));
+				return status();
+			});
+			renderSection();
+			await userEvent.click(await screen.findByRole("button", { name: "catalog.startProxy" }));
+			vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(status({ starting: true }));
+			await vi.advanceTimersByTimeAsync(4_000); // the next status poll sees the start
+			const stop = await screen.findByRole("button", { name: "catalog.stopProxy" });
+			expect((stop as HTMLButtonElement).disabled).toBe(false);
+			await userEvent.click(stop);
+			await waitFor(() => expect(api.request.modelSidecarStop).toHaveBeenCalledOnce());
+			expect(toast.error).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("offers to stop it once it is running", async () => {

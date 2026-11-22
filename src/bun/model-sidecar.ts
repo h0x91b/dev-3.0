@@ -80,6 +80,9 @@ interface RunningSidecar {
 let running: RunningSidecar | null = null;
 let starting: Promise<RunningSidecar> | null = null;
 let startingPid: number | undefined;
+let startingKill: (() => void) | undefined;
+/** Set while a stop waits out a start: the start gives up instead of finishing. */
+let startAborted = false;
 let stoppingPid: number | undefined;
 let shuttingDown = false;
 let lastError: string | undefined;
@@ -353,12 +356,16 @@ async function launchOnce(binary: string, env: Record<string, string>, sessionKe
 		{ env, stdout: "pipe", stderr: "pipe", stdin: "ignore" },
 	);
 	startingPid = proc.pid;
+	startingKill = () => proc.kill();
 
 	let exited = false;
 	let self: RunningSidecar | undefined;
 	void proc.exited.then((code) => {
 		exited = true;
-		if (startingPid === proc.pid) startingPid = undefined;
+		if (startingPid === proc.pid) {
+			startingPid = undefined;
+			startingKill = undefined;
+		}
 		if (stoppingPid === proc.pid) stoppingPid = undefined;
 		// A proxy that dies on its own must stop being the one we hand out: without
 		// this every later launch is routed at a dead port and the panel keeps
@@ -373,7 +380,7 @@ async function launchOnce(binary: string, env: Record<string, string>, sessionKe
 	void pumpStream(proc.stderr, buffer.push);
 
 	try {
-		await waitForHealth(baseUrl, () => !exited, buffer.text);
+		await waitForHealth(baseUrl, () => !exited && !startAborted, buffer.text);
 	} catch (err) {
 		try {
 			proc.kill();
@@ -428,7 +435,7 @@ export function cancelScheduledRestart(): void {
  *  retry could fix (no binary, no provider) or the app is quitting. Stop and
  *  quit cancel it. */
 function scheduleRestart(): void {
-	if (shuttingDown || running || restartTimer || !resolveSidecarBinary()) return;
+	if (shuttingDown || startAborted || running || restartTimer || !resolveSidecarBinary()) return;
 	if (loadModelCatalog().providers.length === 0) return;
 	restartAttempt += 1;
 	const delay = restartBackoffMs(restartAttempt);
@@ -485,6 +492,11 @@ export async function choosePort(
 	return await chooseCandidatePort();
 }
 
+function throwIfStartCancelled(): void {
+	if (shuttingDown) throw new Error("The model proxy is shutting down.");
+	if (startAborted) throw new Error("The model proxy start was stopped.");
+}
+
 async function startSidecar(): Promise<RunningSidecar> {
 	const binary = resolveSidecarBinary();
 	if (!binary) {
@@ -508,11 +520,12 @@ async function startSidecar(): Promise<RunningSidecar> {
 	let failure: unknown;
 	for (let attempt = 1; attempt <= START_ATTEMPTS; attempt += 1) {
 		try {
-			if (shuttingDown) throw new Error("The model proxy is shutting down.");
+			throwIfStartCancelled();
 			const port = attempt === 1 && reclaimedPort !== undefined ? reclaimedPort : await choosePort(attempt, remembered);
-			if (shuttingDown) throw new Error("The model proxy is shutting down.");
+			throwIfStartCancelled();
 			const instance = await launchOnce(binary, env, sessionKey, port);
-			if (shuttingDown) throw new Error("The model proxy is shutting down.");
+			if (shuttingDown || startAborted) instance.kill();
+			throwIfStartCancelled();
 			// It can die between answering /health and getting here (a bad provider
 			// config it only notices on the first request, a stolen port, an OOM).
 			// Its own exit handler cannot clean that up — it never saw this instance
@@ -520,14 +533,17 @@ async function startSidecar(): Promise<RunningSidecar> {
 			// forever with every launch routed at a dead port.
 			if (instance.hasExited()) throw new Error(`The model proxy exited right after starting.\n${instance.output()}`.trim());
 			running = instance;
-			if (startingPid === instance.pid) startingPid = undefined;
+			if (startingPid === instance.pid) {
+				startingPid = undefined;
+				startingKill = undefined;
+			}
 			saveSidecarEndpoint({ port: instance.port, sessionKey, pid: instance.pid, ownerPid: process.pid });
 			lastError = undefined;
 			log.info("Model proxy started", { pid: instance.pid, port: instance.port, attempt });
 			return instance;
 		} catch (err) {
 			failure = err;
-			if (shuttingDown) break;
+			if (shuttingDown || startAborted) break;
 			log.warn("Model proxy start attempt failed", { attempt, error: String(err) });
 		}
 	}
@@ -585,7 +601,17 @@ export async function stopModelSidecar(): Promise<void> {
 	// kill nothing and leave the finished process orphaned on the port. Nothing in
 	// the start path calls stop, so waiting here cannot deadlock.
 	cancelScheduledRestart();
-	if (starting) await starting.catch(() => undefined);
+	if (starting) {
+		// Cut the start short — an automatic retry can otherwise run for half a minute.
+		startAborted = true;
+		try {
+			startingKill?.();
+		} catch {
+			/* already gone */
+		}
+		await starting.catch(() => undefined);
+		startAborted = false;
+	}
 	// The start awaited above may have failed and queued a restart of its own.
 	cancelScheduledRestart();
 	const instance = running;
@@ -640,7 +666,9 @@ export function getModelSidecarStatus(): ModelSidecarStatus {
 		lastError,
 		...(nextRestartAt !== undefined
 			? { restart: { attempt: restartAttempt, inMs: Math.max(0, nextRestartAt - Date.now()) } }
-			: {}),
+			: starting && restartAttempt > 0
+				? { restart: { attempt: restartAttempt } }
+				: {}),
 	};
 }
 

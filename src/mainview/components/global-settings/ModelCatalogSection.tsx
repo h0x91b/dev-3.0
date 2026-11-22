@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CodingAgent, ModelCatalogView, ModelSidecarStatus } from "../../../shared/types";
 import {
 	CATALOG_PROVIDER_KINDS,
@@ -181,6 +181,23 @@ function StatusRow({ tone, children }: { tone: "success" | "warning" | "danger" 
 	);
 }
 
+/** The queued retry, counting down locally between status polls from the
+ *  host's remaining time — browser-local elapsed time only, so clock skew is moot. */
+function RestartingRow({ t, attempt, inMs }: { t: TFunction; attempt: number; inMs: number }) {
+	const [left, setLeft] = useState(inMs);
+	useEffect(() => {
+		const from = Date.now();
+		setLeft(inMs);
+		const timer = setInterval(() => setLeft(Math.max(0, inMs - (Date.now() - from))), 1000);
+		return () => clearInterval(timer);
+	}, [inMs]);
+	return (
+		<StatusRow tone="warning">
+			{t("catalog.proxyRestarting", { seconds: String(Math.ceil(left / 1000)), attempt: String(attempt) })}
+		</StatusRow>
+	);
+}
+
 /**
  * The model catalog: providers dev3 may reach and the named models on top of
  * them. Credentials go in and never come back. Edits stay local until saved,
@@ -198,6 +215,9 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	const [available, setAvailable] = useState<string[] | null>(null);
 	const [listError, setListError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	/** Its own flag: Stop must stay clickable while a Start this panel sent is still pending. */
+	const [stopping, setStopping] = useState(false);
+	const stopRequested = useRef(false);
 	/** Separate from `busy`: listing may start the proxy first, which takes
 	 *  seconds, and a button that looks idle the whole time reads as dead. */
 	const [listing, setListing] = useState(false);
@@ -363,10 +383,12 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	const startProxy = async () => {
 		setBusy(true);
 		setListError(null);
+		stopRequested.current = false;
 		try {
 			setStatus(await api.request.modelSidecarStart());
 		} catch (err) {
-			toast.error(t("catalog.startError", { error: String(err) }), { source: "settings" });
+			// A start the user stopped on purpose did not fail.
+			if (!stopRequested.current) toast.error(t("catalog.startError", { error: String(err) }), { source: "settings" });
 			void refreshStatus();
 		} finally {
 			setBusy(false);
@@ -374,12 +396,13 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	};
 
 	const stopProxy = async () => {
-		setBusy(true);
+		stopRequested.current = true;
+		setStopping(true);
 		try {
 			setStatus(await api.request.modelSidecarStop());
 			setAvailable(null);
 		} finally {
-			setBusy(false);
+			setStopping(false);
 		}
 	};
 
@@ -436,12 +459,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 					) : status?.starting ? (
 						<StatusRow tone="warning">{t("catalog.proxyStarting")}</StatusRow>
 					) : status?.restart ? (
-						<StatusRow tone="warning">
-							{t("catalog.proxyRestarting", {
-								seconds: String(Math.ceil(status.restart.inMs / 1000)),
-								attempt: String(status.restart.attempt),
-							})}
-						</StatusRow>
+						<RestartingRow t={t} attempt={status.restart.attempt} inMs={status.restart.inMs ?? 0} />
 					) : (
 						<StatusRow tone="muted">{t("catalog.proxyStopped")}</StatusRow>
 					)}
@@ -454,12 +472,13 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 
 					<div className="flex flex-wrap items-center gap-3">
 						{status?.running ? (
-							<button type="button" onClick={stopProxy} disabled={busy} className={BUTTON_CLASS}>
+							<button type="button" onClick={stopProxy} disabled={busy || stopping} className={BUTTON_CLASS}>
 								{t("catalog.stopProxy")}
 							</button>
-						) : status?.restart ? (
-							<button type="button" onClick={stopProxy} disabled={busy} className={BUTTON_CLASS}>
-								{t("catalog.stopRetrying")}
+						) : status?.restart || status?.starting ? (
+							// The whole retry cycle, the attempt in flight included, keeps a way out.
+							<button type="button" onClick={stopProxy} disabled={stopping} className={BUTTON_CLASS}>
+								{status.restart ? t("catalog.stopRetrying") : t("catalog.stopProxy")}
 							</button>
 						) : (
 							<Gated reason={startReason}>

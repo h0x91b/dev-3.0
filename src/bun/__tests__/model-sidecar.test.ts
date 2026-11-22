@@ -714,6 +714,34 @@ describe("restarting after a failed start", () => {
 		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
 	});
 
+	it("stays a stoppable retry while an automatic attempt runs, and a stop cuts that attempt short", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		// The retry hangs the way bifrost does while it retries its datasheet fetch.
+		let exit!: (code: number) => void;
+		const hanging = {
+			pid: 5152,
+			exited: new Promise<number>((resolve) => (exit = resolve)),
+			stdout: streamOf(""),
+			stderr: streamOf(""),
+			kill: vi.fn(() => exit(143)),
+		};
+		h.spawnMock.mockImplementation(() => hanging);
+		await advanceUntil(() => getModelSidecarStatus().starting, 10_000);
+		expect(getModelSidecarStatus().restart).toEqual({ attempt: 1 });
+
+		const spawned = h.spawnMock.mock.calls.length;
+		let stopped = false;
+		void stopModelSidecar().then(() => (stopped = true));
+		await advanceUntil(() => stopped, 2_000); // not the 4 × 45s the attempt would take
+		expect(hanging.kill).toHaveBeenCalled();
+		expect(getModelSidecarStatus()).toMatchObject({ starting: false, running: false, lastError: undefined });
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+	});
+
 	it("drops the queued restart once the catalog has no provider left", async () => {
 		failUntil(Number.POSITIVE_INFINITY);
 		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
@@ -858,7 +886,7 @@ describe("stopping", () => {
 	// Quitting seconds after a launch triggered a start used to kill nothing: the
 	// instance is only published when the start resolves, so the finished process
 	// outlived the app holding the loopback port and the provider keys.
-	it("waits for a start already in flight, so it cannot leave an orphan", async () => {
+	it("cuts a start in flight short, so it cannot leave an orphan", async () => {
 		const killed: number[] = [];
 		const killSpy = vi.spyOn(process, "kill").mockImplementation(((pid: number) => {
 			killed.push(pid);
@@ -866,12 +894,14 @@ describe("stopping", () => {
 		}) as typeof process.kill);
 		h.getDescendantPids.mockResolvedValue([]);
 
-		const { ensureModelSidecar, stopModelSidecar } = await freshModule();
-		const start = ensureModelSidecar();
+		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
+		const start = ensureModelSidecar().catch((err: unknown) => err);
 		await stopModelSidecar();
-		await start;
 
-		expect(killed).toEqual([5150]);
+		expect(String(await start)).toMatch(/start was stopped/);
+		for (const { value } of h.spawnMock.mock.results) expect(value.kill).toHaveBeenCalled();
+		expect(killed).toEqual([]);
+		expect(getModelSidecarStatus()).toMatchObject({ running: false, starting: false });
 		killSpy.mockRestore();
 	});
 

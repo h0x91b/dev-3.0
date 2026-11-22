@@ -85,7 +85,7 @@ export async function modelCatalogSave(params: {
 	// The sidecar reads its config once at startup, so edits need a fresh process.
 	// A queued retry counts too: the save may be the fix it is waiting for.
 	const status = getModelSidecarStatus();
-	if (status.restart && catalog.providers.length === 0) {
+	if (status.restart && !status.starting && catalog.providers.length === 0) {
 		cancelScheduledRestart();
 	} else if (status.running || status.starting || status.restart) {
 		await restartModelSidecar().catch((err) => log.warn("Sidecar restart after save failed", { error: String(err) }));

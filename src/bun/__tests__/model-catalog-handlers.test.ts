@@ -91,6 +91,14 @@ describe("saving while a restart is queued after a failed start", () => {
 		expect(h.restart).not.toHaveBeenCalled();
 	});
 
+	it("still restarts with the new config when a start is in flight, even with no provider left", async () => {
+		h.status.mockReturnValueOnce({ ...queued(), starting: true });
+		h.restart.mockResolvedValueOnce(queued());
+		await modelCatalogSave({ catalog: { providers: [], models: [] } });
+		expect(h.restart).toHaveBeenCalledOnce();
+		expect(h.cancelRestart).not.toHaveBeenCalled();
+	});
+
 	it("leaves a stopped proxy with nothing queued alone", async () => {
 		await modelCatalogSave({ catalog: { providers: [OPENROUTER], models: [] } });
 		expect(h.restart).not.toHaveBeenCalled();
