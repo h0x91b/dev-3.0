@@ -8,7 +8,8 @@ import { HELP_ATTRACTOR_DISMISS_EVENT } from "../help";
 import { parseDisplayVersion } from "../../shared/update-channel";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
-import { groupProjectsForSwitcher } from "../utils/spaceGroups";
+import { groupProjectsForSwitcher, HOME_GROUP_ID } from "../utils/spaceGroups";
+import { readSwitcherCollapsed, writeSwitcherCollapsed } from "../utils/switcherCollapse";
 import { digitBadgeById, digitTargets } from "../utils/digitOrder";
 import { useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
 import { projectLastActivityMs } from "../utils/projectActivity";
@@ -186,6 +187,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	// The highlight only appears once the keyboard is driving — an unprompted
 	// marker on row 0 competes with the accent row that says "you are here".
 	const [switcherKeyNav, setSwitcherKeyNav] = useState(false);
+	const [switcherCollapsed, setSwitcherCollapsed] = useState<Set<string>>(readSwitcherCollapsed);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
 	const activeSwitcherRowRef = useRef<HTMLButtonElement>(null);
@@ -621,14 +623,31 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			.map((group) => ({ ...group, projects: group.projects.filter((p) => switcherMatch(p).matched) }))
 			// A group survives an empty result only when nothing is being searched:
 			// an untouched menu keeps its shape, a filtered one shows only hits.
-			.filter((group) => !switcherSearching || group.projects.length > 0);
+			.filter((group) => !switcherSearching || group.projects.length > 0)
+			.map((group) => {
+				const id = group.space?.id ?? HOME_GROUP_ID;
+				// The group holding the current project never folds: "you are here"
+				// must stay on screen. A search shows every hit, folded or not.
+				const pinnedOpen = !!currentProjectId && group.projects.some((p) => p.id === currentProjectId);
+				const foldable = !switcherSearching && !pinnedOpen;
+				return { ...group, id, pinnedOpen, foldable, collapsed: foldable && switcherCollapsed.has(id) };
+			});
+	function toggleSwitcherGroup(id: string) {
+		setSwitcherCollapsed((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			writeSwitcherCollapsed(next);
+			return next;
+		});
+	}
 	/** Visible rows in render order — what ↑/↓ walks and ⏎ commits. */
 	const switcherRows: { project: Project; keyPrefix: string }[] = switcherFilteredGroups === null
 		? availableProjects.filter((p) => switcherMatch(p).matched).map((project) => ({ project, keyPrefix: "flat" }))
 		: [
 				...switcherBuiltins.map((project) => ({ project, keyPrefix: "builtin" })),
 				...switcherFilteredGroups.flatMap((group) =>
-					group.projects.map((project) => ({ project, keyPrefix: group.space?.id ?? "home" })),
+					group.collapsed ? [] : group.projects.map((project) => ({ project, keyPrefix: group.id })),
 				),
 			];
 	const switcherActive = switcherRows.length === 0 ? -1 : Math.min(switcherIndex, switcherRows.length - 1);
@@ -717,6 +736,40 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<span className="text-micro">{"⌘"}</span>{shortcutLabel}
 					</kbd>
 				)}
+			</button>
+		);
+	}
+
+	// The fold control left of a group heading. A group that cannot fold right now
+	// (it holds the current project, or a search is showing every hit) keeps the
+	// chevron in place, inert, so the headings stay aligned and the reason is a hover away.
+	function renderSwitcherGroupChevron(group: { id: string; collapsed: boolean; foldable: boolean; pinnedOpen: boolean }) {
+		const label = group.collapsed ? t("header.switcherExpandGroup") : t("header.switcherCollapseGroup");
+		const reason = group.foldable ? label : group.pinnedOpen ? t("header.switcherGroupPinnedOpen") : t("header.switcherGroupSearchOpen");
+		return (
+			<button
+				type="button"
+				aria-expanded={!group.collapsed}
+				aria-controls={group.collapsed ? undefined : `switcher-group-${group.id}`}
+				aria-disabled={!group.foldable || undefined}
+				aria-label={label}
+				title={reason}
+				onClick={() => { if (group.foldable) toggleSwitcherGroup(group.id); }}
+				className={`ml-1 mb-1 w-5 h-5 flex-shrink-0 inline-flex items-center justify-center rounded text-fg-muted transition-colors ${
+					group.foldable ? "hover:bg-overlay-hover hover:text-fg-3" : "opacity-40 cursor-default"
+				}`}
+				data-testid={`switcher-group-toggle-${group.id}`}
+			>
+				<svg
+					aria-hidden="true"
+					focusable="false"
+					className={`w-3 h-3 transition-transform ${group.collapsed ? "-rotate-90" : ""}`}
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+				</svg>
 			</button>
 		);
 	}
@@ -1009,19 +1062,22 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 												{switcherFilteredGroups.map((group) => {
 													const masked = group.space ? isSpaceSensitive(group.space, sensitiveProjectIds) : false;
 													return (
-														<div key={group.space?.id ?? "home"} className="pt-2 first:pt-0">
+														<div key={group.id} className="pt-2 first:pt-0">
 															{/* Label, then a hairline running to the edge — the same
 															    grammar the Keyboard settings use for their sections. A
 															    space heading is a menu item of its own: it names a board,
 															    so clicking it opens that board. Home names no space and
-															    stays an inert label. */}
+															    stays an inert label. The fold is a separate chevron, so
+															    the heading keeps its one job. */}
+															<div className="flex items-center">
+															{renderSwitcherGroupChevron(group)}
 															{group.space ? (
 																<button
 																	type="button"
 																	role="menuitem"
 																	onClick={() => openSpaceBoardFromSwitcher(group.space as Space)}
 																	title={t("spaces.openBoard")}
-																	className="group/space w-full px-3 pb-1 pt-0.5 flex items-center gap-2 text-left rounded-md hover:bg-overlay-hover"
+																	className="group/space flex-1 min-w-0 pl-1 pr-3 pb-1 pt-0.5 flex items-center gap-2 text-left rounded-md hover:bg-overlay-hover"
 																	data-testid={`switcher-space-${group.space.id}`}
 																>
 																	<SpaceIcon className="w-3.5 h-3.5 flex-shrink-0 text-accent/90" />
@@ -1040,7 +1096,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 																	)}
 																</button>
 															) : (
-																<div className="px-3 pb-1 flex items-center gap-2">
+																<div className="flex-1 min-w-0 pl-1 pr-3 pb-1 flex items-center gap-2">
 																	<span className="text-nano font-semibold uppercase tracking-wider truncate text-fg-3">
 																		{t("spaces.homeGroup")}
 																	</span>
@@ -1048,14 +1104,14 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 																	<span aria-hidden="true" className="h-px flex-1 bg-edge/60" />
 																</div>
 															)}
+															</div>
 															{/* The trunk: rows sit indented off a vertical rule, so a
 															    project reads as filed under its space. */}
-															<div className={`ml-3 border-l ${group.space ? "border-accent/30" : "border-edge/60"}`}>
-																{group.projects.map((p) => {
-																const prefix = group.space?.id ?? "home";
-																return renderSwitcherRow(p, prefix, switcherRowIndex.get(`${prefix}:${p.id}`) ?? -1);
-															})}
-															</div>
+															{!group.collapsed && (
+																<div id={`switcher-group-${group.id}`} className={`ml-3 border-l ${group.space ? "border-accent/30" : "border-edge/60"}`}>
+																	{group.projects.map((p) => renderSwitcherRow(p, group.id, switcherRowIndex.get(`${group.id}:${p.id}`) ?? -1))}
+																</div>
+															)}
 														</div>
 													);
 												})}
