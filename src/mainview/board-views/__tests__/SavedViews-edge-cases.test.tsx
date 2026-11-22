@@ -536,7 +536,7 @@ describe("QA: apply and Revert on a preset saved with the default layout", () =>
 		await screen.findByTestId("kanban");
 		await pick("Plain");
 		fireEvent.click(screen.getByRole("button", { name: "collapse" }));
-		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Plain •"));
+		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Plain • edited"));
 		await pick("Revert changes");
 		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Plain"));
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-collapsed", "false");

@@ -99,12 +99,28 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: 
 				options={options}
 				onChange={choose}
 				ariaLabel={t("boardView.switcherAria")}
-				renderOption={(option) => (option.value === MANAGE_VIEWS ? <ManageViewsOption label={option.label} /> : option.label)}
+				renderOption={(option) => {
+					if (option.value === MANAGE_VIEWS) return <ManageViewsOption label={option.label} />;
+					if (applied && saved.modified && option.value === `${NAMED_PREFIX}${applied.id}`) return <EditedName name={applied.name} />;
+					return option.label;
+				}}
 				onOptionDisabledClick={saved.onUnavailable}
 				growList
 				maxListHeight={SWITCHER_LIST_MAX_HEIGHT}
 			/>
 		</div>
+	);
+}
+
+/** The dot is for the eye; a screen reader hears the word instead. */
+function EditedName({ name }: { name: string }) {
+	const t = useT();
+	return (
+		<span>
+			{name}
+			<span aria-hidden> •</span>
+			<span className="sr-only"> {t("boardView.saved.edited")}</span>
+		</span>
 	);
 }
 

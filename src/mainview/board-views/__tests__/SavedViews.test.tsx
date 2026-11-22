@@ -199,13 +199,13 @@ describe("named saved views", () => {
 		await screen.findByTestId("kanban");
 		await pick("Betas");
 		fireEvent.change(search(), { target: { value: "alpha" } });
-		expect((await switcherButton()).textContent).toBe("Betas •");
+		expect((await switcherButton()).textContent).toBe("Betas • edited");
 		await pick('Update "Betas"');
 		await waitFor(() => expect(namedIn(lastSaved())[0]).toMatchObject({ query: "alpha", viewType: "ext:list" }));
 		expect((await switcherButton()).textContent).toBe("Betas");
 
 		fireEvent.click(screen.getByRole("button", { name: "sort-by-seq" }));
-		expect((await switcherButton()).textContent).toBe("Betas •");
+		expect((await switcherButton()).textContent).toBe("Betas • edited");
 	});
 
 	it("offers Update and Revert only while modified", async () => {
@@ -345,7 +345,7 @@ describe("named saved views", () => {
 		await screen.findByTestId("kanban");
 		await pick("Betas");
 		fireEvent.click(await screen.findByRole("button", { name: "sort-by-seq" }));
-		expect((await switcherButton()).textContent).toBe("Betas •");
+		expect((await switcherButton()).textContent).toBe("Betas • edited");
 		await pick("Revert changes");
 		expect(screen.getByTestId("view-list")).toHaveAttribute("data-sort", "");
 		expect((await switcherButton()).textContent).toBe("Betas");
@@ -402,5 +402,20 @@ describe("named saved views", () => {
 		await pick("List");
 		fireEvent.click(await switcherButton());
 		expect(await screen.findByRole("option", { name: "From elsewhere" })).toBeInTheDocument();
+	});
+
+	it("shows the edited mark as a dot to the eye and as a word to a screen reader", async () => {
+		serveFrom(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "beta" }]));
+		installIntoAppRoot([installKanbanView]);
+		registerListView();
+		renderHost();
+		await screen.findByTestId("kanban");
+		await pick("Betas");
+		fireEvent.change(search(), { target: { value: "alpha" } });
+		const trigger = await switcherButton();
+		expect(within(trigger).getByText("•", { exact: false })).toHaveAttribute("aria-hidden");
+		expect(within(trigger).getByText("edited", { exact: false })).toHaveClass("sr-only");
+		fireEvent.click(trigger);
+		expect(screen.getByRole("option", { name: /Betas.*edited/ })).toBeInTheDocument();
 	});
 });
