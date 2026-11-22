@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import type { Task } from "../../shared/types";
-import { STATUS_LABELS, getTaskTitle, hasGitWorkflow, taskProtocolMode } from "../../shared/types";
+import { STATUS_LABELS, getTaskTitle, hasGitWorkflow, taskCompletesManually, taskProtocolMode } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
 import { printDetail, exitError } from "../output";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
-import { SELF_COMPLETION_HINT, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
+import { MANUAL_COMPLETION_HINT, SELF_COMPLETION_HINT, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 
 /**
  * Print the project's custom columns and their move IDs. Shared by the online
@@ -83,7 +83,9 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 					["Status:", statusDisplay],
 				];
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
+				// Self-completion outranks manual completion, matching taskCompletionOwner().
 				if (task.selfCompletion === true) fields.push(["Self-completion:", SELF_COMPLETION_HINT]);
+				else if (taskCompletesManually(task)) fields.push(["Manual completion:", MANUAL_COMPLETION_HINT]);
 				fields.push(...workspaceFields(project, task, task.worktreePath, task.branchName));
 				const createdBy = describeTaskOrigin(task);
 				if (createdBy) fields.push(["Created by:", createdBy]);

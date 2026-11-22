@@ -12,6 +12,7 @@ import type { TaskDependencyInfo } from "../shared/task-dependencies";
  */
 /** What `dev3 current` and `task show` print for an opted-in task. */
 export const SELF_COMPLETION_HINT = "on - `dev3 task move --status completed --force` completes it without asking the user";
+export const MANUAL_COMPLETION_HINT = "on - the user closes this task; request completion only when they ask";
 
 export const TASK_SHOW_JSON_SCHEMA_VERSION = 1;
 

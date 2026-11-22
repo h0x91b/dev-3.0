@@ -126,6 +126,33 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toMatch(/Protocol:\s+worktree/);
 		});
 
+		it("tells the agent when the user owns completion, in --brief too", async () => {
+			for (const task of [{ manualCompletion: true }, { taskType: "coordinator" }, { taskType: "board-cleanup" }]) {
+				stdoutOutput = "";
+				mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: SOCKET });
+				mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, ...task }));
+				mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+
+				await handleCurrent(SOCKET, { brief: true });
+
+				expect(stdoutOutput).toMatch(/Manual completion:\s+on - the user closes this task/);
+			}
+		});
+
+		it("lets self-completion win over manual completion and stays quiet for an ordinary task", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: SOCKET });
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+			mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, manualCompletion: true, selfCompletion: true }));
+			await handleCurrent(SOCKET);
+			expect(stdoutOutput).toContain("Self-completion:");
+			expect(stdoutOutput).not.toContain("Manual completion:");
+
+			stdoutOutput = "";
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			await handleCurrent(SOCKET);
+			expect(stdoutOutput).not.toContain("Manual completion:");
+		});
+
 		it("tells the agent of a gitless task there is no branch or PR, names its folder, and warns it is shared", async () => {
 			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: SOCKET });
 			mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, branchName: null, worktreePath: "/work/customer-x" }));

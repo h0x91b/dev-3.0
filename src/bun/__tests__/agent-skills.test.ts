@@ -37,7 +37,7 @@ import {
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
-import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillPrLinkInstruction } from "../../shared/agent-skill-content";
+import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillBodyFor, skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
 import { parseSkillFrontmatter } from "../skills-catalog";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -193,11 +193,26 @@ describe("dev3 skill content", () => {
 		}
 	});
 
+	it("has the agent request completion itself, except where the user owns completion", () => {
+		for (const family of ["claude", "codex", "omp", "pi", "agy", "generic"] as const) {
+			for (const mode of ["worktree", "shared-folder"] as const) {
+				const skill = skillBodyFor(family, mode);
+				// Codex read "allowed" as "wait for the user" and told them to close the task by hand.
+				expect(skill).toContain("Gate met → run it yourself");
+				expect(skill).toContain("never tell the user to close it by hand");
+				// taskCompletionOwner() hands these to the user; `dev3 current` is where the agent sees it.
+				expect(skill).toContain("`dev3 current` shows `Manual completion: on` → the user closes it");
+				expect(skill).toContain("`cancelled` asks the same way, only if the user wants it dropped");
+				expect(skill).not.toContain("flow below stay allowed");
+			}
+		}
+	});
+
 	it("tells the agent its exit hooks run before the worktree is destroyed", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			// Harness-neutral on purpose: the quit command differs per CLI (`/exit` vs
 			// `/quit`) and only Claude Code calls its exit hooks "SessionEnd".
-			expect(skill).toContain("your CLI is asked to quit first, so its exit hooks run (30 s bound)");
+			expect(skill).toContain("your CLI quits first (exit hooks run, 30 s bound)");
 			expect(skill).not.toContain("SessionEnd");
 		}
 	});

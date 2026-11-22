@@ -13,7 +13,7 @@ Task and project are auto-detected from the worktree; pass `--task <id>` / `--pr
 - **Comment on an issue**: `dev3 note add "..." --task <id>` — per-task notes are the durable comment/scratchpad analog; they survive worktree teardown and are surfaced to future agents.
 - **Apply / remove labels**: `dev3 label set <id> [<id>...] --task <task>` sets the task's labels to *exactly* the given ids (include every label the task should keep — it replaces the full set); `dev3 label add` / `dev3 label remove <id> --task <task>` change only the named labels; `dev3 label set --clear --task <id>` removes all. Create a missing label first with `dev3 label create "name" [--color "#hex"]`; list with `dev3 label list`.
 - **Set the overview (sticky summary)**: `dev3 overview set "..." --task <id>`.
-- **Change state / column**: `dev3 task move --task <id> --status <status>`. Note: `completed` and `cancelled` are UI-only, require user approval, and destroy the worktree — they are not a plain "close".
+- **Change state / column**: `dev3 task move --task <id> --status <status>`. Note: `completed` and `cancelled` open a user-approval dialog and, once approved, destroy the worktree — the agent runs them itself once the preservation gate is met; they are not a plain "close".
 
 ## When a skill says "publish to the issue tracker"
 
