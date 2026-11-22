@@ -37,6 +37,8 @@ function BuiltinAppearanceSection() {
 			theme={s.theme}
 			zoomLevel={s.zoomLevel}
 			onThemeChange={s.applyThemeChange}
+			beigeTone={s.beigeTone}
+			onBeigeToneChange={s.handleBeigeToneChange}
 			onLocaleChange={s.handleLocaleChange}
 			onSimplifyModeToggle={s.handleSimplifyModeToggle}
 		/>

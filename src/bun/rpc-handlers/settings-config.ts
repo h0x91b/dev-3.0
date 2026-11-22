@@ -441,6 +441,9 @@ async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
 		autoAccountExclusions: stored.autoAccountExclusions,
 		// Only for the push below: `saveSettings` keeps the file's own value whatever this says.
 		logRetentionDays: stored.logRetentionDays,
+		// Written only by setTmuxTheme (the Beige sliders), after the snapshot was taken.
+		beigeDepth: stored.beigeDepth,
+		beigeWarmth: stored.beigeWarmth,
 	};
 	await saveSettings(next);
 	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");
@@ -988,18 +991,27 @@ async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> 
 
 async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system"; beigeTone?: { depth: number; warmth: number } }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
-	const settings = await loadSettings();
 	const tone = params.beigeTone ? clampBeigeTone(params.beigeTone) : undefined;
-	await saveSettings({
-		...settings,
-		...(params.preference !== undefined ? { theme: params.preference } : {}),
-		resolvedTheme: params.theme,
-		...(tone ? { beigeDepth: tone.depth, beigeWarmth: tone.warmth } : {}),
+	// Through the settings queue, so a concurrent full-snapshot save cannot undo the tone.
+	const settings = await serializeSettingsWrite(async () => {
+		const stored = await loadSettings();
+		const next: GlobalSettings = {
+			...stored,
+			...(params.preference !== undefined ? { theme: params.preference } : {}),
+			resolvedTheme: params.theme,
+			...(tone ? { beigeDepth: tone.depth, beigeWarmth: tone.warmth } : {}),
+		};
+		await saveSettings(next);
+		// Other windows (and an open Settings screen) follow the tone from this push.
+		if (tone && (stored.beigeDepth !== tone.depth || stored.beigeWarmth !== tone.warmth)) {
+			getPushMessage()?.("globalSettingsUpdated", next);
+		}
+		return next;
 	});
 	setCurrentUiTheme(params.theme);
-	const tmuxTheme = tmuxThemeFor(params.preference ?? settings.theme, params.theme);
+	const tmuxTheme = tmuxThemeFor(settings.theme, params.theme);
 	if (tmuxTheme === "beige" && process.platform !== "win32") {
-		setTmuxBeigeTone(tone ?? { depth: settings.beigeDepth, warmth: settings.beigeWarmth });
+		setTmuxBeigeTone({ depth: settings.beigeDepth, warmth: settings.beigeWarmth });
 		writeTmuxConfigs();
 	}
 	await pty.applyTmuxTheme(tmuxTheme);

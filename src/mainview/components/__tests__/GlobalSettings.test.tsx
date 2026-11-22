@@ -364,6 +364,22 @@ describe("GlobalSettings", () => {
 			expect(mockedApi.request.setTmuxTheme).toHaveBeenLastCalledWith({ theme: "dark", preference: "dark" });
 		});
 
+		it("moves the slider to a tone saved from another window", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", {
+					detail: { ...mockGlobalSettings, theme: "beige", beigeDepth: 0.42, beigeWarmth: 0.5 },
+				}));
+			});
+
+			await waitFor(() => expect((document.getElementById("beige-depth") as HTMLInputElement).value).toBe("42"));
+		});
+
 		it("hands the last tone to the terminal when Settings closes mid-settle", async () => {
 			setupMocks();
 			const user = userEvent.setup();

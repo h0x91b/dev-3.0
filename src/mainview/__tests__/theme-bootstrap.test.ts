@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone, readStoredBeigeTone, saveBeigeTone } from "../theme-bootstrap";
+import { adoptHostBeigeTone, applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone, readStoredBeigeTone, saveBeigeTone } from "../theme-bootstrap";
 
 describe("getInitialThemeState", () => {
 	it("uses the injected remote theme when browser storage is empty", () => {
@@ -105,6 +105,35 @@ describe("applyBeigeTone", () => {
 		(window as unknown as { __DEV3_INITIAL_BEIGE_TONE__?: unknown }).__DEV3_INITIAL_BEIGE_TONE__ = { depth: 0.7, warmth: 0.2 };
 		expect(readBeigeTone()).toEqual({ depth: 0.7, warmth: 0.2 });
 		delete (window as unknown as { __DEV3_INITIAL_BEIGE_TONE__?: unknown }).__DEV3_INITIAL_BEIGE_TONE__;
+	});
+
+	it("prefers the host's injected tone over this browser's stale cache", () => {
+		saveBeigeTone({ depth: 0.1, warmth: 0.1 });
+		(window as unknown as { __DEV3_INITIAL_BEIGE_TONE__?: unknown }).__DEV3_INITIAL_BEIGE_TONE__ = { depth: 0.7, warmth: 0.2 };
+		expect(readBeigeTone()).toEqual({ depth: 0.7, warmth: 0.2 });
+		delete (window as unknown as { __DEV3_INITIAL_BEIGE_TONE__?: unknown }).__DEV3_INITIAL_BEIGE_TONE__;
+		localStorage.removeItem("dev3-beige-tone");
+	});
+
+	it("treats a cached null as no tone at all", () => {
+		localStorage.setItem("dev3-beige-tone", "null");
+		expect(readStoredBeigeTone()).toBeUndefined();
+		localStorage.removeItem("dev3-beige-tone");
+	});
+
+	it("adopts the host's saved tone into the page and the cache", () => {
+		localStorage.removeItem("dev3-beige-tone");
+		adoptHostBeigeTone({ beigeDepth: 0.4, beigeWarmth: 0.8 });
+		expect(document.documentElement.dataset.beigeTone).toBe("0.4:0.8");
+		expect(readStoredBeigeTone()).toEqual({ depth: 0.4, warmth: 0.8 });
+		localStorage.removeItem("dev3-beige-tone");
+	});
+
+	it("leaves the page alone while the host has no tone", () => {
+		applyBeigeTone({ depth: 0.3, warmth: 0.3 });
+		adoptHostBeigeTone({});
+		expect(document.documentElement.dataset.beigeTone).toBe("0.3:0.3");
+		expect(readStoredBeigeTone()).toBeUndefined();
 	});
 
 	it("keeps the accent orange at neutral warmth", () => {
