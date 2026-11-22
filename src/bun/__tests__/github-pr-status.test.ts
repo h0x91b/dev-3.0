@@ -19,7 +19,7 @@ function pr(overrides: Record<string, unknown> = {}) {
 		number: 42, url: "https://github.com/owner/repo/pull/42", title: "Change", state: "OPEN",
 		headRefName: "feat/work", headRefOid: "head", isDraft: false, autoMergeRequest: null,
 		mergeable: "MERGEABLE", mergeStateStatus: "CLEAN", reviewDecision: "APPROVED", author: { login: "author" },
-		commits: { nodes: [{ commit: { oid: "head", statusCheckRollup: { contexts: page([{ name: "build", status: "COMPLETED", conclusion: "SUCCESS" }]) } } }] },
+		commits: { nodes: [{ commit: { oid: "head", committedDate: "2026-11-20T10:00:00Z", statusCheckRollup: { contexts: page([{ name: "build", status: "COMPLETED", conclusion: "SUCCESS" }]) } } }] },
 		reviewThreads: page([{ isResolved: false }, { isResolved: true }]), ...overrides,
 	};
 }
@@ -39,6 +39,16 @@ describe("shared GraphQL PR reads", () => {
 		expect(query).toHaveBeenCalledTimes(1);
 		expect(query).toHaveBeenCalledWith(account, expect.stringContaining("reviewThreads"), expect.objectContaining({ branch: "feat/work", number: 42, byBranch: true, known: true }), expect.any(AbortSignal));
 		expect(result?.pr).toMatchObject({ number: 42, state: "OPEN", unresolvedCount: 1, statusCheckRollup: [{ name: "build", status: "COMPLETED", conclusion: "SUCCESS" }] });
+	});
+
+	it("carries the author and the head commit's date, and no date when the PR has no commits", async () => {
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		const { prSummaryStatus } = await import("../rpc-handlers/pr-status");
+		expect(query).not.toHaveBeenCalled();
+		const result = await readTaskPullRequest({}, "/repo", "feat/work", 42);
+		expect(query.mock.calls[0][1]).toContain("committedDate");
+		expect(prSummaryStatus(result!.pr!)).toMatchObject({ authorLogin: "author", lastCommitAt: "2026-11-20T10:00:00Z" });
+		expect(prSummaryStatus({ ...result!.pr!, author: null, lastCommitAt: undefined })).toMatchObject({ authorLogin: null, lastCommitAt: null });
 	});
 
 	it("shares both in-flight and recent reads across worktrees, and number snapshots", async () => {

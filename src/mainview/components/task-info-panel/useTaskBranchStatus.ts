@@ -148,6 +148,8 @@ export function useTaskBranchStatus({
 				checks: TaskPRBadgeInfo["checks"];
 				prTitle: TaskPRBadgeInfo["prTitle"];
 				isDraft: TaskPRBadgeInfo["isDraft"];
+				authorLogin?: TaskPRBadgeInfo["authorLogin"];
+				lastCommitAt?: TaskPRBadgeInfo["lastCommitAt"];
 			};
 			if (detail.projectId !== project.id || detail.taskId !== task.id || detail.prNumber == null) return;
 			setPrStatusEntry({
@@ -164,6 +166,8 @@ export function useTaskBranchStatus({
 					checks: detail.checks ?? [],
 					prTitle: detail.prTitle,
 					isDraft: detail.isDraft,
+					authorLogin: detail.authorLogin,
+					lastCommitAt: detail.lastCommitAt,
 				},
 			});
 		}

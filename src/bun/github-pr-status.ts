@@ -25,11 +25,13 @@ export interface GitHubPullRequestSummary {
 	author: { login: string; name?: string | null } | null;
 	statusCheckRollup: Check[] | null;
 	unresolvedCount: number | null;
+	/** Committer date of the head commit; absent from metadata-only reads. */
+	lastCommitAt?: string | null;
 }
 
 type ApiPR = Omit<GitHubPullRequestSummary, "statusCheckRollup" | "unresolvedCount"> & {
 	mergedAt?: string | null;
-	commits?: { nodes: { commit: { oid: string; statusCheckRollup: { contexts: Page<Check> } | null } }[] };
+	commits?: { nodes: { commit: { oid: string; committedDate?: string | null; statusCheckRollup: { contexts: Page<Check> } | null } }[] };
 	reviewThreads?: Page<{ isResolved: boolean }>;
 };
 type PRResponse = { repository: { open?: { nodes: ApiPR[] }; known?: ApiPR | null } };
@@ -69,7 +71,7 @@ const PR_METADATA_FIELDS = `number url title state mergedAt headRefName headRefO
   author { login ... on User { name } }
   autoMergeRequest { enabledAt } mergeable mergeStateStatus reviewDecision`;
 const PR_FIELDS = `${PR_METADATA_FIELDS}
-  commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { ${CHECK_FIELDS} } } } } }
+  commits(last: 1) { nodes { commit { oid committedDate statusCheckRollup { contexts(first: 100) { ${CHECK_FIELDS} } } } } }
   reviewThreads(first: 100) { nodes { isResolved } pageInfo { hasNextPage endCursor } }`;
 function pullRequestQuery(fields: string): string {
 	return `query($owner: String!, $name: String!, $branch: String!, $number: Int!, $byBranch: Boolean!, $known: Boolean!) {
@@ -164,7 +166,7 @@ async function completePR(account: GitHubAccount, repo: Repository, pr: ApiPR, s
 	signal.throwIfAborted();
 	const { commits: _, reviewThreads: __, mergedAt, ...summary } = pr;
 	// `mergedAt` is the merge itself; a merged PR must never read as CLOSED, whatever `state` says.
-	return { ...summary, state: mergedAt ? "MERGED" : summary.state, statusCheckRollup: checks, unresolvedCount };
+	return { ...summary, state: mergedAt ? "MERGED" : summary.state, statusCheckRollup: checks, unresolvedCount, lastCommitAt: commit?.committedDate ?? null };
 }
 
 async function withinDeadline<T>(fn: (signal: AbortSignal, deadline: number) => Promise<T>, timeoutMs: number): Promise<T> {

@@ -644,7 +644,7 @@ export async function reportTaskPrStatus(
 	const prUrl = typeof pr.url === "string" ? pr.url : task.prUrl ?? null;
 	if (prNumber === null) throw new Error("PR status is missing its number");
 
-	const { ciStatus, reviewDecision, reviewState, checks, unresolvedCount, mergeState, prTitle, isDraft, autoMergeEnabled } = prSummaryStatus(pr);
+	const { ciStatus, reviewDecision, reviewState, checks, unresolvedCount, mergeState, prTitle, isDraft, autoMergeEnabled, authorLogin, lastCommitAt } = prSummaryStatus(pr);
 
 	const freshStatus: FreshPRStatus = {
 		number: prNumber,
@@ -659,6 +659,8 @@ export async function reportTaskPrStatus(
 		prTitle,
 		isDraft,
 		headRefName: typeof pr.headRefName === "string" ? pr.headRefName : null,
+		authorLogin,
+		lastCommitAt,
 	};
 	if (skipUnchanged && task.prStatusCache) {
 		const { cachedAt: _, ...saved } = task.prStatusCache;
@@ -679,6 +681,8 @@ export async function reportTaskPrStatus(
 		checks,
 		prTitle,
 		isDraft,
+		authorLogin,
+		lastCommitAt,
 	};
 
 	// Raise the bell / native notification only on a *transition* to a new

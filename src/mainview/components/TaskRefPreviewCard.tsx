@@ -19,6 +19,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import TaskCardRail from "./TaskCardRail";
 import TaskPrBadges from "./TaskPrBadges";
+import PrByline, { PrAuthorLink } from "./PrByline";
 import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import { taskDeepLinkNav } from "../../shared/deep-link";
 
@@ -206,18 +207,21 @@ export function PrRefSummary({ preview }: { preview: PrPreview }) {
 				{badge?.prTitle
 					? <div className="break-words text-sm font-medium leading-relaxed text-fg line-clamp-3">{badge.prTitle}</div>
 					: <div className="leading-relaxed text-fg-3">{t("task.prNotLoaded")}</div>}
+				{badge && <PrByline prInfo={badge} showAuthor={false} className="mt-1" />}
 				{ci && (
 					<div className={`mt-1.5 ${ci === "success" ? "text-success" : ci === "failure" ? "text-danger" : "text-warning-strong"}`}>
 						{t("task.prChecks")}: {t(ci === "success" ? "task.prCheckPassed" : ci === "failure" ? "task.prCheckFailed" : "task.prCheckPending")}
 					</div>
 				)}
 			</div>
-			{url && (
+			{(url || badge?.authorLogin) && (
 				<CardBar>
-					<a href={url} target="_blank" rel="noopener noreferrer" data-testid="pr-ref-summary-open" className={CARD_ACTION_CLASS}>
+					{badge?.authorLogin && <PrAuthorLink login={badge.authorLogin} prUrl={url} className="px-1 text-xs" />}
+					<div className="flex-1" />
+					{url && <a href={url} target="_blank" rel="noopener noreferrer" data-testid="pr-ref-summary-open" className={CARD_ACTION_CLASS}>
 						<span aria-hidden="true" className="leading-none" style={NERD_FONT}>{"\u{F0401}"}</span>
 						{t("task.openPR", { number: String(target.number) })}
-					</a>
+					</a>}
 				</CardBar>
 			)}
 		</div>

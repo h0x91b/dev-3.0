@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ageParts, compactAge, freshness } from "../statusAge";
+import { ageParts, compactAge, freshness, relativeAge } from "../statusAge";
 
 const NOW = new Date("2026-06-15T12:00:00.000Z").getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -99,5 +99,34 @@ describe("freshness", () => {
 
 	it("treats a future timestamp as live", () => {
 		expect(freshness(ago(-5 * MIN), NOW)).toBe("live");
+	});
+});
+
+describe("relativeAge", () => {
+	it("returns null without a usable timestamp", () => {
+		expect(relativeAge(undefined, NOW)).toBeNull();
+		expect(relativeAge("not-a-date", NOW)).toBeNull();
+	});
+
+	it("reads under a minute, and the future, as now", () => {
+		expect(relativeAge(ago(30 * SEC), NOW)).toEqual({ unit: "now" });
+		expect(relativeAge(ago(-5 * MIN), NOW)).toEqual({ unit: "now" });
+	});
+
+	it("speaks minutes and hours", () => {
+		expect(relativeAge(ago(MIN), NOW)).toEqual({ unit: "minute", value: 1 });
+		expect(relativeAge(ago(2 * HOUR), NOW)).toEqual({ unit: "hour", value: 2 });
+	});
+
+	it("reads one day as yesterday and 2–6 days in days", () => {
+		expect(relativeAge(ago(DAY + HOUR), NOW)).toEqual({ unit: "yesterday" });
+		expect(relativeAge(ago(6 * DAY), NOW)).toEqual({ unit: "day", value: 6 });
+	});
+
+	it("switches to weeks at seven days, then months and years", () => {
+		expect(relativeAge(ago(7 * DAY), NOW)).toEqual({ unit: "week", value: 1 });
+		expect(relativeAge(ago(29 * DAY), NOW)).toEqual({ unit: "week", value: 4 });
+		expect(relativeAge(ago(60 * DAY), NOW)).toEqual({ unit: "month", value: 2 });
+		expect(relativeAge(ago(800 * DAY), NOW)).toEqual({ unit: "year", value: 2 });
 	});
 });

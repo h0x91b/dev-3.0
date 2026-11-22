@@ -53,3 +53,27 @@ export function freshness(iso: string | null | undefined, now: number = Date.now
 	if (elapsed < 24 * 60 * MINUTE_MS) return "today";
 	return "stale";
 }
+
+export type RelativeAge =
+	| { unit: "now" }
+	| { unit: "yesterday" }
+	| { unit: "minute" | "hour" | "day" | "week" | "month" | "year"; value: number };
+
+/**
+ * The spoken form of {@link ageParts}: "just now", "yesterday", "3 weeks ago".
+ * A day-old timestamp reads as yesterday; 7–29 days read in weeks.
+ */
+export function relativeAge(iso: string | null | undefined, now: number = Date.now()): RelativeAge | null {
+	const part = ageParts(iso, now);
+	if (!part) return null;
+	switch (part.unit) {
+		case "s": return { unit: "now" };
+		case "m": return { unit: "minute", value: part.value };
+		case "h": return { unit: "hour", value: part.value };
+		case "d":
+			if (part.value === 1) return { unit: "yesterday" };
+			return part.value < 7 ? { unit: "day", value: part.value } : { unit: "week", value: Math.floor(part.value / 7) };
+		case "M": return { unit: "month", value: part.value };
+		case "y": return { unit: "year", value: part.value };
+	}
+}
