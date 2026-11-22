@@ -157,4 +157,26 @@ describe("SpaceHeaderMenu", () => {
 		await user.click(screen.getByTestId("space-menu-sp_a"));
 		expect(screen.getByTestId("space-delete-sp_a").className).toContain("text-danger");
 	});
+	// A closed menu sits on every space header; it must not swallow Escape meant
+	// for a document-level listener such as a phone BottomSheet.
+	it("leaves Escape alone while closed", () => {
+		renderMenu();
+		const seen = vi.fn();
+		document.addEventListener("keydown", seen, true);
+		const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+		document.body.dispatchEvent(event);
+		document.removeEventListener("keydown", seen, true);
+		expect(seen).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(false);
+	});
+
+	it("closes on Escape while open", async () => {
+		const user = userEvent.setup();
+		renderMenu();
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		expect(screen.getByTestId("space-rename-sp_a")).toBeInTheDocument();
+		await user.keyboard("{Escape}");
+		expect(screen.queryByTestId("space-rename-sp_a")).not.toBeInTheDocument();
+		expect(screen.getByTestId("space-menu-sp_a")).toHaveAttribute("aria-expanded", "false");
+	});
 });
