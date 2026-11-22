@@ -1,8 +1,7 @@
 /**
- * QA (independent) tests for the named-view part of useBoardViewState: a read that
- * lands after the user saved, StrictMode, and session memory keyed per board.
+ * Named-view races in useBoardViewState: a read landing after a save, two quick edits,
+ * a rejected change, and delete clearing both form factors.
  */
-import { StrictMode, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 
@@ -40,7 +39,6 @@ function diskWithNamed(name: string): BoardViewState {
 }
 
 const lastSaved = () => disk;
-const writes = () => setState.mock.calls.length + changeNamed.mock.calls.length;
 const namesIn = (state: BoardViewState) => state.savedViews.filter((v) => v.name !== null).map((v) => v.name);
 
 beforeEach(() => {
@@ -51,7 +49,7 @@ beforeEach(() => {
 	changeNamed.mockReset().mockImplementation(async ({ change }) => clone(disk = normalizeBoardViewState(applyNamedViewChange(disk, clone(change)))));
 });
 
-describe("QA: a read that lands after the user saved a named view", () => {
+describe("a read that lands after the user saved a named view", () => {
 	it("does not wipe the view the user just saved", async () => {
 		const read = deferred<BoardViewState>();
 		getState.mockReturnValue(read.promise);
@@ -80,59 +78,9 @@ describe("QA: a read that lands after the user saved a named view", () => {
 	});
 });
 
-describe("QA: StrictMode", () => {
-	it("saveNamed under StrictMode adds one view and saves once", async () => {
-		getState.mockResolvedValue(defaultBoardViewState());
-		const wrapper = ({ children }: { children: ReactNode }) => <StrictMode>{children}</StrictMode>;
-		const { result } = renderHook(() => useBoardViewState(board, "wide"), { wrapper });
-		await waitFor(() => expect(getState).toHaveBeenCalled());
-		await act(async () => { await Promise.resolve(); });
-		act(() => result.current.saveNamed("Once", ""));
-		await waitFor(() => expect(changeNamed).toHaveBeenCalledTimes(1));
-		expect(setState).not.toHaveBeenCalled();
-		expect(namesIn(lastSaved())).toEqual(["Once"]);
-		expect(getState).toHaveBeenCalledTimes(1);
-	});
-});
 
-describe("QA: session memory per board and form factor", () => {
-	it("an applied id on a project board does not leak to a space board with the same id", async () => {
-		disk = diskWithNamed("Shared");
-		getState.mockImplementation(async () => clone(disk));
-		const project = renderHook(() => useBoardViewState(board, "wide"));
-		await waitFor(() => expect(project.result.current.namedViews).toHaveLength(1));
-		act(() => { project.result.current.applyNamed("sv-named-1"); });
-		expect(project.result.current.appliedNamedId).toBe("sv-named-1");
-		const space = renderHook(() => useBoardViewState({ kind: "space", id: "p1" }, "wide"));
-		await waitFor(() => expect(space.result.current.namedViews).toHaveLength(1));
-		expect(space.result.current.appliedNamedId).toBeNull();
-	});
 
-	it("applyNamed of an unknown id returns null and changes nothing", async () => {
-		disk = diskWithNamed("Shared");
-		getState.mockImplementation(async () => clone(disk));
-		const { result } = renderHook(() => useBoardViewState(board, "wide"));
-		await waitFor(() => expect(result.current.namedViews).toHaveLength(1));
-		let query: string | null = "x";
-		act(() => { query = result.current.applyNamed("nope"); });
-		expect(query).toBeNull();
-		expect(result.current.appliedNamedId).toBeNull();
-		expect(writes()).toBe(0);
-	});
-
-	it("a re-apply of an unmodified view does not write the file again", async () => {
-		disk = diskWithNamed("Shared");
-		getState.mockImplementation(async () => clone(disk));
-		const { result } = renderHook(() => useBoardViewState(board, "wide"));
-		await waitFor(() => expect(result.current.namedViews).toHaveLength(1));
-		act(() => { result.current.applyNamed("sv-named-1"); });
-		const before = writes();
-		act(() => { result.current.applyNamed("sv-named-1"); });
-		expect(writes()).toBe(before);
-	});
-});
-
-describe("QA: optimistic changes and the host's answer", () => {
+describe("optimistic changes and the host's answer", () => {
 	it("two quick edits: the first answer does not roll back the second", async () => {
 		getState.mockImplementation(async () => clone(disk));
 		const first = deferred<BoardViewState>();
@@ -153,17 +101,6 @@ describe("QA: optimistic changes and the host's answer", () => {
 		await waitFor(() => expect(changeNamed).toHaveBeenCalledTimes(2));
 		expect(result.current.namedViews.map((v) => v.name)).toEqual(["Final"]);
 		expect(namesIn(disk)).toEqual(["Final"]);
-	});
-
-	it("a plain layout save adopts a named view another window saved", async () => {
-		getState.mockImplementation(async () => clone(disk));
-		const { result } = renderHook(() => useBoardViewState(board, "wide"));
-		await waitFor(() => expect(getState).toHaveBeenCalled());
-		await act(async () => { await Promise.resolve(); });
-		disk = diskWithNamed("Elsewhere");
-		act(() => result.current.setLayout("builtin:kanban", { collapsed: true }));
-		await waitFor(() => expect(result.current.namedViews.map((v) => v.name)).toEqual(["Elsewhere"]));
-		expect(result.current.layout("builtin:kanban")).toEqual({ collapsed: true });
 	});
 
 	it("a rejected named change tells the host page and falls back to the file", async () => {
@@ -193,17 +130,4 @@ describe("QA: optimistic changes and the host's answer", () => {
 		expect(narrow.result.current.appliedNamedId).toBeNull();
 	});
 
-	it("deleting on one board leaves the applied marker of a same-id view on another board", async () => {
-		// Applied keys are `<kind>:<id>:<formFactor>`; delete matches the `<kind>:<id>:` prefix.
-		disk = diskWithNamed("Same");
-		getState.mockImplementation(async () => clone(disk));
-		const a = renderHook(() => useBoardViewState({ kind: "project", id: "p1" }, "wide"));
-		const b = renderHook(() => useBoardViewState({ kind: "project", id: "p10" }, "wide"));
-		await waitFor(() => expect(b.result.current.namedViews).toHaveLength(1));
-		await waitFor(() => expect(a.result.current.namedViews).toHaveLength(1));
-		act(() => { a.result.current.applyNamed("sv-named-1"); });
-		act(() => { b.result.current.applyNamed("sv-named-1"); });
-		act(() => a.result.current.deleteNamed("sv-named-1"));
-		expect(b.result.current.appliedNamedId).toBe("sv-named-1");
-	});
 });

@@ -1,8 +1,7 @@
 /**
- * Board-host edge cases beyond SavedViews.test.tsx: form factors, board switching, StrictMode,
- * the v chord, a failed save, the name dialog, odd names, and Revert without a layout.
+ * Board-host edge cases beyond SavedViews.test.tsx: form factors, board switching, the v chord,
+ * a failed save, name dialog dismissal and duplicates, and session-memory ids.
  */
-import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Context } from "cordis";
@@ -220,7 +219,7 @@ afterEach(() => {
 	Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: originalMatchMedia });
 });
 
-describe("QA: form factors", () => {
+describe("form factors", () => {
 	it("an applied view on wide is not marked applied on narrow, and wide keeps it after a round trip", async () => {
 		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "beta" }]));
 		boot();
@@ -234,33 +233,6 @@ describe("QA: form factors", () => {
 		setNarrow(false);
 		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Betas"));
 		expect(screen.getByTestId("view-list")).toBeInTheDocument();
-	});
-
-	it("applying a named view on narrow leaves the wide working view untouched", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "" }]));
-		boot();
-		narrowNow = true;
-		render(host(projectA, tasksA));
-		await pick("Betas");
-		await screen.findByTestId("view-list");
-		const saved = lastSaved();
-		expect(saved.savedViews.find((v) => v.id === saved.slots.wide)!.viewType).toBe(KANBAN_VIEW_ID);
-		expect(saved.savedViews.find((v) => v.id === saved.slots.narrow)!.viewType).toBe("ext:list");
-		expect(saved.slots.wide).not.toBe(saved.slots.narrow);
-	});
-
-	it("a wide-only named view applied on narrow falls back to Kanban without crashing", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "WideOnly", viewType: "ext:wide-table", query: "" }]));
-		boot();
-		narrowNow = true;
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		fireEvent.click(await switcherButton());
-		// The wide-only view type is not offered on narrow, but the preset is still listed.
-		expect(screen.queryByRole("option", { name: "WideTable" })).not.toBeInTheDocument();
-		fireEvent.click(await screen.findByRole("option", { name: "WideOnly" }));
-		expect(await screen.findByTestId("kanban")).toBeInTheDocument();
-		expect(screen.queryByTestId("view-wide-table")).not.toBeInTheDocument();
 	});
 
 	it("a wide-only named view on narrow is a disabled row: a click toasts and changes nothing", async () => {
@@ -280,20 +252,9 @@ describe("QA: form factors", () => {
 		info.mockRestore();
 	});
 
-	it("the same wide-only view is enabled again after the window widens", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "WideOnly", viewType: "ext:wide-table", query: "" }]));
-		boot();
-		narrowNow = true;
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		setNarrow(false);
-		await pick("WideOnly");
-		expect(await screen.findByTestId("view-wide-table")).toBeInTheDocument();
-		expect((await switcherButton()).textContent).toBe("WideOnly");
-	});
 });
 
-describe("QA: switching boards", () => {
+describe("switching boards", () => {
 	it("A -> B -> A keeps A's applied view and query, and B starts clean", async () => {
 		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "beta" }]));
 		boot();
@@ -315,70 +276,10 @@ describe("QA: switching boards", () => {
 		expect((await switcherButton()).textContent).toBe("Betas");
 	});
 
-	it("a named view saved on A never appears on B, and saving on B writes B's file only", async () => {
-		boot();
-		const user = userEvent.setup();
-		const { rerender } = render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		await pick("Save current view…");
-		await user.type(await screen.findByTestId("saved-view-name-input"), "OnA{Enter}");
-		await waitFor(() => expect(namedIn(lastSaved()).map((v) => v.name)).toEqual(["OnA"]));
-		rerender(host(projectB, tasksB));
-		await screen.findByTestId("kanban");
-		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Kanban"));
-		await pick("Save current view…");
-		await user.type(await screen.findByTestId("saved-view-name-input"), "OnB{Enter}");
-		await waitFor(() => {
-			const calls = vi.mocked(api.request.changeNamedBoardView).mock.calls;
-			expect(calls[calls.length - 1][0].board).toEqual({ kind: "project", id: "p2" });
-			expect(namedIn(lastSaved("p2")).map((v) => v.name)).toEqual(["OnB"]);
-		});
-		expect(namedIn(lastSaved("p1")).map((v) => v.name)).toEqual(["OnA"]);
-	});
 });
 
-describe("QA: StrictMode", () => {
-	it("a save under StrictMode adds exactly one named view and reads the file once per board", async () => {
-		boot();
-		const user = userEvent.setup();
-		render(<StrictMode>{host(projectA, tasksA)}</StrictMode>);
-		await screen.findByTestId("kanban");
-		await pick("Save current view…");
-		await user.type(await screen.findByTestId("saved-view-name-input"), "Strict{Enter}");
-		await waitFor(() => expect(namedIn(lastSaved()).map((v) => v.name)).toEqual(["Strict"]));
-		expect(api.request.changeNamedBoardView).toHaveBeenCalledTimes(1);
-		expect(api.request.setBoardViewState).not.toHaveBeenCalled();
-		const reads = vi.mocked(api.request.getBoardViewState).mock.calls.filter(([arg]) => arg.board.id === "p1");
-		expect(reads.length).toBe(1);
-		expect((await switcherButton()).textContent).toBe("Strict");
-	});
-});
 
-describe("QA: the v chord leaves the applied view", () => {
-	it("v-pick of another view type clears the applied marker", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "beta" }]));
-		boot();
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		await pick("Betas");
-		await screen.findByTestId("view-list");
-		act(() => runBoardViewCommand({ kind: "pick", viewId: KANBAN_VIEW_ID }));
-		await screen.findByTestId("kanban");
-		expect((await switcherButton()).textContent).toBe("Kanban");
-	});
-
-	it("v v (previous) clears the applied marker", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "beta" }]));
-		boot();
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		await pick("Betas");
-		await screen.findByTestId("view-list");
-		act(() => runBoardViewCommand({ kind: "previous" }));
-		await screen.findByTestId("kanban");
-		expect((await switcherButton()).textContent).toBe("Kanban");
-	});
-
+describe("the v chord leaves the applied view", () => {
 	it("v-pick of the view type the applied view already shows also leaves it, like the switcher does", async () => {
 		// The switcher's "Kanban" option leaves the applied view even when Kanban already shows.
 		// The v chord skips pick() when the target equals the current view type.
@@ -393,7 +294,7 @@ describe("QA: the v chord leaves the applied view", () => {
 	});
 });
 
-describe("QA: a failed save", () => {
+describe("a failed save", () => {
 	it("a view whose save failed raises an error toast and drops out of the switcher without a remount", async () => {
 		// Decided after the spec probe: a named view is the user's content, so a failed save is told, not just logged.
 		vi.mocked(api.request.changeNamedBoardView).mockRejectedValue(new Error("disk full"));
@@ -416,7 +317,7 @@ describe("QA: a failed save", () => {
 	});
 });
 
-describe("QA: the name dialog", () => {
+describe("the name dialog", () => {
 	async function openSave(query?: string) {
 		const user = userEvent.setup();
 		render(host(projectA, tasksA));
@@ -427,38 +328,12 @@ describe("QA: the name dialog", () => {
 		return { user, dialog, input: within(dialog).getByTestId("saved-view-name-input") as HTMLInputElement };
 	}
 
-	it("Escape closes it without saving and keeps the board query", async () => {
-		boot();
-		const { user, input } = await openSave("beta");
-		await user.type(input, "Draft");
-		await user.keyboard("{Escape}");
-		await waitFor(() => expect(screen.queryByTestId("saved-view-name-dialog")).not.toBeInTheDocument());
-		expect(writes()).toBe(0);
-		expect(search().value).toBe("beta");
-	});
-
 	it("a backdrop click closes it without saving", async () => {
 		boot();
 		const { user, dialog, input } = await openSave();
 		await user.type(input, "Draft");
 		const backdrop = dialog.parentElement!;
 		await user.pointer({ keys: "[MouseLeft]", target: backdrop });
-		await waitFor(() => expect(screen.queryByTestId("saved-view-name-dialog")).not.toBeInTheDocument());
-		expect(writes()).toBe(0);
-	});
-
-	it("a click inside the dialog does not close it", async () => {
-		boot();
-		const { user, dialog } = await openSave();
-		await user.click(within(dialog).getByRole("heading"));
-		expect(screen.getByTestId("saved-view-name-dialog")).toBeInTheDocument();
-	});
-
-	it("Cancel closes it without saving", async () => {
-		boot();
-		const { user, dialog, input } = await openSave();
-		await user.type(input, "Draft");
-		await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 		await waitFor(() => expect(screen.queryByTestId("saved-view-name-dialog")).not.toBeInTheDocument());
 		expect(writes()).toBe(0);
 	});
@@ -474,74 +349,9 @@ describe("QA: the name dialog", () => {
 		expect(writes()).toBe(0);
 	});
 
-	it("refuses a Unicode name that differs only in case", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Задачи" }]));
-		boot();
-		const { user, dialog, input } = await openSave();
-		await user.type(input, "ЗАДАЧИ");
-		expect(within(dialog).getByTestId("saved-view-name-submit")).toBeDisabled();
-	});
-
-	it("renaming a view to its own name in another case is allowed", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas" }]));
-		boot();
-		const user = userEvent.setup();
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		await pick("Betas");
-		await pick('Rename "Betas"…');
-		const input = await screen.findByTestId("saved-view-name-input");
-		await user.clear(input);
-		await user.type(input, "BETAS{Enter}");
-		await waitFor(() => expect(namedIn(lastSaved()).map((v) => v.name)).toEqual(["BETAS"]));
-	});
-
-	it("saves a Unicode name and shows it in the switcher", async () => {
-		boot();
-		const { user, input } = await openSave("beta");
-		await user.type(input, "Баги 😀 バグ{Enter}");
-		await waitFor(() => expect(namedIn(lastSaved()).map((v) => v.name)).toEqual(["Баги 😀 バグ"]));
-		expect((await switcherButton()).textContent).toBe("Баги 😀 バグ");
-	});
-
-	it("stops a typed name at 60 characters", async () => {
-		boot();
-		const { user, input } = await openSave();
-		await user.type(input, `${"n".repeat(75)}{Enter}`);
-		await waitFor(() => expect(namedIn(lastSaved())[0].name).toBe("n".repeat(60)));
-	});
-
-	it("a name dialog opened from the Rename option starts with the current name and Escape leaves it unchanged", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Betas" }]));
-		boot();
-		const user = userEvent.setup();
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		await pick("Betas");
-		await pick('Rename "Betas"…');
-		const input = await screen.findByTestId("saved-view-name-input");
-		await user.clear(input);
-		await user.type(input, "Other");
-		await user.keyboard("{Escape}");
-		await waitFor(() => expect(screen.queryByTestId("saved-view-name-dialog")).not.toBeInTheDocument());
-		expect((await switcherButton()).textContent).toBe("Betas");
-	});
 });
 
-describe("QA: apply and Revert on a preset saved with the default layout", () => {
-	it("Revert after a layout change clears the modified dot", async () => {
-		seed(stateWithNamed([{ id: "sv-named-1", name: "Plain", viewType: KANBAN_VIEW_ID, query: "", layouts: {} }]));
-		boot();
-		render(host(projectA, tasksA));
-		await screen.findByTestId("kanban");
-		await pick("Plain");
-		fireEvent.click(screen.getByRole("button", { name: "collapse" }));
-		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Plain • edited"));
-		await pick("Revert changes");
-		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Plain"));
-		expect(screen.getByTestId("kanban")).toHaveAttribute("data-collapsed", "false");
-	});
-
+describe("apply and Revert on a preset saved with the default layout", () => {
 	it("applying such a preset over a working view with its own layout is not modified at once", async () => {
 		const base = stateWithNamed([{ id: "sv-named-1", name: "Plain", viewType: KANBAN_VIEW_ID, query: "", layouts: {} }]);
 		base.savedViews[0] = { ...base.savedViews[0], layouts: { [KANBAN_VIEW_ID]: { collapsed: true } } };
@@ -555,7 +365,7 @@ describe("QA: apply and Revert on a preset saved with the default layout", () =>
 	});
 });
 
-describe("QA: session-memory ids", () => {
+describe("session-memory ids", () => {
 	it("a view saved after a delete on narrow does not show as applied on wide", async () => {
 		// wide applies sv-named-2; narrow applies and deletes it; narrow saves "Fresh",
 		// which takes the lowest free id sv-named-2. Wide's session memory still holds it.

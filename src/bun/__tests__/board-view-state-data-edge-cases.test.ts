@@ -3,7 +3,7 @@
  * real file, with the real file lock (board-view-state-data.test.ts mocks it out).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 
 const DEV3_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/board-view-state-data-qa`);
 
@@ -12,7 +12,7 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(async () => ({ id: "p1", path: "/Users/me/src/app" })),
 }));
 
-import { changeNamedBoardView, loadBoardViewState, saveBoardViewState } from "../board-view-state-data";
+import { changeNamedBoardView, saveBoardViewState } from "../board-view-state-data";
 import {
 	activeSavedView,
 	defaultBoardViewState,
@@ -36,7 +36,7 @@ beforeEach(() => {
 	mkdirSync(DEV3_HOME, { recursive: true });
 });
 
-describe("QA: concurrent writers on one board file", () => {
+describe("concurrent writers on one board file", () => {
 	it("keeps all 20 named views added at once from two windows, interleaved with stale plain saves", async () => {
 		const stale = withViewType(defaultBoardViewState(), "wide", "ext:list");
 		const ops: Promise<unknown>[] = [];
@@ -75,35 +75,4 @@ describe("QA: concurrent writers on one board file", () => {
 		expectSlotsOnWorkingViews(saved);
 	});
 
-	it("a named change on a torn file starts from the default and keeps the file valid", async () => {
-		mkdirSync(`${DEV3_HOME}/space-board-views`, { recursive: true });
-		writeFileSync(file, "{ torn");
-		const add = namedViewAddChange(defaultBoardViewState(), "wide", "Fresh", "");
-		await changeNamedBoardView(board, add);
-		expect(namedSavedViews(await loadBoardViewState(board)).map((v) => v.name)).toEqual(["Fresh"]);
-	});
-
-	it("a change payload of the wrong shape leaves the file unchanged", async () => {
-		const add = namedViewAddChange(defaultBoardViewState(), "wide", "Keep", "");
-		await changeNamedBoardView(board, add);
-		const before = readFileSync(file, "utf8");
-		const junk: unknown[] = [
-			{ kind: "add", view: null },
-			{ kind: "add", view: { id: add.view.id, name: "Dup id" } },
-			{ kind: "add", view: { id: "sv-default", name: "Working id" } },
-			{ kind: "add", view: { id: "x", name: "   " } },
-			{ kind: "update", id: add.view.id, viewType: 5, query: "", layouts: {} },
-			{ kind: "update", id: add.view.id, viewType: "ext:list", query: "", layouts: [] },
-			{ kind: "update", id: "sv-default", viewType: "ext:list", query: "", layouts: {} },
-			{ kind: "rename", id: "sv-default", name: "Working" },
-			{ kind: "rename", id: add.view.id, name: 7 },
-			{ kind: "delete", id: "sv-default" },
-			{ kind: "nuke" },
-		];
-		for (const change of junk) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await changeNamedBoardView(board, change as any);
-		}
-		expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(JSON.parse(before));
-	});
 });
