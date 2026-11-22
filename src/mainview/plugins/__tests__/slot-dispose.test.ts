@@ -20,6 +20,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	goToSources: "go-to-sources/__tests__/go-to-sources.test.tsx",
 	settingsSections: "settings-sections/__tests__/settings-sections.test.tsx",
 	sidebar: "sidebar/__tests__/sidebar-slot.test.tsx",
+	taskDetailSections: "task-detail-sections/__tests__/task-detail-sections.test.tsx",
 	taskHeader: "task-header/__tests__/task-header-slot.test.tsx",
 	taskMarkers: "task-markers/__tests__/task-markers.test.tsx",
 	taskMenu: "task-menu/__tests__/task-menu-slot.test.tsx",

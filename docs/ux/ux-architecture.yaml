@@ -266,10 +266,10 @@ ux_architecture:
     plugin_slots:
       purpose: "Cordis slots (bible §5.12); built-ins first, then extensions per kind."
       replace: ["board_view", "sidebar", "home_body", "destination_bodies"]
-      contribute: ["task_header", "settings_sections", "commands", "task_menu", "task_dock_panels", "card_sidebar_marker"]
+      contribute: ["task_header", "settings_sections", "commands", "task_menu", "task_dock_panels", "card_sidebar_marker", "task_detail_sections"]
       allowed: ["add_item", "add_settings_section", "user_layout"]
-      forbidden: ["extension_replaces_or_hides_builtin", "extension_settings_category", "extension_route", "app_shell_contribution", "card_strip_contribution", "native_menu_contribution", "native_or_window_dialog", "replace_app_shell", "replace_terminal_renderer", "customize_toolbar_button", "item_without_region"]
-      budgets: "dock tabs 4 then More; <=1 passive extension marker per card/row"
+      forbidden: ["extension_replaces_or_hides_builtin", "extension_settings_category", "extension_route", "app_shell_contribution", "card_strip_contribution", "native_menu_contribution", "native_or_window_dialog", "replace_app_shell", "replace_terminal_renderer", "customize_toolbar_button", "item_without_region", "draft_editor_section", "task_detail_mutation"]
+      budgets: "dock tabs 4 then More; <=1 passive extension marker per card/row; task detail: 2 sections then More disclosure, 3 meta rows"
       status: "proposed"
       evidence: ["decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md"]
     kanban_board:

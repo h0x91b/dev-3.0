@@ -2,6 +2,8 @@ import { act, render } from "@testing-library/react";
 import TaskDetailModal from "../TaskDetailModal";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
+import { resetPluginsForTests } from "../../plugins/runtime";
+import { installTaskDetailSectionBuiltins } from "../../task-detail-sections/__tests__/install-builtins";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -82,7 +84,10 @@ const CASES: Record<string, Task> = {
 
 const WIDTHS = { desktop: 1440, phone: 390 };
 
-beforeEach(() => {
+beforeEach(async () => {
+	// The finished-task view draws its body from the taskDetailSections built-ins, as the app does.
+	resetPluginsForTests();
+	await installTaskDetailSectionBuiltins();
 	// Dates render through the host's locale and time zone: pin them so CI and laptops agree.
 	vi.spyOn(Date.prototype, "toLocaleString").mockImplementation(function (this: Date) { return this.toISOString(); });
 	vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (this: Date) { return this.toISOString().slice(0, 10); });
