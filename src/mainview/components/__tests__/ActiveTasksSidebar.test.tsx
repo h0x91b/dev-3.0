@@ -1156,6 +1156,22 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(priorityBadgeRenders.count).toBe(1);
 	});
 
+	it("re-renders a variant's sibling row when it changes, so its dot follows", async () => {
+		const tasks = Array.from({ length: 6 }, (_, i) => makeTask({ id: `t${i + 1}`, seq: i + 1, title: `task ${i + 1}`, groupId: null, variantIndex: null }));
+		Object.assign(tasks[4], { seq: 5, groupId: "g5", variantIndex: 1 });
+		Object.assign(tasks[5], { seq: 5, groupId: "g5", variantIndex: 2 });
+		const props = { project, dispatch: vi.fn(), navigate: vi.fn(), agents: [claudeAgent], bellCounts: new Map<string, number>(), taskPorts: new Map() };
+		const { rerender } = render(<I18nProvider><ActiveTasksSidebar {...props} tasks={tasks} /></I18nProvider>);
+		await act(async () => {});
+		const siblingDot = () => screen.getByTestId("variant-indicator-t5-dot-t6").style.background;
+		const before = siblingDot();
+
+		rerender(<I18nProvider><ActiveTasksSidebar {...props} tasks={tasks.map((task) => (task.id === "t6" ? { ...task, status: "user-questions" } : task))} /></I18nProvider>);
+		await act(async () => {});
+
+		expect(siblingDot()).not.toBe(before);
+	});
+
 	it("falls back to the creation time when the task never changed status", () => {
 		const createdAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
 		render(

@@ -255,6 +255,10 @@ function BoardHost(props: BoardHostProps) {
 	// Cards are memoized: hand each one the same lineage object (and closures) until its data changes.
 	const applyChildrenFilter = useLatestCallback(filter.applyChildrenFilter);
 	const lineageCache = useRef(new Map<string, { key: string; value: CardLineage }>());
+	useEffect(() => {
+		const live = new Set(tasks.map((task) => task.id));
+		for (const id of lineageCache.current.keys()) if (!live.has(id)) lineageCache.current.delete(id);
+	}, [tasks]);
 	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
 		const parent = lineageParent(task, lineage);
 		const childCount = lineageChildren(task, lineage).length;
