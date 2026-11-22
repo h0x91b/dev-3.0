@@ -27,7 +27,8 @@ move into viewers.
 - **Guards.**
   - A throwing matcher counts as no match, logged once per viewer id (`viewerMatches`).
   - A crashing viewer shows a one-line notice. When it is an extension's viewer, the built-in for the same
-    file renders under the notice. A crashed built-in shows the notice alone.
+    file renders under a notice that says so. A crashed built-in, or a built-in fallback that crashes too,
+    shows a notice that the file cannot be shown, and nothing else.
   - The boundary remounts per file, so the next file retries the viewer.
 - Matchers run only when the preview, the Raw toggle or the slot changes, not on every render. Until the
   built-ins have registered, the modal draws them directly, the same hand-over `SlotHost` uses.

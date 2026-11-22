@@ -143,22 +143,18 @@ function coldStartViewer(match: FileViewerMatch): ViewerChoice | undefined {
 }
 
 /**
- * A crashed viewer leaves a notice and, when it was an extension's, the built-in for
- * the same file in its place. Remounted per file, so the next file retries it.
+ * A crashed viewer leaves a notice and, when it was an extension's, the built-in for the
+ * same file in its place; the notice says which. Remounted per file, so the next file retries it.
  */
 function FileViewerSlot({ viewer, builtin, props }: { viewer: ViewerChoice; builtin: ViewerChoice | undefined; props: FileViewerProps }) {
 	const t = useT();
-	const notice = <ViewerCrashed>{t("terminal.filePreviewViewerCrashed")}</ViewerCrashed>;
-	const fallback = () => (
-		<>
-			{notice}
-			{builtin && builtin !== viewer && (
-				<SlotErrorBoundary slot="fileViewers" resetKey={builtin.def.id} fallback={() => null}>
-					<RenderViewer entry={builtin} props={props} />
-				</SlotErrorBoundary>
-			)}
-		</>
-	);
+	const cannotShow = () => <ViewerCrashed>{t("terminal.filePreviewViewerCrashed")}</ViewerCrashed>;
+	const fallback = () => (builtin && builtin !== viewer ? (
+		<SlotErrorBoundary slot="fileViewers" resetKey={builtin.def.id} fallback={cannotShow}>
+			<ViewerCrashed>{t("terminal.filePreviewViewerCrashedFallback")}</ViewerCrashed>
+			<RenderViewer entry={builtin} props={props} />
+		</SlotErrorBoundary>
+	) : cannotShow());
 	return (
 		<SlotErrorBoundary slot="fileViewers" resetKey={viewer.def.id} fallback={fallback}>
 			<RenderViewer entry={viewer} props={props} />

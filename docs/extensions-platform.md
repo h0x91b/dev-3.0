@@ -185,6 +185,9 @@ internal `taskDetailSections` contribution slot; the draft editor stays host-own
 - Before `fileViewers` opens, its anchoring contract (`data-preview-line` marks, `imageRef` on the picture) is public
   API and must be documented in `docs/extensions.md`, and an extension viewer that matches every file must not hide
   dev3's own viewers (rank built-ins first for kinds they own, or scope extension matchers by path).
+  The host must also ignore a `data-preview-line` that is not an integer within `1..lineCount` of the loaded text (today
+  a garbage mark anchors a comment to wrong lines or `NaN`), and the contract must say that a non-built-in viewer for a
+  kind other than text or image is wrapped in the host's scrolling `overflow-auto p-4` box, which built-ins draw themselves.
 - Before `taskDetailSections` opens: an extension metadata row over the budget of 3 is only logged today, and its
   reason must reach the extension's Extensions row; an extension section's heading is its own `title()`, and it must
   become the host-drawn `From <extension name>` label, which needs the extension's identity on the item; and a
