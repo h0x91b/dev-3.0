@@ -21,7 +21,7 @@ import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
-import { applyClaudeHookStatus } from "./claude-hook-status";
+import { applyClaudeHookStatus, scheduleClaudeBackgroundExpiry } from "./claude-hook-status";
 import { claudeApprovals } from "../claude-approval-state";
 import { recordTaskActivity } from "../task-activity";
 
@@ -97,7 +97,7 @@ export const agentHandlers: Record<string, Handler> = {
 				if (target && (target !== current.status || current.customColumnId != null)) {
 					await moveTask({ projectId: task.projectId, taskId: task.id, newStatus: target, ifStatus: current.status });
 				}
-			});
+			}).finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
 		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);

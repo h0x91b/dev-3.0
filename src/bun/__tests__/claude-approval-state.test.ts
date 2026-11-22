@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ClaudeApprovalState } from "../claude-approval-state";
+import { CLAUDE_BACKGROUND_STALE_MS, ClaudeApprovalState } from "../claude-approval-state";
 
 const parent = { sessionId: "s" };
 const child = { sessionId: "s", agentId: "reader" };
@@ -95,6 +95,44 @@ describe("ClaudeApprovalState", () => {
 		})).rejects.toThrow("offline");
 		expect(state.apply("t", "user-questions", "PreToolUse", parent)).toBe("user-questions");
 		expect(state.apply("t", "user-questions", "PostToolUse", child)).toBe("in-progress");
+	});
+
+	it("lets a stopped parent reach review once a background agent that never reports its stop goes stale", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PreToolUse", child, 1_000);
+		state.apply("t", "in-progress", "UserPromptSubmit", parent, 2_000);
+		expect(state.stopParent("t", "in-progress", "s", "review-by-user")).toBe("in-progress");
+		expect(state.nextExpiry("t")).toBe(1_000 + CLAUDE_BACKGROUND_STALE_MS);
+		expect(state.expireStale("t", "in-progress", 1_000 + CLAUDE_BACKGROUND_STALE_MS - 1)).toBeNull();
+		expect(state.expireStale("t", "in-progress", 1_000 + CLAUDE_BACKGROUND_STALE_MS)).toBe("review-by-user");
+		expect(state.nextExpiry("t")).toBeNull();
+	});
+
+	it("keeps a background agent that is still active past the stale window of a quiet one", () => {
+		const state = new ClaudeApprovalState();
+		const busy = { sessionId: "s", agentId: "writer" };
+		state.apply("t", "in-progress", "PreToolUse", child, 0);
+		state.stopParent("t", "in-progress", "s", "review-by-ai");
+		state.apply("t", "in-progress", "PostToolUse", busy, CLAUDE_BACKGROUND_STALE_MS - 10);
+		expect(state.expireStale("t", "in-progress", CLAUDE_BACKGROUND_STALE_MS)).toBeNull();
+		expect(state.nextExpiry("t")).toBe(2 * CLAUDE_BACKGROUND_STALE_MS - 10);
+		expect(state.apply("t", "in-progress", "SubagentStop", busy)).toBe("review-by-ai");
+	});
+
+	it("never expires a background agent that waits on an approval", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PermissionRequest", child, 0);
+		state.stopParent("t", "user-questions", "s", "review-by-user");
+		expect(state.nextExpiry("t")).toBeNull();
+		expect(state.expireStale("t", "user-questions", 10 * CLAUDE_BACKGROUND_STALE_MS)).toBeNull();
+		expect(state.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
+	});
+
+	it("does not arm expiry while the parent is still working", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PreToolUse", child, 0);
+		expect(state.nextExpiry("t")).toBeNull();
+		expect(state.expireStale("t", "in-progress", 10 * CLAUDE_BACKGROUND_STALE_MS)).toBeNull();
 	});
 
 	it("clears a parent's own wait on a failed call without claiming the idle agent is working", () => {
