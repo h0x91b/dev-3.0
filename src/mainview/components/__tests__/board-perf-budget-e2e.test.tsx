@@ -100,6 +100,14 @@ function registerLate(slot: string): void {
 beforeEach(async () => {
 	await installTaskMenuBuiltins();
 	await installTaskMarkerBuiltins();
+	// The sidebar's once-a-second status-age ticker re-renders every row. Where one such render
+	// outlasts a second (a CI runner), real ticks never let the list settle, and they would add
+	// commits to every count here. Only intervals are faked; promises and timeouts stay real.
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+});
+
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 const surfaces: [string, () => ReactNode][] = [
@@ -138,12 +146,12 @@ describe(`${N}-task board budgets`, () => {
 		}
 
 		// A marker may apply to any task, so every row reads it: each card once on the board (one
-		// Profiler per card); the sidebar list (one Profiler) in a couple of commits, never one per row.
+		// Profiler per card), the sidebar list (one Profiler) in one commit.
 		rowRenders = 0;
 		const registered = performance.now();
 		registerLate("taskMarkers");
 		await settle();
 		expect(performance.now() - registered).toBeLessThan(REGISTRATION_CEILING_MS);
-		expect(rowRenders).toBeLessThanOrEqual(surface === "board" ? N : 2);
+		expect(rowRenders).toBeLessThanOrEqual(surface === "board" ? N : 1);
 	}, 120_000);
 });
