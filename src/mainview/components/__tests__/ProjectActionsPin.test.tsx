@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import ActivityOverview from "../ActivityOverview";
 import { I18nProvider } from "../../i18n";
 import type { Project } from "../../../shared/types";
+import { installProjectActionBuiltins } from "../../project-actions/__tests__/install-builtins";
 
 /**
  * Pins the per-project actions on the dashboard — the wide row cluster and the
@@ -116,6 +117,7 @@ async function sheets(c: Case): Promise<Record<string, string>> {
 	return out;
 }
 
+beforeEach(installProjectActionBuiltins);
 afterEach(() => setNarrow(false));
 
 describe("dashboard project actions pin", () => {

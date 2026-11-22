@@ -37,7 +37,7 @@ export function useMenuSlotEntries<Item extends SlotItem>(registry: SlotRegistry
  */
 const reported = new Set<string>();
 
-function reportResolveFailure(slot: string, id: string, err: unknown): void {
+export function reportResolveFailure(slot: string, id: string, err: unknown): void {
 	const key = `${slot}\u0000${id}`;
 	if (reported.has(key)) return;
 	reported.add(key);

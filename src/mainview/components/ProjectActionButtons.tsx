@@ -1,9 +1,11 @@
 import type { MouseEvent } from "react";
 import type { Project } from "../../shared/types";
-import { isBuiltinOpsProject } from "../../shared/types";
 import type { Route } from "../state";
-import { api } from "../rpc";
 import { useT } from "../i18n";
+import { runMenuItem } from "../plugins/menu-rows";
+import { useProjectActionEntries } from "../project-actions/useProjectActions";
+import { resolveProjectActions, type ProjectActionItem, type ProjectActionScope } from "../project-actions/registry";
+import type { MenuRow } from "../plugins/menu-rows";
 
 interface ProjectActionButtonsProps {
 	project: Project;
@@ -15,6 +17,7 @@ interface ProjectActionButtonsProps {
 	className?: string;
 }
 
+/** The dashboard row's resting icon cluster: the `row` items of the `projectActions` slot. */
 function ProjectActionButtons({
 	project,
 	navigate,
@@ -23,17 +26,18 @@ function ProjectActionButtons({
 	className = "",
 }: ProjectActionButtonsProps) {
 	const t = useT();
-	// Virtual ("Operations") boards have no real project folder: their synthetic
-	// path (~/.dev3.0/ops/<slug>) is created lazily per-task, so "Open in Finder"
-	// no-ops and "Project Terminal" throws "Project path does not exist". Hide both.
-	const isVirtual = project.kind === "virtual";
-	// The built-in Operations board is a pinned system object — it must not be
-	// deletable (removing it dead-ends ⌘0 until restart, then orphans its tasks).
-	const isBuiltin = isBuiltinOpsProject(project);
-
-	function stopEvent(event: MouseEvent<HTMLButtonElement>) {
-		event.stopPropagation();
-	}
+	const entries = useProjectActionEntries(true);
+	const scope: ProjectActionScope = {
+		project,
+		placement: "row",
+		t,
+		navigate,
+		openSpaces: onOpenSpaces ? (anchor) => onOpenSpaces(project, anchor) : undefined,
+		removeProject: onRemove ? () => onRemove(project.id) : undefined,
+		anchor: null,
+	};
+	// Extension actions never rest on the row: a future overflow owns them (decisions/2026/11/22/project-actions-slot.md).
+	const { actions, danger } = resolveProjectActions(entries, scope);
 
 	// Hover raises emphasis, it never *creates* the control: the cluster rests at
 	// `text-fg-3` — same tone as the reorder buttons at the other end of the row,
@@ -42,108 +46,36 @@ function ProjectActionButtons({
 		"text-fg-3 transition-colors p-2 rounded-lg focus-visible:outline-none focus-visible:text-fg focus-visible:ring-2 focus-visible:ring-accent";
 	const neutralButton = `${iconButton} hover:text-fg hover:bg-elevated`;
 
-	return (
-		<div className={`flex items-center gap-0.5 ${className}`.trim()}>
-			{onOpenSpaces && !isVirtual && (
-				<button
-					type="button"
-					onClick={(event) => {
-						stopEvent(event);
-						onOpenSpaces(project, event.currentTarget);
-					}}
-					className={neutralButton}
-					title={t("spaces.rowAction")}
-					aria-label={t("spaces.rowAction")}
-					data-testid={`project-spaces-action-${project.id}`}
-				>
-					{/* Nerd Font: nf-md-shape_outline (U+F0E76) — the grouping glyph */}
-					<span
-						aria-hidden="true"
-						className="text-base leading-none"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					>
-						{"\u{F0E76}"}
-					</span>
-				</button>
-			)}
+	function button(row: MenuRow<ProjectActionItem>, className: string) {
+		const { item } = row;
+		return (
 			<button
+				key={row.key}
 				type="button"
-				onClick={(event) => {
-					stopEvent(event);
-					navigate({ screen: "project-settings", projectId: project.id });
+				onClick={(event: MouseEvent<HTMLButtonElement>) => {
+					event.stopPropagation();
+					runMenuItem("projectActions", item.id, item.run, { ...scope, anchor: event.currentTarget });
 				}}
-				className={neutralButton}
-				title={t("header.projectSettings")}
-				aria-label={t("header.projectSettings")}
+				className={className}
+				title={row.label}
+				aria-label={row.label}
+				data-testid={item.testIdPrefix ? `${item.testIdPrefix}-${project.id}` : undefined}
 			>
 				<span
 					aria-hidden="true"
 					className="text-base leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
-					{"\u{F0493}"}
+					{item.glyph}
 				</span>
 			</button>
-			{!isVirtual && (
-				<button
-					type="button"
-					onClick={(event) => {
-						stopEvent(event);
-						api.request.openFolder({ path: project.path }).catch(() => {});
-					}}
-					className={neutralButton}
-					title={t("dashboard.openInFinder")}
-					aria-label={t("dashboard.openInFinder")}
-				>
-					<span
-						aria-hidden="true"
-						className="text-base leading-none"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					>
-						{"\u{F115}"}
-					</span>
-				</button>
-			)}
-			{!isVirtual && (
-				<button
-					type="button"
-					onClick={(event) => {
-						stopEvent(event);
-						navigate({ screen: "project-terminal", projectId: project.id });
-					}}
-					className={neutralButton}
-					title={t("projectTerminal.tooltip")}
-					aria-label={t("projectTerminal.tooltip")}
-				>
-					<span
-						aria-hidden="true"
-						className="text-base leading-none"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					>
-						{"\uF489"}
-					</span>
-				</button>
-			)}
-			{onRemove && !isBuiltin && (
-				<button
-					type="button"
-					onClick={(event) => {
-						stopEvent(event);
-						void onRemove(project.id);
-					}}
-					className={`${iconButton} ml-2 hover:text-danger hover:bg-danger/10`}
-					title={t("dashboard.remove")}
-					aria-label={t("dashboard.remove")}
-				>
-					<span
-						aria-hidden="true"
-						className="text-base leading-none"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					>
-						{"\u{F0A79}"}
-					</span>
-				</button>
-			)}
+		);
+	}
+
+	return (
+		<div className={`flex items-center gap-0.5 ${className}`.trim()}>
+			{actions.map((row) => button(row, neutralButton))}
+			{danger.map((row) => button(row, `${iconButton} ml-2 hover:text-danger hover:bg-danger/10`))}
 		</div>
 	);
 }

@@ -157,7 +157,10 @@ The file preview's body comes from the internal `fileViewers`
 contribution slot, first match by `order`; review-comment anchoring stays in the host (`src/mainview/file-viewers/`,
 `decisions/2026/11/22/file-viewers-slot.md`). A finished task's detail body (sections and metadata rows) comes from the
 internal `taskDetailSections` contribution slot; the draft editor stays host-owned (`src/mainview/task-detail-sections/`,
-`decisions/2026/11/22/task-detail-sections-slot.md`). The public
+`decisions/2026/11/22/task-detail-sections-slot.md`).
+A dashboard project's actions (the row icons and the narrow sheet) come from
+the internal `projectActions` contribution slot; reorder and the danger group stay with the host (`src/mainview/project-actions/`,
+`decisions/2026/11/22/project-actions-slot.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:
@@ -176,6 +179,10 @@ internal `taskDetailSections` contribution slot; the draft editor stays host-own
   (rank extension tips after built-ins, or cap them per tier), and tip text needs an i18n contract: `titleKey` and
   `bodyKey` are host `TranslationKey`s today. A non-built-in tip's id is also its persisted cool-down key, so
   extension keys need a namespace or one can share a built-in's cool-down.
+- Before `projectActions` opens: no extension item rests on the dashboard row. Extension actions go behind one `…`
+  overflow at the row cluster's end, rendered only while at least one applies to that project, holding at most 5. The narrow
+  sheet shows at most 5, after reorder and before Remove. An extension item is never styled as danger and never replaces or
+  hides a built-in. The `…` is a new row control, so it needs its own /ux-principal pass and manifest entry.
 - Before `openInTargets` opens, its seam stays as it is: a target is data only, with no callback, and the host opens it
   through `openInApp({ appId })`, which bun refuses for any id outside `DEFAULT_EXTERNAL_APPS` and the user's
   `settings.externalApps`. A target can only restyle an app bun detected. The residual route is the settings write

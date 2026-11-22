@@ -61,6 +61,8 @@ import { BUILTIN_TASK_DETAIL_SECTIONS_PLUGIN } from "../../task-detail-sections/
 import { resetTaskDetailFailuresForTests } from "../../task-detail-sections/TaskDetailSections";
 import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
+import ActivityOverview from "../../components/ActivityOverview";
+import { BUILTIN_PROJECT_ACTIONS_PLUGIN } from "../../project-actions/builtins";
 import GoToPalette from "../../components/GoToPalette";
 import { BUILTIN_GO_TO_SOURCES_PLUGIN } from "../../go-to-sources/builtins";
 import FilePreviewModal from "../../components/FilePreviewModal";
@@ -93,6 +95,7 @@ vi.mock("../../rpc", () => ({
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
 			getTaskTerminalBackend: vi.fn(() => new Promise(() => {})),
 			getNativeTerminalAvailability: vi.fn(() => new Promise(() => {})),
+			checkHarnessReadiness: vi.fn(() => Promise.resolve({ harnesses: [], usable: ["builtin-claude"], noneInstalled: false })),
 		},
 	},
 }));
@@ -674,6 +677,36 @@ const CASES: CrashCase[] = [
 			if (callback === "component") expect(screen.queryByText("Crash")).toBeNull();
 		},
 		logs: callback === "builtin component" ? "builtin:crash.section" : "crash:detail",
+	})),
+	...(["when", "run", "malformed"] as const).map((callback): CrashCase => ({
+		slot: "projectActions",
+		callback,
+		narrow: true,
+		builtins: [BUILTIN_PROJECT_ACTIONS_PLUGIN],
+		contribute(ctx) {
+			ctx.projectActions.register({
+				id: "crash:action",
+				order: 5,
+				region: "actions",
+				placements: ["row", "sheet"],
+				glyph: callback === "malformed" ? ({ glyph: "x" } as never) : "x",
+				label: () => "Crash action",
+				when: callback === "when" ? boom : () => true,
+				run: boom,
+			});
+		},
+		render() {
+			mount(<ActivityOverview projects={[project]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} onRemoveProject={vi.fn()} />);
+		},
+		async interact() {
+			await user.click(await screen.findByTitle("Project actions"));
+			if (callback === "run") await user.click(within(screen.getByTestId("activity-project-action-sheet")).getByText("Crash action"));
+		},
+		alive() {
+			expect(screen.getAllByText("Project").length).toBeGreaterThan(0);
+			if (callback !== "run") expect(within(screen.getByTestId("activity-project-action-sheet")).getByText("Project settings")).toBeInTheDocument();
+		},
+		logs: callback === "run" ? '[projectActions] "crash:action" failed' : '[projectActions] "crash:action" failed to resolve',
 	})),
 	{
 		slot: "terminalCompanion",
