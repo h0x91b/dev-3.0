@@ -21,6 +21,7 @@ import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useAgents } from "../hooks/useAgents";
 import { useLatestCallback } from "../hooks/useLatestCallback";
+import { sameJson, useStableMap, useVariantGroups } from "../hooks/useStableMap";
 import { boardFilterKey, rememberFilter } from "../hooks/useRememberedFilter";
 import { childrenFilterToken, lineageChildren, lineageNodeOf, lineageParent, parentSeqLabel, type CardLineage } from "../utils/taskLineage";
 import { requestTaskLaunch } from "../utils/moveTaskToStatus";
@@ -238,18 +239,9 @@ function BoardHost(props: BoardHostProps) {
 		void requestTaskLaunch({ task, project: projectOf(task), targetStatus, dispatch, t, mode });
 	}, [projectOf, dispatch, t]);
 
-	const siblingMap = useMemo(() => {
-		const map = new Map<string, Task[]>();
-		for (const task of tasks) {
-			if (!task.groupId) continue;
-			const group = map.get(task.groupId);
-			if (group) group.push(task);
-			else map.set(task.groupId, [task]);
-		}
-		return map;
-	}, [tasks]);
+	const siblingMap = useVariantGroups(tasks);
 
-	const dependencyMap = useMemo(() => {
+	const freshDependencyMap = useMemo(() => {
 		const map = new Map<string, DependencySummary>();
 		const index = indexDependencies(tasks);
 		for (const task of tasks) {
@@ -257,8 +249,16 @@ function BoardHost(props: BoardHostProps) {
 		}
 		return map;
 	}, [tasks]);
+	const dependencyMap = useStableMap(freshDependencyMap, sameJson);
 
-	const { lineage, knownProjects, applyChildrenFilter } = filter;
+	const { lineage, knownProjects } = filter;
+	// Cards are memoized: hand each one the same lineage object (and closures) until its data changes.
+	const applyChildrenFilter = useLatestCallback(filter.applyChildrenFilter);
+	const lineageCache = useRef(new Map<string, { key: string; value: CardLineage }>());
+	useEffect(() => {
+		const live = new Set(tasks.map((task) => task.id));
+		for (const id of lineageCache.current.keys()) if (!live.has(id)) lineageCache.current.delete(id);
+	}, [tasks]);
 	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
 		const parent = lineageParent(task, lineage);
 		const childCount = lineageChildren(task, lineage).length;
@@ -266,15 +266,24 @@ function BoardHost(props: BoardHostProps) {
 		const parentNode = parent && parent !== "deleted" ? parent : null;
 		const parentProject = parentNode ? knownProjects.find((p) => p.id === parentNode.projectId) : undefined;
 		const shareable = parentNode && !lineageTitleHidden(parentNode.projectId);
-		return {
-			parentLabel: parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null,
-			parentTitle: shareable && parentNode
-				? (parentNode.projectId === task.projectId ? parentNode.title : `${parentProject?.name ?? ""} · ${parentNode.title}`)
-				: null,
+		const parentLabel = parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null;
+		const parentTitle = shareable && parentNode
+			? (parentNode.projectId === task.projectId ? parentNode.title : `${parentProject?.name ?? ""} · ${parentNode.title}`)
+			: null;
+		const parentRef = parentNode ? { projectId: parentNode.projectId, seq: parentNode.seq } : null;
+		const selfRef = { projectId: task.projectId, seq: task.seq };
+		const key = JSON.stringify([parentLabel, parentTitle, childCount, parentRef, selfRef]);
+		const cached = lineageCache.current.get(task.id);
+		if (cached?.key === key) return cached.value;
+		const value: CardLineage = {
+			parentLabel,
+			parentTitle,
 			childCount,
-			onFilterByParent: parentNode ? () => applyChildrenFilter(parentNode) : null,
-			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(task) : null,
+			onFilterByParent: parentRef ? () => applyChildrenFilter(parentRef) : null,
+			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(selfRef) : null,
 		};
+		lineageCache.current.set(task.id, { key, value });
+		return value;
 	}, [lineage, knownProjects, applyChildrenFilter, lineageTitleHidden]);
 
 	// Stable identities: every card receives these, and a new closure would re-render all of them.

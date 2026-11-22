@@ -538,6 +538,81 @@ describe("BoardHost", () => {
 		expect(priorityBadgeRenders.count).toBe(1);
 	});
 
+	describe("cards with lineage and variants", () => {
+		const onDragStart = () => {};
+		function Cards() {
+			const board = useBoard();
+			const Card = board.TaskCard;
+			return <>{board.tasks().map((task) => <Card key={task.id} task={task} onDragStart={onDragStart} />)}</>;
+		}
+		const lineageNode = (task: Task) => ({ id: task.id, projectId: "p1", projectName: "Project", seq: task.seq, variantIndex: null, status: task.status, title: task.title });
+		// t1 is the parent of t2 and t3; t5 and t6 are two variants of one group; t9 is blocked by t10.
+		const board = () => {
+			const list = Array.from({ length: 10 }, (_, i) => makeTask(`t${i + 1}`, `task ${i + 1}`, { status: "in-progress" }));
+			for (const child of [list[1], list[2]]) child.origin = { kind: "task", taskId: "t1", projectId: "p1" };
+			Object.assign(list[4], { seq: 5, groupId: "g5", variantIndex: 1 });
+			Object.assign(list[5], { seq: 5, groupId: "g5", variantIndex: 2 });
+			list[8].relations = [{ type: "blocked-by", taskId: "t10" }];
+			return list;
+		};
+		async function renderCards(list: Task[]) {
+			_resetTaskLineageStoreForTest();
+			vi.mocked(api.request.getTaskLineage).mockResolvedValue({
+				nodes: list.slice(0, 3).map(lineageNode),
+				edges: [{ childId: "t2", parentId: "t1" }, { childId: "t3", parentId: "t1" }],
+			} as never);
+			registerView("ext:cards", { component: Cards });
+			vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:cards"));
+			const host = renderHost({ tasks: list });
+			expect(await screen.findAllByTestId("task-card-lineage-parent")).toHaveLength(2);
+			expect(screen.getByTestId("task-card-lineage-children").textContent).toContain("2");
+			expect(screen.getByTestId("variant-indicator-t5")).toBeInTheDocument();
+			await act(async () => {});
+			return host;
+		}
+
+		it("re-renders only the changed card when its neighbours carry lineage or variants", async () => {
+			const list = board();
+			const { rerenderWith } = await renderCards(list);
+
+			priorityBadgeRenders.count = 0;
+			rerenderWith(list.map((task) => (task.id === "t8" ? { ...task, title: "renamed" } : task)));
+			expect(await screen.findByText("renamed")).toBeInTheDocument();
+			await act(async () => {});
+
+			// Fresh lineage objects, a rebuilt variant group or dependency summary re-render the cards that have them.
+			expect(priorityBadgeRenders.count).toBe(1);
+		});
+
+		it("re-renders a dependent when the task it depends on changes", async () => {
+			const list = board();
+			const { rerenderWith } = await renderCards(list);
+
+			priorityBadgeRenders.count = 0;
+			rerenderWith(list.map((task) => (task.id === "t10" ? { ...task, title: "renamed target" } : task)));
+			expect(await screen.findByText("renamed target")).toBeInTheDocument();
+			await act(async () => {});
+
+			// The target and its dependent t9, whose summary carries the target's title.
+			expect(priorityBadgeRenders.count).toBe(2);
+		});
+
+		it("re-renders a variant's siblings when it changes, so their dots follow", async () => {
+			const list = board();
+			const { rerenderWith } = await renderCards(list);
+			const siblingDot = () => screen.getByTestId("variant-indicator-t5-dot-t6").style.background;
+			const before = siblingDot();
+
+			priorityBadgeRenders.count = 0;
+			rerenderWith(list.map((task) => (task.id === "t6" ? { ...task, status: "user-questions" } : task)));
+			await waitFor(() => expect(siblingDot()).not.toBe(before));
+			await act(async () => {});
+
+			// The moved variant and its sibling, nothing else.
+			expect(priorityBadgeRenders.count).toBe(2);
+		});
+	});
+
 	it("moves to a custom column optimistically, reporting progress, and reverts on failure", async () => {
 		const dispatch = vi.fn();
 		renderHost({ dispatch });
