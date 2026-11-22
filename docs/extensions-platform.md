@@ -189,7 +189,8 @@ internal `taskDetailSections` contribution slot; the draft editor stays host-own
   reason must reach the extension's Extensions row; an extension section's heading is its own `title()`, and it must
   become the host-drawn `From <extension name>` label, which needs the extension's identity on the item; and a
   section must stay read-only (links and navigation only), which the host cannot enforce while extensions share the
-  renderer's JS realm.
+  renderer's JS realm. Its once-per-failure log (`reportedFailures` in `TaskDetailSections.tsx`) is module-global and
+  cleared only in tests, so it must reset when an extension unloads, or a reloaded one that fails the same way logs nothing.
 
 ## Tech debt
 
