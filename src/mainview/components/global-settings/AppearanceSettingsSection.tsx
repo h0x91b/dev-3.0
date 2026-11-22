@@ -19,6 +19,7 @@ import SettingsToggle from "./SettingsToggle";
 import HelpSpot from "../HelpSpot";
 import { setStreamerMode, useStreamerMode } from "../../streamer-mode";
 import type { Theme } from "./utils";
+import type { BeigeTone } from "../../../shared/beige-palette";
 
 interface AppearanceSettingsSectionProps {
 	t: TFunction;
@@ -26,6 +27,8 @@ interface AppearanceSettingsSectionProps {
 	theme: Theme;
 	zoomLevel: number;
 	onThemeChange: (theme: Theme) => void;
+	beigeTone: BeigeTone;
+	onBeigeToneChange: (tone: BeigeTone) => void;
 	onLocaleChange: (locale: Locale) => void;
 	onSimplifyModeToggle: (enabled: boolean) => void;
 }
@@ -36,6 +39,8 @@ export default function AppearanceSettingsSection({
 	theme,
 	zoomLevel,
 	onThemeChange,
+	beigeTone,
+	onBeigeToneChange,
 	onLocaleChange,
 	onSimplifyModeToggle,
 }: AppearanceSettingsSectionProps) {
@@ -68,7 +73,7 @@ export default function AppearanceSettingsSection({
 						{t("settings.theme")}
 					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.themeDesc")}</p>
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
 					<ThemeCard
 						name={t("settings.themeDark")}
 						description={t("settings.themeDarkDesc")}
@@ -94,6 +99,18 @@ export default function AppearanceSettingsSection({
 						}}
 					/>
 					<ThemeCard
+						name={t("settings.themeBeige")}
+						description={t("settings.themeBeigeDesc")}
+						active={theme === "beige"}
+						onClick={() => onThemeChange("beige")}
+						preview={{
+							bg: "#f4f2ec",
+							raised: "#ffffff",
+							text: "#1c1b19",
+							accent: "#1c1b19",
+						}}
+					/>
+					<ThemeCard
 						name={t("settings.themeSystem")}
 						description={t("settings.themeSystemDesc")}
 						active={theme === "system"}
@@ -106,6 +123,26 @@ export default function AppearanceSettingsSection({
 						}}
 					/>
 				</div>
+				{theme === "beige" && (
+					<div className="mt-4 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+						<ToneSlider
+							id="beige-depth"
+							label={t("settings.beigeDepth")}
+							low={t("settings.beigeDepthLighter")}
+							high={t("settings.beigeDepthDarker")}
+							value={beigeTone.depth}
+							onChange={(depth) => onBeigeToneChange({ ...beigeTone, depth })}
+						/>
+						<ToneSlider
+							id="beige-warmth"
+							label={t("settings.beigeWarmth")}
+							low={t("settings.beigeWarmthNeutral")}
+							high={t("settings.beigeWarmthWarm")}
+							value={beigeTone.warmth}
+							onChange={(warmth) => onBeigeToneChange({ ...beigeTone, warmth })}
+						/>
+					</div>
+				)}
 				</div>
 			</SettingsEntry>
 
@@ -183,6 +220,44 @@ export default function AppearanceSettingsSection({
 				</div>
 			</SettingsEntry>
 		</SettingsSection>
+	);
+}
+
+function ToneSlider({
+	id,
+	label,
+	low,
+	high,
+	value,
+	onChange,
+}: {
+	id: string;
+	label: string;
+	low: string;
+	high: string;
+	value: number;
+	onChange: (value: number) => void;
+}) {
+	return (
+		<div>
+			<label htmlFor={id} className="block text-fg text-sm font-semibold mb-2">
+				{label}
+			</label>
+			<input
+				id={id}
+				type="range"
+				min={0}
+				max={100}
+				step={1}
+				value={Math.round(value * 100)}
+				onChange={(e) => onChange(Number(e.target.value) / 100)}
+				className="w-full accent-accent"
+			/>
+			<div className="flex justify-between mt-1 text-fg-3 text-xs">
+				<span>{low}</span>
+				<span>{high}</span>
+			</div>
+		</div>
 	);
 }
 

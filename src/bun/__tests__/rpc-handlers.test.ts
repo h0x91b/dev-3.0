@@ -2541,6 +2541,16 @@ describe("handlers.saveGlobalSettings", () => {
 		);
 	});
 
+	// The Beige sliders save through setTmuxTheme, after the Settings snapshot was taken:
+	// trusting the payload put the tone back on the next unrelated toggle.
+	it("keeps the stored beige tone when the renderer's snapshot predates it", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", beigeDepth: 0.8, beigeWarmth: 0.9 } as GlobalSettings);
+
+		await handlers.saveGlobalSettings({ updateChannel: "beta", beigeDepth: 0.15, beigeWarmth: 0.5 } as unknown as GlobalSettings);
+
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ updateChannel: "beta", beigeDepth: 0.8, beigeWarmth: 0.9 }));
+	});
+
 	// The renderer sends a whole snapshot taken when it loaded, and the analytics id
 	// is minted by the host afterwards — trusting the payload erased it, so the
 	// install got a fresh id (and lost its flag targeting) on every launch.
@@ -2817,6 +2827,30 @@ describe("handlers.setTmuxTheme", () => {
 			resolvedTheme: "light",
 		}));
 		expect(pty.applyTmuxTheme).toHaveBeenCalledWith("light");
+	});
+
+	it("saves a new beige tone and broadcasts it so other windows follow", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", theme: "beige", beigeDepth: 0.15, beigeWarmth: 0.5 } as GlobalSettings);
+
+		await handlers.setTmuxTheme({ theme: "light", preference: "beige", beigeTone: { depth: 0.6, warmth: 0.5 } });
+
+		const saved = vi.mocked(saveSettings).mock.calls[0][0];
+		expect(saved).toMatchObject({ theme: "beige", beigeDepth: 0.6, beigeWarmth: 0.5 });
+		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", saved);
+		expect(pty.applyTmuxTheme).toHaveBeenCalledWith("beige");
+	});
+
+	it("keeps the saved tone and stays quiet when a window sends none", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", beigeDepth: 0.6, beigeWarmth: 0.7 } as GlobalSettings);
+
+		await handlers.setTmuxTheme({ theme: "light", preference: "beige" });
+
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ beigeDepth: 0.6, beigeWarmth: 0.7 }));
+		expect(push).not.toHaveBeenCalled();
 	});
 });
 

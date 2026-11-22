@@ -455,6 +455,8 @@ describe("saveSettings", () => {
 			theme: "light",
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",
+			beigeDepth: 0.6,
+			beigeWarmth: 0.8,
 			cloneBaseDirectory: "/tmp/clones",
 			autoConfigureNewProjects: true,
 			newProjectsStoreInProject: true,
@@ -623,6 +625,11 @@ describe("saveSettings", () => {
 			await expect(saveSettings(makeSettings(), { value: 90, expectedCurrent })).rejects.toBeInstanceOf(LogRetentionChangedError);
 			expect(readFileSync(settingsPath, "utf-8")).toBe(contents);
 		});
+	});
+
+	it("keeps the beige theme through a load", () => {
+		writeFileSync(settingsPath, JSON.stringify({ theme: "beige" }));
+		expect(loadSettingsSync().theme).toBe("beige");
 	});
 
 	it("reads settings.json strictly: missing is empty, anything but a plain object is refused", () => {

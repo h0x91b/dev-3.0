@@ -1,6 +1,6 @@
 import { syncGlobalSettingsCache } from "../../global-settings-cache";
 import { setHiddenControlsForTests } from "../../hidden-controls";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
@@ -341,6 +341,60 @@ describe("GlobalSettings", () => {
 			expect(document.documentElement.dataset.theme).toBe("dark");
 			expect(localStorage.getItem("dev3-theme")).toBe("system");
 			expect(mockedApi.request.setTmuxTheme).toHaveBeenCalledWith({ theme: "dark", preference: "system" });
+		});
+	});
+
+	describe("beige tone sliders", () => {
+		const beigeCalls = () =>
+			vi.mocked(mockedApi.request.setTmuxTheme).mock.calls.filter(([p]) => p.preference === "beige");
+
+		it("does not re-assert Beige when a theme pick lands before the slider settles", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+			const before = beigeCalls().length;
+
+			fireEvent.change(document.getElementById("beige-depth")!, { target: { value: "80" } });
+			await user.click(screen.getByText("Dark"));
+			await new Promise((r) => setTimeout(r, 400));
+
+			expect(beigeCalls()).toHaveLength(before);
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenLastCalledWith({ theme: "dark", preference: "dark" });
+		});
+
+		it("moves the slider to a tone saved from another window", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", {
+					detail: { ...mockGlobalSettings, theme: "beige", beigeDepth: 0.42, beigeWarmth: 0.5 },
+				}));
+			});
+
+			await waitFor(() => expect((document.getElementById("beige-depth") as HTMLInputElement).value).toBe("42"));
+		});
+
+		it("hands the last tone to the terminal when Settings closes mid-settle", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			const { unmount } = renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+
+			fireEvent.change(document.getElementById("beige-warmth")!, { target: { value: "90" } });
+			unmount();
+
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenLastCalledWith({
+				theme: "light",
+				preference: "beige",
+				beigeTone: expect.objectContaining({ warmth: 0.9 }),
+			});
 		});
 	});
 
