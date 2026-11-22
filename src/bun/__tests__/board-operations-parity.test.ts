@@ -75,6 +75,18 @@ describe("board operations — GUI and CLI doors agree on notes", () => {
 		expect((viaCli.data as Task).notes?.map((n) => n.source)).toEqual(["ai", "user"]);
 	});
 
+	it("the GUI door creates a blank note for + Add Note; the CLI door still refuses empty content", async () => {
+		board = await createBoard();
+		await recordProductionPushes();
+		const { gui, cli } = await doors();
+
+		const viaGui = await gui.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "", source: "user" });
+		const viaCli = await cli("note.add", { taskId: "task-1", projectId: "proj-1", content: "" });
+
+		expect(viaGui.notes?.map((n) => n.content)).toEqual([""]);
+		expect(viaCli).toMatchObject({ ok: false, error: "content is required" });
+	});
+
 	it("GUI note edits and deletes now reach other clients (they used to push nothing)", async () => {
 		board = await createBoard();
 		const pushes = await recordProductionPushes();

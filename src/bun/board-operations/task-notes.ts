@@ -17,7 +17,8 @@ export async function addNote(
 	actor: BoardActor,
 	source: NoteSource = noteSourceOf(actor),
 ): Promise<TaskOpResult & { note: TaskNote }> {
-	if (!content) throw new Error("content is required");
+	// Empty is allowed on purpose: the GUI's "+ Add Note" creates a blank note that
+	// NoteItem opens for typing. The CLI door refuses empty content itself.
 	const { task, result: note } = await data.updateTaskWith(project, taskId, (current) => {
 		const now = new Date().toISOString();
 		const note: TaskNote = { id: crypto.randomUUID(), content, source, createdAt: now, updatedAt: now };
