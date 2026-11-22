@@ -18,6 +18,7 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	fileMenu: "file-menu/__tests__/file-menu-slot.test.tsx",
 	fileViewers: "file-viewers/__tests__/file-viewers.test.tsx",
 	goToSources: "go-to-sources/__tests__/go-to-sources.test.tsx",
+	projectActions: "project-actions/__tests__/project-actions.test.tsx",
 	settingsSections: "settings-sections/__tests__/settings-sections.test.tsx",
 	sidebar: "sidebar/__tests__/sidebar-slot.test.tsx",
 	taskDetailSections: "task-detail-sections/__tests__/task-detail-sections.test.tsx",

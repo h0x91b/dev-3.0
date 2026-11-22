@@ -19,6 +19,7 @@ import { BUILTIN_TIPS_PLUGIN } from "./tips/builtins";
 import { BUILTIN_GO_TO_SOURCES_PLUGIN } from "./go-to-sources/builtins";
 import { BUILTIN_FILE_VIEWERS_PLUGIN } from "./file-viewers/builtins";
 import { BUILTIN_TASK_DETAIL_SECTIONS_PLUGIN } from "./task-detail-sections/builtins";
+import { BUILTIN_PROJECT_ACTIONS_PLUGIN } from "./project-actions/builtins";
 
 /** Everything dev3 contributes to its own slots, in load order: the app's built-in plugin composition. */
 export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
@@ -42,4 +43,5 @@ export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
 	BUILTIN_GO_TO_SOURCES_PLUGIN,
 	BUILTIN_FILE_VIEWERS_PLUGIN,
 	BUILTIN_TASK_DETAIL_SECTIONS_PLUGIN,
+	BUILTIN_PROJECT_ACTIONS_PLUGIN,
 ];
