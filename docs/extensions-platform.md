@@ -150,7 +150,9 @@ slots, which share `taskMenu`'s guarded row helper (`src/mainview/plugins/menu-r
 tips are data registered into the internal `tips` contribution slot (`src/mainview/tips/`, `decisions/2026/11/22/tips-slot.md`);
 rotation, cool-down and snooze stay in the host. The Go-to
 palette's rows (projects, tasks, spaces) come from the internal `goToSources` contribution slot; the host merges, orders
-and ranks them (`src/mainview/go-to-sources/`, `decisions/2026/11/22/go-to-sources-slot.md`). The public
+and ranks them (`src/mainview/go-to-sources/`, `decisions/2026/11/22/go-to-sources-slot.md`). The "Open in…" rows are data from the internal
+`openInTargets` contribution slot (`src/mainview/open-in-targets/`, `decisions/2026/11/22/open-in-targets-slot.md`);
+the host opens a row only by app id. The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:
@@ -169,6 +171,12 @@ and ranks them (`src/mainview/go-to-sources/`, `decisions/2026/11/22/go-to-sourc
   (rank extension tips after built-ins, or cap them per tier), and tip text needs an i18n contract: `titleKey` and
   `bodyKey` are host `TranslationKey`s today. A non-built-in tip's id is also its persisted cool-down key, so
   extension keys need a namespace or one can share a built-in's cool-down.
+- Before `openInTargets` opens, its seam stays as it is: a target is data only, with no callback, and the host opens it
+  through `openInApp({ appId })`, which bun refuses for any id outside `DEFAULT_EXTERNAL_APPS` and the user's
+  `settings.externalApps`. A target can only restyle an app bun detected. The residual route is the settings write
+  path: `saveGlobalSettings` accepts `externalApps` unvalidated, so renderer code can add an app and then open it by
+  id. Before opening, either extensions must not reach `saveGlobalSettings` or raw `api.request` at all (today they
+  share the renderer's JS realm), or bun must validate `externalApps` writes.
 
 ## Tech debt
 

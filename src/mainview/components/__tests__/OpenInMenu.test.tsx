@@ -18,6 +18,8 @@ vi.mock("../../rpc", () => ({
 }));
 
 import { api } from "../../rpc";
+import { installOpenInTargetBuiltins } from "../../open-in-targets/__tests__/install-builtins";
+import { resetPluginsForTests } from "../../plugins/runtime";
 const mockedApi = vi.mocked(api, true);
 
 function renderMenu(path = "/tmp/worktree", onClose = vi.fn()) {
@@ -32,9 +34,11 @@ function renderMenu(path = "/tmp/worktree", onClose = vi.fn()) {
 }
 
 describe("OpenInMenu", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
 		invalidateAvailableApps();
+		resetPluginsForTests();
+		await installOpenInTargetBuiltins();
 	});
 
 	it("renders available apps", async () => {
@@ -66,7 +70,7 @@ describe("OpenInMenu", () => {
 		expect(onClose).toHaveBeenCalled();
 		await waitFor(() => {
 			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
-				appName: "Visual Studio Code",
+				appId: "vscode",
 				path: "/tmp/worktree",
 			});
 		});

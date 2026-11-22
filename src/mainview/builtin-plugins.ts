@@ -12,6 +12,7 @@ import { BUILTIN_TERMINAL_COMPANION_PLUGIN } from "./terminal-companion/builtins
 import { BUILTIN_TASK_MARKERS_PLUGIN } from "./task-markers/builtins";
 import { BUILTIN_TERMINAL_LINKS_PLUGIN } from "./terminal-links/builtins";
 import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "./terminal-tab-decorations/builtins";
+import { BUILTIN_OPEN_IN_TARGETS_PLUGIN } from "./open-in-targets/builtins";
 import { BUILTIN_FILE_MENU_PLUGIN } from "./file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "./terminal-window-menu/builtins";
 import { BUILTIN_TIPS_PLUGIN } from "./tips/builtins";
@@ -32,6 +33,7 @@ export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
 	BUILTIN_TASK_MARKERS_PLUGIN,
 	BUILTIN_TERMINAL_LINKS_PLUGIN,
 	BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN,
+	BUILTIN_OPEN_IN_TARGETS_PLUGIN,
 	BUILTIN_FILE_MENU_PLUGIN,
 	BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN,
 	BUILTIN_TIPS_PLUGIN,

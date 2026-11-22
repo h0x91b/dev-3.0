@@ -51,6 +51,10 @@ import { BUILTIN_TIPS_PLUGIN } from "../../tips/builtins";
 import type { Tip } from "../../tips/registry";
 import { resetTipFailuresForTests } from "../../tips/rotation";
 import { TipCarrier } from "../../tips/__tests__/TipCarrier";
+import OpenInMenu from "../../components/OpenInMenu";
+import { BUILTIN_OPEN_IN_TARGETS_PLUGIN } from "../../open-in-targets/builtins";
+import { resetOpenInTargetFailuresForTests } from "../../open-in-targets/rows";
+import { invalidateAvailableApps } from "../../hooks/useAvailableApps";
 import { importAppSlots } from "./app-slots";
 import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
@@ -72,6 +76,8 @@ vi.mock("../../rpc", () => ({
 			setBoardFilterState: vi.fn(async ({ state }) => state),
 			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
 			tmuxWindowNavigate: vi.fn(),
+			getAvailableApps: vi.fn().mockResolvedValue([{ id: "finder", name: "Finder", macAppName: "Finder" }, { id: "my-editor", name: "My Editor", macAppName: "My Editor" }]),
+			openInApp: vi.fn(),
 			listExplorerDirectory: vi.fn(),
 			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			updateTipState: vi.fn(),
@@ -598,6 +604,24 @@ const CASES: CrashCase[] = [
 		},
 		logs: `[goToSources] ${callback} of go-to source crash:source threw`,
 	})),
+	...(["data", "getter"] as const).map((callback): CrashCase => ({
+		slot: "openInTargets",
+		callback,
+		builtins: [BUILTIN_OPEN_IN_TARGETS_PLUGIN],
+		contribute(ctx) {
+			ctx.openInTargets.register(callback === "data"
+				? { id: "crash:target", appId: "my-editor", icon: { glyph: "x" } as never }
+				: { id: "crash:target", get appId(): string { return boom(); } });
+		},
+		render() {
+			mount(<OpenInMenu position={{ top: 0, left: 0 }} path="/tmp/wt" onClose={vi.fn()} />);
+		},
+		async alive() {
+			expect(await screen.findByRole("button", { name: /Finder/ })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: /My Editor/ })).toBeInTheDocument();
+		},
+		logs: "crash:target",
+	})),
 	{
 		slot: "terminalCompanion",
 		callback: "component",
@@ -641,6 +665,8 @@ beforeEach(() => {
 	resetPreviousBoardViewsForTests();
 	resetTaskDocksForTests();
 	resetTipFailuresForTests();
+	resetOpenInTargetFailuresForTests();
+	invalidateAvailableApps();
 	localStorage.clear();
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
 });
