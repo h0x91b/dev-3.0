@@ -31,14 +31,17 @@ export function useMenuSlotEntries<Item extends SlotItem>(registry: SlotRegistry
 	return useSyncExternalStore(open ? registry.subscribe : NO_SUBSCRIPTION, registry.list);
 }
 
-/** Resolution re-runs on every render of an open menu, so each broken item is reported once per slot, id and phase. */
+/**
+ * Resolution re-runs on every render of an open menu, so a broken `when` / `label` is reported once per slot
+ * and id. A run is one click, so each failing run is reported: a transient failure must not go silent.
+ */
 const reported = new Set<string>();
 
-function report(slot: string, id: string, phase: "failed to resolve" | "failed", err: unknown): void {
-	const key = `${slot}\u0000${id}\u0000${phase}`;
+function reportResolveFailure(slot: string, id: string, err: unknown): void {
+	const key = `${slot}\u0000${id}`;
 	if (reported.has(key)) return;
 	reported.add(key);
-	console.error(`[${slot}] "${id}" ${phase}`, err);
+	console.error(`[${slot}] "${id}" failed to resolve`, err);
 }
 
 export function resetMenuRowFailuresForTests(): void {
@@ -61,7 +64,7 @@ export function resolveMenuRow<Scope, Item extends MenuSlotItem<Scope, string>>(
 			checked: item.checked?.(scope) ?? false,
 		};
 	} catch (err) {
-		report(slot, item.id, "failed to resolve", err);
+		reportResolveFailure(slot, item.id, err);
 		return null;
 	}
 }
@@ -90,7 +93,7 @@ export function groupMenuRows<Scope, Group extends string, Item extends MenuSlot
 
 /** A failing row reports itself; it never escapes into the click or goes unhandled. */
 export function runMenuItem<Scope>(slot: string, id: string, run: ((scope: Scope) => void | Promise<void>) | undefined, scope: Scope): void {
-	const fail = (err: unknown) => report(slot, id, "failed", err);
+	const fail = (err: unknown) => console.error(`[${slot}] "${id}" failed`, err);
 	try {
 		void Promise.resolve(run?.(scope)).catch(fail);
 	} catch (err) {

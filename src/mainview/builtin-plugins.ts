@@ -15,6 +15,7 @@ import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "./terminal-tab-decorati
 import { BUILTIN_FILE_MENU_PLUGIN } from "./file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "./terminal-window-menu/builtins";
 import { BUILTIN_TIPS_PLUGIN } from "./tips/builtins";
+import { BUILTIN_GO_TO_SOURCES_PLUGIN } from "./go-to-sources/builtins";
 
 /** Everything dev3 contributes to its own slots, in load order: the app's built-in plugin composition. */
 export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
@@ -34,4 +35,5 @@ export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
 	BUILTIN_FILE_MENU_PLUGIN,
 	BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN,
 	BUILTIN_TIPS_PLUGIN,
+	BUILTIN_GO_TO_SOURCES_PLUGIN,
 ];

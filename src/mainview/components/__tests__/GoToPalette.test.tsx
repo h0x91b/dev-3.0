@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import GoToPalette, { type GoToMode } from "../GoToPalette";
+import { installGoToSourceBuiltins } from "../../go-to-sources/__tests__/install-builtins";
 import type { Project, Space, Task } from "../../../shared/types";
 import { setStreamerMode } from "../../streamer-mode";
 
@@ -67,7 +68,8 @@ function Harness({
 	);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+	await installGoToSourceBuiltins();
 	document.body.innerHTML = "";
 	getAllProjectTasks.mockReset();
 	spacesResponse = [];
