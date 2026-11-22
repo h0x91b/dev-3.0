@@ -554,7 +554,7 @@ const CASES: CrashCase[] = [
 		builtins: [BUILTIN_TIPS_PLUGIN],
 		contribute(ctx) {
 			const tip: Tip = { id: "crash:tip", titleKey: "tip.next", bodyKey: "tip.next", icon: "x", score: 5, contexts: ["board"] };
-			ctx.tips.register(callback === "when" ? { ...tip, when: boom } : { ...tip, contexts: undefined as never });
+			ctx.tips.register(callback === "when" ? { ...tip, when: boom } : { ...tip, icon: { glyph: "x" } as never });
 		},
 		render() {
 			mount(<TipCarrier />);

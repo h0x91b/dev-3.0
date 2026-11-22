@@ -165,7 +165,8 @@ rotation, cool-down and snooze stay in the host. The public
   client scroll, selection and focus are lost (`decisions/2026/11/21/terminal-companion-slot.md`).
 - Before `tips` opens, an extension's tip must not be able to take over the rotation with a self-assessed score
   (rank extension tips after built-ins, or cap them per tier), and tip text needs an i18n contract: `titleKey` and
-  `bodyKey` are host `TranslationKey`s today.
+  `bodyKey` are host `TranslationKey`s today. A non-built-in tip's id is also its persisted cool-down key, so
+  extension keys need a namespace or one can share a built-in's cool-down.
 
 ## Tech debt
 

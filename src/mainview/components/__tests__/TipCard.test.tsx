@@ -55,6 +55,18 @@ describe("TipCard", () => {
 		await waitFor(() => expect(onChanged).toHaveBeenCalled());
 	});
 
+	// The on-disk promise: TipState.seen keeps the bare key every installed version reads.
+	it("marks a registered built-in seen under its persisted key, not its slot id", async () => {
+		const { api } = await import("../../rpc");
+		renderCard(vi.fn(), BUILTIN_TIPS[0]);
+
+		fireEvent.click(screen.getByText(/Next/));
+
+		await waitFor(() => expect(api.request.updateTipState).toHaveBeenCalledTimes(1));
+		expect(BUILTIN_TIPS[0].id).toBe("builtin:tip.diff-review-persists");
+		expect(Object.keys(vi.mocked(api.request.updateTipState).mock.calls[0][0].seen ?? {})).toEqual(["diff-review-persists"]);
+	});
+
 	it("ignores animationend events from other animations", async () => {
 		const { api } = await import("../../rpc");
 		renderCard();

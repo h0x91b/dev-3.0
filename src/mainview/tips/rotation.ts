@@ -28,8 +28,9 @@ export function resetTipFailuresForTests(): void {
 
 /** A tip the host can rank: its `when` lets it in, and its data cannot throw inside selection. */
 function isShowable(tip: Tip): boolean {
-	if (!Array.isArray(tip.contexts) || tip.contexts.length === 0 || !TIP_SCORES.includes(tip.score)) {
-		reportOnce(tip.id, "malformed contexts or score");
+	const texts = [tip.icon, tip.titleKey, tip.bodyKey];
+	if (!Array.isArray(tip.contexts) || tip.contexts.length === 0 || !TIP_SCORES.includes(tip.score) || texts.some((text) => typeof text !== "string")) {
+		reportOnce(tip.id, "malformed data");
 		return false;
 	}
 	if (!tip.when) return true;
