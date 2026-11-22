@@ -2,6 +2,7 @@ import type { Context } from "cordis";
 import type { Dispatch } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
+import type { TranslationKey } from "../i18n";
 import { defineAppSlot } from "../plugins/root";
 import { SlotRegistry } from "../plugins/slot-registry";
 import type { ContributionSlotItem } from "../plugins/SlotItems";
@@ -29,14 +30,23 @@ export const TASK_HEADER_BAR_BUDGET = 4;
 /**
  * The bible's composite exceptions, owned by the host so no contributor can claim one:
  * the conditional variant switcher (one composite control) and the Runtime bar's
- * conditional Images and Artifacts readouts. Inert until 3.6: `placeSlotItems` counts every
- * registered built-in, visible or not, so each bar is already past its budget and has no room
- * for pinned extensions. 3.6 must count per layout, only the items that actually render.
+ * conditional Images and Artifacts readouts. The budget counts only the built-ins that
+ * draw something on the current layout, so these leave room for a pinned extension item.
  */
 export const TASK_HEADER_BUDGET_EXCEPTIONS: ReadonlySet<string> = new Set([
 	"builtin:status.variant-switcher",
 	"builtin:runtime.images",
 	"builtin:runtime.artifacts",
+]);
+
+/**
+ * Never hidden and never sent to More (bible §5.10 never_hideable): the user can only move
+ * them within their bar. Their menu shows Move to More, Use instead of and Hide disabled.
+ */
+export const TASK_HEADER_ALWAYS_SHOWN: ReadonlySet<string> = new Set([
+	"builtin:runtime.open-in",
+	"builtin:runtime.dev-server",
+	"builtin:runtime.ports",
 ]);
 
 /** What every header item sees: the task on screen and how to act on it. */
@@ -47,9 +57,17 @@ export interface TaskHeaderScope {
 	navigate: (route: Route) => void;
 }
 
-/** One header item. Every item names its bar; chrome (⚙, info, fullscreen, collapse) is the host's, never an item. */
+/** Where an item may go besides its own place: a bar or a group with a More menu. */
+export const TASK_HEADER_MORE_REGIONS: ReadonlySet<string> = new Set<TaskHeaderRegion | TaskHeaderGroup>(["status", "session", "git", "runtime", "git.actions"]);
+
+/**
+ * One header item. Every item names its bar; chrome (⚙, info, fullscreen, collapse) is the
+ * host's, never an item, so it is never hidden or moved. `label` names it in the item menu,
+ * the "Use instead of…" list and the restore list.
+ */
 export interface TaskHeaderItem extends ContributionSlotItem<TaskHeaderScope> {
 	region: TaskHeaderRegion | TaskHeaderGroup;
+	label: TranslationKey;
 }
 
 export class TaskHeaderRegistry extends SlotRegistry<TaskHeaderItem> {

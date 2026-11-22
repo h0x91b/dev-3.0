@@ -30,12 +30,13 @@ import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskNotesOverlay from "./TaskNotesOverlay";
 import TerminalShortcutsButton from "./task-info-panel/TerminalShortcutsButton";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
+import { useResolvedTaskProject } from "./task-info-panel/useResolvedTaskProject";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { useCompact } from "../utils/useCompact";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { restoreControl } from "../hidden-controls";
-import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
+import PanelRestoreControl from "./task-info-panel/PanelRestoreControl";
+import HiddenHeaderItemsSheetSection from "./task-info-panel/HiddenHeaderItemsSheetSection";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { TASK_HEADER_REGIONS } from "../task-header/registry";
 import { taskHasGitBar } from "../task-header/builtin-git";
@@ -205,6 +206,9 @@ function TaskHeaderFrame({
 	// The session bar's dialogs and hibernation, shared by its items, its sheet rows and
 	// the restore control (chrome).
 	const session = useTaskSessionController({ task, project, dispatch });
+	// One poll of the worktree's own config, for the runtime items (scripts, dev server).
+	// The narrow header draws neither, so it polls nothing.
+	const resolvedProject = useResolvedTaskProject(task, project, !narrow);
 	const variantMembers = task.groupId
 		? tasks.filter((candidate) => candidate.groupId === task.groupId)
 		: [];
@@ -316,21 +320,14 @@ function TaskHeaderFrame({
 		}
 	}
 
-	// Entries for the panel's one restore control (PanelRestoreControl filters
-	// to whichever of these are actually hidden right now, and groups them by
-	// bar). Row click runs the same action the visible control would; the
-	// three multi-action surfaces (pane layout, scripts, dev-server setup)
-	// have no single atomic action, so their row restores instead.
-	const panelHideableEntries: PanelHideableEntry[] = [
-		{ id: "spawn-agent", label: t("tmux.spawnExtraAgent"), onRun: session.openSpawnAgent },
-		{ id: "bug-hunters", label: t("bugHunters.buttonLabel"), onRun: session.openBugHunters },
-		{ id: "hibernate", label: t("task.hibernateShort"), onRun: () => { void session.hibernate(); } },
-		{ id: "scheduled-message", label: t("task.sendLaterShort"), onRun: session.openScheduleMessage },
-		{ id: "tmux-pane-controls", label: t("infoPanel.paneControlsLabel"), onRun: () => restoreControl("tmux-pane-controls") },
-		{ id: "scripts-runner", label: t("infoPanel.scriptsRunnerLabel"), onRun: () => restoreControl("scripts-runner") },
-		{ id: "setup-dev-server", label: t("header.setupDevServer"), onRun: () => restoreControl("setup-dev-server") },
-		{ id: "diff-include-tests", label: t("infoPanel.includeTestsLabel"), onRun: () => restoreControl("diff-include-tests") },
-	];
+	// Rows of the panel's one restore control that run the item's own action; the
+	// rest have no single atomic action, so their row restores instead.
+	const restoreActions = {
+		"builtin:session.spawn-agent": session.openSpawnAgent,
+		"builtin:session.bug-hunters": session.openBugHunters,
+		"builtin:session.hibernate": () => { void session.hibernate(); },
+		"builtin:session.send-later": session.openScheduleMessage,
+	};
 
 	const worktreeSettingsButton = task.worktreePath ? (
 		<Tooltip content={t("projectSettings.tabWorktree")} detail={t("ttip.infoPanel.worktreeConfig")}>
@@ -590,6 +587,7 @@ function TaskHeaderFrame({
 		scope: { task, project, dispatch, navigate },
 		layout: { compact, tight, collapsed, narrow },
 		isTaskActive,
+		resolvedProject,
 		git,
 		session,
 		onOpenInlineDiff,
@@ -655,6 +653,7 @@ function TaskHeaderFrame({
 							<TaskHeaderRegionItems region="session" surface="sheet" />
 						</div>
 						<TaskGitActionsSheet rowClassName={SHEET_ROW_CLASS} onAction={() => setActionsSheetOpen(false)} />
+						<HiddenHeaderItemsSheetSection rowClassName={SHEET_ROW_CLASS} />
 							<section className="border-t border-edge pt-4">
 								<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
 								{taskDetailsBody()}
@@ -697,7 +696,7 @@ function TaskHeaderFrame({
 							</div>
 							{/* Keep in place, even when empty: it holds the index of the controls after it. */}
 							{collapsed && worktreeSettingsButton}
-							<PanelRestoreControl entries={panelHideableEntries} />
+							<PanelRestoreControl actions={restoreActions} />
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							<TerminalShortcutsButton taskId={task.id} />
 						</div>

@@ -103,7 +103,7 @@ describe("TaskTerminal with the real TaskHeader", () => {
 			name: "terminal-render-probe",
 			inject: ["taskHeader"],
 			apply(ctx: Context) {
-				ctx.taskHeader.register({ id: "builtin:runtime.render-probe", region: "runtime", component: () => <span data-testid="render-probe" /> });
+				ctx.taskHeader.register({ id: "builtin:runtime.render-probe", region: "runtime", label: "taskHeaderItem.status.watch", component: () => <span data-testid="render-probe" /> });
 			},
 		});
 		await act(async () => {

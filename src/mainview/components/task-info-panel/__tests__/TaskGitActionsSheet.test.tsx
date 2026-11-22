@@ -45,7 +45,7 @@ function renderSheet(task: Task, onAction = vi.fn(), sheetProject: Project = pro
 				value={{
 					scope: { task, project: sheetProject, dispatch: vi.fn(), navigate: vi.fn() },
 					layout: { compact: false, tight: false, collapsed: true, narrow: true },
-					isTaskActive: ACTIVE_STATUSES.includes(task.status),
+					isTaskActive: ACTIVE_STATUSES.includes(task.status), resolvedProject: project,
 					git,
 					session: {} as TaskSessionController,
 					onOpenInlineDiff,

@@ -28,7 +28,7 @@ const git = {} as TaskBranchStatusController;
 function renderRuntime({ task = baseTask, proj = project, layout = DESKTOP, surface = "bar" as TaskHeaderSurface, closeSheet = vi.fn() } = {}) {
 	return render(
 		<I18nProvider>
-			<TaskHeaderProvider value={{ scope: { task, project: proj, dispatch: vi.fn(), navigate: vi.fn() }, layout, isTaskActive: ACTIVE_STATUSES.includes(task.status), git, session: {} as TaskSessionController, closeSheet, variants: [] }}>
+			<TaskHeaderProvider value={{ scope: { task, project: proj, dispatch: vi.fn(), navigate: vi.fn() }, layout, isTaskActive: ACTIVE_STATUSES.includes(task.status), resolvedProject: proj, git, session: {} as TaskSessionController, closeSheet, variants: [] }}>
 				<div data-testid="bar">
 					<TaskHeaderRegionItems region="runtime" surface={surface} />
 				</div>

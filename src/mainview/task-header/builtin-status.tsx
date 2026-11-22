@@ -5,7 +5,7 @@ import { ACTIVE_STATUSES, getAllowedTransitions, isCoordinatorTask, resolveTaskC
 import { isTestFile } from "../../shared/test-files";
 import { getTaskOpenMode, taskClosedHomeRoute } from "../state";
 import { api } from "../rpc";
-import { useT } from "../i18n";
+import { useT, type TranslationKey } from "../i18n";
 import { toast } from "../toast";
 import { confirm } from "../confirm";
 import { trackEvent, agentNameFromId } from "../analytics";
@@ -13,7 +13,6 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
-import HideableControl from "../components/HideableControl";
 import Tooltip from "../components/Tooltip";
 import BottomSheet from "../components/BottomSheet";
 import OpenInMenu from "../components/OpenInMenu";
@@ -521,7 +520,7 @@ function useDiffSummary() {
 	const { task, project } = useTaskHeaderScope();
 	const { git, layout } = useTaskHeaderInternals();
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
-	const testsToggleHidden = useIsControlHidden("diff-include-tests");
+	const testsToggleHidden = useIsControlHidden("builtin:status.include-tests");
 	const hasGit = taskHasGitBar(project, task);
 	const status = hasGit ? git.branchStatus : null;
 	const compareRef = hasGit ? git.compareRef || undefined : undefined;
@@ -800,7 +799,7 @@ function IncludeTestsItem() {
 	const diff = useDiffSummary();
 	if (!diff.showTestsSegment) return null;
 	return (
-		<HideableControl id="diff-include-tests">
+		<>
 			<span className="h-4 w-px flex-shrink-0 bg-edge" aria-hidden="true" />
 			<Tooltip content={t("infoPanel.diffIncludeTestsTooltip")} detail={t("ttip.infoPanel.includeTests")}>
 				<button
@@ -817,12 +816,12 @@ function IncludeTestsItem() {
 					<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" off={!diff.includeTests} />
 				</button>
 			</Tooltip>
-		</HideableControl>
+		</>
 	);
 }
 
 function item(id: string, component: ComponentType<SlotItemProps>): TaskHeaderItem {
-	return { id: `builtin:status.${id}`, region: "status", component };
+	return { id: `builtin:status.${id}`, region: "status", label: `taskHeaderItem.status.${id}` as TranslationKey, component };
 }
 
 /**
@@ -842,5 +841,5 @@ export const STATUS_ITEMS: readonly TaskHeaderItem[] = [
 
 /** The diff badge's segments after its counts. */
 export const STATUS_DIFF_ITEMS: readonly TaskHeaderItem[] = [
-	{ id: "builtin:status.include-tests", region: "status.diff", component: IncludeTestsItem },
+	{ id: "builtin:status.include-tests", region: "status.diff", label: "taskHeaderItem.status.include-tests", component: IncludeTestsItem },
 ];

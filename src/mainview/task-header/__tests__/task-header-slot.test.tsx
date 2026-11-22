@@ -41,7 +41,7 @@ function renderRegions(surface: "bar" | "sheet" = "bar", layout: TaskHeaderLayou
 				value={{
 					scope: { task, project, dispatch: vi.fn(), navigate: vi.fn() },
 					layout,
-					isTaskActive: true,
+					isTaskActive: true, resolvedProject: project,
 					git,
 					session: {} as TaskSessionController,
 					closeSheet: vi.fn(),
@@ -157,10 +157,10 @@ describe("taskHeader slot", () => {
 			name: "crashing-item",
 			inject: ["taskHeader"],
 			apply(ctx: Context) {
-				ctx.taskHeader.register({ id: "builtin:git.crash-test", region: "git", order: -1, component: Crash });
-				ctx.taskHeader.register({ id: "builtin:status.crash-test", region: "status", order: -1, component: Crash });
-				ctx.taskHeader.register({ id: "builtin:status.crash-segment-test", region: "status.diff", order: -1, component: Crash });
-				ctx.taskHeader.register({ id: "builtin:git.crash-action-test", region: "git.actions", order: 25, component: Crash });
+				ctx.taskHeader.register({ id: "builtin:git.crash-test", region: "git", label: "taskHeaderItem.status.watch", order: -1, component: Crash });
+				ctx.taskHeader.register({ id: "builtin:status.crash-test", region: "status", label: "taskHeaderItem.status.watch", order: -1, component: Crash });
+				ctx.taskHeader.register({ id: "builtin:status.crash-segment-test", region: "status.diff", label: "taskHeaderItem.status.watch", order: -1, component: Crash });
+				ctx.taskHeader.register({ id: "builtin:git.crash-action-test", region: "git.actions", label: "taskHeaderItem.status.watch", order: 25, component: Crash });
 			},
 		});
 		await act(async () => {
@@ -186,9 +186,9 @@ describe("taskHeader slot", () => {
 			name: "leaving-items",
 			inject: ["taskHeader"],
 			apply(ctx: Context) {
-				ctx.taskHeader.register({ id: "builtin:git.leaving-test", region: "git", order: -1, component: Probe });
-				ctx.taskHeader.register({ id: "builtin:status.leaving-test", region: "status", order: -1, component: Probe });
-				ctx.taskHeader.register({ id: "builtin:git.leaving-action-test", region: "git.actions", order: 25, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:git.leaving-test", region: "git", label: "taskHeaderItem.status.watch", order: -1, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:status.leaving-test", region: "status", label: "taskHeaderItem.status.watch", order: -1, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:git.leaving-action-test", region: "git.actions", label: "taskHeaderItem.status.watch", order: 25, component: Probe });
 			},
 		});
 		await act(async () => {

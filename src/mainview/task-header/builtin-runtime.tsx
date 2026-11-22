@@ -1,8 +1,7 @@
 import type { ComponentType } from "react";
-import { isSharedClip, taskSharedMedia } from "../../shared/types";
-import { useIsControlHidden } from "../hooks/useIsControlHidden";
-import { useT } from "../i18n";
-import HideableControl from "../components/HideableControl";
+import { isSharedClip, taskSharedMedia, type Project } from "../../shared/types";
+import { resolveDevServers } from "../../shared/dev-servers";
+import { useT, type TranslationKey } from "../i18n";
 import { ArtifactsIcon, ImagesIcon } from "../components/TaskIcons";
 import TaskArtifacts from "../components/task-info-panel/TaskArtifacts";
 import TaskDevServer from "../components/task-info-panel/TaskDevServer";
@@ -21,12 +20,13 @@ interface RuntimeView extends TaskHeaderScope {
 	isTaskActive: boolean;
 	surface: TaskHeaderSurface;
 	closeSheet: () => void;
+	resolvedProject: Project;
 }
 
 function useRuntimeView(): RuntimeView {
 	const scope = useTaskHeaderScope();
-	const { layout, isTaskActive, closeSheet } = useTaskHeaderInternals();
-	return { ...scope, layout, isTaskActive, closeSheet, surface: useTaskHeaderSurface() };
+	const { layout, isTaskActive, closeSheet, resolvedProject } = useTaskHeaderInternals();
+	return { ...scope, layout, isTaskActive, closeSheet, resolvedProject, surface: useTaskHeaderSurface() };
 }
 
 /** The desktop runtime bar; the narrow summary bar carries no runtime controls. */
@@ -50,19 +50,26 @@ function FileExplorerItem() {
 
 function ScriptsItem() {
 	const scope = useOnDesktopBar();
-	const hidden = useIsControlHidden("scripts-runner");
-	if (!scope || hidden) return null;
-	return (
-		<HideableControl id="scripts-runner">
-			<TaskScripts task={scope.task} project={scope.project} isTaskActive={scope.isTaskActive} />
-		</HideableControl>
-	);
+	if (!scope) return null;
+	return <TaskScripts task={scope.task} project={scope.resolvedProject} isTaskActive={scope.isTaskActive} />;
+}
+
+/**
+ * The dev server control is two items, so hiding the set-up prompt of a project with no
+ * dev script (Simplify View hides it) never hides the real control of one that has one.
+ */
+function useDevServer(configured: boolean) {
+	const scope = useOnDesktopBar();
+	if (!scope || (resolveDevServers(scope.resolvedProject).servers.length > 0) !== configured) return null;
+	return <TaskDevServer task={scope.task} project={scope.resolvedProject} isTaskActive={scope.isTaskActive} compact={scope.layout.tight} />;
 }
 
 function DevServerItem() {
-	const scope = useOnDesktopBar();
-	if (!scope) return null;
-	return <TaskDevServer task={scope.task} project={scope.project} isTaskActive={scope.isTaskActive} compact={scope.layout.tight} />;
+	return useDevServer(true);
+}
+
+function DevServerSetupItem() {
+	return useDevServer(false);
 }
 
 function PortsItem() {
@@ -132,7 +139,7 @@ function ArtifactsItem() {
 const notVirtual = (scope: TaskHeaderScope) => scope.project.kind !== "virtual";
 
 function item(id: string, component: ComponentType<SlotItemProps>, when?: TaskHeaderItem["when"]): TaskHeaderItem {
-	return { id: `builtin:runtime.${id}`, region: "runtime", component, when };
+	return { id: `builtin:runtime.${id}`, region: "runtime", label: `taskHeaderItem.runtime.${id}` as TranslationKey, component, when };
 }
 
 /** The runtime bar, left to right; registration order is display order. */
@@ -141,6 +148,7 @@ export const RUNTIME_ITEMS: readonly TaskHeaderItem[] = [
 	item("file-explorer", FileExplorerItem),
 	item("scripts", ScriptsItem, notVirtual),
 	item("dev-server", DevServerItem, notVirtual),
+	item("dev-server-setup", DevServerSetupItem, notVirtual),
 	item("ports", PortsItem),
 	item("images", ImagesItem),
 	item("artifacts", ArtifactsItem),

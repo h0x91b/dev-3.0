@@ -304,7 +304,7 @@ const CASES: CrashCase[] = [
 		contribute(ctx) {
 			for (const region of ["status", "git", "status.diff", "git.actions"] as const) {
 				ctx.taskHeader.register({
-					id: `builtin:${region}.crash`, region, order: -1,
+					id: `builtin:${region}.crash`, region, label: "taskHeaderItem.status.watch", order: -1,
 					component: callback === "component" ? Boom : () => null,
 					...(callback === "when" ? { when: boom } : {}),
 				});
@@ -316,7 +316,7 @@ const CASES: CrashCase[] = [
 					value={{
 						scope: { task, project, dispatch: vi.fn(), navigate: vi.fn() },
 						layout: { compact: false, tight: false, collapsed: true, narrow: false },
-						isTaskActive: true, git, session: {} as TaskSessionController, closeSheet: vi.fn(), variants: [],
+						isTaskActive: true, resolvedProject: project, git, session: {} as TaskSessionController, closeSheet: vi.fn(), variants: [],
 					}}
 				>
 					{TASK_HEADER_REGIONS.filter((region) => region !== "runtime" && region !== "session").map((region) => (
