@@ -89,6 +89,6 @@ describe("sendArtifactMessageToAgent", () => {
 	it("reports the file an oversized submission was spilled to", async () => {
 		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: "/tmp/wt/messages/message-x.md" });
 		await expect(artifactMessageHandlers.sendArtifactMessageToAgent(params))
-			.resolves.toEqual({ spilledPath: "/tmp/wt/messages/message-x.md" });
+			.resolves.toEqual({ spilledPath: "/tmp/wt/messages/message-x.md", status: "delivered" });
 	});
 });

@@ -13,6 +13,7 @@ import type {
 	TaskPRCommentsPayload,
 } from "../../shared/types";
 import { isExecutableConfigPath } from "../../shared/executable-config-files";
+import { heldBehindPrompt } from "../../shared/agent-prompt-delivery";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { toast } from "../toast";
@@ -2620,7 +2621,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				// Marked, never deleted: a resolved RPC proves the keys were handed
 				// over, not that the agent ingested them, so the text must survive.
 				review.markSent([commentId]);
-				toast.success(result?.spilledPath
+				// Held behind the agent's open prompt: the host's toast says so instead.
+				if (!heldBehindPrompt(result)) toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
 			})
@@ -2646,7 +2648,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
 			.then((result) => {
 				setThreadSendStates((current) => ({ ...current, [thread.id]: "sent" }));
-				toast.success(result?.spilledPath
+				// Held behind the agent's open prompt: the host's toast says so instead.
+				if (!heldBehindPrompt(result)) toast.success(result?.spilledPath
 					? t("infoPanel.prSendToAgentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.prSendToAgentSuccess"), { taskId: task.id });
 			})
@@ -2671,7 +2674,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
 			.then((result) => {
 				review.markSent([commentId]);
-				toast.success(result?.spilledPath
+				// Held behind the agent's open prompt: the host's toast says so instead.
+				if (!heldBehindPrompt(result)) toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
 			})
@@ -2710,7 +2714,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				// so wiping here silently ate reviews that never arrived.
 				review.markSent(sentIds);
 				setEditingCommentId(null);
-				toast.success(result?.spilledPath
+				// Held behind the agent's open prompt: the host's toast says so instead.
+				if (!heldBehindPrompt(result)) toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewExportSendSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewExportSendSuccess"), { taskId: task.id });
 			})

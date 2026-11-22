@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { buildReviewPrompt, type ReviewComment } from "../../shared/review";
+import { heldBehindPrompt } from "../../shared/agent-prompt-delivery";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
@@ -30,7 +31,8 @@ export function useReviewSend(taskId: string, projectId: string | undefined, rev
 		api.request.sendAgentMessageNow({ taskId, projectId, text })
 			.then((result) => {
 				review.markSent(comments.map((comment) => comment.id));
-				toast.success(result?.spilledPath
+				// Held behind the agent's open prompt: the host's toast says so instead.
+				if (!heldBehindPrompt(result)) toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId });
 			})
@@ -78,14 +80,17 @@ export function useReviewSend(taskId: string, projectId: string | undefined, rev
 				replies: [...(comment.replies ?? []), { author: "user", body: trimmed }],
 			}]);
 			let spilledPath: string | null = null;
+			let held = false;
 			try {
-				spilledPath = (await api.request.sendAgentMessageNow({ taskId, projectId, text }))?.spilledPath ?? null;
+				const result = await api.request.sendAgentMessageNow({ taskId, projectId, text });
+				spilledPath = result?.spilledPath ?? null;
+				held = heldBehindPrompt(result);
 			} catch (err) {
 				toast.error(t("infoPanel.diffReviewReplyFailed", { error: String(err) }), { taskId });
 				return false;
 			}
 			await review.reply(comment.id, trimmed);
-			toast.success(spilledPath
+			if (!held) toast.success(spilledPath
 				? t("infoPanel.diffReviewSendCommentSuccessFile", { path: spilledPath })
 				: t("infoPanel.diffReviewReplySent"), { taskId });
 			return true;

@@ -263,12 +263,19 @@ describe("sendAgentMessageNow", () => {
 	it("returns no spill path when the review travelled as text", async () => {
 		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
 		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
-		expect(result).toEqual({ spilledPath: null });
+		expect(result).toEqual({ spilledPath: null, status: "delivered" });
+	});
+
+	// The click surface must not say "sent" for text that waits behind the agent's prompt.
+	it("passes a verdict held behind a prompt through to the renderer", async () => {
+		sendMessageImmediately.mockResolvedValue({ status: "held", reason: "behind-prompt", spilledPath: null, paneId: "%1", messageId: "m" });
+		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
+		expect(result).toEqual({ spilledPath: null, status: "held", reason: "behind-prompt" });
 	});
 
 	it("reports the file an oversized review was spilled to", async () => {
 		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: `${taskDirRoot}/messages/message-x.md` });
 		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "y".repeat(9000) });
-		expect(result).toEqual({ spilledPath: `${taskDirRoot}/messages/message-x.md` });
+		expect(result).toEqual({ spilledPath: `${taskDirRoot}/messages/message-x.md`, status: "delivered" });
 	});
 });

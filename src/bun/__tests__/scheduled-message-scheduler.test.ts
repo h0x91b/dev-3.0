@@ -15,6 +15,7 @@ vi.mock("../agent-prompt", () => ({
 	sendPromptToPane: vi.fn(async () => true),
 	// A message is HELD, never typed on arrival: always for one pane, which the seam picks.
 	holdMessageForPane: vi.fn(async () => ({ status: "held" })),
+	resolveHandoffPane: vi.fn(async () => "%1"),
 }));
 vi.mock("../agent-message-target", () => ({
 	resolveMainAgentTarget: vi.fn(),
@@ -40,6 +41,9 @@ vi.mock("../rpc-handlers", () => ({
 	pushCliAttention: vi.fn((payload: unknown) => pushFn("cliAttention", payload)),
 	pushAgentMessage: vi.fn((payload: unknown) => pushFn("agentMessage", payload)),
 }));
+vi.mock("../rpc-handlers/shared", () => ({
+	pushCliToast: vi.fn((payload: unknown) => pushFn("cliToast", payload)),
+}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -63,7 +67,9 @@ import {
 	saveMessageDraft,
 	sendMessageDraft,
 	fireArmedMessageDraft,
+	sendsAfterPromptCount,
 } from "../scheduled-message-scheduler";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 
 const project = { id: "proj-1", name: "Proj" } as unknown as import("../../shared/types").Project;
 
@@ -136,6 +142,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	stopScheduledMessageScheduler();
+	agentPromptLedger.reset();
 	vi.clearAllMocks();
 	vi.useRealTimers();
 });
@@ -628,6 +635,63 @@ describe("message draft (#2281)", () => {
 		const state = statefulTask({ status: "review-by-user", messageDraft: { text: "keep armed", sendOnStop: true, updatedAt: "t0" } });
 		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow();
 		expect(state.current.messageDraft).toEqual({ text: "keep armed", sendOnStop: true, updatedAt: "t0" });
+	});
+
+	describe("Send now while the agent shows a prompt (#2342)", () => {
+		/** A permission menu open in pane %1, then answered. */
+		const openPrompt = () =>
+			agentPromptLedger.applyStatusHookGate({ taskId: "task-12345678", sessionId: "s1", event: "PermissionRequest", harness: "codex", paneId: "%1", toolName: "shell" });
+		const closePrompt = () =>
+			agentPromptLedger.applyStatusHookGate({ taskId: "task-12345678", sessionId: "s1", event: "Stop", harness: "codex", paneId: "%1" });
+
+		it("keeps the draft saved until the prompt closes, then sends it through the hold", async () => {
+			openPrompt();
+			const state = statefulTask({ messageDraft: { text: "go on", updatedAt: "t0" } });
+			await sendMessageDraft(project, "task-12345678");
+			expect(state.current.messageDraft).toEqual({ text: "go on", updatedAt: "t0" });
+			expect(holdMessageForPane).not.toHaveBeenCalled();
+			expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+			expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ messageKey: "kanban.handoffHeldBehindPrompt" }));
+
+			closePrompt();
+			await vi.waitFor(() => expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", "go on", expect.any(Function), undefined, undefined));
+			expect(state.current.messageDraft).toBeNull();
+		});
+
+		it("registers a re-click once and leaves an edited draft alone", async () => {
+			openPrompt();
+			const state = statefulTask({ messageDraft: { text: "v1", updatedAt: "t0" } });
+			await sendMessageDraft(project, "task-12345678");
+			await sendMessageDraft(project, "task-12345678");
+			expect(sendsAfterPromptCount()).toBe(1);
+			state.current = { ...state.current, messageDraft: { text: "v2", updatedAt: "t1" } };
+			closePrompt();
+			await flush();
+			expect(holdMessageForPane).not.toHaveBeenCalled();
+			expect(state.current.messageDraft).toEqual({ text: "v2", updatedAt: "t1" });
+		});
+
+		it("puts the draft back and says so when the agent is gone by then", async () => {
+			openPrompt();
+			vi.mocked(holdMessageForPane).mockResolvedValue(PANE_GONE);
+			const state = statefulTask({ messageDraft: { text: "keep me", updatedAt: "t0" } });
+			await sendMessageDraft(project, "task-12345678");
+			closePrompt();
+			await vi.waitFor(() => expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" })));
+			expect(state.current.messageDraft).toEqual({ text: "keep me", updatedAt: "t0" });
+		});
+
+		it("keeps a queued message in the queue until the prompt closes", async () => {
+			openPrompt();
+			const state = statefulTask({ scheduledMessages: [makeMessage({ at: new Date(Date.now() + 3_600_000).toISOString() })] });
+			await sendScheduledMessageNow(project, "task-12345678", "msg-1");
+			expect((state.current.scheduledMessages as unknown[]).length).toBe(1);
+			expect(holdMessageForPane).not.toHaveBeenCalled();
+
+			closePrompt();
+			await vi.waitFor(() => expect(holdMessageForPane).toHaveBeenCalled());
+			await vi.waitFor(() => expect((state.current.scheduledMessages as unknown[]).length).toBe(0));
+		});
 	});
 
 	describe("autosave compare-and-set", () => {

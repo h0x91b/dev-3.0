@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LiveArtifact, SharedArtifact, Task, TaskStatus } from "../../shared/types";
 import { isLiveViewerEntry, liveViewerEntry } from "../../shared/live-artifact";
+import { heldBehindPrompt } from "../../shared/agent-prompt-delivery";
 import { reviewCommentsForArtifact, type ReviewComment } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { useReviewSend } from "../review/useReviewSend";
@@ -449,9 +450,11 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 					version: currentRef.current.version,
 					versionCount: currentRef.current.versionCount,
 				})
-					.then(() => {
-						reply({ ok: true });
-						toast.success(t("artifactViewer.messageSent"), { taskId });
+					.then((result) => {
+						const held = heldBehindPrompt(result);
+						reply(held ? { ok: true, held: true } : { ok: true });
+						// Held behind the agent's open prompt: the host's toast says so instead.
+						if (!held) toast.success(t("artifactViewer.messageSent"), { taskId });
 					})
 					.catch((err) => {
 						reply({ ok: false, reason: "failed", message: String(err) });

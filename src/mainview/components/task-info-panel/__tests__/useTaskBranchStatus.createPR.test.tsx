@@ -121,6 +121,20 @@ describe("useTaskBranchStatus — Create PR feedback", () => {
 		]);
 	});
 
+	// The pane showed a prompt: the app's own toast explains the wait, so no "no terminal" error.
+	it("raises no error toast for a hand-off held behind a prompt", async () => {
+		const calls = await createPRWithVerdict("held", "behind-prompt");
+		expect(calls).toEqual([]);
+		toastCalls.length = 0;
+		commitTaskViaAgent.mockResolvedValue({ delivery: { status: "held", reason: "behind-prompt" } });
+		const { result } = renderHook(
+			() => useTaskBranchStatus({ task, project, dispatch: vi.fn(), navigate: vi.fn(), isTaskActive: true, enabled: false }),
+			{ wrapper },
+		);
+		await act(() => result.current.handleCommit());
+		expect(toastCalls).toEqual([]);
+	});
+
 	it("passes autoMerge through and still reports the verdict", async () => {
 		toastCalls.length = 0;
 		createPullRequest.mockResolvedValue({ delivery: { status: "delivered" } });

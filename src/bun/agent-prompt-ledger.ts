@@ -165,6 +165,13 @@ export class AgentPromptLedger {
 		return false;
 	}
 
+	/** The panes of this task showing a prompt; empty is the common case and costs no pane lookup. */
+	promptPanes(taskId: string): Set<string> {
+		const panes = new Set<string>();
+		for (const prompt of this.tasks.get(taskId)?.open.values() ?? []) if (prompt.paneId) panes.add(prompt.paneId);
+		return panes;
+	}
+
 	/**
 	 * The status-hook path (Codex, Copilot, omp, pi): keeps blocking Codex questions as
 	 * open prompts and async ones as queued cards. `pending` keeps the card in Has

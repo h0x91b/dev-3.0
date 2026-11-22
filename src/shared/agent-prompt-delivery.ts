@@ -84,3 +84,20 @@ export const AGENT_PROMPT_HELD_BEHIND_PROMPT = "behind-prompt";
 export function agentPromptMayHaveLanded(delivery: AgentPromptDelivery): boolean {
 	return delivery.status !== "not-delivered";
 }
+
+/** Whether a verdict waits behind the agent's open prompt: say so instead of "sent". */
+export function heldBehindPrompt(delivery: { status?: string; reason?: string } | null | undefined): boolean {
+	return delivery?.status === "held" && delivery.reason === AGENT_PROMPT_HELD_BEHIND_PROMPT;
+}
+
+/** What a click that typed into the agent learns: the file a long text went to, and the verdict. */
+export interface SentAgentMessage {
+	spilledPath: string | null;
+	status: AgentPromptDeliveryStatus;
+	reason?: string;
+}
+
+/** Narrow a delivery down to what goes back to the renderer. */
+export function sentAgentMessage(delivery: { spilledPath: string | null; status: AgentPromptDeliveryStatus; reason?: string }): SentAgentMessage {
+	return { spilledPath: delivery.spilledPath, status: delivery.status, ...(delivery.reason ? { reason: delivery.reason } : {}) };
+}

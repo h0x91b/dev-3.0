@@ -3,6 +3,7 @@ import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { isMac } from "../../utils/platform";
 import { TERMINAL_STATUSES, type Task } from "../../../shared/types";
+import { heldBehindPrompt } from "../../../shared/agent-prompt-delivery";
 
 /**
  * How much the inspector's composer accepts. It is deliberately a short-message
@@ -16,7 +17,7 @@ export const TRAFFIC_COMPOSER_MAX_CHARS = 1000;
 /** Characters left at which the counter appears; silent until the cap is near. */
 const COUNTER_VISIBLE_FROM = 100;
 
-export type TrafficComposerPhase = "idle" | "sending" | "sent" | "error";
+export type TrafficComposerPhase = "idle" | "sending" | "sent" | "held" | "error";
 export interface TrafficComposerState {
 	phase: TrafficComposerPhase;
 	/** Error text, or the spill path when a send was written to a file. */
@@ -82,7 +83,9 @@ export default function TrafficComposer({
 			.sendAgentMessageNow({ taskId: task.id, projectId, text })
 			.then((result) => {
 				onDraftChange("");
-				onStateChange({ phase: "sent", ...(result?.spilledPath ? { detail: result.spilledPath } : {}) });
+				onStateChange(heldBehindPrompt(result)
+					? { phase: "held" }
+					: { phase: "sent", ...(result?.spilledPath ? { detail: result.spilledPath } : {}) });
 				timer.current = setTimeout(() => onStateChange({ phase: "idle" }), 8000);
 			})
 			.catch((err) => {
@@ -95,7 +98,9 @@ export default function TrafficComposer({
 	const status =
 		state.phase === "error"
 			? { tone: "error", text: t("traffic.compose.failed", { error: state.detail ?? "" }) }
-			: state.phase === "sent"
+			: state.phase === "held"
+				? { tone: "sent", text: t("traffic.compose.heldBehindPrompt") }
+				: state.phase === "sent"
 				? {
 						tone: "sent",
 						text: state.detail
@@ -120,7 +125,7 @@ export default function TrafficComposer({
 					onDraftChange(event.target.value);
 					// Any edit retires the previous verdict — a stale "Sent" sitting over
 					// new text reads as a receipt for the wrong message.
-					if (state.phase === "sent" || state.phase === "error") onStateChange({ phase: "idle" });
+					if (state.phase === "sent" || state.phase === "held" || state.phase === "error") onStateChange({ phase: "idle" });
 				}}
 				onKeyDown={(event) => {
 					// House convention (TerminalComposer, ScheduleMessageModal): Enter is a

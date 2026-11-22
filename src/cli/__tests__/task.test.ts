@@ -788,6 +788,20 @@ describe("task update", () => {
 		expect(stderrOutput).toContain("could NOT tell the running agent");
 	});
 
+	// Held behind the agent's open prompt: it will arrive, so pasting it too would double it.
+	it("says a role change held behind a prompt is still coming", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, taskType: "coordinator" },
+			titlePreserved: false,
+			roleDelivery: "held",
+		}));
+
+		await handleTask("update", args(["aaaaaaaa"], { type: "coordinator" }), SOCKET, null);
+
+		expect(stderrOutput).toContain("sent after it is answered");
+		expect(stderrOutput).not.toContain("paste the new role in yourself");
+	});
+
 	it("sends --type pr-review", async () => {
 		mockSend.mockResolvedValue(okResp({
 			task: { ...FAKE_TASK, taskType: "pr-review" },

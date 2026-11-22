@@ -17,7 +17,7 @@ import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, StaleTmuxServer, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, CliToastMessageKey, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, StaleTmuxServer, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_COMPLETION_OFFER_STYLE, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -2038,7 +2038,7 @@ function App() {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
-				messageKey?: "kanban.launchAccountRemoved" | "kanban.launchAwsProfileMissing" | "kanban.awsProfilesChangedFromCli";
+				messageKey?: CliToastMessageKey;
 				level: "info" | "success" | "error";
 				durationMs?: number;
 				taskSeq?: number;

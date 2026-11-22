@@ -433,6 +433,15 @@ function tmuxRouting(task: Task): { tmuxSession: string; socket: string } {
 	return { tmuxSession: taskSessionName(task.id), socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET };
 }
 
+/** The tmux pane a hand-off to `task`'s agent lands in — see {@link resolveAgentPromptTargetPane}. */
+export async function resolveHandoffPane(
+	task: Task,
+	agentPanes: PaneSessionEntry[] | undefined = task.sessionState?.panes,
+): Promise<string | null> {
+	const { tmuxSession, socket } = tmuxRouting(task);
+	return resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
+}
+
 /**
  * Hand a task off to the AI agent running in its tmux session: pick the pane the
  * agent lives in (see {@link resolveAgentPromptTargetPane}), type `prompt` into
@@ -453,9 +462,8 @@ export async function sendPromptToAgentPane(
 	prompt: string,
 	agentPanes: PaneSessionEntry[] | undefined,
 ): Promise<PaneInputOutcome> {
-	const { tmuxSession, socket } = tmuxRouting(task);
-	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
-	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxSession}`);
+	const targetPane = await resolveHandoffPane(task, agentPanes);
+	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxRouting(task).tmuxSession}`);
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, targetPane))) return inputOccupied(targetPane);
 	const outcome = await sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
 	if (outcome.status === "delivered") scheduleQueuedPromptSteer(task, targetPane, () => steerTmuxPane(task, targetPane), agentPanes);
