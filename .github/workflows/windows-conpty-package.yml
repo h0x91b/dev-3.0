@@ -399,7 +399,7 @@ jobs:
 
       - name: Build packaged runtime tracer
         working-directory: scripts/fixtures/windows-conpty-package
-        run: bun ../../../node_modules/electrobun/bin/electrobun.cjs build --env=canary
+        run: bun ../../electrobun.ts build --env=canary
 
       - name: Upload package and proof
         if: runner.os == 'Windows'

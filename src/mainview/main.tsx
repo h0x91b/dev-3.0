@@ -10,6 +10,7 @@ import { I18nProvider, resolveInitialLocale } from "./i18n";
 import { MobileProvider, detectMobile } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
 import { initFeatureFlags } from "./feature-flags";
+import type { GlobalSettings } from "../shared/types";
 import { debugLog } from "./debug-log";
 import { api, isElectrobun } from "./rpc";
 import { initAutoFullscreen } from "./fullscreen";
@@ -19,14 +20,16 @@ import { bootstrapScrollSpeed } from "./scroll-speed";
 import { bootstrapTerminalFont } from "./terminal-font";
 import { startViewportDiagnostics } from "./viewport-diagnostics";
 import { startRendererHeartbeat } from "./renderer-heartbeat";
-import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
+import { adoptHostBeigeTone, applyThemeToDocument, getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 import { initThemeColorSync } from "./theme-color";
 import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
 import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
-import { startBoardPlugins } from "./board-views/plugins";
+import { startPlugins } from "./plugins/runtime";
+import { BUILTIN_PLUGINS } from "./builtin-plugins";
+import { TaskMarkersProvider } from "./task-markers/TaskMarkers";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -78,12 +81,18 @@ function applySavedTheme() {
 		...injectedThemeState,
 	});
 	injectedThemeState = {};
-	document.documentElement.dataset.theme = resolved;
+	applyThemeToDocument(preference, resolved);
 	localStorage.setItem("dev3-theme", preference);
+	// No tone here: the host's saved one is the truth, and a window's cache may be stale.
 	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
 }
 
 applySavedTheme();
+// The cached tone painted the first frame; the host's tone, now and on every change, wins.
+api.request.getGlobalSettings().then(adoptHostBeigeTone).catch(() => {});
+window.addEventListener("rpc:globalSettingsUpdated", (e) => {
+	adoptHostBeigeTone((e as CustomEvent<GlobalSettings>).detail);
+});
 systemThemeMq.addEventListener("change", applySavedTheme);
 initThemeColorSync();
 
@@ -164,8 +173,8 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	// The board-view runtime (Cordis root + built-in views) is up before the first board renders.
-	startBoardPlugins();
+	// The plugin runtime (Cordis root + every built-in plugin, see builtin-plugins.ts) is up before the first render.
+	startPlugins(BUILTIN_PLUGINS);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
@@ -177,7 +186,9 @@ async function bootstrap() {
 				<MobileProvider>
 					<I18nProvider>
 						<MobilePortraitGate>
-							<App />
+							<TaskMarkersProvider>
+								<App />
+							</TaskMarkersProvider>
 						</MobilePortraitGate>
 					</I18nProvider>
 				</MobileProvider>

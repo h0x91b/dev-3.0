@@ -31,7 +31,7 @@ vi.mock("../../rpc", () => ({
 vi.mock("../../TerminalView", () => ({
 	default: ({ ptyUrl }: { ptyUrl: string }) => <div data-testid="terminal-view" data-pty-url={ptyUrl} />,
 }));
-vi.mock("../TaskInfoPanel", () => ({ default: () => null }));
+vi.mock("../TaskHeader", () => ({ default: () => null }));
 vi.mock("../NativeViewerBar", () => ({ default: () => <div data-testid="native-viewer-bar" /> }));
 vi.mock("../MobilePaneCarousel", () => ({
 	default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,

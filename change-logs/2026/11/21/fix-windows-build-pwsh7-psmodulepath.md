@@ -1,0 +1,1 @@
+Windows builds no longer fail to unpack the bundled Bun when started from PowerShell 7.6.10 or newer: electrobun now always runs through `scripts/electrobun.ts`, which keeps PowerShell 7's module folders out of the Windows PowerShell 5.1 it calls for `Expand-Archive`.

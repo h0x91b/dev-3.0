@@ -1,5 +1,7 @@
 # A docked artifact viewer waits offscreen instead of falling back to the popup
 
+Superseded in part on 2026-11-21 by `decisions/2026/11/21/artifact-viewer-dock-panel.md`: the viewer is now the task dock's artifact panel, so "offscreen" means its task has no seat (route left, inline diff), not an `App`-computed route check; the rule itself stands.
+
 ## Context
 
 `decisions/2026/09/07/artifact-panel-default-popup-opt-in.md` made the docked panel the

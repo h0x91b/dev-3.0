@@ -10,12 +10,13 @@
  * Run: `DEV3_HOME=$(mktemp -d) bun run test:agent-graceful-exit-e2e`
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Task } from "../../shared/types";
 import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { PANE_ID_FORMAT, taskSessionName, TmuxClient } from "../tmux";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 const SOCKET = `dev3-live-exit-${process.pid}`;
 const client = new TmuxClient({ socket: SOCKET });
@@ -163,7 +164,7 @@ async function main(): Promise<void> {
 		await killAloneLosesTheHook();
 	} finally {
 		await client.killServer({ socket: SOCKET }).catch(() => undefined);
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 	console.log(failures === 0 ? "ALL OK" : `${failures} FAILED`);
 	process.exit(failures === 0 ? 0 : 1);

@@ -44,7 +44,13 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 137,
+	"PRODUCT_UX_BIBLE.md": 139,
+	// 137 → 139 for plugin slots (§5.12): a new surface pattern every later surface migration lands
+	// on — replace vs contribution slots, add-only extensions, what is never a slot, the Extensions
+	// page grouping — plus the §5.1 registry bullet, the §5.10 move/swap menu and two §9 rows. `main`
+	// had 16 bytes of headroom. Compaction ran first and bought ~420 B: §5.10's panel id list became
+	// a pointer to the yaml's identical `panel_hideable`, §5.12's chooser defers to §5.11's, and the
+	// §5.1 rationale lines were tightened. Why: decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md.
 	// 134 → 137 for board views (spec D25): §5.11 is a new surface family — the host, its
 	// switcher/options chrome, four built-in views with narrow forms, and the not-a-destination
 	// rule — plus its §5/§10/§12.3 rows. The stale `Proposed` board-filters row was compacted
@@ -141,7 +147,9 @@ const BUDGET_KB: Record<string, number> = {
 	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
 	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
 	// own compaction pass before it writes a word here.
-	"ux-architecture.yaml": 125,
+	"ux-architecture.yaml": 126,
+	// 125 → 126 for `surfaces.plugin_slots` (allowed/forbidden for every slot) and the bar model's
+	// `registry` line. `main` had zero bytes of headroom; the entry was cut to the bare tokens first.
 	// 122 → 125 for board views (spec D25): `board_view_host` and `board_view_table/_tree/_attention`
 	// surfaces, their narrow rows, and the `board-view-is-not-a-destination` placement rule.
 	// 121 → 122 for board-view extensions (spec D25): the new `objects.extension` entry.
@@ -260,7 +268,8 @@ const BUDGET_KB: Record<string, number> = {
  * keeps one document from bloating, and lowering one is still always welcome.
  */
 // 340 → 347: the board-views raises above (3 + 3 + 1 KB), nothing else.
-const TOTAL_BUDGET_KB = 347;
+// 347 → 350: the plugin-slots raises above (2 + 1 KB); the tree had ~1 KB but the new rules need ~4.
+const TOTAL_BUDGET_KB = 350;
 
 /**
  * A byte allowance on top of one KB budget, and the only one there is.

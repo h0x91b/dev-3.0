@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -43,6 +44,13 @@ vi.mock("../MoveToProjectPicker", () => ({
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { getTaskMenuRegistry } from "../../task-menu/registry";
+import { getAppRoot } from "../../plugins/root";
+import type { Context } from "cordis";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 const mockedApi = vi.mocked(api);
 
@@ -344,6 +352,28 @@ describe("TaskContextMenu", () => {
 	});
 });
 
+describe("TaskContextMenu slot subscription", () => {
+	it("listens to the taskMenu slot only while open, however many closed menus are mounted", async () => {
+		const subscribe = vi.spyOn(getTaskMenuRegistry(), "subscribe");
+		const ui = (open: number | null) => (
+			<I18nProvider>
+				{Array.from({ length: 50 }, (_, i) => (
+					<TaskContextMenu key={i} task={makeTask({ id: `t${i}` })} project={project} dispatch={vi.fn()} pos={open === i ? { x: 0, y: 0 } : null} onClose={vi.fn()} onOpenTask={vi.fn()} testId={`menu-${i}`} />
+				))}
+			</I18nProvider>
+		);
+		const { rerender } = render(ui(null));
+		expect(subscribe).not.toHaveBeenCalled();
+		// A row registered while every menu was closed still shows when one opens.
+		getAppRoot().plugin({ name: "late-row", inject: ["taskMenu"], apply: (ctx: Context) => void ctx.taskMenu.register({ id: "late:row", region: "open", label: () => "Late row", run: () => {} }) });
+		await waitFor(() => expect(getTaskMenuRegistry().get("late:row")).toBeTruthy());
+		rerender(ui(7));
+		expect(subscribe).toHaveBeenCalledTimes(1);
+		expect(within(screen.getByTestId("menu-7")).getByText("Late row")).toBeInTheDocument();
+		subscribe.mockRestore();
+	});
+});
+
 // R1 (Seq 2003 review 2003-010): "Move to → Agent is Working" on a To Do card must
 // open the launch dialog; a bare moveTask is refused by the lifecycle.
 describe("TaskContextMenu → start a To Do card", () => {
@@ -428,5 +458,28 @@ describe("TaskContextMenu on a phone", () => {
 		await userEvent.click(screen.getByTestId("task-menu-priority"));
 		expect(await screen.findByRole("menuitemradio", { name: /P0/ })).toBeInTheDocument();
 		expect(screen.queryByTestId("task-menu-flyout-priority")).not.toBeInTheDocument();
+	});
+
+	it("keeps listening while its sheet is up, so unloading the sheet's plugin takes the sheet down", async () => {
+		const fiber = getAppRoot().plugin({
+			name: "sheet-owner",
+			inject: ["taskMenu"],
+			apply: (ctx: Context) =>
+				void ctx.taskMenu.register({ id: "probe:sheet", region: "open", label: () => "Probe sheet", submenu: { flyout: () => null, sheet: () => <div data-testid="probe-sheet" /> } }),
+		});
+		await waitFor(() => expect(getTaskMenuRegistry().get("probe:sheet")).toBeTruthy());
+		// The host clears `pos` when the menu closes for the sheet, as cards and rows do.
+		function Host() {
+			const [pos, setPos] = useState<{ x: number; y: number } | null>({ x: 0, y: 0 });
+			return <TaskContextMenu task={makeTask()} project={project} dispatch={vi.fn()} pos={pos} onClose={() => setPos(null)} onOpenTask={vi.fn()} testId="task-menu" />;
+		}
+		render(<I18nProvider><Host /></I18nProvider>);
+		await userEvent.click(screen.getByTestId("task-menu-probe:sheet"));
+		expect(await screen.findByTestId("probe-sheet")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu")).not.toBeInTheDocument();
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryByTestId("probe-sheet")).not.toBeInTheDocument();
 	});
 });

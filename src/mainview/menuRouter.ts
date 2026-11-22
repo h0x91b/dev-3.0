@@ -1,108 +1,49 @@
 import { api } from "./rpc";
 import { startClosePanePicker } from "./close-pane-picker";
-import { toggleStreamerMode } from "./streamer-mode";
 import { openAgentTrafficLog } from "./agent-traffic-events";
-import { showFileExplorer, toggleFileExplorer } from "./file-explorer-prefs";
 import { toast } from "./toast";
 import { playTaskCompletionSound, taskSoundDiagnostics } from "./task-sounds";
-import { moveTaskToStatus } from "./utils/moveTaskToStatus";
-import type { TFunction } from "./i18n";
-import type { AppState, AppAction, Route } from "./state";
-import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
-import { isBoardMounted, parseBoardViewAction, runBoardViewCommand } from "./board-views/view-commands";
+import type { TaskPaneAction } from "../shared/task-panes";
+import { parseBoardViewAction } from "./board-views/view-commands";
+import {
+	applyTheme,
+	copyTaskWorktreePath,
+	createPullRequest,
+	currentTaskId,
+	emitAppEvent,
+	importConversations,
+	moveCurrentTask,
+	navigateTo,
+	openBoard,
+	openBoardView,
+	openProjectSettings,
+	openProjectTerminal,
+	openSessions,
+	openTaskInFinder,
+	pullProjectMain,
+	runDevServerOp,
+	runTaskScript,
+	toggleFileExplorerForRoute,
+	toggleTaskWatch,
+	type AppActionContext,
+} from "./app-actions";
 
 /**
- * Universal dispatch for `application-menu-clicked` events that the bun side
- * forwards through the `menuAction` push channel.
+ * Dispatch for native menu actions: the bun side forwards `application-menu-clicked`
+ * and swipe navigation through the `menuAction` push channel, and the browser-mode
+ * menu bar calls it directly. The command palette does not route through here —
+ * each palette command carries its own `run()` (`commands/builtins.ts`); both reach
+ * the same code in `app-actions.ts`.
  *
- * Most actions map 1:1 to either a navigation, a CustomEvent (so existing
- * components can hook in without state plumbing), or a backend RPC. Anything
- * that requires task / project context is no-op when the user is not in the
- * matching view — we surface that as a warning in the console; the action item
- * itself is enabled in the menu because the renderer can't tell ahead of time
+ * An action that needs task / project context is a no-op outside the matching
+ * view; the menu item stays enabled because the renderer can't tell ahead of time
  * what view the user will be on.
  */
-
-interface RouterCtx {
-	state: AppState;
-	dispatch: (action: AppAction) => void;
-	setLocale: (locale: Locale) => void;
-	/** Needed by the shared move helper for its confirmation copy and toasts. */
-	t: TFunction;
-}
-
-function navigate(ctx: RouterCtx, route: Route): void {
-	ctx.dispatch({ type: "navigate", route });
-}
-
-function currentProjectId(state: AppState): string | undefined {
-	const r = state.route;
-	if (r.screen === "project" || r.screen === "task" || r.screen === "project-settings" || r.screen === "project-terminal") {
-		return r.projectId;
-	}
-	return undefined;
-}
-
-/**
- * The explorer lives beside a terminal: a task's, or the project's own on the
- * Repo screen. From a plain board the toggle takes you to Repo with the tree
- * shown; where there is no terminal to sit beside, it does nothing.
- */
-function toggleFileExplorerForRoute(ctx: RouterCtx): void {
-	const r = ctx.state.route;
-	if (r.screen === "task" || r.screen === "project-terminal" || (r.screen === "project" && r.activeTaskId)) {
-		toggleFileExplorer();
-		return;
-	}
-	if (r.screen !== "project" || r.spaceId || r.taskView) return;
-	if (ctx.state.projects.find((p) => p.id === r.projectId)?.kind === "virtual") return;
-	showFileExplorer();
-	navigate(ctx, { screen: "project-terminal", projectId: r.projectId });
-}
-
-function currentTaskId(state: AppState): string | undefined {
-	const r = state.route;
-	if (r.screen === "task") return r.taskId;
-	if (r.screen === "project" && r.activeTaskId) return r.activeTaskId;
-	return undefined;
-}
-
-function currentTask(state: AppState) {
-	const taskId = currentTaskId(state);
-	if (!taskId) return undefined;
-	return state.currentProjectTasks.find((t) => t.id === taskId);
-}
-
-function applyTheme(preference: "light" | "dark" | "system"): void {
-	const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-	const resolved = preference === "system" ? (prefersDark ? "dark" : "light") : preference;
-	document.documentElement.dataset.theme = resolved;
-	localStorage.setItem("dev3-theme", preference);
-	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
-}
-
-/** The board the current route belongs to, the space board included; null off a project. */
-function boardRouteFor(state: AppState): Route | null {
-	const r = state.route;
-	const projectId = currentProjectId(state);
-	if (!projectId) return null;
-	const spaceId = r.screen === "project" || r.screen === "task" ? r.spaceId : undefined;
-	return spaceId ? { screen: "project", projectId, spaceId } : { screen: "project", projectId };
-}
-
-export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<void> {
-	const { state } = ctx;
-
+export async function handleMenuAction(action: string, ctx: AppActionContext): Promise<void> {
 	const boardViewId = parseBoardViewAction(action);
 	if (boardViewId) {
-		// On a board this only switches the view; anywhere else it opens the board first.
-		if (!isBoardMounted()) {
-			const board = boardRouteFor(state);
-			if (!board) return;
-			navigate(ctx, board);
-		}
-		runBoardViewCommand({ kind: "pick", viewId: boardViewId });
+		openBoardView(ctx, boardViewId);
 		return;
 	}
 
@@ -126,9 +67,6 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "set-locale-es":
 			ctx.setLocale("es");
 			return;
-		case "toggle-streamer-mode":
-			toggleStreamerMode();
-			return;
 
 		// ── App: About / hard refresh ──
 		// On desktop these are handled by the bun `application-menu-clicked`
@@ -138,7 +76,7 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "about": {
 			try {
 				const { version, buildChannel } = await api.request.getAppVersion();
-				window.dispatchEvent(new CustomEvent("rpc:showAbout", { detail: { version, buildChannel } }));
+				emitAppEvent("rpc:showAbout", { version, buildChannel });
 			} catch (err) {
 				console.error("[menu] getAppVersion failed", err);
 			}
@@ -150,19 +88,19 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 
 		// ── Debug screens (browser equivalents of the bun navigate-to-* pushes) ──
 		case "feature-flags":
-			window.dispatchEvent(new CustomEvent("rpc:showFeatureFlags"));
+			emitAppEvent("rpc:showFeatureFlags");
 			return;
 		case "terminal-perf-overlay":
-			window.dispatchEvent(new CustomEvent("rpc:toggleTerminalPerf"));
+			emitAppEvent("rpc:toggleTerminalPerf");
 			return;
 		case "gauge-demo":
-			navigate(ctx, { screen: "gauge-demo" });
+			navigateTo(ctx, { screen: "gauge-demo" });
 			return;
 		case "viewport-lab":
-			navigate(ctx, { screen: "viewport-lab" });
+			navigateTo(ctx, { screen: "viewport-lab" });
 			return;
 		case "native-pane-layout-lab":
-			navigate(ctx, { screen: "native-pane-layout-lab" });
+			navigateTo(ctx, { screen: "native-pane-layout-lab" });
 			return;
 
 		// ── Debug: task-sound probes ──
@@ -208,24 +146,22 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 
 		// ── View navigation ──
 		case "view-dashboard":
-			navigate(ctx, { screen: "dashboard" });
+			navigateTo(ctx, { screen: "dashboard" });
 			return;
 		case "view-board":
-			navigate(ctx, boardRouteFor(state) ?? { screen: "dashboard" });
+			openBoard(ctx);
 			return;
 		case "view-changelog":
-			navigate(ctx, { screen: "changelog" });
-			break;
+			navigateTo(ctx, { screen: "changelog" });
+			return;
 		case "view-stats":
-			navigate(ctx, { screen: "stats" });
-			break;
-		case "view-sessions": {
-			const projectId = currentProjectId(state);
-			navigate(ctx, projectId ? { screen: "sessions", scopeProjectId: projectId } : { screen: "sessions" });
-			break;
-		}
+			navigateTo(ctx, { screen: "stats" });
+			return;
+		case "view-sessions":
+			openSessions(ctx);
+			return;
 		case "open-settings":
-			navigate(ctx, { screen: "settings" });
+			navigateTo(ctx, { screen: "settings" });
 			return;
 		case "go-back":
 			ctx.dispatch({ type: "goBack" });
@@ -234,207 +170,84 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			ctx.dispatch({ type: "goForward" });
 			return;
 
-		// ── Create flows — open the App-owned modals via CustomEvent ──
+		// ── Create flows and keyboard palettes — App.tsx owns the modals ──
 		case "open-new-task":
-			window.dispatchEvent(new CustomEvent("menu:open-new-task"));
+			emitAppEvent("menu:open-new-task");
 			return;
 		case "open-add-project":
-			window.dispatchEvent(new CustomEvent("menu:open-add-project"));
+			emitAppEvent("menu:open-add-project");
 			return;
-
-		// ── Keyboard palettes — App.tsx owns the toggle shortcuts; the menu just
-		// opens them (idempotent) via CustomEvent. ──
 		case "open-project-switch":
-			window.dispatchEvent(new CustomEvent("menu:open-project-switch"));
+			emitAppEvent("menu:open-project-switch");
 			return;
 		case "open-task-switch":
-			window.dispatchEvent(new CustomEvent("menu:open-task-switch"));
+			emitAppEvent("menu:open-task-switch");
 			return;
 		case "open-combined-switch":
-			window.dispatchEvent(new CustomEvent("menu:open-combined-switch"));
+			emitAppEvent("menu:open-combined-switch");
 			return;
 		case "open-command-palette":
-			window.dispatchEvent(new CustomEvent("menu:open-command-palette"));
-			return;
-		// Palette-only: a cross-project picker, so it needs no current project.
-		case "find-coordinator":
-			window.dispatchEvent(new CustomEvent("menu:open-coordinator-finder"));
+			emitAppEvent("menu:open-command-palette");
 			return;
 
-		// ── Project: navigation ──
-		case "project-settings": {
-			const projectId = currentProjectId(state);
-			if (projectId) navigate(ctx, { screen: "project-settings", projectId });
+		// ── Project ──
+		case "project-settings":
+			openProjectSettings(ctx);
 			return;
-		}
+		case "project-import-conversations":
+			importConversations(ctx);
+			return;
+		case "project-pull-main":
+			await pullProjectMain(ctx);
+			return;
+		case "project-create-pr":
+			await createPullRequest(ctx);
+			return;
+		case "project-dev-server-start":
+			await runDevServerOp(ctx, "start");
+			return;
+		case "project-dev-server-stop":
+			await runDevServerOp(ctx, "stop");
+			return;
+		case "project-dev-server-restart":
+			await runDevServerOp(ctx, "restart");
+			return;
+		case "project-dev-server-status":
+			await runDevServerOp(ctx, "status");
+			return;
 
-		case "project-import-conversations": {
-			const projectId = currentProjectId(state);
-			if (projectId) window.dispatchEvent(new CustomEvent("menu:import-conversations", { detail: { projectId } }));
+		// ── Task ──
+		case "task-toggle-watch":
+			await toggleTaskWatch(ctx);
 			return;
-		}
-
-		// ── Project: git ──
-		case "project-pull-main": {
-			const projectId = currentProjectId(state);
-			if (!projectId) return;
-			try {
-				await api.request.pullProjectMain({ projectId });
-			} catch (err) {
-				console.error("[menu] pullProjectMain failed", err);
-			}
-			return;
-		}
-		case "project-create-pr": {
-			const projectId = currentProjectId(state);
-			const taskId = currentTaskId(state);
-			if (!projectId || !taskId) return;
-			try {
-				await api.request.createPullRequest({ taskId, projectId });
-			} catch (err) {
-				console.error("[menu] createPullRequest failed", err);
-			}
-			return;
-		}
-
-		// ── Project: dev server ──
-		case "project-dev-server-start": {
-			const projectId = currentProjectId(state);
-			const taskId = currentTaskId(state);
-			if (!projectId || !taskId) return;
-			try {
-				await api.request.runDevServer({ taskId, projectId, focus: true });
-			} catch (err) {
-				console.error("[menu] runDevServer failed", err);
-			}
-			return;
-		}
-		case "project-dev-server-stop": {
-			const projectId = currentProjectId(state);
-			const taskId = currentTaskId(state);
-			if (!projectId || !taskId) return;
-			try {
-				await api.request.stopDevServer({ taskId, projectId });
-			} catch (err) {
-				console.error("[menu] stopDevServer failed", err);
-			}
-			return;
-		}
-		case "project-dev-server-restart": {
-			const projectId = currentProjectId(state);
-			const taskId = currentTaskId(state);
-			if (!projectId || !taskId) return;
-			try {
-				await api.request.stopDevServer({ taskId, projectId });
-				await api.request.runDevServer({ taskId, projectId, focus: true });
-			} catch (err) {
-				console.error("[menu] dev server restart failed", err);
-			}
-			return;
-		}
-		case "project-dev-server-status": {
-			const projectId = currentProjectId(state);
-			const taskId = currentTaskId(state);
-			if (!projectId || !taskId) return;
-			try {
-				const status = await api.request.getDevServerStatus({ taskId, projectId });
-				// surface via custom event so the renderer can show a toast in a follow-up commit
-				window.dispatchEvent(new CustomEvent("menu:dev-server-status", { detail: status }));
-			} catch (err) {
-				console.error("[menu] getDevServerStatus failed", err);
-			}
-			return;
-		}
-
-		// ── Task: watch toggle ──
-		case "task-toggle-watch": {
-			const projectId = currentProjectId(state);
-			const task = currentTask(state);
-			if (!projectId || !task) return;
-			try {
-				await api.request.toggleTaskWatch({ taskId: task.id, projectId, watched: !task.watched });
-			} catch (err) {
-				console.error("[menu] toggleTaskWatch failed", err);
-			}
-			return;
-		}
-
-		// ── Task: terminal moves. Routed through the same helper the board uses,
-		// so the chime, the optimistic update and the unpushed-work confirmation
-		// are identical. `alwaysConfirm` because a menu or palette entry is as easy
-		// to mis-hit as the card's one-click ✓, and this destroys the worktree. ──
 		case "task-mark-completed":
-		case "task-mark-cancelled": {
-			const task = currentTask(state);
-			if (!task) return;
-			const project = state.projects?.find((p) => p.id === currentProjectId(state));
-			if (!project) return;
-			await moveTaskToStatus({
-				task,
-				project,
-				newStatus: action === "task-mark-completed" ? "completed" : "cancelled",
-				dispatch: ctx.dispatch,
-				t: ctx.t,
-				alwaysConfirm: true,
-			});
+			await moveCurrentTask(ctx, "completed", true);
 			return;
-		}
-
-		// ── Task: lifecycle moves (non-terminal) ──
+		case "task-mark-cancelled":
+			await moveCurrentTask(ctx, "cancelled", true);
+			return;
 		case "task-move-todo":
 		case "task-move-in-progress":
 		case "task-move-user-questions":
 		case "task-move-review-ai":
-		case "task-move-review-user": {
-			// Same helper as the board, so "Move to To Do" on a running task gets the
-			// reset confirmation and a refused move is reported, not just logged.
-			const task = currentTask(state);
-			const project = state.projects?.find((p) => p.id === currentProjectId(state));
-			if (!task || !project) return;
-			await moveTaskToStatus({
-				task,
-				project,
-				newStatus: TASK_MOVE_STATUS[action],
-				dispatch: ctx.dispatch,
-				t: ctx.t,
-			});
+		case "task-move-review-user":
+			await moveCurrentTask(ctx, TASK_MOVE_STATUS[action]);
 			return;
-		}
-
-		// ── Task: scripts ──
-		case "task-run-script": {
-			const taskId = currentTaskId(state);
-			if (!taskId) return;
-			window.dispatchEvent(new CustomEvent("menu:task-run-script", { detail: { taskId } }));
+		case "task-run-script":
+			runTaskScript(ctx);
 			return;
-		}
-		// ── Task: backend ops we can run with just an id ──
-		case "task-open-in-finder": {
-			const task = currentTask(state);
-			if (!task?.worktreePath) return;
-			try {
-				await api.request.openFolder({ path: task.worktreePath });
-			} catch (err) {
-				console.error("[menu] openFolder failed", err);
-			}
+		case "task-open-in-finder":
+			await openTaskInFinder(ctx);
 			return;
-		}
-		case "task-copy-worktree-path": {
-			const task = currentTask(state);
-			if (!task?.worktreePath) return;
-			try {
-				await navigator.clipboard.writeText(task.worktreePath);
-			} catch (err) {
-				console.error("[menu] clipboard.writeText failed", err);
-			}
+		case "task-copy-worktree-path":
+			await copyTaskWorktreePath(ctx);
 			return;
-		}
 
 		// ── Terminal: pane ops via taskPaneAction (taskId required) ──
 		case "term-close-pane": {
 			// Close Pane opens the two-step visual picker (overlay in TaskTerminal),
 			// matching the toolbar button. Desktop-only menu → no narrow fallback.
-			const taskId = currentTaskId(state);
+			const taskId = currentTaskId(ctx.state);
 			if (!taskId) return;
 			startClosePanePicker(taskId);
 			return;
@@ -450,7 +263,7 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "term-layout-main-h":
 		case "term-layout-main-v":
 		case "term-layout-cycle": {
-			const taskId = currentTaskId(state);
+			const taskId = currentTaskId(ctx.state);
 			if (!taskId) return;
 			const paneAction = PANE_ACTION_MAP[action];
 			try {
@@ -460,24 +273,16 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			}
 			return;
 		}
-
-		// ── Terminal: open the project / home terminal screen directly ──
-		case "term-toggle-project-terminal": {
-			const projectId = currentProjectId(state);
-			// Virtual ("Operations") boards have no project terminal — their synthetic
-			// path is created lazily per-task, so opening one throws "Project path does
-			// not exist". Skip silently when the current project is virtual.
-			const isVirtual = state.projects.find((p) => p.id === projectId)?.kind === "virtual";
-			if (projectId && !isVirtual) navigate(ctx, { screen: "project-terminal", projectId });
+		case "term-toggle-project-terminal":
+			openProjectTerminal(ctx);
 			return;
-		}
 		case "term-open-quick-shell":
-			window.dispatchEvent(new CustomEvent("menu:open-quick-shell"));
+			emitAppEvent("menu:open-quick-shell");
 			return;
 
-		// ── Shortcut reference overlay: open via CustomEvent — App.tsx wires the modal. ──
+		// ── Overlays App.tsx wires ──
 		case "term-cheat-sheet":
-			window.dispatchEvent(new CustomEvent("menu:show-tmux-cheat-sheet"));
+			emitAppEvent("menu:show-tmux-cheat-sheet");
 			return;
 		case "view-agent-traffic-log":
 			openAgentTrafficLog();
@@ -486,13 +291,13 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			toggleFileExplorerForRoute(ctx);
 			return;
 		case "help-keyboard-shortcuts":
-			window.dispatchEvent(new CustomEvent("menu:show-keyboard-shortcuts"));
+			emitAppEvent("menu:show-keyboard-shortcuts");
 			return;
 		case "update-popover-preview":
-			window.dispatchEvent(new CustomEvent("menu:show-update-popover-preview"));
+			emitAppEvent("menu:show-update-popover-preview");
 			return;
 		case "help-explain-screen":
-			window.dispatchEvent(new CustomEvent("menu:enter-help-mode"));
+			emitAppEvent("menu:enter-help-mode");
 			return;
 
 		default:
@@ -521,7 +326,6 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// App
 	"set-theme-light", "set-theme-dark", "set-theme-auto",
 	"set-locale-en", "set-locale-ru", "set-locale-es",
-	"toggle-streamer-mode",
 	"about", "hard-refresh",
 	// View / navigation
 	"view-dashboard", "view-board",
@@ -534,7 +338,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview", "feature-flags",
 	"terminal-perf-overlay",
 	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",
-	"open-new-task", "open-add-project", "open-project-switch", "open-task-switch", "open-combined-switch", "open-command-palette", "find-coordinator",
+	"open-new-task", "open-add-project", "open-project-switch", "open-task-switch", "open-combined-switch", "open-command-palette",
 	// Project
 	"project-settings", "project-import-conversations", "project-pull-main", "project-create-pr",
 	"project-dev-server-start", "project-dev-server-stop", "project-dev-server-restart", "project-dev-server-status",
@@ -550,8 +354,6 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// Help
 	"help-keyboard-shortcuts", "help-explain-screen", "help-documentation", "help-github", "help-report-bug",
 ]);
-
-import type { TaskPaneAction } from "../shared/task-panes";
 
 const PANE_ACTION_MAP: Record<string, TaskPaneAction> = {
 	"term-split-h": { kind: "splitH" },

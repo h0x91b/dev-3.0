@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { getDiagnostics, formatDiagnosticsForCopy, recordDiagnostic } from "../diagnostics";
 import { api } from "../rpc";
-import { hasLoadedExtensions, restartWithExtensionsOff } from "../board-views/plugins";
+import { hasLoadedExtensions, restartWithExtensionsOff } from "../plugins/runtime";
 
 interface Props {
 	children: ReactNode;

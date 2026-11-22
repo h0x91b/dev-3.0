@@ -56,12 +56,25 @@ export function agentPromptDeliveryFromPaneInput(outcome: PaneInputOutcome): Age
  * goes quiet. `delayMs` is the wait promised at that moment, so the prose quotes the
  * clock the hold is actually running rather than a restated constant.
  */
-export function agentPromptHeld(delayMs: number): AgentPromptDelivery {
+export function agentPromptHeld(delayMs: number, behindPrompt = false): AgentPromptDelivery {
+	if (behindPrompt) {
+		return {
+			status: "held",
+			reason: AGENT_PROMPT_HELD_BEHIND_PROMPT,
+			detail: "held: the agent is showing a prompt; delivered after it is answered",
+		};
+	}
 	return {
 		status: "held",
 		detail: `held until the pane goes quiet (about ${Math.round(delayMs / 1000)}s, longer while the user types)`,
 	};
 }
+
+/**
+ * The `reason` of a `held` verdict whose pane shows a permission menu or question
+ * picker: nothing is typed until the prompt is answered, however long that takes (#2342).
+ */
+export const AGENT_PROMPT_HELD_BEHIND_PROMPT = "behind-prompt";
 
 /**
  * Whether the input may reach the agent without another send — the test a caller must

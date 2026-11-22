@@ -9,6 +9,7 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../shared/agent-message-hold-timing";
 import {
+	AGY_SKILL_BODY,
 	ARTIFACT_AUTHORING_STEPS,
 	ARTIFACT_FORMAT_RULES,
 	CLAUDE_SKILL_BODY,
@@ -141,6 +142,26 @@ Run these two commands to learn about available CLI commands and your current ta
 - \`${dialect.cli} current\` — see your current project, task, and status
 
 Then begin working. Do not move the task status on session start; the dev3 status extension loaded into this session already owns that transition.
+`;
+}
+
+/** The dev3 skill dev3 writes into an agy worktree's `.agents/skills/dev3/`. The bare `dev3`: a launcher's HOME makes `~/.dev3.0/bin` the wrong place, while PATH survives. */
+export function buildAgySkillContent(dialect: HookCliDialect = { cli: "dev3", posixShell: hookCliDialect().posixShell }): string {
+	return `---
+name: dev3
+description: "${COMPACT_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${AGY_SKILL_BODY}
+## On session start
+
+Run these two commands to learn about available CLI commands and your current task:
+
+- \`${dialect.cli} --help\` — learn all available CLI commands
+- \`${dialect.cli} current\` — see your current project, task, and status
+
+Then begin working. Do not move the task status on session start; the dev3 hooks loaded into this session already own that transition.
 `;
 }
 
@@ -305,6 +326,8 @@ ${renderConfigFieldTable()}
 
 **A project can opt out entirely.** Project Settings → Project Config has a **Use repository dev3 configuration** switch (on by default). While it is off, dev3 reads neither file for that project and refuses to write them, so writing a config there accomplishes nothing — tell the user to switch it back on first.
 
+**Machine-local switches are not config keys.** \`name\`, \`gitWorkflow\`, \`storageRoot\`, \`useRepoConfig\`, \`boardCopy\` and \`boardCopyMessages\` live in the app's project registry: read them with \`dev3 projects get\`. \`dev3 projects set <key> <value>\` changes one, but only the user (outside any task) or a coordinator may; any other task gets exit 49, so ask the user instead. Exit 50 means the project cannot take that value now (\`boardCopyMessages on\` needs \`boardCopy\` on first; an operations board has no board copy).
+
 ## CLI commands
 
 - \`dev3 config schema [<key>] [--json]\` — what can be configured: type, default, example (no app needed)
@@ -314,6 +337,7 @@ ${renderConfigFieldTable()}
 - \`dev3 config unset <key>[.<name>] [--local] [--main]\` — remove a key so lower layers apply
 - \`dev3 config validate [--json]\` — check the files (exit 47 on errors; unknown keys only warn)
 - \`dev3 config export\` — migrate legacy settings from projects.json
+- \`dev3 projects get [<key>]\` / \`dev3 projects set <key> <value>\` — the machine-local switches above
 `;
 
 const CLAUDE_PROJECT_CONFIG_SKILL = `---
@@ -795,7 +819,7 @@ Where errors surface today — check all three, they do not overlap:
 - **Settings → Extensions** — the status chip and, for **Failed to load**, the error text under the row. The
   only place that always has a load failure.
 - **Browser console** (\`agent-browser console\`, not \`errors\`) — \`[extensions] <id> failed to load: …\` for a
-  load failure, and \`[board-views] view <id> crashed: …\` with a stack for a render crash.
+  load failure, and \`[slots] boardViews item <id> crashed: …\` with a stack for a render crash.
 - **The board** — a red notice when it shows Kanban instead of the picked view: "This board view failed to
   load…" for a render crash, "The <name> extension failed to load…" (with a **Manage views…** button) for a load
   failure.
@@ -812,8 +836,9 @@ There is no log file and no CLI for it yet.
 | **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |
 | **Failed to load**, "registered an undeclared board view …"; the view vanished from the switcher, Kanban with "The <name> extension failed to load…" | Registered id ≠ \`<id>:<view id>\` from the manifest | Make them match; the saved view choice comes back once it loads |
 | **Failed to load**, "tried to register board view …, which another view already owns" | Id collides with a built-in or another extension | Use your own prefix |
-| **Failed to load**, "its plugin failed to start (see the console)" | \`apply\` threw | Read the console error above it |
-| Board shows Kanban with a red "This board view failed to load…" notice; Settings still says **Active** | The component threw while rendering; the choice of view is kept | \`[board-views] view … crashed:\` in the console has the stack |
+| **Failed to load**, "its plugin failed to start (see the console)" | \`apply\` threw while the extension loaded (a plugin injecting \`board\` starts later: next row) | The original error is not printed yet: wrap \`apply\`'s body in try/catch and \`console.error\` it |
+| **Active**, Kanban with no notice, the view missing from the switcher, nothing in the console | \`apply\` threw. With \`inject: ["board", ...]\` it runs only once a board opens, and that throw is not reported yet (known gap, tracked for the opening track) | Wrap \`apply\`'s body in try/catch and \`console.error\` it yourself while debugging |
+| Board shows Kanban with a red "This board view failed to load…" notice; Settings still says **Active** | The component threw while rendering; the choice of view is kept | \`[slots] boardViews item … crashed:\` in the console has the stack |
 | View missing from the switcher, status **Active** | Board is narrow and \`supportsNarrow\` is false, or the view is on another board type | Check \`formFactor\`, widen the window |
 | Status **Extensions off** | Kill switch off, or the app was launched with \`DEV3_EXTENSIONS=off\` | Turn on Settings → Extensions → "Third-party extensions" (desktop only) |
 | Rendered once, never updates | Not subscribed to \`board/changed\`, or cached \`tasks()\` | Use \`useBoard(ctx)\` and read in render |
@@ -1308,6 +1333,7 @@ Off the main flow entirely.
 - **Don't want a repo's dev3 config running on your machine → switch it off.** Project Settings → Project Config has **Use repository dev3 configuration**, on by default. Off, dev3 stops reading \`.dev3/config.json\` and \`.dev3/config.local.json\` for that project — in the checkout and in every task worktree — so its setup, dev, cleanup, env and agent settings never run; settings come from dev3 and saves land in dev3. The choice is stored only in dev3: no file appears in the repo and \`.gitignore\` is untouched. Nothing already running is restarted, and switching back on restores every value at once.
 - **Huge monorepo → check out less.** Toggle off "Include All Files" in Project Settings so every worktree checks out only the directories you actually need.
 - **Machine running out of RAM → hibernate a task.** The header shows how many gigabytes are still free; hover it for the breakdown of who ate the rest, dev3's own tasks included. **Hibernate**, on the open task's session bar, stops that task's agent, terminal, and dev server and frees its ports, while the worktree, your uncommitted changes, notes, and PR state stay untouched. It asks for confirmation first, and spells out the one thing that does not survive: the terminal scrollback. The card greys out and sinks below the live tasks; waking is explicit — open its terminal and pick a plain shell or a resume of the agent's conversation, optionally on another Claude account (the **Resume on** line above the buttons). Agents do the same with \`dev3 task hibernate\` and \`dev3 task wake --resume|--shell\`; when an agent asks, you approve it in the same countdown dialog as an agent-started launch.
+- **Suggest hibernating inactive tasks → Settings → Tasks & Board → Suggest hibernating inactive tasks.** On by default: after 24 hours without a task move, terminal input, agent hook or terminal output, dev3 offers one dialog listing eligible tasks with checkboxes. Merely viewing a task does not reset the clock. The dialog auto-confirms after 30 minutes; touching it stops the countdown permanently. Choose **Not now** to ask again after another full inactivity period. Both delays are configurable. Only a bare single-pane agent session qualifies: working tasks, extra panes/windows, live dev servers, custom columns, Keep alive tasks, peer instances and unknown activity prevent suggestions. Worktree, files, conversations and unrelated processes survive; terminal scrollback does not. Wake explicitly.
 - **Rate limit closing in → hot-swap the account.** The header carries live Claude/Codex rate-limit usage and yellows near the cap; click it to land in **Settings → Agent Accounts**, where several logins per agent CLI sit side by side and the active one switches without a re-login (add one with **Add account**: the provider's own sign-in runs in a terminal inside dev3, on the host, and the account appears once its login is verified — the provider's browser step still applies; or import the login you already have). The switch applies to every *new* agent session dev3 launches — new tasks, spawned agents, bug hunters, auto-review — while running sessions keep theirs, and each launch can pick a non-default account. An **API profile** replaces the subscription login entirely: the Anthropic API, an Anthropic-compatible gateway (OpenRouter, a LiteLLM proxy), or Bedrock, with per-model overrides. With two or more Claude Code or Codex subscription logins, pick **Auto (balanced)** instead of one account — per launch in the account pill, or as the default from the usage flyout / Settings → Accounts: each fresh launch takes the login with the least-used 5h window (then the weekly quota that would expire unused), a batch spreads across logins, API profiles are never used, and a project can exclude logins in **Project Settings → Board → Accounts for Auto**.
 - **Too many projects to scan → group them into Spaces.** Once the project list stops being scannable, a **Space** groups projects: a rail on the dashboard lists every space with its project count, and picking one filters the overview to it — it never navigates away, so nothing gains a second board. Membership is **many-to-many** (a shared service can sit in both \`infra\` and \`client-x\`), and a project that belongs to several renders under each of them, carrying a chip for its other spaces. Create one from **+ New space**, the last entry of the rail's space list — the overview header offers the same button only while the rail is off screen (a narrow window, or your very first space, when there is no rail yet); edit which projects belong from **Edit projects…** in a space's **…** menu — every project is listed with the members ticked, so one dialog both adds and removes (it searches, and can start a brand-new project already linked); change one project's memberships from the row's **Spaces…** action or Project Settings → Spaces. From a shell: \`dev3 spaces list\` shows every space with its members' ids, \`dev3 spaces create "<name>" --project <id>\` makes one, and \`dev3 spaces set|add|remove <space> --project <id>\` changes one project's memberships (\`set\` replaces them all, \`set --no-space\` leaves every space). Rename, delete and reorder live in the same **…** menu, which every space carries twice over: on its rail row and on its dashboard group header — deleting only removes the grouping, never a project. Projects in no space collect under a computed **Home** group; **Home is not a real space** — it is not stored, cannot be renamed, and never appears in a membership picker. The rail appears when the dashboard's own column is at least 1024px wide — not the window, so app chrome and a browser tab count against it; below that width the same filter opens as a sheet from the control beside the dashboard's search field, and whatever you had filtered stays filtered. The overview row above the spaces is **Everything** — it covers the whole list, spaces included. A space can also be marked **Hide on camera** from its **…** menu: in streamer mode its name blurs everywhere it appears (rail, filter sheet, group header, row chips, pickers) — independent of whether any member project is marked sensitive. **Space order:** drag a row in the rail, or use **Move up** / **Move down** in the space header's **…** menu (the path that works by touch and keyboard, where drag does not). Projects reorder by drag within their space — while you drag, every row in that space collapses to its name so the whole list fits on one screen. Neither ever changes membership. With zero spaces the dashboard is exactly the screen it always was.
 - **Work a whole space on ONE kanban.** A space can be the SUBJECT of the board itself, not just a dashboard filter. On a project's board, the button right of the project switcher (⇧⌘U) zooms out to that project's space — one click when it belongs to one space, a two-row menu when it belongs to several, and no button at all when it belongs to none. ⇧⌘K lists spaces alongside projects, and \`dev3://space/<id>\` (https twin: \`https://dev3.h0x91b.com/open.html?space=<id>\`) opens it directly. The space board shows every member project's tasks on one set of columns and is a board you WORK in: drag moves a card, and the move only ever changes status in that card's own repository; **+ New task** leads with a project field limited to the space's members and remembering the last one you used there; the label bar and every search token work as usual. Columns are the union across member projects — same-named custom columns merge into one lane (case- and spacing-insensitive) that says how many projects it covers, and a lane your card's project has no column in is dimmed while you drag rather than refusing you after the drop. Each card names its own project. Two deliberate limits: per-project column renames are ignored there (dev3's canonical status names are used, because two projects' renames cannot be reconciled), and adding, renaming or reordering a column stays on a project's own board. **A project's own board is untouched** — this is an additional view, never a replacement.

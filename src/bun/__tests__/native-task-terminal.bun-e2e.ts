@@ -51,7 +51,7 @@
  * tmpdir removal, non-zero when any check failed.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,6 +83,7 @@ import type { ErrorMessage } from "../native-terminal-registry/protocol";
 import { sendUntilObserved, SHELL_WARMUP_PROBE } from "../native-terminal-registry/__tests__/command-roundtrip";
 import { tmux } from "../tmux";
 import { ptyWsUrl } from "../pty-server-access";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -1050,7 +1051,7 @@ async function run(): Promise<void> {
 		// and tmux never unlinks one. The name is pid-keyed, so nothing else owns it.
 		await tmux.killServer({ socket: sentinelSocket });
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}

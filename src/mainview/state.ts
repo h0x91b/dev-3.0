@@ -90,6 +90,12 @@ export interface AppState {
 	 * why `setTasks` replaces one project's slice instead of the whole list.
 	 */
 	currentProjectTasks: Task[];
+	/**
+	 * The last fetched task list per project, kept across board switches so a
+	 * board seen before renders at once while its refetch runs. Only projects
+	 * already fetched have an entry.
+	 */
+	taskSnapshots: Record<string, Task[]>;
 	loading: boolean;
 	bellCounts: Map<string, number>;
 	/**
@@ -125,6 +131,7 @@ export const initialState: AppState = {
 	historyIndex: 0,
 	projects: [],
 	currentProjectTasks: [],
+	taskSnapshots: {},
 	loading: true,
 	bellCounts: new Map(),
 	bellReasons: new Map(),
@@ -486,7 +493,94 @@ function stepHistory(state: AppState, newIndex: number): AppState {
 	};
 }
 
+/** Upsert `tasks` into the snapshots that already exist for their projects. */
+function upsertIntoSnapshots(snapshots: Record<string, Task[]>, tasks: Task[]): Record<string, Task[]> {
+	let next = snapshots;
+	for (const task of tasks) {
+		const list = next[task.projectId];
+		if (!list) continue;
+		const index = list.findIndex((t) => t.id === task.id);
+		if (list[index] === task) continue;
+		const updated = index === -1 ? [...list, task] : list.map((t, i) => (i === index ? task : t));
+		if (next === snapshots) next = { ...snapshots };
+		next[task.projectId] = updated;
+	}
+	return next;
+}
+
+/** Drop task ids from one project's snapshot, or from every snapshot when `projectId` is null. */
+function dropFromSnapshots(
+	snapshots: Record<string, Task[]>,
+	taskIds: Set<string>,
+	projectId: string | null,
+): Record<string, Task[]> {
+	let next = snapshots;
+	for (const [id, list] of Object.entries(snapshots)) {
+		if (projectId !== null && id !== projectId) continue;
+		if (!list.some((t) => taskIds.has(t.id))) continue;
+		if (next === snapshots) next = { ...snapshots };
+		next[id] = list.filter((t) => !taskIds.has(t.id));
+	}
+	return next;
+}
+
+/** Keeps `taskSnapshots` in step with the actions that change tasks; board scope does not apply here. */
+function reduceSnapshots(snapshots: Record<string, Task[]>, action: AppAction): Record<string, Task[]> {
+	switch (action.type) {
+		case "setTasks":
+			return { ...snapshots, [action.projectId]: action.tasks };
+		case "updateTask": {
+			let next = snapshots;
+			for (const [projectId, list] of Object.entries(snapshots)) {
+				if (projectId !== action.task.projectId && list.some((t) => t.id === action.task.id)) {
+					next = dropFromSnapshots(next, new Set([action.task.id]), projectId);
+				}
+			}
+			return upsertIntoSnapshots(next, [action.task]);
+		}
+		case "addTask":
+			return upsertIntoSnapshots(snapshots, [action.task]);
+		case "removeTask":
+			return dropFromSnapshots(snapshots, new Set([action.taskId]), action.projectId ?? null);
+		case "spawnVariants": {
+			const ids = new Set([action.sourceTaskId, ...action.variants.map((v) => v.id)]);
+			const projectIds = new Set(action.variants.map((v) => v.projectId));
+			let next = snapshots;
+			for (const projectId of projectIds) next = dropFromSnapshots(next, ids, projectId);
+			return upsertIntoSnapshots(next, action.variants);
+		}
+		case "addAttempts": {
+			const attemptIds = new Set(action.newAttempts.map((v) => v.id));
+			const projectIds = new Set([action.updatedSource.projectId, ...action.newAttempts.map((v) => v.projectId)]);
+			let next = snapshots;
+			for (const projectId of projectIds) {
+				const list = snapshots[projectId];
+				const attempts = action.newAttempts.filter((v) => v.projectId === projectId);
+				if (!list || (attempts.length === 0 && !list.some((t) => t.id === action.sourceTaskId || attemptIds.has(t.id)))) continue;
+				const kept = list
+					.filter((t) => !attemptIds.has(t.id))
+					.map((t) => (t.id === action.sourceTaskId ? action.updatedSource : t));
+				if (next === snapshots) next = { ...snapshots };
+				next[projectId] = [...kept, ...attempts];
+			}
+			return next;
+		}
+		case "removeProject": {
+			if (!(action.projectId in snapshots)) return snapshots;
+			const { [action.projectId]: _removed, ...rest } = snapshots;
+			return rest;
+		}
+		default:
+			return snapshots;
+	}
+}
+
 export function reducer(state: AppState, action: AppAction): AppState {
+	const taskSnapshots = reduceSnapshots(state.taskSnapshots, action);
+	return reduceBoard(taskSnapshots === state.taskSnapshots ? state : { ...state, taskSnapshots }, action);
+}
+
+function reduceBoard(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate":
 			return pushRoute(state, action.route, action.inheritSpace !== false);

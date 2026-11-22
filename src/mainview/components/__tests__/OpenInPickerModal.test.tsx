@@ -19,6 +19,8 @@ vi.mock("../../rpc", () => ({
 }));
 
 import { api } from "../../rpc";
+import { installOpenInTargetBuiltins } from "../../open-in-targets/__tests__/install-builtins";
+import { resetPluginsForTests } from "../../plugins/runtime";
 const mockedApi = vi.mocked(api, true);
 
 function renderModal(path = "/tmp/worktree", onClose = vi.fn()) {
@@ -33,9 +35,11 @@ function renderModal(path = "/tmp/worktree", onClose = vi.fn()) {
 }
 
 describe("OpenInPickerModal", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
 		invalidateAvailableApps();
+		resetPluginsForTests();
+		await installOpenInTargetBuiltins();
 	});
 
 	it("renders the available apps as a list", async () => {
@@ -66,7 +70,7 @@ describe("OpenInPickerModal", () => {
 		expect(onClose).toHaveBeenCalled();
 		await waitFor(() => {
 			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
-				appName: "Visual Studio Code",
+				appId: "vscode",
 				path: "/tmp/worktree",
 			});
 		});
@@ -87,7 +91,7 @@ describe("OpenInPickerModal", () => {
 		expect(onClose).toHaveBeenCalled();
 		await waitFor(() => {
 			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
-				appName: "Visual Studio Code",
+				appId: "vscode",
 				path: "/tmp/worktree",
 			});
 		});
@@ -111,7 +115,7 @@ describe("OpenInPickerModal", () => {
 
 		expect(onClose).toHaveBeenCalled();
 		await waitFor(() => {
-			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({ appName: "Cursor", path: "/tmp/worktree" });
+			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({ appId: "cursor", path: "/tmp/worktree" });
 		});
 	});
 

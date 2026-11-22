@@ -26,6 +26,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn as spawnChild } from "node:child_process";
 import { createLogger } from "./logger";
+import { withoutLaunchTaskWiring } from "./pane-launch-env";
 import { NATIVE_SESSION_PROTOCOL_VERSION } from "./native-terminal-registry/protocol";
 import { detachedHostCwd, hostImagesRootDir } from "./native-terminal-registry/paths";
 import {
@@ -242,7 +243,8 @@ export function nativeHostLauncher(runtime: NativeHostRuntime): HostLauncher {
 				// its own build folder. See detachedHostCwd().
 				cwd: detachedHostCwd(),
 				env: {
-					...process.env,
+					// A host outlives this app and starts shells for any task: never the launching pane's wiring.
+					...withoutLaunchTaskWiring(process.env),
 					DEV3_NATIVE_SESSION_ID: sessionId,
 					[NATIVE_SESSION_LAUNCH_ENV]: encodeShellLaunchSpec(opts.launch),
 					...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),

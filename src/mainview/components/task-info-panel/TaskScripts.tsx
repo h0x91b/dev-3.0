@@ -15,7 +15,6 @@ import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import Tooltip from "../Tooltip";
 import { ScriptsIcon } from "../TaskIcons";
-import { useResolvedTaskProject } from "./useResolvedTaskProject";
 
 const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
 
@@ -42,6 +41,7 @@ export function computeScriptsDropdownGeometry(
 
 interface TaskScriptsProps {
 	task: Task;
+	/** The task's resolved project (`useResolvedTaskProject`), so a worktree's own setup script counts. */
 	project: Project;
 	isTaskActive: boolean;
 }
@@ -101,8 +101,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	// row rather than a list entry. It lives here because re-running setup after
 	// dismissing the failure notice is a rare recovery action, and the manifest puts
 	// those in an existing overflow instead of a new always-visible button.
-	const resolvedProject = useResolvedTaskProject(task, project);
-	const hasSetupScript = !!resolvedProject.setupScript?.trim();
+	const hasSetupScript = !!project.setupScript?.trim();
 
 	const refresh = useCallback(async () => {
 		try {

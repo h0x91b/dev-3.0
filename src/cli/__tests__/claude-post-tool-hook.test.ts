@@ -63,6 +63,8 @@ describe("handleClaudePostTool", () => {
 			taskId: "task-1",
 			projectId: "project-1",
 			paneId: "%3",
+			sessionId: "session-1",
+			toolName: "Bash",
 		});
 		// No custom timeout: the default the plain `task move` hook waited on.
 		expect(mockSend.mock.calls[0]).toHaveLength(3);
@@ -132,5 +134,18 @@ describe("handleClaudePostTool", () => {
 		await expect(handleClaudePostTool(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, PANE_ENV)).resolves.toBeUndefined();
 		expect(stdout).toBe("");
 		expect(stderr).toContain("connect ENOENT");
+	});
+
+	it("names the call it reports on, a subagent's too, so dev3 can close its prompt", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		await handleClaudePostTool(JSON.stringify({ ...PAYLOAD, tool_use_id: "toolu_9", agent_id: "agent-a" }), SOCKET, CONTEXT, PANE_ENV);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", {
+			taskId: "task-1",
+			projectId: "project-1",
+			sessionId: "session-1",
+			toolName: "Bash",
+			toolUseId: "toolu_9",
+			agentId: "agent-a",
+		});
 	});
 });

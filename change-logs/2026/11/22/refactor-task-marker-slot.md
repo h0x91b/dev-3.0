@@ -1,0 +1,1 @@
+The native-terminal and foreign-code glyphs on Kanban cards and Active Tasks rows now come from an internal task-marker slot, with no visible change and no measurable render cost on a 2,400-task board.

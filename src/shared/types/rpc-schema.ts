@@ -1,3 +1,4 @@
+import type { AutoHibernateSuggestion } from "../auto-hibernate";
 import type { InterfaceOnboardingRequest, InterfaceOnboardingResponse } from "../interface-onboarding";
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "../conversation-search-core";
@@ -6,7 +7,7 @@ import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-m
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
 import type { AutoAccountPreview } from "../account-routing";
-import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
+import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudePickLaunches, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
@@ -54,7 +55,7 @@ import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry }
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
 import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxRestartImpact, TmuxServerNotice } from "./environment";
-import type { ExplorerListing, FolderListing } from "./file-explorer";
+import type { ExplorerListing, FolderListing, ProjectFolder } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
@@ -225,8 +226,13 @@ export type AppRPCSchema = {
 			};
 			/** One level of the file explorer tree, gated to the task worktree or project checkout. */
 			listExplorerDirectory: {
-				params: { projectId: string; taskId?: string | null; relPath?: string; insideIgnored?: boolean };
+				params: { projectId: string; taskId?: string | null; relPath?: string; insideIgnored?: boolean; folder?: string | null };
 				response: ExplorerListing;
+			};
+			/** Folders shown beside the project in the file explorer and on the dashboard. `fresh` skips the short backend cache. */
+			getProjectFolders: {
+				params: { projectId: string; withBranch?: boolean; fresh?: boolean };
+				response: ProjectFolder[];
 			};
 			listAgentSkills: {
 				params: { projectPath?: string | null };
@@ -579,6 +585,11 @@ export type AppRPCSchema = {
 			getProjectClaudeLogin: {
 				params: { projectId: string };
 				response: ProjectClaudeLogin;
+			};
+			/** Where each launch-picker row (no pick, each account) runs a Claude session. */
+			getClaudePickLaunches: {
+				params: { projectId: string; taskId?: string; resume?: boolean };
+				response: ClaudePickLaunches;
 			};
 			/** Every login some project pins via `CLAUDE_CONFIG_DIR`, one per directory. */
 			listPinnedClaudeLogins: {
@@ -1370,6 +1381,16 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; messageId: string };
 				response: Task;
 			};
+			/** Per task, how many `dev3 message`s wait behind an open agent prompt (#2342). */
+			getHeldAgentMessageCounts: {
+				params: Record<string, never>;
+				response: Record<string, number>;
+			};
+			/** The user sees no prompt: deliver the task's prompt-held messages now. */
+			sendHeldAgentMessagesNow: {
+				params: { taskId: string };
+				response: { released: number };
+			};
 			/** Deliver a pending scheduled message immediately and remove it. */
 			sendScheduledMessageNow: {
 				params: { taskId: string; projectId: string; messageId: string };
@@ -1622,7 +1643,8 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			openInApp: {
-				params: { appName: string; path: string };
+				/** `appId` must name a default or user-configured app; anything else is refused. */
+				params: { appId: string; path: string };
 				response: void;
 			};
 			/**
@@ -1806,7 +1828,7 @@ export type AppRPCSchema = {
 				response: PRInfo[];
 			};
 			setTmuxTheme: {
-				params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" };
+				params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system"; beigeTone?: { depth: number; warmth: number } };
 				response: void;
 			};
 			/**
@@ -1973,6 +1995,12 @@ export type AppRPCSchema = {
 			 */
 			setActiveContext: {
 				params: { projectId: string | null; taskId: string | null };
+				response: void;
+			};
+			getAutoHibernateSuggestion: { params: {}; response: AutoHibernateSuggestion | null };
+			presentAutoHibernateSuggestion: { params: { id: string }; response: void };
+			respondAutoHibernateSuggestion: {
+				params: { id: string; action: "hibernate" | "snooze" | "hold"; taskIds: string[] };
 				response: void;
 			};
 			/**
@@ -2265,6 +2293,9 @@ export type AppRPCSchema = {
 			 * consumePendingDeepLinkNav pull instead — see decisions/144.
 			 */
 			openDeepLink: DeepLinkNav;
+			/** Automatic hibernation notification; the renderer owns localized copy. */
+			taskAutoHibernated: { projectId: string; taskId: string };
+			autoHibernateSuggestionChanged: { suggestion: AutoHibernateSuggestion | null };
 			/**
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.
@@ -2331,6 +2362,8 @@ export type AppRPCSchema = {
 			 * every accumulated reason instead of adding one.
 			 */
 			cliAttention: { taskId: string; reason: string; kind?: "questions"; clear?: boolean };
+			/** A task's count of messages waiting behind an open agent prompt changed; 0 clears it. */
+			heldAgentMessages: { taskId: string; count: number };
 			/**
 			 * CLI-shared images (`dev3 show-image`). Carries the task's shared images
 			 * so the renderer can raise the attention badge and open the lightbox

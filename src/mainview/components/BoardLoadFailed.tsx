@@ -1,6 +1,6 @@
 import { useT } from "../i18n";
 import { useRpcStatus } from "../hooks/useDiagnostics";
-import { hasLoadedExtensions, restartWithExtensionsOff } from "../board-views/plugins";
+import { hasLoadedExtensions, restartWithExtensionsOff } from "../plugins/runtime";
 
 /**
  * Board-level error state: the task fetch failed and there is nothing cached to

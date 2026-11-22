@@ -2234,7 +2234,7 @@
 			"deletionPrerequisite": "Removed together with the production code it exercises."
 		},
 		{
-			"path": "src/mainview/components/__tests__/TaskInfoPanel.test.tsx",
+			"path": "src/mainview/components/__tests__/TaskHeader.test.tsx",
 			"occurrences": 1,
 			"fingerprint": "aed8e5ab931bc030",
 			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
@@ -2462,7 +2462,7 @@
 			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
 		},
 		{
-			"path": "src/mainview/components/TaskInfoPanel.tsx",
+			"path": "src/mainview/components/TaskHeader.tsx",
 			"occurrences": 9,
 			"fingerprint": "5eb21f84eec60fde",
 			"via": "override",
@@ -2470,7 +2470,7 @@
 			"roadmapItem": "INT-001",
 			"depth": "caller",
 			"dependencyKind": "active",
-			"consumer": "Embeds TaskTmuxControls in the task info panel.",
+			"consumer": "Embeds TaskTmuxControls in the task header.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
 		},
 		{

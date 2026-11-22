@@ -155,8 +155,16 @@ vi.mock("../components/GlobalSettings", () => ({
 vi.mock("../components/Changelog", () => ({
 	default: (_props: { navigate: unknown; goBack: unknown; canGoBack: unknown }) => <div data-testid="changelog-screen" />,
 }));
-vi.mock("../components/ProjectView", () => ({
-	default: (props: {
+// The screens offer the task dock a real seat, as the workspace pane does, and report whether
+// the artifact panel sits in it as a tab.
+vi.mock("../components/ProjectView", async () => {
+	const { default: TaskDock } = await import("../task-panels/TaskDock");
+	const { dockedPanelIds, useTaskDock } = await import("../task-panels/dock-store");
+	const { ARTIFACT_PANEL_ID } = await import("../task-panels/artifact-panel");
+	function ArtifactDocked({ taskId, children }: { taskId: string; children: (docked: boolean) => React.ReactNode }) {
+		return <>{children(dockedPanelIds(useTaskDock(taskId)).includes(ARTIFACT_PANEL_ID))}</>;
+	}
+	return { default: (props: {
 		projectId: string;
 		spaceId?: string;
 		activeTaskId?: string;
@@ -164,10 +172,11 @@ vi.mock("../components/ProjectView", () => ({
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
 		bellReasons?: Map<string, string[]>;
-		dockArtifact?: boolean;
+		route?: { diff?: unknown };
 		dispatch?: (action: { type: string; request?: unknown }) => void;
 		navigationGuardRef?: { current: { isDirty: () => boolean; onSave: () => Promise<void> } | null };
 	}) => (
+		<ArtifactDocked taskId={props.activeTaskId ?? ""}>{(dockArtifact) => (
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
@@ -175,19 +184,33 @@ vi.mock("../components/ProjectView", () => ({
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-detail-id={props.taskDetailId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
-			data-dock-artifact={props.dockArtifact ? "true" : "false"}
+			data-dock-artifact={dockArtifact ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
 			data-bell-reasons={JSON.stringify(props.bellReasons?.get("t-overflow") ?? [])}
 		>
 			<button data-testid="mock-make-dirty" onClick={() => { if (props.navigationGuardRef) props.navigationGuardRef.current = { isDirty: () => true, onSave: async () => {} }; }} />
 			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
 			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
+			{props.activeTaskId && <div className="flex"><TaskDock taskId={props.activeTaskId} covered={!!props.route?.diff} canDock /></div>}
 		</div>
-	),
-}));
-vi.mock("../components/TaskWorkspaceView", () => ({
-	default: (props: { immersive?: boolean; dockArtifact?: boolean }) => <div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} data-dock-artifact={props.dockArtifact ? "true" : "false"} />,
-}));
+		)}</ArtifactDocked>
+	) };
+});
+vi.mock("../components/TaskWorkspaceView", async () => {
+	const { default: TaskDock } = await import("../task-panels/TaskDock");
+	const { dockedPanelIds, useTaskDock } = await import("../task-panels/dock-store");
+	const { ARTIFACT_PANEL_ID } = await import("../task-panels/artifact-panel");
+	return {
+		default: function TaskScreen(props: { taskId: string; immersive?: boolean }) {
+			const docked = dockedPanelIds(useTaskDock(props.taskId)).includes(ARTIFACT_PANEL_ID);
+			return (
+				<div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} data-dock-artifact={docked ? "true" : "false"}>
+					<div className="flex"><TaskDock taskId={props.taskId} covered={false} canDock={!props.immersive} /></div>
+				</div>
+			);
+		},
+	};
+});
 vi.mock("../components/TaskTerminal", () => ({
 	default: () => <div data-testid="task-screen" />,
 }));
@@ -254,6 +277,7 @@ import { setStreamerMode } from "../streamer-mode";
 import { setAgentTrafficEnabledForTests, syncAgentTrafficFromGlobalSettings } from "../agent-traffic-flag";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT, openAgentTrafficLog } from "../agent-traffic-events";
 import { RPC_STATUS_EVENT } from "../diagnostics";
+import { installTaskPanelBuiltins } from "../task-panels/__tests__/install-builtins";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
 
@@ -882,6 +906,8 @@ describe("App keyboard shortcuts", () => {
 			{ ...base, id: "p4", name: "Delta" },
 		];
 		// Mixed order: Alpha, the space (slot of Beta), Delta.
+		// Off, the dashboard lists the space first: Beta, Gamma, then Home: Alpha, Delta.
+		const alphaDigit = (follow: boolean) => (follow ? "1" : "3");
 		const spacesFile = {
 			version: 1,
 			spaces: [{ id: "sp_a", name: "Client", parentId: null, projectIds: ["p2", "p3"], createdAt: 1 }],
@@ -968,7 +994,8 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(follow);
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
-			press({ key: "1", code: "Digit1", metaKey: true });
+			const digit = alphaDigit(follow);
+			press({ key: digit, code: `Digit${digit}`, metaKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-space-id", "");
 			expect(project()).toHaveAttribute("data-task-view", "true");
@@ -981,7 +1008,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(false);
 			await userEvent.click(screen.getByTestId("mock-make-dirty"));
-			press({ key: "1", code: "Digit1", metaKey: true });
+			press({ key: "3", code: "Digit3", metaKey: true });
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
 			expect(project()).toHaveAttribute("data-project-id", "p1");
@@ -1032,7 +1059,7 @@ describe("App keyboard shortcuts", () => {
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
 			});
 			await renderWith(false);
-			press({ key: "1", code: "Digit1", metaKey: true });
+			press({ key: "3", code: "Digit3", metaKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1043,7 +1070,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(false);
 			press({ key: "g", code: "KeyG" });
-			press({ key: "1", code: "Digit1" });
+			press({ key: "3", code: "Digit3" });
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1101,18 +1128,20 @@ describe("App keyboard shortcuts", () => {
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 		});
 
-		it("g then 1 skips Operations in both modes", async () => {
-			await renderWith(false);
+		it.each([true, false])("g then 1 skips Operations (follow=%s)", async (follow) => {
+			await renderWith(follow);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "1", code: "Digit1" });
-			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-project-id", follow ? "p1" : "p2");
 		});
 
-		it("with the setting off, ⌘2 is the second project, never a space", async () => {
+		it("with the setting off, ⌘N walks the dashboard's rows, the space's members first, never a space", async () => {
 			await renderWith(false);
-			press({ key: "2", code: "Digit2", metaKey: true });
-			expect(project()).toHaveAttribute("data-project-id", "p2");
-			expect(project()).toHaveAttribute("data-space-id", "");
+			const opened = ["1", "2", "3", "4"].map((digit) => {
+				press({ key: digit, code: `Digit${digit}`, metaKey: true });
+				return [project().getAttribute("data-project-id"), project().getAttribute("data-space-id")];
+			});
+			expect(opened).toEqual([["p2", ""], ["p3", ""], ["p1", ""], ["p4", ""]]);
 		});
 	});
 
@@ -1779,6 +1808,8 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("CLI shared-artifact updates", () => {
+		// The viewer is the task dock's built-in artifact panel.
+		beforeEach(installTaskPanelBuiltins);
 		const oneProject = [
 			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 		];
@@ -3233,6 +3264,26 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t2");
+			});
+		});
+
+		it("opens a task that is not running as its board card (#2347)", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(dlProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t2", projectId: "p2", archived: true },
+				}));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-detail-id", "t2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
 			});
 		});
 

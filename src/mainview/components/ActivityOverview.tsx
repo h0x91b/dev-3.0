@@ -11,6 +11,7 @@ import { toast } from "../toast";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/spaceGroups";
+import { ProjectFoldersRows, ProjectFoldersToggle } from "./DashboardProjectFolders";
 import ProjectSpaceChips from "./ProjectSpaceChips";
 import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
@@ -25,6 +26,9 @@ import { statusKey } from "../i18n/status";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import ProjectActionButtons from "./ProjectActionButtons";
+import { runMenuItem, type MenuRow } from "../plugins/menu-rows";
+import { resolveProjectActions, type ProjectActionItem, type ProjectActionRows, type ProjectActionScope } from "../project-actions/registry";
+import { useProjectActionEntries } from "../project-actions/useProjectActions";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import PriorityBadge from "./PriorityBadge";
@@ -57,6 +61,10 @@ interface ActivityOverviewProps {
 	/** "Number keys follow spaces": one top-level list of spaces and standalone projects, draggable. */
 	digitsFollowSpaces?: boolean;
 }
+
+const NO_PROJECT_ACTIONS: ProjectActionRows = { actions: [], foreign: [], danger: [] };
+/** Extension actions a project's sheet shows before Remove; the rest are cut (docs/extensions-platform.md). */
+const SHEET_EXTENSION_ACTION_LIMIT = 5;
 
 /** Statuses worth their own row — they're waiting on a human (questions, your
  * review, or an open PR review). Tasks parked in a custom column always get a
@@ -144,6 +152,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// touch, so per-project actions + reorder collapse into a single kebab that
 	// opens this action sheet (the project whose id is set here).
 	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
+	// One subscription per dashboard: every row's cluster and the sheet draw from these entries.
+	const projectActionEntries = useProjectActionEntries(true);
 	// The space whose block the sheet's row sat in, if any: its Move up / down steps there.
 	const [actionSheetSpaceId, setActionSheetSpaceId] = useState<string | null>(null);
 	// The order the sheet just sent for a space, while that request is out: taps
@@ -406,7 +416,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		: null;
 	const sheetIndex = sheetProject ? visibleProjects.findIndex((p) => p.id === sheetProject.id) : -1;
 	const sheetIsVirtual = sheetProject?.kind === "virtual";
-	const sheetIsBuiltin = sheetProject ? isBuiltinOpsProject(sheetProject) : false;
 	// A standalone project in the mixed list steps within that list, not the flat project order.
 	const sheetMixedIndex = mixedActive && sheetProject
 		? mixedOrder.entries.findIndex((e) => e.kind === "project" && e.project.id === sheetProject.id)
@@ -432,6 +441,30 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 			? sheetMixedIndex === mixedOrder.entries.length - 1
 			: sheetIndex === visibleProjects.length - 1 || !!sheetIsVirtual;
 	const sheetOffersReorder = !!onReorderProjects && (sheetInSpace || sheetInMixed || !digitsFollowSpaces);
+	// The sheet's actions come from the projectActions slot; reorder stays the dashboard's own list mechanics.
+	const sheetScope: ProjectActionScope | null = sheetProject && {
+		project: sheetProject,
+		placement: "sheet",
+		t,
+		navigate,
+		removeProject: onRemoveProject ? () => onRemoveProject(sheetProject.id) : undefined,
+		anchor: null,
+	};
+	const sheetRows = sheetScope ? resolveProjectActions(projectActionEntries, sheetScope) : NO_PROJECT_ACTIONS;
+	function sheetButton(row: MenuRow<ProjectActionItem>, danger = false) {
+		return (
+			<ActionSheetButton
+				key={row.key}
+				glyph={row.item.glyph}
+				label={row.label}
+				danger={danger}
+				onClick={() => {
+					closeActionSheet();
+					if (sheetScope) runMenuItem("projectActions", row.item.id, row.item.run, sheetScope);
+				}}
+			/>
+		);
+	}
 
 	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
 		const ids = visibleProjects.map((project) => project.id);
@@ -703,10 +736,12 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							)}
 						</div>
 					</button>
+					{!compact && <ProjectFoldersToggle project={project} />}
 					{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
 					<div className={compact ? "hidden" : "hidden md:flex"}>
 						<ProjectActionButtons
 							project={project}
+							entries={projectActionEntries}
 							navigate={navigate}
 							onRemove={onRemoveProject}
 							onOpenSpaces={allSpaceGroups !== null ? openSpacesPicker : undefined}
@@ -744,6 +779,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					)}
 				</div>
 
+				{!compact && <ProjectFoldersRows project={project} navigate={navigate} />}
 				{hasActiveTasks && !compact && (
 					<div className="border-t border-edge">
 						<DashboardCoordinatorRows
@@ -1148,42 +1184,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						testId="activity-project-action-sheet"
 					>
 						<div className="flex flex-col">
-							<ActionSheetButton
-								glyph={""}
-								label={t("activity.openBoard")}
-								onClick={() => {
-									closeActionSheet();
-									openProject(sheetProject.id);
-								}}
-							/>
-							<ActionSheetButton
-								glyph={"\u{F0493}"}
-								label={t("header.projectSettings")}
-								onClick={() => {
-									closeActionSheet();
-									navigate({ screen: "project-settings", projectId: sheetProject.id });
-								}}
-							/>
-							{!sheetIsVirtual && (
-								<ActionSheetButton
-									glyph={"\u{F115}"}
-									label={t("dashboard.openInFinder")}
-									onClick={() => {
-										closeActionSheet();
-										api.request.openFolder({ path: sheetProject.path }).catch(() => {});
-									}}
-								/>
-							)}
-							{!sheetIsVirtual && (
-								<ActionSheetButton
-									glyph={"\u{F489}"}
-									label={t("activity.openTerminal")}
-									onClick={() => {
-										closeActionSheet();
-										navigate({ screen: "project-terminal", projectId: sheetProject.id });
-									}}
-								/>
-							)}
+							{sheetRows.actions.map((row) => sheetButton(row))}
 							{sheetOffersReorder && (
 								<>
 									<ActionSheetButton
@@ -1200,17 +1201,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									/>
 								</>
 							)}
-							{onRemoveProject && !sheetIsBuiltin && (
-								<ActionSheetButton
-									glyph={"\u{F0A79}"}
-									label={t("dashboard.remove")}
-									danger
-									onClick={() => {
-										closeActionSheet();
-										void onRemoveProject(sheetProject.id);
-									}}
-								/>
-							)}
+							{sheetRows.foreign.slice(0, SHEET_EXTENSION_ACTION_LIMIT).map((row) => sheetButton(row))}
+							{sheetRows.danger.map((row) => sheetButton(row, true))}
 						</div>
 					</BottomSheet>
 				)}

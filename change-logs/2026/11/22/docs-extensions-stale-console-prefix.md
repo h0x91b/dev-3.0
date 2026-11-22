@@ -1,0 +1,1 @@
+The dev3-extensions skill and extension docs now name the real render-crash console line (`[slots] boardViews item <id> crashed:`) and say honestly that an extension whose `apply()` throws after load stays Active with no notice, a known gap now listed among the opening-track preconditions.

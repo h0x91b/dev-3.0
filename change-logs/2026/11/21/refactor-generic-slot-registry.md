@@ -1,0 +1,1 @@
+Board views now register through a generic `SlotRegistry` (`src/mainview/plugins/slot-registry.ts`) that later plugin slots will share; the plugin runtime no longer depends on the board, and its exports lost their board names (`startPlugins`, `syncPlugins`, `subscribePlugins`). No behaviour change.

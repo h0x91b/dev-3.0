@@ -1,5 +1,7 @@
 # The artifact panel is the default again; the popup becomes one opt-in setting
 
+Superseded in part on 2026-11-21 by `decisions/2026/11/21/artifact-viewer-dock-panel.md`: `utils/artifact-dock.ts`, `dockArtifact` and the `App` state are gone; the viewer is the task dock's artifact panel and floats as the popup under the preference. Default-dock and the opt-in popup stand.
+
 Amended on 2026-09-07 by `decisions/2026/09/07/docked-artifact-waits-offscreen.md`: "no slot means
 popup" no longer covers a route change. A viewer that opened docked and whose task the route left
 renders hidden instead; only a genuinely paneless entry point still falls back to the popup.

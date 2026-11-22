@@ -41,6 +41,22 @@ describe("collectPiUsage (pi)", () => {
 		}]);
 	});
 
+	it("tags usage with its provider's billing, using the agent dir's own auth.json for ambiguous providers", () => {
+		write(join(sessions(), "a.jsonl"), [
+			assistant("e1", "gpt-6-sol", usage(1, 1), { provider: "openai-codex" }),
+			assistant("e2", "claude-sonnet-4-6", usage(1, 1)),
+			assistant("e3", "llama", usage(1, 1), { provider: "cerebras" }),
+		]);
+		const account = join(home, "account");
+		write(join(account, "sessions", "x", "b.jsonl"), [assistant("e4", "claude-sonnet-4-6", usage(1, 1))]);
+		writeFileSync(join(account, "auth.json"), JSON.stringify({ anthropic: { type: "oauth" } }));
+		const state = newUsageState();
+		collectPiUsage(state, "pi", piSessionRoots("pi", home, [account]));
+		expect([...state.records.values()].map((r) => [r.model, r.billing])).toEqual([
+			["gpt-6-sol", "subscription"], ["claude-sonnet-4-6", undefined], ["llama", "api"], ["claude-sonnet-4-6", "subscription"],
+		]);
+	});
+
 	it("prices the physical model that answered a virtual model", () => {
 		write(join(sessions(), "a.jsonl"), [assistant("e1", "router", usage(10, 1), { responseModel: "claude-opus-4-8" })]);
 		const state = newUsageState();

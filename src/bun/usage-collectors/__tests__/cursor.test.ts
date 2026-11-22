@@ -41,7 +41,7 @@ describe("Cursor usage collection", () => {
 		recordCursorHookUsage({ ...PAYLOAD, hook_event_name: "stop", status: "aborted" }, TIMESTAMP, root);
 		const state = newUsageState();
 		collectCursorUsage(state, root);
-		expect([...state.records.values()]).toEqual([parseCursorHookUsage(PAYLOAD, TIMESTAMP)!.usage]);
+		expect([...state.records.values()]).toEqual([{ ...parseCursorHookUsage(PAYLOAD, TIMESTAMP)!.usage, billing: "subscription" }]);
 	});
 
 	it("counts the successful generation once when both response and stop hooks report it", () => {
@@ -49,7 +49,7 @@ describe("Cursor usage collection", () => {
 		recordCursorHookUsage({ ...PAYLOAD, hook_event_name: "stop", status: "completed" }, TIMESTAMP + 100, root);
 		const state = newUsageState();
 		collectCursorUsage(state, root);
-		expect([...state.records.values()]).toEqual([parseCursorHookUsage(PAYLOAD, TIMESTAMP)!.usage]);
+		expect([...state.records.values()]).toEqual([{ ...parseCursorHookUsage(PAYLOAD, TIMESTAMP)!.usage, billing: "subscription" }]);
 	});
 
 	it("ignores lifecycle hooks unrelated to completed generations", () => {
@@ -76,7 +76,7 @@ describe("Cursor usage collection", () => {
 		const state = newUsageState();
 		collectCursorUsage(state, root);
 		collectCursorUsage(state, root);
-		expect([...state.records.values()]).toEqual([parseCursorHookUsage(PAYLOAD, TIMESTAMP)!.usage]);
+		expect([...state.records.values()]).toEqual([{ ...parseCursorHookUsage(PAYLOAD, TIMESTAMP)!.usage, billing: "subscription" }]);
 	});
 
 	it("keeps generations separate even when models and token counts match", () => {

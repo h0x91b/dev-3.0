@@ -1,0 +1,1 @@
+The ⇧⌘P command palette now lists commands registered into an internal `commands` slot by a built-in plugin, each running itself instead of being routed by id through the menu router; the palette shows the same commands in the same order, and the native menu is unchanged.

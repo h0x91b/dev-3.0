@@ -1,6 +1,7 @@
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 import { claudeHookPaneId } from "./claude-prompt";
+import { claudeToolHookFields } from "./claude-tool-fields";
 
 /**
  * What matters in Claude Code's `PostToolUse` payload. `agent_id` is present only
@@ -49,11 +50,17 @@ export async function handleClaudePostTool(
 	if (!socketPath || !context?.taskId) return;
 	const payload = parsePayload(rawInput);
 	const paneId = payload && !payload.subagent ? claudeHookPaneId(env) : undefined;
+	// The call it reports on closes its prompt in the ledger, a subagent's included.
+	const { sessionId, toolName, toolUseId, agentId } = payload ? claudeToolHookFields(rawInput, env) : {};
 	try {
 		const response = await sendRequest(socketPath, "task.claudePostToolUse", {
 			taskId: context.taskId,
 			...(context.projectId ? { projectId: context.projectId } : {}),
 			...(paneId ? { paneId } : {}),
+			...(sessionId ? { sessionId } : {}),
+			...(toolName ? { toolName } : {}),
+			...(toolUseId ? { toolUseId } : {}),
+			...(agentId ? { agentId } : {}),
 		});
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude tool hook: ${response.error || "request failed"}\n`);

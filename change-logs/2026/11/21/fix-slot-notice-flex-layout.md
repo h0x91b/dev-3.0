@@ -1,0 +1,1 @@
+The "extension failed to load" notice no longer pushes the Active Tasks sidebar or a full-screen body past the bottom of its column: the content now shrinks to make room, and the sidebar uses a compact notice that fits its narrow width.

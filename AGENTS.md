@@ -223,13 +223,13 @@ Rules:
 
 1. **Hidden value** — invisible or unlikely to be discovered by normal UI exploration (keyboard shortcut, hover/drag/right-click behavior, CLI power, non-obvious workflow). If a visible button/badge/toggle explains itself on screen, a tip about it is spam.
 2. **Honest score ≥ 3** on the rubric below. A would-be 1–2 means no tip (rare exception: a truly invisible auto-behavior that saves real pain may ship at 2).
-3. **Not already covered** — check `ALL_TIPS` first; if the feature, or its cluster (stats screen, mobile gestures, remote access, diff review…), already has 2–3 tips, update/reword the existing tip in the same commit instead of stacking a near-duplicate.
+3. **Not already covered** — check `BUILTIN_TIPS` first; if the feature, or its cluster (stats screen, mobile gestures, remote access, diff review…), already has 2–3 tips, update/reword the existing tip in the same commit instead of stacking a near-duplicate.
 
 **Count:** 0 by default; 1 if the gate passes; 2 only for a genuine flagship (score 5). Ship tips in the same commit as the feature. **Never write a tip for:** self-describing UI, visible visual states (spinners, glows, badges), settings toggles that restate their label, behavior users already expect, anything met naturally on the happy path.
 
-**Files:** registry `src/mainview/tips.ts` (`ALL_TIPS` array); i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. **Content:** title 3–6 words; body one sentence max ~120 chars — tell the user *what to do*, no fluff.
+**Files:** the built-in tips are `BUILTIN_TIPS` in `src/mainview/tips/builtins.ts`, registered into the internal `tips` slot (`src/mainview/tips/registry.ts`); rotation, cool-down and snooze stay in the host (`src/mainview/tips/rotation.ts`). Ids are `builtin:tip.<key>` and `<key>` is what the persisted tip state remembers, so never rename one. i18n keys `tip.<camelKey>.title` / `tip.<camelKey>.body` in `{en,ru,es}.ts`. **Content:** title 3–6 words; body one sentence max ~120 chars — tell the user *what to do*, no fluff.
 
-**The 1–5 coolness rubric lives on the `TipScore` type** in `src/mainview/tips.ts` — read it there when scoring, and keep it there when it changes. Append new tips at the end of `ALL_TIPS`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `ALL_TIPS` entry + keys in all three locales).
+**The 1–5 coolness rubric lives on the `TipScore` type** in `src/mainview/tips/registry.ts` — read it there when scoring, and keep it there when it changes. Append new tips at the end of `BUILTIN_TIPS` (registration order is rotation order within a tier), then regenerate the pin with `bunx vitest run --config vitest.config.ts src/mainview/tips -u`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `BUILTIN_TIPS` entry + keys in all three locales).
 
 ## The `ask-dev3` skill
 
@@ -332,7 +332,7 @@ The project board is not one component: `BoardHost` (`src/mainview/board-views/`
 
 - **Kanban is the fallback view**: always on, cannot be disabled, and the board falls back to it when another view fails. The old `KanbanBoard` is gone; a change to how cards behave goes through `BoardCardBindings` (`BoardTaskCard.tsx`) and the filter through `useBoardFilter`, never through props threaded into `KanbanColumn`.
 - **`ctx.board` is a public API.** Third-party extensions are written against it, so a breaking change to `BoardService` or `BoardViewDef` must bump `EXTENSION_API_VERSION` (`src/shared/extensions.ts`) and update `docs/extensions.md` plus `examples/board-view-extension/` in the same commit.
-- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/board-views/plugins.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
+- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/plugins/runtime.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
 
 ### Renderer asset loading (dev-channel Vite fallback)
 
@@ -423,7 +423,7 @@ All user-facing renderer strings are localized via `src/mainview/i18n/`; locales
 **Framework: Vitest** with `happy-dom` and React Testing Library. Three configs run as three independent processes: `vitest.config.ts` (renderer), `vitest.config.bun.ts` (backend), `vitest.config.cli.ts` (CLI).
 
 ```bash
-bun run test          # renderer + backend + cli in parallel, minus 8 slow e2e files (~6s)
+bun run test          # renderer + backend + cli in parallel, minus 9 slow e2e files (~6s)
 bun run test:full     # everything incl. slow e2e — what CI runs, and CI is where it runs
 bun run test:bun      # backend only
 bun run test:cli      # CLI only

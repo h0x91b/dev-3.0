@@ -68,7 +68,7 @@ vi.mock("../../TerminalView", () => ({
 }));
 
 // Other complex sub-components
-vi.mock("../TaskInfoPanel", () => ({ default: () => <div data-testid="task-info-panel" /> }));
+vi.mock("../TaskHeader", () => ({ default: () => <div data-testid="task-info-panel" /> }));
 vi.mock("../NativeViewerBar", () => ({ default: () => null }));
 vi.mock("../MobilePaneCarousel", () => ({
 	default: ({ children }: { children: React.ReactNode }) => (

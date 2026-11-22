@@ -4,6 +4,8 @@ import TaskDetailModal from "../TaskDetailModal";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task, TaskStatus } from "../../../shared/types";
 import type { AppAction } from "../../state";
+import { resetPluginsForTests } from "../../plugins/runtime";
+import { installTaskDetailSectionBuiltins } from "../../task-detail-sections/__tests__/install-builtins";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -125,8 +127,10 @@ function renderModal(
 }
 
 describe("TaskDetailModal", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
+		resetPluginsForTests();
+		await installTaskDetailSectionBuiltins();
 	});
 
 	describe("focus trap", () => {
@@ -769,6 +773,27 @@ describe("TaskDetailModal", () => {
 		it("omits the row for a task that never had a PR", () => {
 			renderModal(makeTodoTask({ status: "completed" }));
 			expect(screen.queryByTestId("task-detail-pull-requests")).toBeNull();
+		});
+	});
+
+	describe("archived reopen", () => {
+		it.each(["completed", "cancelled"] as const)("reopens a %s task to Agent is Working in one click", async (status) => {
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockResolvedValue(makeTodoTask({ status: "in-progress" }));
+
+			renderModal(makeTodoTask({ status }), { dispatch, onClose });
+			await user.click(screen.getByTestId("archived-task-reopen"));
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", newStatus: "in-progress" }),
+			));
+			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+				type: "updateTask",
+				task: expect.objectContaining({ status: "in-progress" }),
+			}));
+			expect(onClose).toHaveBeenCalled();
 		});
 	});
 });

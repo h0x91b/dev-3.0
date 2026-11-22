@@ -237,6 +237,15 @@ export function providerCannotListModels(catalog: ModelCatalog, catalogModelId: 
  * user-chosen label — it matches only by luck.
  */
 export function nativeModelIdForWireName(catalog: ModelCatalog, wireName: string): string | undefined {
+	return catalogModelForWireName(catalog, wireName)?.model.modelId;
+}
+
+/** The provider a routed session's wire name was paid through, or undefined when it is not one of ours. */
+export function catalogProviderForWireName(catalog: ModelCatalog, wireName: string): CatalogProvider | undefined {
+	return catalogModelForWireName(catalog, wireName)?.provider;
+}
+
+function catalogModelForWireName(catalog: ModelCatalog, wireName: string): { provider: CatalogProvider; model: CatalogModel } | undefined {
 	// A launched session may carry the 1M marker in the model it reports, and the
 	// name behind it is the same model — pricing must not lose it over a suffix.
 	if (wireName.endsWith(EXTENDED_CONTEXT_SUFFIX)) wireName = wireName.slice(0, -EXTENDED_CONTEXT_SUFFIX.length);
@@ -246,7 +255,8 @@ export function nativeModelIdForWireName(catalog: ModelCatalog, wireName: string
 	const name = wireName.slice(slash + 1);
 	const provider = catalog.providers.find((p) => sidecarProviderKey(p) === providerKey);
 	if (!provider) return undefined;
-	return catalog.models.find((m) => m.providerId === provider.id && m.name === name)?.modelId;
+	const model = catalog.models.find((m) => m.providerId === provider.id && m.name === name);
+	return model ? { provider, model } : undefined;
 }
 
 /** How a catalog model is addressed on the wire: `<provider>/<name>`. */

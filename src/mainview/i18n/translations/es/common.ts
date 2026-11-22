@@ -71,6 +71,7 @@ const common = {
 	"agentLaunch.resumeNoteAccount": "Reabre las conversaciones guardadas, cada una con su propio agente y preset. Los paneles de Claude pueden pasar a otra cuenta abajo.",
 	"agentLaunch.resumeConversation": "Conversación {id}",
 	"agentLaunch.resumeLatest": "Sin id de conversación guardado: el agente abre la última",
+	"agentLaunch.resumeStartAgain": "Iniciar de nuevo (el agente no se inició)",
 	"agentLaunch.resume": "Reanudar",
 	"agentLaunch.resuming": "Reanudando…",
 	"agentLaunch.initialPrompt": "Instrucciones iniciales",
@@ -409,6 +410,8 @@ const common = {
 
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Tareas activas",
+	"sidebar.crashed": "Esta barra lateral no se pudo cargar, así que se muestra la lista integrada de tareas activas.",
+	"sidebar.extensionFailed": "La extensión «{name}» no se cargó, así que se muestra la lista integrada de tareas activas.",
 	"sidebar.noActiveTasks": "Sin tareas activas",
 	"sidebar.noActiveTasksHint": "Inicia una tarea desde el tablero para verla aquí.",
 	"sidebar.allTasksHidden": "Todas las tareas activas están ocultas",
@@ -706,7 +709,10 @@ const common = {
 	"artifactViewer.reviewSendAll_other": "Enviar {count} al agente",
 	"artifactViewer.loadFailed": "Artefacto no disponible",
 	"artifactViewer.loading": "Cargando artefacto…",
-	"artifactViewer.resize": "Cambiar el ancho del panel del artefacto",
+	"taskDock.resize": "Cambiar el ancho del panel lateral",
+	"taskDock.tabs": "Paneles laterales",
+	"taskDock.closeTab": "Cerrar {title}",
+	"taskDock.panelCrashed": "Este panel dejó de funcionar.",
 	"artifactViewer.themeMode": "Tema del artefacto: {mode}",
 	"artifactViewer.themeFollow": "Seguir dev3",
 	"artifactViewer.themeLight": "Claro",
@@ -738,6 +744,9 @@ const common = {
 	"taskRef.previewArtifacts": "Artefactos",
 	"taskRef.previewMore_one": "{count} más",
 	"taskRef.previewMore_other": "{count} más",
+	"slots.more": "Más",
+	"destinationBody.crashed": "Esta pantalla no se pudo cargar, así que se muestra la integrada.",
+	"destinationBody.extensionFailed": "La extensión «{name}» no se cargó, así que se muestra la pantalla integrada.",
 };
 
 export default common;

@@ -6,6 +6,13 @@ import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
 import type { TmuxWindowEntry } from "../../../shared/types";
+import type { Context, Fiber } from "cordis";
+import { getAppRoot } from "../../plugins/root";
+import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
+import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "../../terminal-tab-decorations/builtins";
+import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
+import { getTerminalWindowMenuRegistry, type TerminalWindowMenuItem, type TerminalWindowMenuScope } from "../../terminal-window-menu/registry";
+import { getTerminalTabDecorationRegistry, resetDecorationFailuresForTests, type TerminalTabDecorationItem, type TerminalTabDecorationProps } from "../../terminal-tab-decorations/registry";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn(), tmuxNewWindow: vi.fn(), tmuxRenameWindow: vi.fn() } },
@@ -45,6 +52,8 @@ const reread = async () => {
 
 describe("TerminalWindowNav", () => {
 	beforeEach(() => {
+		resetPluginsForTests();
+		applyBuiltinPlugins([], [BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN, BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN]);
 		navigate().mockReset();
 		vi.mocked(api.request.tmuxCloseWindow).mockReset().mockResolvedValue({ closed: true });
 		vi.mocked(confirm).mockReset();
@@ -323,5 +332,199 @@ describe("TerminalWindowNav", () => {
 		await userEvent.click(plus);
 		expect(api.request.tmuxNewWindow).toHaveBeenCalledWith({ taskId: "task-1" });
 		await waitFor(() => expect(navigate().mock.calls.length).toBeGreaterThan(1));
+	});
+
+	describe("terminalWindowMenu slot", () => {
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+		async function contribute(items: TerminalWindowMenuItem[]): Promise<Fiber> {
+			const fiber = getAppRoot().plugin({
+				name: "acme",
+				inject: ["terminalWindowMenu"],
+				apply(ctx: Context) {
+					for (const item of items) ctx.terminalWindowMenu.register(item);
+				},
+			});
+			await settle();
+			return fiber;
+		}
+		/** Menu rows and `---` rules, in document order. */
+		const layout = () => [...screen.getByRole("menu").querySelectorAll('[role="menuitem"], .border-t')].map((el) => (el.getAttribute("role") ? el.textContent : "---"));
+
+		it("is a contribution slot whose built-ins all sit in the window group", () => {
+			const registry = getTerminalWindowMenuRegistry();
+			expect(registry.kind).toBe("contribute");
+			expect(registry.list().map(({ def }) => [def.id, def.region])).toEqual([
+				["builtin:switch", "window"],
+				["builtin:rename", "window"],
+				["builtin:close", "window"],
+			]);
+		});
+
+		it("puts a non-built-in row after a rule, below Close, and hands it the window's scope", async () => {
+			const run = vi.fn();
+			await contribute([{ id: "acme:copy", region: "window", order: -1, label: ({ window: w }) => `Copy ${w.label}`, run }]);
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+			renderNav();
+			await userEvent.pointer({ keys: "[MouseRight]", target: await screen.findByRole("tab", { name: "zsh" }) });
+			expect(layout()).toEqual(["Switch to this window", "Rename", "Close window", "---", "Copy zsh"]);
+			await userEvent.click(screen.getByRole("menuitem", { name: "Copy zsh" }));
+			expect(screen.queryByRole("menu")).toBeNull();
+			const scope = run.mock.calls[0][0] as TerminalWindowMenuScope;
+			expect(scope).toMatchObject({ taskId: "task-1", closable: true, window: { windowId: "@2" } });
+		});
+
+		it("[dispose] drops a plugin's rows from the open menu when the plugin unloads, keeping the window's own", async () => {
+			const fiber = await contribute([{ id: "acme:x", region: "window", label: () => "Acme row", run: () => {} }]);
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "zsh")]);
+			renderNav();
+			await userEvent.pointer({ keys: "[MouseRight]", target: await screen.findByRole("tab", { name: "zsh" }) });
+			expect(layout().slice(-2)).toEqual(["---", "Acme row"]);
+			await act(async () => {
+				await fiber.dispose();
+			});
+			expect(getTerminalWindowMenuRegistry().get("acme:x")).toBeUndefined();
+			// The trailing group goes with its last row: no dangling rule.
+			expect(layout()).toEqual(["Switch to this window", "Rename", "Close window"]);
+			expect(screen.getByTestId("terminal")).toBeInTheDocument();
+		});
+	});
+
+	describe("terminalTabDecorations slot", () => {
+		const glyph = (id: string) => () => <span aria-hidden="true" data-testid={id} />;
+		const decoration = (id: string, extra: Partial<TerminalTabDecorationItem> = {}): TerminalTabDecorationItem => ({
+			id,
+			when: () => true,
+			label: () => id,
+			component: glyph(id),
+			...extra,
+		});
+		let errorSpy: ReturnType<typeof vi.spyOn>;
+		beforeEach(() => {
+			resetDecorationFailuresForTests();
+			errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		});
+		afterEach(() => errorSpy.mockRestore());
+
+		it("draws one extension decoration per tab, after the built-in, and folds its label into the tab's name", async () => {
+			getTerminalTabDecorationRegistry().register(decoration("ext:first"));
+			getTerminalTabDecorationRegistry().register(decoration("ext:second"));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			renderNav();
+			const tab = await screen.findByRole("tab", { name: "tests, bell · ext:first" });
+			const glyphs = [...tab.querySelectorAll("[data-window-marker], [data-testid^='ext:']")].map((el) => el.getAttribute("data-window-marker") ?? el.getAttribute("data-testid"));
+			expect(glyphs).toEqual(["bell", "ext:first"]);
+			expect(screen.queryAllByTestId("ext:second")).toHaveLength(0);
+		});
+
+		it("hides a decoration whose when, label or component throws, logs each once, and keeps the row and the built-in", async () => {
+			const boom = () => {
+				throw new Error("boom");
+			};
+			getTerminalTabDecorationRegistry().register(decoration("ext:when", { when: boom }));
+			getTerminalTabDecorationRegistry().register(decoration("ext:label", { label: boom }));
+			getTerminalTabDecorationRegistry().register(decoration("ext:render", { component: boom }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true }), win(3, "logs", { bell: true })]);
+			const { container } = renderNav();
+			await screen.findByRole("tab", { name: /^tests, bell/ });
+			await reread();
+			await reread();
+			expect(screen.getByRole("tab", { name: "tests, bell" })).toBeInTheDocument();
+			expect(container.querySelectorAll('[data-window-marker="bell"]')).toHaveLength(2);
+			expect(screen.getByTestId("terminal")).toBeInTheDocument();
+			const reports = errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).filter((line: string) => line.includes("terminal tab decoration"));
+			expect(reports).toEqual([
+				"[slots] when of terminal tab decoration ext:when threw; hiding it:",
+				"[slots] label of terminal tab decoration ext:label threw; hiding it:",
+				"[slots] render of terminal tab decoration ext:render threw; hiding it:",
+			]);
+		});
+
+		it("drops a crashing decoration from every tab and every name at once, and logs it once", async () => {
+			getTerminalTabDecorationRegistry().register(decoration("ext:render", { component: () => { throw new Error("boom"); } }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true }), win(3, "logs", { bell: true })]);
+			const { container } = renderNav();
+			// No re-read: the crash itself re-renders the row, well before the next window poll.
+			expect(await screen.findByRole("tab", { name: "tests, bell" })).toBeInTheDocument();
+			expect(screen.getByRole("tab", { name: "logs, bell" })).toBeInTheDocument();
+			expect(container.querySelectorAll('[data-window-marker="bell"]')).toHaveLength(2);
+			const reports = errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).filter((line: string) => line.includes("terminal tab decoration"));
+			expect(reports).toEqual(["[slots] render of terminal tab decoration ext:render threw; hiding it:"]);
+		});
+
+		it("drops a decoration that starts crashing on a later poll from every name without waiting for the next poll", async () => {
+			const Picky = ({ window: w }: TerminalTabDecorationProps) => {
+				if (w.label === "late") throw new Error("boom");
+				return <span aria-hidden="true" data-testid="ext:late" />;
+			};
+			getTerminalTabDecorationRegistry().register(decoration("ext:late", { component: Picky }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			renderNav();
+			expect(await screen.findByRole("tab", { name: "tests, bell · ext:late" })).toBeInTheDocument();
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true }), win(3, "late", { bell: true })]);
+			await reread();
+			// No further poll: only the crash store's notification can redraw the names.
+			for (let tick = 0; tick < 20; tick++) await act(async () => {});
+			expect(screen.getByRole("tab", { name: "tests, bell" })).toBeInTheDocument();
+			expect(screen.getByRole("tab", { name: "late, bell" })).toBeInTheDocument();
+			expect(screen.queryAllByTestId("ext:late")).toHaveLength(0);
+		});
+
+		// happy-dom has no layout, so this pins the clamp's classes, not its geometry; check a wide glyph in a browser once the slot opens.
+		it("clamps an extension decoration to one glyph's width and leaves the built-in's DOM alone", async () => {
+			getTerminalTabDecorationRegistry().register(decoration("ext:wide", { component: () => <span data-testid="ext:wide">a very wide label</span> }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			const { container } = renderNav();
+			const [glyph] = await screen.findAllByTestId("ext:wide");
+			const clamp = glyph.closest("[data-tab-decoration]");
+			expect(clamp?.getAttribute("data-tab-decoration")).toBe("ext:wide");
+			expect(clamp?.className.split(" ")).toEqual(expect.arrayContaining(["flex-shrink-0", "max-w-4", "overflow-hidden"]));
+			expect(clamp?.parentElement?.getAttribute("role")).toBe("tab");
+			const builtin = container.querySelector('[data-window-marker="bell"]');
+			expect(builtin?.parentElement?.getAttribute("role")).toBe("tab");
+		});
+
+		it("a reloaded decoration that fails again is logged again", async () => {
+			const boom = () => {
+				throw new Error("boom");
+			};
+			const dispose = getTerminalTabDecorationRegistry().register(decoration("ext:when", { when: boom }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			renderNav();
+			await screen.findByRole("tab", { name: "tests, bell" });
+			await act(async () => {
+				dispose();
+				getTerminalTabDecorationRegistry().register(decoration("ext:when", { when: boom }));
+			});
+			await reread();
+			const reports = errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).filter((line: string) => line.includes("terminal tab decoration"));
+			expect(reports).toEqual(["[slots] when of terminal tab decoration ext:when threw; hiding it:", "[slots] when of terminal tab decoration ext:when threw; hiding it:"]);
+		});
+
+		it("[dispose] removes an unloading plugin's decoration from the open row and keeps the built-in dot", async () => {
+			const fiber = getAppRoot().plugin({
+				name: "leaving-decoration",
+				inject: ["terminalTabDecorations"],
+				apply(ctx: Context) {
+					ctx.terminalTabDecorations.register(decoration("ext:leaving"));
+				},
+			});
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			const { container } = renderNav();
+			expect(await screen.findByRole("tab", { name: "tests, bell · ext:leaving" })).toBeInTheDocument();
+			await act(async () => {
+				await fiber.dispose();
+			});
+			expect(screen.getByRole("tab", { name: "tests, bell" })).toBeInTheDocument();
+			expect(screen.queryAllByTestId("ext:leaving")).toHaveLength(0);
+			expect(container.querySelector('[data-window-marker="bell"]')).not.toBeNull();
+			expect(mounts.count).toBe(1);
+		});
+
+		it("the active tab keeps its bell in the name but draws no dot", async () => {
+			respond([win(1, "Fix auth", { home: true, active: true, bell: true }), win(2, "tests")]);
+			const { container } = renderNav();
+			expect(await screen.findByRole("tab", { name: "Fix auth, agent · bell" })).toBeInTheDocument();
+			expect(container.querySelector("[data-window-marker]")).toBeNull();
+		});
 	});
 });

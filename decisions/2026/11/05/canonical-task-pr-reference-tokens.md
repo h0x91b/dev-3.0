@@ -36,6 +36,8 @@ Agents and coordinators named other tasks as "seq 115", "#115", "seq:115", "task
 
 - A bare `seq:N` in the middle of prose is now a link. That is intended, since it was never anything else.
 - A bare token in cross-project text resolves on the reader's context project. Emitters qualify whenever they know the projects differ (`formatTaskRefFor`).
+  - A cross-project agent message is such an emitter. `wrapAgentMessage` and the spill file pass the body and subject through `qualifyRefsFor`. It qualifies only the bracketed token, because a bare `seq:N` is usually a CLI `--task` handle and a qualifier would break the command.
+  - The parser reads the CLI's cross-project handle, `--task seq:N [--variant i] --project P`, as task N on P. The reply command in an envelope therefore links to the sender's board.
 - HTML artifacts get nothing. They are sandboxed agent HTML, where `<seq:115>` even parses as an unknown element.
 - Telemetry: nothing new leaves the machine, because resolution is a local RPC.
 

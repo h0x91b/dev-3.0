@@ -4,6 +4,18 @@ import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { installTaskMarkerBuiltins } from "../../task-markers/__tests__/install-builtins";
+import { getTaskMarkerRegistry } from "../../task-markers/registry";
+import { getAppRoot } from "../../plugins/root";
+import type { Context } from "cordis";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins,
+// and the identity glyphs from the taskMarkers slot.
+beforeEach(async () => {
+	await installTaskMenuBuiltins();
+	await installTaskMarkerBuiltins();
+});
 
 const terminalPreview = vi.hoisted(() => ({
 	close: vi.fn(),
@@ -25,6 +37,20 @@ const terminalPreview = vi.hoisted(() => ({
 vi.mock("../../hooks/useTerminalPreview", () => ({
 	useTerminalPreview: () => terminalPreview,
 }));
+
+// Counts row renders: every ActiveTaskRow renders exactly one PriorityBadge.
+const priorityBadgeRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../PriorityBadge", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../PriorityBadge")>();
+	const Real = actual.default;
+	return {
+		...actual,
+		default: (props: React.ComponentProps<typeof Real>) => {
+			priorityBadgeRenders.count++;
+			return <Real {...props} />;
+		},
+	};
+});
 
 vi.mock("../../utils/confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn(() => Promise.resolve(false)),
@@ -1081,6 +1107,35 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(tooltip).toHaveTextContent("5m ago");
 	});
 
+	it("ticks the seconds stamp every second without re-rendering any row", async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ["setInterval", "clearInterval", "Date"] });
+		try {
+			const day = 86_400_000;
+			const tasks = Array.from({ length: 10 }, (_, i) => makeTask({
+				id: `t${i + 1}`, seq: i + 1, groupId: null, variantIndex: null,
+				createdAt: new Date(Date.now() - 3 * day).toISOString(),
+				movedAt: new Date(Date.now() - (i === 0 ? 5_000 : 2 * day)).toISOString(),
+			}));
+			render(
+				<I18nProvider>
+					<ActiveTasksSidebar project={project} tasks={tasks} dispatch={vi.fn()}
+						navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+				</I18nProvider>,
+			);
+			await act(async () => {});
+			expect(screen.getByTestId("sidebar-age-t1-activity")).toHaveTextContent("5s");
+
+			priorityBadgeRenders.count = 0;
+			await act(async () => { vi.advanceTimersByTime(3_000); });
+
+			expect(screen.getByTestId("sidebar-age-t1-activity")).toHaveTextContent("8s");
+			// A row-level clock re-renders all 10 rows on each of the 3 ticks.
+			expect(priorityBadgeRenders.count).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("falls back to the creation time when the task never changed status", () => {
 		const createdAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
 		render(
@@ -1657,6 +1712,28 @@ describe("ActiveTasksSidebar — native terminal backend mark", () => {
 		expect(
 			screen.getByRole("button", { name: "Привет! как сам? — Native terminal backend" }),
 		).toBeInTheDocument();
+	});
+
+	it("keeps the row and its other markers when one marker's label throws", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		getAppRoot().plugin({
+			name: "bad-label-marker",
+			inject: ["taskMarkers"],
+			apply(ctx: Context) {
+				ctx.taskMarkers.register({
+					id: "builtin:bad-label",
+					when: () => true,
+					label: () => { throw new Error("boom"); },
+					component: () => <span data-testid="bad-label-glyph" />,
+				});
+			},
+		});
+		await waitFor(() => expect(getTaskMarkerRegistry().get("builtin:bad-label")).toBeTruthy());
+		renderSidebar(makeTask({ terminalBackend: "native" }));
+		expect(screen.getByRole("button", { name: "Привет! как сам? — Native terminal backend" })).toBeInTheDocument();
+		expect(screen.getByTestId("sidebar-native-backend-t1")).toBeInTheDocument();
+		expect(screen.queryByTestId("bad-label-glyph")).toBeNull();
+		errors.mockRestore();
 	});
 
 	it("stays quiet for an explicit tmux task and for a legacy unmarked one", () => {

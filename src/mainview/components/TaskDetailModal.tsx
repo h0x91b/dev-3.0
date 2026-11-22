@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { TaskDescriptionMarkdown } from "./pr-review/markdown";
 import { toast } from "../toast";
 import TaskOriginRow from "./TaskOriginRow";
@@ -6,15 +6,14 @@ import TaskEpicRow from "./TaskEpicRow";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { titleFromDescription, getAllowedTransitions, getTaskTitle, taskOrigin } from "../../shared/types";
-import { allPullRequests } from "../../shared/task-pull-requests";
 import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import MoveToProjectPicker from "./MoveToProjectPicker";
 import PriorityBadge from "./PriorityBadge";
-import { NoteItem, formatDate } from "./NoteItem";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
-import SharedOutputsList from "./SharedOutputsList";
+import { TaskDetailNoteActionsContext } from "../task-detail-sections/builtins";
+import { TaskDetailMain, TaskDetailMeta, useTaskDetailEntries } from "../task-detail-sections/TaskDetailSections";
 import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskTerminalBackendRow from "./TaskTerminalBackendRow";
@@ -31,7 +30,6 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
-import { prDisplayState, prStateTone } from "../utils/prStateTone";
 import { PlayIcon } from "./TaskIcons";
 import { isTouchPrimary, modifierLabel } from "../utils/platform";
 
@@ -748,7 +746,9 @@ function ArchivedView({
 	const statusColors = useStatusColors();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const trapRef = useFocusTrap<HTMLDivElement>();
-	const pullRequests = allPullRequests(task);
+	const entries = useTaskDetailEntries();
+	const scope = useMemo(() => ({ task, project, navigate }), [task, project, navigate]);
+	const noteActions = useMemo(() => ({ onAddNote, onUpdateNote, onDeleteNote }), [onAddNote, onUpdateNote, onDeleteNote]);
 
 	// Close status menu on click outside
 	useEffect(() => {
@@ -767,6 +767,7 @@ function ArchivedView({
 		.filter(Boolean) as NonNullable<typeof project.labels>[number][];
 
 	return (
+		<TaskDetailNoteActionsContext.Provider value={noteActions}>
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
 			data-testid="archived-task-modal"
@@ -862,138 +863,50 @@ function ArchivedView({
 						<TaskSharedImages task={task} projectId={project.id} />
 					</div>
 
-					<button
-						onClick={onClose}
-						className="w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-colors"
-						title={t("task.close")}
-					>
-						<svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
+					<div className="flex items-center gap-2 flex-shrink-0">
+						{/* The status menu also reopens, but reads as a label: this is the obvious way back.
+						    Agent is Working resumes the saved conversation; To Do would reset the task. */}
+						<button
+							onClick={() => onStatusMove("in-progress")}
+							disabled={movingStatus}
+							data-testid="archived-task-reopen"
+							className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-sm hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
+						>
+							{t("task.reopenTask")}
+						</button>
+						<button
+							onClick={onClose}
+							className="w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-colors"
+							title={t("task.close")}
+						>
+							<svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
 				</div>
 
 				{/* Body */}
 				<div className="flex-1 overflow-y-auto">
 					<div className="flex flex-col lg:flex-row">
-						{/* Left: title + description + notes */}
+						{/* Left: title, then the main sections (shared outputs, description, notes) */}
 						<div className="flex-1 px-6 py-5 min-w-0">
 							<div id="archived-task-title" className="text-fg text-lg font-semibold leading-relaxed mb-4">
 								{getTaskTitle(task)}
 							</div>
-
-							{/* Everything the agent shared — the archived task's only way back
-							    to its images and artifacts (no Runtime bar without a worktree),
-							    and the reason the task gets reopened at all, so it leads. */}
-							<SharedOutputsList task={task} projectId={project.id} />
-
-							{task.description && task.description !== getTaskTitle(task) && (
-								<div className="mb-6">
-									<span className="text-fg-3 text-xs font-medium uppercase tracking-wider mb-2 block">
-										{t("task.descriptionLabel")}
-									</span>
-									<TaskDescriptionMarkdown body={task.description} projectId={task.projectId} taskId={task.id} />
-								</div>
-							)}
-
-							{/* Notes */}
-							<div className="border-t border-edge pt-4">
-								<div className="flex items-center justify-between mb-3">
-									<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
-										{t("notes.title")}
-									</span>
-									<button
-										onClick={onAddNote}
-										className="text-xs text-accent hover:text-accent-emphasis transition-colors"
-									>
-										{t("notes.add")}
-									</button>
-								</div>
-								{(task.notes ?? []).length === 0 && (
-									<span className="text-xs text-fg-muted">{t("notes.empty")}</span>
-								)}
-								{(task.notes ?? []).map(note => (
-									<NoteItem
-										key={note.id}
-										note={note}
-										taskId={task.id}
-										onSave={(content) => onUpdateNote(note.id, content)}
-										onDelete={() => onDeleteNote(note.id)}
-										clamp
-									/>
-								))}
-							</div>
+							<TaskDetailMain scope={scope} entries={entries} />
 						</div>
-
 						{/* Right: metadata sidebar */}
 						<div className="w-full lg:w-72 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-edge px-6 py-5">
 							<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-xs">
-								<span className="text-fg-3">{t("infoPanel.taskNumber")}</span>
-								<span className="text-fg-2 font-mono font-semibold">#{task.seq}</span>
-
-								{task.branchName && (
-									<>
-										<span className="text-fg-3">{t("infoPanel.branch")}</span>
-										<span className="text-fg-2 font-mono truncate">{task.branchName}</span>
-									</>
-								)}
-
-								{task.baseBranch && (
-									<>
-										<span className="text-fg-3">{t("infoPanel.baseBranch")}</span>
-										<span className="text-fg-2 font-mono">{task.baseBranch}</span>
-									</>
-								)}
-
-								{pullRequests.length > 0 && (
-									<>
-										<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
-										<span className="flex min-w-0 flex-wrap gap-x-2 gap-y-1" data-testid="task-detail-pull-requests">
-											{pullRequests.map((pr) => {
-												const tone = prStateTone(prDisplayState(pr.state));
-												return (
-													<a
-														key={pr.number}
-														href={pr.url}
-														target="_blank"
-														rel="noreferrer"
-														className={`inline-flex items-baseline gap-1 font-mono hover:underline ${tone.labelKey ? tone.text : "text-accent hover:text-accent-emphasis"}`}
-														title={pr.title ?? undefined}
-													>
-														{t("task.prNumber", { number: String(pr.number) })}
-														{tone.labelKey && <span className="font-sans text-dense text-fg-3">{t(tone.labelKey)}</span>}
-													</a>
-												);
-											})}
-										</span>
-									</>
-								)}
-
-								<span className="text-fg-3">{t("infoPanel.created")}</span>
-								<span className="text-fg-3">{formatDate(task.createdAt)}</span>
-
-								<TaskOriginRow
-									task={task}
-									testId="task-detail-origin"
-									navigate={navigate}
-								/>
-								<TaskEpicRow task={task} testId="task-detail-epic" />
-
-								<span className="text-fg-3">{t("infoPanel.updated")}</span>
-								<span className="text-fg-3">{formatDate(task.updatedAt)}</span>
-
-								{task.movedAt && (
-									<>
-										<span className="text-fg-3">{t("infoPanel.movedAt")}</span>
-										<span className="text-fg-3">{formatDate(task.movedAt)}</span>
-									</>
-								)}
+								<TaskDetailMeta scope={scope} entries={entries} />
 							</div>
 						</div>
 					</div>
 				</div>
 			</div>
 		</div>
+		</TaskDetailNoteActionsContext.Provider>
 	);
 }
 

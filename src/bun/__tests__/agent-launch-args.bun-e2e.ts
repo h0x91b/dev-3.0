@@ -45,6 +45,7 @@ import { codexAdapter } from "../../shared/agent-adapters/codex";
 import type { AdapterLaunchOptions } from "../../shared/agent-adapters/types";
 import { AGENT_SKILL_BODY_LIMIT, WINDOWS_COMMAND_LINE_LIMIT } from "../../shared/agent-command-line-budget";
 import { buildCmdScript, generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "../rpc-handlers/shared-pure";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -307,7 +308,7 @@ try {
 	}
 
 } finally {
-	rmSync(root, { recursive: true, force: true });
+	removeTempTree(root);
 }
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);

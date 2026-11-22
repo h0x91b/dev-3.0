@@ -91,6 +91,23 @@ describe("retainUsageHistory", () => {
 		expect(finalizeUsage(retained[source], source).days[0].inputTokens).toBe(200);
 	});
 
+	it("keeps billing across refreshes, learns it for an already-retained record, and reads a foreign value as unknown", async () => {
+		const path = sourceFile("gemini");
+		await retainUsageHistory(additional("gemini", "one"));
+		expect((await retainUsageHistory(additional("gemini"))).gemini.records.get("gemini:one")!.billing).toBeUndefined();
+		const learned = additional("gemini", "one");
+		learned.gemini.records.get("gemini:one")!.billing = "api";
+		await retainUsageHistory(learned);
+		expect((await retainUsageHistory(additional("gemini"))).gemini.records.get("gemini:one")!.billing).toBe("api");
+		// A refresh without evidence must not erase what an earlier read proved.
+		await retainUsageHistory(additional("gemini", "one"));
+		expect((await retainUsageHistory(additional("gemini"))).gemini.records.get("gemini:one")!.billing).toBe("api");
+		writeFileSync(path, readFileSync(path, "utf8").replace('"billing":"api"', '"billing":"credits"'));
+		const retained = await retainUsageHistory(additional("gemini"));
+		expect(retained.gemini.records.get("gemini:one")).toMatchObject({ model: "gpt-6-sol" });
+		expect(retained.gemini.records.get("gemini:one")!.billing).toBeUndefined();
+	});
+
 	it("isolates new sources from older two-source writers and preserves legacy history format", async () => {
 		await retainUsageHistory(states("old"));
 		const before = readFileSync(file, "utf8");

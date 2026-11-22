@@ -5,10 +5,11 @@
  *
  *   bun run test:file-links-e2e
  */
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintFileLink, mintFolderLink, openFileLinkResponses, serveFileLink } from "../file-links";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 const dir = mkdtempSync(join(tmpdir(), "dev3-file-links-e2e-"));
 mkdirSync(dir, { recursive: true });
@@ -132,7 +133,7 @@ else {
 }
 
 server.stop(true);
-rmSync(dir, { recursive: true, force: true });
+removeTempTree(dir);
 if (problems.length) {
 	console.error(`file-links socket e2e FAILED:\n- ${problems.join("\n- ")}`);
 	process.exit(1);

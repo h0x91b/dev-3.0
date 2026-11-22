@@ -5,6 +5,10 @@ import BoardHost from "../../BoardHost";
 import { I18nProvider } from "../../../i18n";
 import type { Project, Task, TaskLineageIndex } from "../../../../shared/types";
 import { resetRememberedFiltersForTests } from "../../../hooks/useRememberedFilter";
+import { installTaskMenuBuiltins } from "../../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 const lineageIndex = vi.hoisted(() => ({ current: { nodes: [], edges: [] } as TaskLineageIndex }));
 

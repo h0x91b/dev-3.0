@@ -23,12 +23,13 @@
  * sockets dir are module-load constants, hence static imports of node builtins only.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import net from "node:net";
 import { execFileSync } from "node:child_process";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 const ENTRY = fileURLToPath(import.meta.url);
 const ROLE = process.argv.find((arg) => arg.startsWith("--role="))?.slice("--role=".length) ?? "sender";
@@ -452,7 +453,7 @@ async function runSender(): Promise<void> {
 		await delay(300);
 		const leaked = await stillOurs(evidence);
 		check(!leaked, `no owned host or shell survives (${leaked ? "still owned" : "none"})`);
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 }
 

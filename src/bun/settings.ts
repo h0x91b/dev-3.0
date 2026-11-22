@@ -1,5 +1,6 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { normalizeAutoHibernateMinutes, normalizeAutoHibernateConfirmMinutes } from "../shared/auto-hibernate";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
 import { DEFAULT_AGENTS, DEFAULT_CLAUDE_CONFIG_ID, DEFAULT_RESOURCE_LEVELS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
@@ -22,11 +23,12 @@ import {
 export function hostPublishesCanary(): boolean {
 	return canaryPublishesFor(hostOsName(process.platform), process.arch);
 }
-import { normalizeSimplifiedInterface, SIMPLIFY_VIEW_PRESET_IDS } from "../shared/simplified-interface";
+import { normalizeSimplifiedInterface } from "../shared/simplified-interface";
 import { resolveNeedsYouSoundToggles } from "../shared/task-sound-statuses";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { clampBeigeTone } from "../shared/beige-palette";
 
 const log = createLogger("settings");
 
@@ -79,6 +81,25 @@ function sanitizeHiddenControls(raw: unknown): string[] | undefined {
 	if (!Array.isArray(raw)) return undefined;
 	const ids = [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0))];
 	return ids.length > 0 ? ids : undefined;
+}
+
+/** Shape-checked; ids stay opaque (an extension's item may not be loaded yet). Empty ⇒ undefined. */
+function sanitizeTaskHeaderLayout(raw: unknown): GlobalSettings["taskHeaderLayout"] {
+	if (!raw || typeof raw !== "object") return undefined;
+	const value = raw as Record<string, unknown>;
+	const order: Record<string, string[]> = {};
+	if (value.order && typeof value.order === "object") {
+		for (const [region, ids] of Object.entries(value.order as Record<string, unknown>)) {
+			const clean = sanitizeHiddenControls(ids);
+			if (clean) order[region] = clean;
+		}
+	}
+	const layout = {
+		order: Object.keys(order).length > 0 ? order : undefined,
+		overflow: sanitizeHiddenControls(value.overflow),
+		pinned: sanitizeHiddenControls(value.pinned),
+	};
+	return layout.order || layout.overflow || layout.pinned ? layout : undefined;
 }
 
 /**
@@ -172,8 +193,10 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		defaultConfigId: resolveDefaultConfigId(d.defaultConfigId),
 		taskSortOrder: d.taskSortOrder === "newest-first" ? "newest-first" : "oldest-first",
 		updateChannel: coerceUpdateChannel(d.updateChannel, hostPublishesCanary()),
-		theme: d.theme === "light" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
+		theme: d.theme === "light" || d.theme === "beige" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
 		resolvedTheme: d.resolvedTheme === "light" || d.resolvedTheme === "dark" ? d.resolvedTheme : undefined,
+		beigeDepth: typeof d.beigeDepth === "number" ? clampBeigeTone({ depth: d.beigeDepth }).depth : undefined,
+		beigeWarmth: typeof d.beigeWarmth === "number" ? clampBeigeTone({ warmth: d.beigeWarmth }).warmth : undefined,
 		// Machine identity for analytics — opaque string, never regenerated on load.
 		analyticsDistinctId: typeof d.analyticsDistinctId === "string" && d.analyticsDistinctId
 			? d.analyticsDistinctId
@@ -264,6 +287,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		resourceLevels: sanitizeResourceLevels(d.resourceLevels),
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		prOriginTaskLink: d.prOriginTaskLink === false ? false : undefined,
+		autoHibernateMinutes: normalizeAutoHibernateMinutes(d.autoHibernateMinutes),
+		autoHibernateConfirmMinutes: normalizeAutoHibernateConfirmMinutes(d.autoHibernateConfirmMinutes),
 		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,
 		// Default-off experimental toggle — only an explicit true is a stored opt-in.
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,
@@ -290,6 +315,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			simplifiedMode: typeof d.simplifiedMode === "boolean" ? d.simplifiedMode : undefined,
 		}),
 		simplifiedModeSource: d.simplifiedModeSource === "fresh" ? "fresh" : "existing",
+		taskHeaderLayout: sanitizeTaskHeaderLayout(d.taskHeaderLayout),
 		// Default-on beta toggle — both booleans are stored, because an explicit
 		// false is the user opting out and must not collapse into "never chose".
 		experimentalAgentTraffic:
@@ -329,10 +355,8 @@ function missingSettingsDefaults(): GlobalSettings {
 	const fresh = !existsSync(`${DEV3_HOME}/projects.json`) && !existsSync(`${DEV3_HOME}/data`);
 	const settings: GlobalSettings = {
 		...DEFAULT_SETTINGS,
-		simplifiedMode: fresh,
 		simplifiedModeSource: fresh ? "fresh" : "existing",
-		personalHiddenControls: [],
-		hiddenControls: fresh ? [...SIMPLIFY_VIEW_PRESET_IDS] : [],
+		...normalizeSimplifiedInterface({ simplifiedMode: fresh, personalHiddenControls: [] }),
 	};
 	mkdirSync(DEV3_HOME, { recursive: true });
 	const temporary = `${SETTINGS_FILE}.initial-${randomUUID()}`;

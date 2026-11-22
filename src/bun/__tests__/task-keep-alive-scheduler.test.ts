@@ -31,7 +31,9 @@ vi.mock("../data", () => ({
 vi.mock("../rpc-handlers/tmux-pty", () => ({
 	resumeTaskSession: vi.fn(async () => ({ kind: "resumed", url: "ws://x", result: {} })),
 	taskTerminalAlive: vi.fn(async () => true),
-	ResumeUnavailableError: class ResumeUnavailableError extends Error {},
+	ResumeUnavailableError: class ResumeUnavailableError extends Error {
+		constructor(readonly reason: string, message?: string) { super(message); }
+	},
 }));
 // Liveness is the agent PROCESS, not the tmux session — mock it at that seam so a
 // test cannot pass by treating "session alive" (a leftover shell) as "agent alive".
@@ -162,6 +164,23 @@ describe("evaluateTask", () => {
 		await evaluateTask(project, task, NOW);
 		expect(lastPatch()).toMatchObject({ status: "gave-up", lastVerdict: "unresumable" });
 		expect(pushCliAttention).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps retrying with the armed backoff when the conversation history cannot be read right now", async () => {
+		vi.mocked(resumeTaskSession).mockRejectedValue(new ResumeUnavailableError("history-unreadable", "cannot read history"));
+		const task = makeTask({ enabled: true, status: "watching", attempts: 0 });
+		H.task = task;
+		await evaluateTask(project, task, NOW);
+		expect(lastPatch()).toMatchObject({ lastVerdict: "history-unreadable" });
+		expect(H.patches.some((patch) => patch.status === "gave-up")).toBe(false);
+		expect(pushCliAttention).not.toHaveBeenCalled();
+	});
+
+	it("says the history could not be read when it finally gives up on one", async () => {
+		const task = makeTask({ enabled: true, status: "reviving", attempts: KEEP_ALIVE_MAX_ATTEMPTS, lastVerdict: "history-unreadable" });
+		H.task = task;
+		await evaluateTask(project, task, NOW);
+		expect(lastPatch()).toMatchObject({ status: "gave-up", gaveUpReason: expect.stringContaining("history could not be read") });
 	});
 
 	it("does nothing once it has already given up", async () => {

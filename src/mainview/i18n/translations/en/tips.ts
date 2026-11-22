@@ -190,7 +190,7 @@ const tips = {
 	"tip.altClickMoveCursor.title": "Alt-click moves the cursor",
 	"tip.altClickMoveCursor.body": "At a shell prompt, hold Option/Alt and click anywhere on the line to jump the cursor there — no arrow-key holding.",
 	"tip.statsTokenCost.title": "See your token spend",
-	"tip.statsTokenCost.body": "Productivity Stats shows recorded agent tokens and API-equivalent costs, with saved history and refreshed model prices.",
+	"tip.statsTokenCost.body": "Productivity Stats splits agent costs into real API key spend and what your subscriptions cover at API rates.",
 	"tip.agentShowImage.title": "Agents can show you images",
 	"tip.agentShowImage.body": "Run `dev3 show-image <path>` in a task and screenshots or renders pop open in an in-app viewer with a clickable history.",
 	"tip.mobileComposer.title": "Phone-friendly prompt box",

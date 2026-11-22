@@ -1,0 +1,1 @@
+Project Settings now renders each tab's body from the internal `settingsSections` plugin slot instead of hard-coded tab branches; the tabs, their contents, deep links and the unsaved-changes bar behave exactly as before, and a tab body that crashes leaves a notice instead of breaking the page.

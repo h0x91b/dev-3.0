@@ -1,7 +1,8 @@
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strict as assert } from "node:assert";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 if (process.platform !== "darwin") {
 	console.log("SKIP: macOS sampling proof");
@@ -33,6 +34,6 @@ if (process.platform !== "darwin") {
 	} finally {
 		stop();
 		await Bun.sleep(100);
-		rmSync(dir, { recursive: true, force: true });
+		removeTempTree(dir);
 	}
 }

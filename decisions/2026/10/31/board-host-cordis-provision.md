@@ -20,12 +20,13 @@ to the calling plugin. Verified at runtime in Chromium and WebKit 26 from a Vite
 
 ## Decision
 
-- `getBoardRoot()` (`src/mainview/board-views/root.ts`) creates the one root `Context` and constructs
-  `BoardViewRegistry` (a `Service`) with it, so the registry exists synchronously.
+- `getAppRoot()` (`src/mainview/plugins/root.ts`) creates the one root `Context` and constructs every slot
+  declared with `defineAppSlot`, `BoardViewRegistry` (a `SlotRegistry` `Service`) included, so the registry
+  exists synchronously.
 - `BoardService` is a plain class the host provides with `root.provide("board", …)` in a layout effect and
   disposes on unmount; the view renders only after the provision. It reads a `BoardModel` the host rewrites
   every render — a projection of `state.ts`, never a second store. `board/changed` is emitted after commit.
-- `BoardViewRegistry.register` wraps the entry in `this.ctx.effect`, i.e. the registering plugin's effect, so
+- `BoardViewRegistry.register` (inherited from `SlotRegistry`, `src/mainview/plugins/slot-registry.ts`) wraps the entry in `this.ctx.effect`, i.e. the registering plugin's effect, so
   a disposed plugin's views disappear without cleanup code.
 - Until the built-ins register, the host renders the Kanban view component directly; the registered entry
   is the same component type at the same position, so the hand-over keeps state and nothing flashes.

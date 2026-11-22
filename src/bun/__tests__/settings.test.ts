@@ -37,11 +37,32 @@ describe("saveSettings", () => {
 		rmSync(TEST_HOME, { recursive: true, force: true });
 	});
 
+	it("normalizes automatic hibernation safely in both settings readers", async () => {
+		for (const value of [undefined, -1, 0, 0.5, "60", null, 43_201, 60]) {
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ autoHibernateMinutes: value as number })));
+			for (const loaded of [await loadSettings(), loadSettingsSync()]) {
+				expect(loaded.autoHibernateMinutes).toBe(value === undefined ? 1440 : value === 60 ? 60 : 0);
+				expect(loaded.autoHibernateConfirmMinutes).toBe(30);
+			}
+		}
+	});
+
+	it("persists the confirmation delay and normalizes malformed on-disk values", async () => {
+		for (const value of [undefined, -1, 0, 0.5, "15", null, 43_201, 15]) {
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ autoHibernateConfirmMinutes: value as number })));
+			for (const loaded of [await loadSettings(), loadSettingsSync()]) {
+				expect(loaded.autoHibernateConfirmMinutes).toBe(value === 15 ? 15 : 30);
+			}
+		}
+	});
+
 	it("starts only a fresh installation in Simplified Mode, in both loaders", async () => {
 		for (const settings of [await loadSettings(), loadSettingsSync()]) {
 			expect(settings.simplifiedMode).toBe(true);
 			expect(settings.simplifiedModeSource).toBe("fresh");
 			expect(settings.personalHiddenControls).toEqual([]);
+			expect(settings.hiddenControls).toContain("builtin:session.bug-hunters");
+			// The pre-registry name rides along for older installed versions.
 			expect(settings.hiddenControls).toContain("bug-hunters");
 		}
 	});
@@ -69,7 +90,7 @@ describe("saveSettings", () => {
 		}) as ReturnType<typeof Bun.file>);
 		const loaded = await loadSettings();
 		expect(loaded.simplifiedMode).toBe(false);
-		expect(loaded.personalHiddenControls).toEqual(["bug-hunters"]);
+		expect(loaded.personalHiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
 		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(winner);
 	});
 
@@ -85,8 +106,8 @@ describe("saveSettings", () => {
 		const settings = await loadSettings();
 		expect(settings.simplifiedMode).toBe(false);
 		expect(settings.simplifiedModeSource).toBe("existing");
-		expect(settings.personalHiddenControls).toEqual(["bug-hunters"]);
-		expect(settings.hiddenControls).toEqual(["bug-hunters"]);
+		expect(settings.personalHiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
+		expect(settings.hiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
 	});
 
 	it("preserves explicit disabled mode and personal hides through save and reload", async () => {
@@ -98,7 +119,15 @@ describe("saveSettings", () => {
 		const settings = await loadSettings();
 		expect(settings.simplifiedMode).toBe(false);
 		expect(settings.simplifiedModeSource).toBe("fresh");
-		expect(settings.personalHiddenControls).toEqual(["bug-hunters"]);
+		expect(settings.personalHiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
+	});
+
+	it("keeps the task-header layout and drops a malformed one", async () => {
+		const layout = { order: { session: ["builtin:session.hibernate"] }, overflow: ["builtin:git.merge"] };
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ taskHeaderLayout: layout })));
+		expect((await loadSettings()).taskHeaderLayout).toEqual(layout);
+		writeFileSync(settingsPath, JSON.stringify({ ...makeSettings(), taskHeaderLayout: { order: "nope", overflow: [1, ""] } }));
+		expect((await loadSettings()).taskHeaderLayout).toBeUndefined();
 	});
 
 	it("does not enable Simplified Mode after a corrupt existing settings file", async () => {
@@ -403,6 +432,8 @@ describe("saveSettings", () => {
 			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
 			resourceLevels: { cpuBusyWarnPercent: 70, diskCriticalGb: 10 },
+			autoHibernateMinutes: 60,
+			autoHibernateConfirmMinutes: 45,
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskSortOrder: "newest-first",
@@ -424,6 +455,8 @@ describe("saveSettings", () => {
 			theme: "light",
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",
+			beigeDepth: 0.6,
+			beigeWarmth: 0.8,
 			cloneBaseDirectory: "/tmp/clones",
 			autoConfigureNewProjects: true,
 			newProjectsStoreInProject: true,
@@ -433,10 +466,11 @@ describe("saveSettings", () => {
 			strictAgentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
-			hiddenControls: ["bug-hunters", "stats-nav"],
-			personalHiddenControls: ["bug-hunters", "stats-nav"],
+			hiddenControls: ["builtin:session.bug-hunters", "stats-nav", "bug-hunters"],
+			personalHiddenControls: ["builtin:session.bug-hunters", "stats-nav", "bug-hunters"],
 			simplifiedMode: false,
 			simplifiedModeSource: "existing",
+			taskHeaderLayout: { order: { git: ["builtin:git.push", "builtin:git.commit"] }, overflow: ["builtin:runtime.ports"], pinned: ["ext:item"] },
 			experimentalAgentTraffic: true,
 			freezeDiagnosticsEnabled: true,
 			autoCleanupTaskHistory: false,
@@ -591,6 +625,11 @@ describe("saveSettings", () => {
 			await expect(saveSettings(makeSettings(), { value: 90, expectedCurrent })).rejects.toBeInstanceOf(LogRetentionChangedError);
 			expect(readFileSync(settingsPath, "utf-8")).toBe(contents);
 		});
+	});
+
+	it("keeps the beige theme through a load", () => {
+		writeFileSync(settingsPath, JSON.stringify({ theme: "beige" }));
+		expect(loadSettingsSync().theme).toBe("beige");
 	});
 
 	it("reads settings.json strictly: missing is empty, anything but a plain object is refused", () => {

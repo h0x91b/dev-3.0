@@ -30,10 +30,8 @@ interface UseTaskBranchStatusParams {
 	isTaskActive: boolean;
 	/**
 	 * When false the hook is inert: no status polling, no git-op refresh
-	 * listener, `branchStatus` stays null. Lets a component that renders on
-	 * both desktop and narrow viewports own a single hook instance for the
-	 * narrow layout without double-polling next to `TaskGitActions` (which
-	 * runs its own instance on desktop). Defaults to true.
+	 * listener, `branchStatus` stays null. The task header turns it off for a
+	 * task with no Git bar. Defaults to true.
 	 */
 	enabled?: boolean;
 }
@@ -662,7 +660,7 @@ export function useTaskBranchStatus({
 
 /**
  * Everything `useTaskBranchStatus` returns — status data plus the git action
- * handlers. Passed as a prop where a parent owns the single hook instance
- * (narrow-viewport TaskInfoPanel → TaskGitActionsSheet).
+ * handlers. The task header owns the single instance and shares it through its
+ * scope with the Git bar's items and the narrow sheet (`task-header/scope.tsx`).
  */
 export type TaskBranchStatusController = ReturnType<typeof useTaskBranchStatus>;

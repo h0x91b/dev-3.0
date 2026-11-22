@@ -1,0 +1,1 @@
+The Agent traffic screen body now renders through the internal destinationBodies replace slot with the built-in as its only option and fallback; the beta flag still decides whether the screen shows, and it looks and behaves as before.

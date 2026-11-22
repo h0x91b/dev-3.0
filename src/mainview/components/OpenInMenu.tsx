@@ -2,11 +2,8 @@ import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import type { ExternalApp } from "../../shared/types";
-import { useAvailableApps } from "../hooks/useAvailableApps";
-import { OPEN_IN_APP_ICONS, OPEN_IN_APP_ICON_FALLBACK } from "./openInAppIcons";
+import { OPEN_IN_ICON_FALLBACK, openInRow, useOpenInRows, type OpenInRow } from "../open-in-targets/rows";
 import { useT } from "../i18n";
-import { api } from "../rpc";
 import { buildTaskDeepLink } from "../../shared/deep-link";
 
 interface OpenInMenuProps {
@@ -125,12 +122,12 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 /** The detected editor/app rows, without a surface: this menu and the task menu flyout both host it. */
 export function OpenInAppList({ path, taskId, onOpened }: { path: string; taskId?: string; onOpened: () => void }) {
 	const t = useT();
-	const apps = useAvailableApps();
+	const apps = useOpenInRows();
 
-	async function handleOpen(app: ExternalApp) {
+	async function handleOpen(app: OpenInRow) {
 		onOpened();
 		try {
-			await api.request.openInApp({ appName: app.macAppName, path });
+			await openInRow(app, path);
 		} catch (err) {
 			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId });
 		}
@@ -145,7 +142,7 @@ export function OpenInAppList({ path, taskId, onOpened }: { path: string; taskId
 			) : (
 				apps.map((app) => (
 					<button
-						key={app.id}
+						key={app.appId}
 						onClick={() => handleOpen(app)}
 						className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 					>
@@ -153,7 +150,7 @@ export function OpenInAppList({ path, taskId, onOpened }: { path: string; taskId
 							className="w-4 text-center text-sm leading-none flex-shrink-0"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
-							{OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK}
+							{app.icon ?? OPEN_IN_ICON_FALLBACK}
 						</span>
 						{app.name}
 					</button>

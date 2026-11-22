@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { TaskStatus, TmuxWindowEntry } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
@@ -8,6 +8,10 @@ import { closeTmuxWindow, openTmuxWindow, renameTmuxWindow } from "../terminal-w
 import { WINDOW_NAME_MAX } from "../../shared/window-name";
 import { toast } from "../toast";
 import Tooltip from "./Tooltip";
+import { getDecorationCrashVersion, getTerminalTabDecorationRegistry, placeTerminalTabDecorations, subscribeDecorationCrashes } from "../terminal-tab-decorations/registry";
+import { TerminalTabDecorations } from "../terminal-tab-decorations/TerminalTabDecorations";
+import { groupMenuRows, runMenuItem, useMenuSlotEntries } from "../plugins/menu-rows";
+import { getTerminalWindowMenuRegistry, TERMINAL_WINDOW_MENU_GROUPS, type TerminalWindowMenuItem, type TerminalWindowMenuScope } from "../terminal-window-menu/registry";
 
 /**
  * Desktop navigator for a task's tmux WINDOWS (full-terminal workspaces inside
@@ -54,6 +58,7 @@ export default function TerminalWindowNav({
 		<div className="flex-1 min-h-0 min-w-0 flex flex-col">
 			{visible && (
 				<WindowTabs
+					taskId={taskId}
 					windows={windows}
 					unseen={unseen}
 					agentWorking={taskStatus === "in-progress"}
@@ -84,16 +89,17 @@ function automaticWindowName(w: TmuxWindowEntry, t: TFunction, homeTitle?: strin
 	return (w.home && homeTitle) || w.label || t("windowPager.window", { index: String(w.index) });
 }
 
-function windowStateText(w: TmuxWindowEntry, unseen: boolean, t: TFunction, agentWorking: boolean, agentWaiting: boolean): string {
+/** The decorations' labels sit where their glyphs do: after the home state, before the pane count. */
+function windowStateText(w: TmuxWindowEntry, decorationLabels: readonly string[], t: TFunction, agentWorking: boolean, agentWaiting: boolean): string {
 	const parts: string[] = [];
 	if (w.home) parts.push(agentWorking ? t("windowNav.homeWorking") : agentWaiting ? t("windowNav.homeWaiting") : t("windowNav.home"));
-	if (w.bell) parts.push(t("windowNav.bell"));
-	else if (unseen) parts.push(t("windowNav.newOutput"));
+	parts.push(...decorationLabels.filter(Boolean));
 	if (w.panes > 1) parts.push(t.plural("windowNav.panes", w.panes));
 	return parts.join(" · ");
 }
 
 function WindowTabs({
+	taskId,
 	windows,
 	unseen,
 	agentWorking,
@@ -105,6 +111,7 @@ function WindowTabs({
 	homeTitle,
 	t,
 }: {
+	taskId: string;
 	windows: TmuxWindowEntry[];
 	unseen: ReadonlySet<string>;
 	agentWorking: boolean;
@@ -117,6 +124,10 @@ function WindowTabs({
 	t: TFunction;
 }) {
 	const listRef = useRef<HTMLDivElement>(null);
+	const decorationRegistry = getTerminalTabDecorationRegistry();
+	const decorationEntries = useSyncExternalStore(decorationRegistry.subscribe, decorationRegistry.list);
+	// A crashed decoration leaves every tab, and its label every tab's name, at once rather than on the next poll.
+	useSyncExternalStore(subscribeDecorationCrashes, getDecorationCrashVersion);
 	const [menu, setMenu] = useState<WindowMenuState | null>(null);
 	const [editing, setEditing] = useState<{ windowId: string; width: number } | null>(null);
 	// A lone window cannot be closed, so it gets no ×.
@@ -198,9 +209,10 @@ function WindowTabs({
 			className="flex items-center gap-1"
 		>
 			{windows.map((w) => {
-				const isUnseen = unseen.has(w.windowId);
+				const scope = { window: w, unseen: unseen.has(w.windowId) };
+				const decorations = placeTerminalTabDecorations(decorationEntries, t, scope);
 				const name = windowName(w, t, homeTitle);
-				const state = windowStateText(w, isUnseen, t, agentWorking, agentWaiting);
+				const state = windowStateText(w, decorations.map((d) => d.label), t, agentWorking, agentWaiting);
 				const accessibleName = state ? `${name}, ${state}` : name;
 				if (editing?.windowId === w.windowId) {
 					return (
@@ -238,7 +250,7 @@ function WindowTabs({
 								{w.home ? <HomeGlyph working={agentWorking} /> : <span className={`tabular-nums ${w.active ? "text-accent" : "text-fg-muted"}`}>{w.index}</span>}
 							</span>
 							<span aria-hidden="true" className="truncate">{name}</span>
-							<WindowMarker window={w} unseen={isUnseen} />
+							<TerminalTabDecorations entries={decorations.map((d) => d.entry)} scope={scope} />
 						</button>
 					</Tooltip>
 						{/* Keyboard users rename with F2 and close with Delete on the focused tab; these are the pointer paths. */}
@@ -271,7 +283,7 @@ function WindowTabs({
 					</div>
 				);
 			})}
-			{menu && <WindowMenu state={menu} closable={closable} onSelect={onSelect} onClose={onClose} onRename={startRename} onDismiss={() => setMenu(null)} t={t} />}
+			{menu && <WindowMenu state={menu} taskId={taskId} closable={closable} onSelect={onSelect} onClose={onClose} onRename={startRename} onDismiss={() => setMenu(null)} t={t} />}
 		</div>
 			{/* Right after the last tab, like the tmux bar's own +; it lands on the new window. */}
 			<Tooltip content={t("tmux.newWindowDesc")} placement="bottom">
@@ -300,6 +312,7 @@ interface WindowMenuState {
 /** Right-click (or ⇧F10) menu on a window: switch to it, rename it, or close it. */
 function WindowMenu({
 	state,
+	taskId,
 	closable,
 	onSelect,
 	onClose,
@@ -308,6 +321,7 @@ function WindowMenu({
 	t,
 }: {
 	state: WindowMenuState;
+	taskId: string;
 	closable: boolean;
 	onSelect: (w: TmuxWindowEntry) => void;
 	onClose: (w: TmuxWindowEntry) => void;
@@ -317,6 +331,9 @@ function WindowMenu({
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const w = state.window;
+	const registry = getTerminalWindowMenuRegistry();
+	const entries = useMenuSlotEntries(registry, true);
+	const scope: TerminalWindowMenuScope = { window: w, taskId, closable, t, select: () => onSelect(w), rename: () => onRename(w), close: () => onClose(w) };
 
 	useEffect(() => {
 		menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
@@ -326,9 +343,9 @@ function WindowMenu({
 		onDismiss();
 		if (restoreFocus) state.opener.focus();
 	};
-	const run = (action: () => void) => {
+	const run = (item: TerminalWindowMenuItem) => {
 		dismiss(false);
-		action();
+		runMenuItem("terminalWindowMenu", item.id, item.run, scope);
 	};
 
 	function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -344,7 +361,7 @@ function WindowMenu({
 		}
 	}
 
-	const item = "w-full text-left px-3 py-1.5 text-xs transition-colors focus-visible:outline-none";
+	const itemClass = "w-full text-left px-3 py-1.5 text-xs transition-colors focus-visible:outline-none";
 	return createPortal(
 		<>
 			<div
@@ -363,19 +380,22 @@ function WindowMenu({
 				className="fixed z-[201] min-w-[10rem] rounded-lg border border-edge bg-overlay py-1 shadow-2xl"
 				style={{ top: state.y, left: state.x }}
 			>
-				{!w.active && (
-					<button type="button" role="menuitem" onClick={() => run(() => onSelect(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
-						{t("windowNav.switchTo")}
-					</button>
-				)}
-				<button type="button" role="menuitem" onClick={() => run(() => onRename(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
-					{t("windowNav.renameItem")}
-				</button>
-				{closable && (
-					<button type="button" role="menuitem" onClick={() => run(() => onClose(w))} className={`${item} text-danger hover:bg-danger/10 focus:bg-danger/10`}>
-						{t("tmux.closeWindowDesc")}
-					</button>
-				)}
+				{groupMenuRows("terminalWindowMenu", entries, scope, TERMINAL_WINDOW_MENU_GROUPS).map((group, groupIndex) => (
+					<Fragment key={group[0].key}>
+						{groupIndex > 0 && <div className="my-1 border-t border-edge" />}
+						{group.map(({ item, key, label }) => (
+							<button
+								key={key}
+								type="button"
+								role="menuitem"
+								onClick={() => run(item)}
+								className={`${itemClass} ${item.danger ? "text-danger hover:bg-danger/10 focus:bg-danger/10" : "text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg"}`}
+							>
+								{label}
+							</button>
+						))}
+					</Fragment>
+				))}
 			</div>
 		</>,
 		document.body,
@@ -450,14 +470,3 @@ function HomeGlyph({ working }: { working: boolean }) {
 	);
 }
 
-/** Background signal after the name: bell (warning) outranks new output (accent). */
-function WindowMarker({ window: w, unseen }: { window: TmuxWindowEntry; unseen: boolean }) {
-	if (w.active || (!w.bell && !unseen)) return null;
-	return (
-		<span
-			aria-hidden="true"
-			data-window-marker={w.bell ? "bell" : "output"}
-			className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${w.bell ? "bg-warning" : "bg-accent"}`}
-		/>
-	);
-}

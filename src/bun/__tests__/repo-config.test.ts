@@ -321,6 +321,15 @@ describe("resolveConfigProvenance", () => {
 		expect(resolveConfigProvenance(resolved, project).clonePaths).toBe("local");
 	});
 
+	it("lets extraFolders [] in config.local.json hide a committed list", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({ extraFolders: ["../shared"] }));
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({ extraFolders: [] }));
+		const resolved = await resolveProjectConfig(makeProject());
+		expect(resolved.extraFolders).toEqual([]);
+	});
+
 	it("does not label a field 'default' when its value came from the project object", async () => {
 		// defaultBaseBranch lives on the Project object, not in any file — the source
 		// must be "project", never a blanket "default"/"global".

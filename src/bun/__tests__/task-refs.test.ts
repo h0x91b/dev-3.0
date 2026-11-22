@@ -7,6 +7,7 @@ import {
 	normalizeTaskArg,
 	parseRefUri,
 	projectMatchesQualifier,
+	qualifyRefsFor,
 	refUri,
 } from "../../shared/task-refs";
 
@@ -59,6 +60,17 @@ describe("findRefsInText", () => {
 		expect(findRefsInText("SEQ:3")[0].ref).toEqual({ kind: "task", number: 3 });
 	});
 
+	it("reads the CLI's --project flag as the qualifier of the handle in front of it", () => {
+		expect(findRefsInText("dev3 message --task seq:1623 --project bbbbbbbb --subject x")[0]).toMatchObject({
+			raw: "seq:1623",
+			ref: { kind: "task", number: 1623, project: "bbbbbbbb" },
+		});
+		expect(findRefsInText("--task seq:7 --variant 2 --project bbbbbbbb")[0].ref.project).toBe("bbbbbbbb");
+		expect(findRefsInText("--task seq:7 --subject x --project bbbbbbbb")[0].ref.project).toBeUndefined();
+		expect(findRefsInText("<seq:7> --project bbbbbbbb")[0].ref.project).toBeUndefined();
+		expect(findRefsInText("seq:aaaaaaaa/7 --project bbbbbbbb")[0].ref.project).toBe("aaaaaaaa");
+	});
+
 	it("does not teach or match the legacy prose forms", () => {
 		expect(findRefsInText("#115 and seq 115 and task 115 and PR #3")).toEqual([]);
 	});
@@ -73,6 +85,27 @@ describe("findRefsInText", () => {
 
 	it("returns nothing for empty input", () => {
 		expect(findRefsInText("")).toEqual([]);
+	});
+});
+
+describe("qualifyRefsFor", () => {
+	const OTHER = "bbbbbbbb-1111-2222-3333-444455556666";
+
+	it("gives the writer's project to every bracketed bare token across projects", () => {
+		expect(qualifyRefsFor("<seq:12> is blocked on <pr:34>.", PROJECT, OTHER))
+			.toBe("<seq:a1c9fe4e/12> is blocked on <pr:a1c9fe4e/34>.");
+		expect(qualifyRefsFor("<seq:12>", PROJECT, undefined)).toBe("<seq:a1c9fe4e/12>");
+	});
+
+	it("keeps qualified tokens and the bare CLI handle as written", () => {
+		const text = "see <seq:bbbbbbbb/3>, run dev3 task show --task seq:4";
+		expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
+	});
+
+	it("changes nothing on the same project or when the writer's project is unknown", () => {
+		expect(qualifyRefsFor("<seq:12>", PROJECT, PROJECT)).toBe("<seq:12>");
+		expect(qualifyRefsFor("<seq:12>", undefined, OTHER)).toBe("<seq:12>");
+		expect(qualifyRefsFor("no refs here", PROJECT, OTHER)).toBe("no refs here");
 	});
 });
 

@@ -14,7 +14,8 @@ import { DEV3_HOME } from "../paths";
 import { dev3TempPath } from "../temp-paths";
 import { SHELL_INIT_DIR, posixShellPromptEnv, writeShellInit } from "../shell-init";
 import { getUserShell } from "../shell-env";
-import { CATPPUCCIN_PLUGIN_DIR, NEW_WINDOW_STATUS_RANGE, PANE_ID_BADGE, STATUS_FORMAT, writeCatppuccinPlugin } from "./themes";
+import { CATPPUCCIN_PLUGIN_DIR, NEW_WINDOW_STATUS_RANGE, PANE_ID_BADGE, STATUS_FORMAT, catppuccinBeige, writeCatppuccinPlugin } from "./themes";
+import { clampBeigeTone, DEFAULT_BEIGE_TONE, type BeigeTone } from "../../shared/beige-palette";
 import { TMUX_AGENT_PANE_OPTION } from "./constants";
 
 /**
@@ -59,11 +60,23 @@ export const TMUX_LAST_AGENT_PANE_OPTION = "@dev3_last_agent_pane";
  * shared files at import, and a name that ignored them let another process's
  * default overwrite the file this app later sources into the shared server.
  */
-export function tmuxConfigPath(theme: "dark" | "light", dimmed: boolean, titled = false): string {
-	return dev3TempPath(`dev3-tmux-${theme}-${dimmed ? "dimmed" : "undimmed"}${titled ? "-titled" : ""}.conf`);
+/** `beige` is its own tmux palette even though the app resolves it to `light`. */
+export type TmuxTheme = "dark" | "light" | "beige";
+
+export function tmuxThemeFor(preference: string | undefined, resolved: "dark" | "light"): TmuxTheme {
+	return preference === "beige" ? "beige" : resolved;
 }
 
-let activeTheme: "dark" | "light" = "dark";
+export function tmuxConfigPath(theme: TmuxTheme, dimmed: boolean, titled = false): string {
+	// Beige bakes in its tone, so the tone is in the name for the same reason as the toggles.
+	const flavor = theme === "beige" ? `beige${Math.round(beigeTone.depth * 100)}-${Math.round(beigeTone.warmth * 100)}` : theme;
+	return dev3TempPath(`dev3-tmux-${flavor}-${dimmed ? "dimmed" : "undimmed"}${titled ? "-titled" : ""}.conf`);
+}
+
+let activeTheme: TmuxTheme = "dark";
+
+/** Beige tone baked into the beige config; pushed in like the pane preferences below. */
+let beigeTone: BeigeTone = DEFAULT_BEIGE_TONE;
 
 /**
  * The `dimInactivePanes` preference, pushed in by the host at startup and on
@@ -83,7 +96,7 @@ export function activeTmuxConfigPath(): string {
 }
 
 /** Switch the active themed config and return its path. */
-export function setActiveTmuxTheme(theme: "dark" | "light"): string {
+export function setActiveTmuxTheme(theme: TmuxTheme): string {
 	activeTheme = theme;
 	return activeTmuxConfigPath();
 }
@@ -372,13 +385,14 @@ function paneTitlesConfig(defaultOn: boolean): string {
 	].join("\n");
 }
 
-export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = true, paneTitles = false): string {
+export function buildThemeConfig(flavor: "mocha" | "latte" | "beige", dimInactivePanes = true, paneTitles = false): string {
 	const pluginDir = CATPPUCCIN_PLUGIN_DIR;
 	return [
 		`# dev3 tmux config — Catppuccin ${flavor}`,
 		`set -g @catppuccin_flavor "${flavor}"`,
 		// Source palette DIRECTLY (source -F with #{d:current_file} is unreliable)
-		`source "${pluginDir}/themes/catppuccin_${flavor}_tmux.conf"`,
+		// Beige is generated from its tone sliders, so it is inlined rather than a fixed file.
+		flavor === "beige" ? catppuccinBeige(beigeTone) : `source "${pluginDir}/themes/catppuccin_${flavor}_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
 		paneDimConfig(dimInactivePanes),
@@ -387,6 +401,10 @@ export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = t
 		shellEnvConfig(),
 		TMUX_STATUS_BAR,
 	].join("\n");
+}
+
+export function setTmuxBeigeTone(tone: Partial<BeigeTone>): void {
+	beigeTone = clampBeigeTone(tone);
 }
 
 export function setTmuxPaneDimming(enabled: boolean): void {
@@ -398,9 +416,10 @@ export function setTmuxPaneTitles(enabled: boolean): void {
 }
 
 /** Hand the saved pane preferences to this module at boot, before any pane spawns. */
-export function applySavedTmuxPanePreferences(settings: { dimInactivePanes?: boolean; paneTitles?: boolean }): void {
+export function applySavedTmuxPanePreferences(settings: { dimInactivePanes?: boolean; paneTitles?: boolean; beigeDepth?: number; beigeWarmth?: number }): void {
 	setTmuxPaneDimming(settings.dimInactivePanes !== false);
 	setTmuxPaneTitles(settings.paneTitles === true);
+	setTmuxBeigeTone({ depth: settings.beigeDepth, warmth: settings.beigeWarmth });
 }
 
 /**
@@ -414,6 +433,7 @@ export function writeTmuxConfigs(): void {
 		for (const titled of [false, true]) {
 			writeFileSync(tmuxConfigPath("dark", dimmed, titled), buildThemeConfig("mocha", dimmed, titled));
 			writeFileSync(tmuxConfigPath("light", dimmed, titled), buildThemeConfig("latte", dimmed, titled));
+			writeFileSync(tmuxConfigPath("beige", dimmed, titled), buildThemeConfig("beige", dimmed, titled));
 		}
 	}
 }

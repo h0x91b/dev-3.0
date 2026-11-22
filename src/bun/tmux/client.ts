@@ -27,6 +27,7 @@ import {
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import type { StaleTmuxServer } from "../../shared/types";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
+import { withoutLaunchTaskWiring } from "../pane-launch-env";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { ensureLaunchdServer, predatesLaunchdServer, staleServerBinary } from "./launchd-server";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
@@ -222,7 +223,7 @@ export class TmuxClient {
 			socket: socket ?? this.defaultSocket,
 			configFile,
 			cwd: tmuxClientCwd(),
-			env,
+			env: withoutLaunchTaskWiring(env),
 		});
 	}
 
@@ -308,6 +309,8 @@ export class TmuxClient {
 			proc = this.spawnFn(this.argv(opts.socket, args), {
 				stdout: "pipe",
 				stderr: "pipe",
+				// Without launchd this command starts the server, which keeps this env.
+				env: withoutLaunchTaskWiring(process.env),
 				// A tmux server started by this client keeps the client cwd forever —
 				// it must never be a mortal task worktree (decision 103).
 				cwd: tmuxClientCwd(),
@@ -359,7 +362,7 @@ export class TmuxClient {
 		try {
 			return this.spawnFn(argv, {
 				terminal: opts.terminal,
-				env: opts.processEnv,
+				env: withoutLaunchTaskWiring(opts.processEnv ?? process.env),
 				cwd: tmuxClientCwd(),
 			});
 		} catch (err) {
@@ -502,11 +505,14 @@ export class TmuxClient {
 	async capturePane(opts: {
 		target: string;
 		escapes?: boolean;
+		/** `-J`: join wrapped lines back into the line that was printed. */
+		joinWrapped?: boolean;
 		startLine?: number;
 		endLine?: number;
 	} & SocketOpt): Promise<string> {
 		const args = ["capture-pane", "-p"];
 		if (opts.escapes) args.push("-e");
+		if (opts.joinWrapped) args.push("-J");
 		args.push("-t", opts.target);
 		if (opts.startLine !== undefined) args.push("-S", String(opts.startLine));
 		if (opts.endLine !== undefined) args.push("-E", String(opts.endLine));

@@ -12,6 +12,7 @@ import {
 	buildPickerGroups,
 	CONNECT_PROVIDER_VALUE,
 	getModeLeafLabel,
+	installedAgentsFirst,
 	groupLabelForConfig,
 	groupRequiresPxpipeProxy,
 	lockedModelGroups,
@@ -102,6 +103,9 @@ interface AgentConfigPickerProps {
 	onChange: (next: AgentConfigSelection) => void;
 	/** Availability results so the Provider dropdown can flag uninstalled agents. */
 	agentAvailability?: AgentCheckResult[];
+	/** List installed agents above the ones that are not (launch surfaces). The
+	 *  Settings pickers keep the configured order. */
+	installedFirst?: boolean;
 	/** Unique prefix for the three control ids (label htmlFor targets):
 	 *  `${idPrefix}-harness` / `-model` / `-mode`. */
 	idPrefix: string;
@@ -170,6 +174,7 @@ function AgentConfigPicker({
 	configId,
 	onChange,
 	agentAvailability = [],
+	installedFirst = false,
 	idPrefix,
 	className = "",
 	showLabels = true,
@@ -462,7 +467,7 @@ function AgentConfigPicker({
 					<Select
 						id={`${idPrefix}-harness`}
 						value={agentId ?? ""}
-						options={agents.map((a) => ({ value: a.id, label: a.name }))}
+						options={(installedFirst ? installedAgentsFirst(agents, agentAvailability) : agents).map((a) => ({ value: a.id, label: a.name }))}
 						onChange={(val) => handleProviderChange(val || null)}
 						renderOption={renderAgentOption}
 					/>

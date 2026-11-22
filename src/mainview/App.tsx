@@ -1,3 +1,4 @@
+import AutoHibernateSuggestions from "./components/AutoHibernateSuggestions";
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
@@ -33,7 +34,6 @@ import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
-import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
 import ImportConversationsModal from "./components/ImportConversationsModal";
 import CreateTaskModal from "./components/CreateTaskModal";
@@ -45,10 +45,8 @@ import ProjectTerminal from "./components/ProjectTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
-import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
-import ProductivityStatsView from "./components/ProductivityStatsView";
-import SessionsScreen from "./components/SessionsScreen";
+import { DestinationBody } from "./destination-bodies/DestinationBody";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
@@ -58,7 +56,6 @@ import CompletionOfferDialogHost from "./components/CompletionOfferDialogHost";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
-import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
 import {
 	OPEN_AGENT_TRAFFIC_LOG_EVENT,
@@ -68,6 +65,7 @@ import {
 import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
 import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import { isControlHidden, syncHiddenControlsFromGlobalSettings } from "./hidden-controls";
+import { syncTaskHeaderLayout } from "./task-header/layout";
 import { useIsControlHidden } from "./hooks/useIsControlHidden";
 import { syncGlobalSettingsCache } from "./global-settings-cache";
 import { DEFAULT_GLOBAL_SETTINGS } from "./components/global-settings/utils";
@@ -105,11 +103,13 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import GoToPalette, { type GoToMode } from "./components/GoToPalette";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import { runCommandSafely, type CommandItem } from "./commands/registry";
 import { isBoardMounted, runBoardViewCommand } from "./board-views/view-commands";
 import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
-import TaskArtifactViewer from "./components/TaskArtifactViewer";
+import TaskPanelInstances from "./task-panels/TaskPanelInstances";
+import { isArtifactViewerShowing, setArtifactPopupPreference, showArtifactViewer } from "./task-panels/artifact-panel";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
 import TourOverlay from "./components/TourOverlay";
@@ -503,13 +503,6 @@ function App() {
 	// vanish on the same tick. It only ever grows while the viewer stays open.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; projectId: string; images: SharedImage[]; index: number; newIds: string[] } | null>(null);
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
-	// Lightbox for artifacts an agent surfaced via `dev3 show-artifact`. Hosted
-	// here — never inside a task pane — so every surface that can open one (task
-	// workspace, archived task modal, a toast) gets the identical popup.
-	// `paneless`: opened from a surface that has no workspace pane behind it (the
-	// task detail modal). Such a viewer is a popup for its whole life — it neither
-	// docks nor hides with the route, because there is no task screen it belongs to.
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; projectId?: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; paneless?: boolean; live?: LiveArtifact } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -551,13 +544,6 @@ function App() {
 			};
 		});
 	}, [markSharedItemsRead]);
-	const closeArtifactViewer = useCallback(() => {
-		const taskId = artifactViewerRef.current?.taskId;
-		setArtifactViewer(null);
-		const focusBadge = () => document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
-		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId, focusBadge);
-		else requestAnimationFrame(focusBadge);
-	}, []);
 	const closeImageViewer = useCallback(() => {
 		const taskId = imageViewerRef.current?.taskId;
 		setImageViewer(null);
@@ -568,23 +554,10 @@ function App() {
 	// snapshot hid presets seeded or renamed after the first New Task modal.
 	const agents = useAgents();
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
-	// Which task's workspace pane may dock the artifact panel. Docking is the
-	// default; the popup is the explicit opt-in. Every surface with no pane of its
-	// own — the archived task modal, immersive fullscreen, a toast for a task that
-	// is not on screen — falls back to the popup because nothing publishes a slot
-	// there, and so does a narrow viewport, which the pane itself refuses.
-	const artifactDockTaskId = artifactViewer && !artifactViewer.paneless && globalSettings.openArtifactsInPopup !== true
-		? artifactViewer.taskId
-		: null;
-	// A docked panel belongs to its task's screen. Leaving that screen — or covering
-	// it with the inline diff — used to clear the dock slot and re-host the same
-	// viewer as a centred popup; instead it waits offscreen — still mounted, so the
-	// document, the version pick and an unsent draft come back with it — until the
-	// task's workspace is on screen again or the user closes it.
-	const artifactOffscreen = artifactViewer !== null
-		&& !artifactViewer.paneless
-		&& globalSettings.openArtifactsInPopup !== true
-		&& !routeShowsTaskWorkspace(state.route, artifactViewer.taskId);
+	// The artifact viewer lives in the task dock's artifact panel; it only needs the popup preference.
+	useEffect(() => {
+		setArtifactPopupPreference(globalSettings.openArtifactsInPopup === true);
+	}, [globalSettings.openArtifactsInPopup]);
 	// Auth failure for browser remote access (expired/invalid session).
 	// Seeded from the transport: with a dead session the expired verdict lands
 	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
@@ -1143,7 +1116,7 @@ function App() {
 	const handleDeepLink = useCallback(
 		(nav: DeepLinkNav) => {
 			if (nav.kind === "task") {
-				openTaskFromNotification(nav.taskId, nav.projectId);
+				openTaskFromNotification(nav.taskId, nav.projectId, { archived: nav.archived });
 			} else if (nav.kind === "project") {
 				navigateToProject(nav.projectId);
 			} else if (nav.kind === "space") {
@@ -1385,21 +1358,17 @@ function App() {
 		navigate({ screen: "dashboard" });
 	}, [navigate, state.route.screen]);
 
-	// Run a command from the Cmd+Shift+P action palette. Every command dispatches
-	// through the same `handleMenuAction` router the native menu uses, so the
-	// palette is a DOM mirror of the menu rather than a second command runner.
+	// Run a command from the Cmd+Shift+P action palette against the current route.
 	const runCommand = useCallback(
-		(actionId: string) => {
+		(command: CommandItem) => {
 			closeNavPalette("command");
-			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {
-				console.error("[App] runCommand failed", err);
-			});
+			runCommandSafely(command, { state, dispatch, setLocale, t });
 		},
 		[state, dispatch, setLocale, closeNavPalette],
 	);
 
 	// Browser-mode menu bar (`AppMenuBar`) dispatches through the same router as
-	// the native menu and the command palette.
+	// the native menu.
 	const handleMenuBarAction = useCallback(
 		(actionId: string) => {
 			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {
@@ -1920,6 +1889,15 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	useEffect(() => {
+		const onAutoHibernate = (event: Event) => {
+			const { taskId, projectId } = (event as CustomEvent).detail;
+			toast.info(t("task.autoHibernated"), { taskId, projectId });
+		};
+		window.addEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+		return () => window.removeEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+	}, [t]);
+
 	// A task left a project's board (deleted, or moved to another project). Scoped to
 	// the source project so a window viewing a move's TARGET keeps the just-added card.
 	useEffect(() => {
@@ -1965,6 +1943,7 @@ function App() {
 		// The cache is a save base, so it never holds the pre-load placeholder.
 		if (settingsLoaded) syncGlobalSettingsCache(globalSettings);
 		syncHiddenControlsFromGlobalSettings(globalSettings);
+		syncTaskHeaderLayout(globalSettings.taskHeaderLayout);
 	}, [globalSettings, settingsLoaded]);
 
 	useEffect(() => {
@@ -2162,10 +2141,6 @@ function App() {
 	// re-subscribing it every time the viewer opens/closes.
 	const imageViewerRef = useRef(imageViewer);
 	imageViewerRef.current = imageViewer;
-	const artifactViewerRef = useRef(artifactViewer);
-	artifactViewerRef.current = artifactViewer;
-	const artifactOffscreenRef = useRef(artifactOffscreen);
-	artifactOffscreenRef.current = artifactOffscreen;
 
 	// CLI-shared images (`dev3 show-image`). Always raise the attention badge; auto-open
 	// the lightbox ONLY when the user is already looking at this task (never steal focus).
@@ -2250,12 +2225,12 @@ function App() {
 			// A viewer waiting offscreen is not "already open" — republishing into it
 			// would update a panel nobody can see and swallow the toast that is the
 			// only signal left.
-			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId && !artifactOffscreenRef.current;
+			const alreadyOpenForTask = isArtifactViewerShowing(taskId);
 			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
 				markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
 				// A republish keeps the presentation the open viewer already had; a
 				// fresh one lands on the task the user is looking at, so it can dock.
-				setArtifactViewer((prev) => ({
+				showArtifactViewer((prev) => ({
 					taskId,
 					projectId,
 					artifacts,
@@ -2272,7 +2247,7 @@ function App() {
 					// in its pane rather than as a popup over the board it came from.
 					openTaskFromNotification(taskId, projectId);
 					markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-					setArtifactViewer({ taskId, projectId, artifacts, index: artifacts.length - 1, paneless: false });
+					showArtifactViewer({ taskId, projectId, artifacts, index: artifacts.length - 1, paneless: false });
 				},
 			});
 		}
@@ -2297,7 +2272,7 @@ function App() {
 			// pane offers a slot for it, so it lives as a popup — only a viewer that
 			// started docked may later hide itself when the route walks away from it.
 			const noPane = paneless === true || !routeShowsTaskWorkspace(routeRef.current, taskId);
-			setArtifactViewer({ taskId, projectId, taskStatus, artifacts: artifacts ?? [], index: index ?? artifacts.length - 1, paneless: noPane, live });
+			showArtifactViewer({ taskId, projectId, taskStatus, artifacts: artifacts ?? [], index: index ?? artifacts.length - 1, paneless: noPane, live });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -2939,6 +2914,7 @@ function App() {
 		const taskId = routeTaskId(route);
 		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
 	}, [state.route]);
+
 
 	// Publish the sensitive ids so surfaces that only know a projectId (tmux
 	// sessions, notification payloads) can ask for the privacy verdict.
@@ -4049,19 +4025,6 @@ function App() {
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
-			{artifactViewer && (
-				<TaskArtifactViewer
-					taskId={artifactViewer.taskId}
-					projectId={artifactViewer.projectId}
-					task={state.currentProjectTasks.find((candidate) => candidate.id === artifactViewer.taskId)}
-					taskStatus={artifactViewer.taskStatus}
-					live={state.currentProjectTasks.find((candidate) => candidate.id === artifactViewer.taskId)?.liveArtifact ?? artifactViewer.live}
-					artifacts={artifactViewer.artifacts}
-					initialIndex={artifactViewer.index}
-					offscreen={artifactOffscreen}
-					onClose={closeArtifactViewer}
-				/>
-			)}
 			{imageViewer && (
 				<TaskImageViewer
 					taskId={imageViewer.taskId}
@@ -4099,9 +4062,12 @@ function App() {
 			</>
 			)}
 			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
+			{/* Task panels outlive immersive fullscreen: there they wait parked, still mounted. */}
+			<TaskPanelInstances tasks={state.currentProjectTasks} />
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />
+			<AutoHibernateSuggestions blocked={!settingsLoaded || confirmBusy || !!pendingAgentRequest} />
 			<CompletionOfferDialogHost ready={settingsLoaded} />
 			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
 				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
@@ -4164,16 +4130,19 @@ function App() {
 		switch (route.screen) {
 			case "dashboard":
 				return (
-					<Dashboard
-						projects={state.projects}
-						dispatch={dispatch}
-						navigate={navigate}
-						bellCounts={state.bellCounts}
-						onOpenAddProject={(spaceIds) => {
-							setAddProjectSpaceIds(spaceIds ?? []);
-							setShowAddProjectModal(true);
+					<DestinationBody
+						destination="dashboard"
+						props={{
+							projects: state.projects,
+							dispatch,
+							navigate,
+							bellCounts: state.bellCounts,
+							onOpenAddProject: (spaceIds) => {
+								setAddProjectSpaceIds(spaceIds ?? []);
+								setShowAddProjectModal(true);
+							},
+							digitsFollowSpaces: followSpaces,
 						}}
-						digitsFollowSpaces={followSpaces}
 					/>
 				);
 			case "project":
@@ -4183,6 +4152,7 @@ function App() {
 						spaceId={route.spaceId}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
+						taskSnapshots={state.taskSnapshots}
 						dispatch={dispatch}
 						route={state.route}
 						navigate={navigate}
@@ -4194,7 +4164,6 @@ function App() {
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
-						dockArtifact={artifactDockTaskId !== null && artifactDockTaskId === route.activeTaskId}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
@@ -4211,6 +4180,7 @@ function App() {
 							projectPath={proj.path}
 							projectName={proj.name}
 							onBack={() => navigate({ screen: "project", projectId: route.projectId })}
+							onEditFolders={() => navigate({ screen: "project-settings", projectId: route.projectId, tab: "project" })}
 						/>
 					</div>
 				) : null;
@@ -4226,7 +4196,6 @@ function App() {
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
-						dockArtifact={artifactDockTaskId !== null && artifactDockTaskId === route.taskId}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
@@ -4250,28 +4219,29 @@ function App() {
 				return <GlobalSettings section={route.section} anchor={route.anchor} preset={route.preset} />;
 			case "changelog":
 				return (
-					<Changelog
-						navigate={navigate}
-						goBack={() => dispatch({ type: "goBack" })}
-						canGoBack={state.historyIndex > 0}
+					<DestinationBody
+						destination="changelog"
+						props={{ navigate, goBack: () => dispatch({ type: "goBack" }), canGoBack: state.historyIndex > 0 }}
 					/>
 				);
 			case "stats":
 				return (
-					<ProductivityStatsView
-						navigate={navigate}
-						goBack={() => dispatch({ type: "goBack" })}
-						canGoBack={state.historyIndex > 0}
+					<DestinationBody
+						destination="stats"
+						props={{ navigate, goBack: () => dispatch({ type: "goBack" }), canGoBack: state.historyIndex > 0 }}
 					/>
 				);
 			case "sessions":
 				return (
-					<SessionsScreen
+					<DestinationBody
 						// A new entry is a new scope: remount so the old scope state does not survive it.
 						key={route.scopeProjectId ?? "all"}
-						projectId={route.scopeProjectId ?? null}
-						projectName={state.projects.find((p) => p.id === route.scopeProjectId)?.name ?? null}
-						onOpenTask={openTaskFromNotification}
+						destination="sessions"
+						props={{
+							projectId: route.scopeProjectId ?? null,
+							projectName: state.projects.find((p) => p.id === route.scopeProjectId)?.name ?? null,
+							onOpenTask: openTaskFromNotification,
+						}}
 					/>
 				);
 			case "agent-traffic":
@@ -4279,14 +4249,16 @@ function App() {
 				// nothing here keeps that single frame from showing a screen the user
 				// just switched off.
 				return agentTrafficOn ? (
-					<AgentTrafficScreen
-						projectId={route.scopeProjectId ?? null}
-						focus={
-							route.focusTaskId && route.focusProjectId
-								? { taskId: route.focusTaskId, projectId: route.focusProjectId }
-								: null
-						}
-						onOpenTask={openTaskFromNotification}
+					<DestinationBody
+						destination="agent-traffic"
+						props={{
+							projectId: route.scopeProjectId ?? null,
+							focus:
+								route.focusTaskId && route.focusProjectId
+									? { taskId: route.focusTaskId, projectId: route.focusProjectId }
+									: null,
+							onOpenTask: openTaskFromNotification,
+						}}
 					/>
 				) : null;
 			case "gauge-demo":

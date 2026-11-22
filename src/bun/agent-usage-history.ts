@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { isUsageBilling } from "../shared/agent-billing";
 import type { TokenCounts } from "../shared/agent-pricing";
 import type { AgentUsageSource } from "../shared/types";
 import { atomicWriteFile } from "./atomic-write";
@@ -33,6 +34,8 @@ function readRecord(value: unknown): UsageRecord {
 		model: r.model, timestamp: r.timestamp, counts,
 		...(r.pricingModel ? { pricingModel: r.pricingModel } : {}),
 		...(r.cumulativeScope ? { cumulativeScope: r.cumulativeScope } : {}),
+		// A value a newer version invented reads as unknown rather than failing the whole history.
+		...(isUsageBilling(r.billing) ? { billing: r.billing } : {}),
 	};
 }
 
@@ -68,6 +71,7 @@ function sameRecord(previous: UsageRecord | undefined, next: UsageRecord | undef
 	if (!previous || !next) return previous === next;
 	return previous.model === next.model && previous.timestamp === next.timestamp &&
 		previous.pricingModel === next.pricingModel && previous.cumulativeScope === next.cumulativeScope &&
+		previous.billing === next.billing &&
 		COUNT_KEYS.every((key) => previous.counts[key] === next.counts[key]);
 }
 

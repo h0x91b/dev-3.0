@@ -394,10 +394,11 @@ ${SKILL_CUSTOM_COLUMNS}${skillCompletionRequest(mode)}`;
 // A hook-owned lifecycle (Codex, omp, pi). Keep manual moves limited to decisions
 // that cannot be inferred from native events (semantic questions/custom columns).
 function skillStatusNativeHooks(agent: string, mode: ProtocolMode): string {
+	const transitions = "session/prompt/tool activity → `in-progress`, tool approval waits → `user-questions`, tool completion → active again, agent stop → `review-by-ai` or `review-by-user`";
 	return `
 ## Task status management
 
-dev3 injects trusted native hooks into every ${agent} pane. They own normal lifecycle transitions: session/prompt/tool activity → \`in-progress\`, tool approval waits → \`user-questions\`, tool completion → active again, agent stop → \`review-by-ai\` or \`review-by-user\`.
+dev3 injects trusted native hooks into every ${agent} pane. They own normal lifecycle transitions: ${transitions}.
 
 **Never call \`dev3 task move\` for normal lifecycle transitions** — not \`in-progress\` at turn start, not \`review-by-ai\`/\`review-by-user\` when finishing. A stale-looking status is no licence to manage it: report it with \`dev3 notify "${agent} status hooks did not update the task" --level error\` and leave the evidence intact.
 
@@ -448,13 +449,14 @@ Approved → actual vs expected behavior, minimal reproduction, dev3 version and
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export type SkillFamily = "claude" | "codex" | "omp" | "pi" | "generic";
+export type SkillFamily = "claude" | "codex" | "omp" | "pi" | "agy" | "generic";
 
 const SKILL_STATUS: Record<SkillFamily, (mode: ProtocolMode) => string> = {
 	claude: skillStatusHooks,
 	codex: (mode) => skillStatusNativeHooks("Codex", mode),
 	omp: (mode) => skillStatusNativeHooks("omp", mode),
 	pi: (mode) => skillStatusNativeHooks("pi", mode),
+	agy: (mode) => skillStatusNativeHooks("agy", mode),
 	generic: skillStatusManual,
 };
 
@@ -503,12 +505,14 @@ export const CLAUDE_SKILL_BODY = skillBodyFor("claude");
 export const CODEX_SKILL_BODY = skillBodyFor("codex");
 export const OMP_SKILL_BODY = skillBodyFor("omp");
 export const PI_SKILL_BODY = skillBodyFor("pi");
+export const AGY_SKILL_BODY = skillBodyFor("agy");
 export const GENERIC_SKILL_BODY = skillBodyFor("generic");
 
 export const CLAUDE_LEAN_SKILL_BODY = leanSkillBodyFor("claude");
 export const CODEX_LEAN_SKILL_BODY = leanSkillBodyFor("codex");
 export const OMP_LEAN_SKILL_BODY = leanSkillBodyFor("omp");
 export const PI_LEAN_SKILL_BODY = leanSkillBodyFor("pi");
+export const AGY_LEAN_SKILL_BODY = leanSkillBodyFor("agy");
 export const GENERIC_LEAN_SKILL_BODY = leanSkillBodyFor("generic");
 
 /** The closing section of a lean body: where the rest of the protocol lives. */

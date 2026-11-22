@@ -80,9 +80,9 @@ function isOutOfDefaultList(task: Task): boolean {
 
 const removedKey = (projectId: string, taskId: string) => `${projectId}\u0000${taskId}`;
 
-interface ActiveTasksSidebarProps {
-	/** Absent on the dashboard mount: no current project, so the scope locks to
-	 *  global ("across all spaces") and the scope switcher is not rendered. */
+export interface ActiveTasksSidebarProps {
+	/** Absent means no current project: the scope locks to global ("across all
+	 *  spaces") and the scope switcher is not rendered. */
 	project?: Project;
 	/**
 	 * The space the user came through, when there is one. A project can sit in
@@ -193,12 +193,6 @@ function ActiveTasksSidebar({
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("terminal");
 	// One filter for the whole sidebar, like its scope: it follows the user across tasks and projects.
 	const [searchQuery, setSearchQuery] = useRememberedFilter("active-tasks");
-	// Re-render once per second so the status-age badges stay live.
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), 1000);
-		return () => clearInterval(id);
-	}, []);
 	const [scope, setScopeState] = useState<SidebarScope | null>(readScope);
 	const [showHidden, setShowHiddenState] = useState(readShowHidden);
 	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
@@ -711,7 +705,7 @@ function ActiveTasksSidebar({
 								aria-label={t("sidebar.hide")}
 								data-testid="sidebar-hide"
 							>
-								{/* VS Code-style panel toggle; the counterpart lives in TaskInfoPanel (isFullPage) */}
+								{/* VS Code-style panel toggle; the counterpart lives in TaskHeader (isFullPage) */}
 								<PanelLeftIcon open className="w-3.5 h-3.5" />
 							</button>
 						</Tooltip>
@@ -899,7 +893,6 @@ function ActiveTasksSidebar({
 											prInfo={taskPrMap.get(task.id)}
 											statusColors={statusColors}
 											color={taskColor(task)}
-											now={now}
 											dispatch={dispatch}
 											navigate={navigate}
 											onOpen={() => handleTaskClick(task)}
