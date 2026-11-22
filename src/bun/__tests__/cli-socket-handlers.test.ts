@@ -4053,6 +4053,21 @@ describe("task.update", () => {
 		expect(vi.mocked(data.updateTask).mock.calls[0]![2].description).toBe("Goal.\nAfter seq:3 lands.\nAlso waits on seq:proj-2/60.");
 	});
 
+	it("leaves an auto-generated title alone when another board's agent writes it back", async () => {
+		const project = makeProject();
+		const task = makeTask({ title: "After seq:3 lands", customTitle: null });
+		const writer = makeTask({ id: "writer-00-1111-2222-333333333333", projectId: "proj-2", seq: 9 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project, makeProject({ id: "proj-2", name: "Other" })]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [task]));
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...task, ...change }));
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "After seq:3 lands", sourceTaskId: writer.id }));
+		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).toMatchObject({ customTitle: "After seq:3 lands" });
+	});
+
 	it("does not recompute auto-title from description when task has customTitle", async () => {
 		const project = makeProject();
 		const task = makeTask({ customTitle: "My custom title" });

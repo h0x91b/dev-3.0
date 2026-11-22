@@ -478,7 +478,7 @@ export const taskHandlers: Record<string, Handler> = {
 			? await sourceTaskProjectId(params)
 			: undefined;
 		if (params.title !== undefined) {
-			change.title = { value: qualifyEditedRefsFor(params.title as string, task.customTitle, writerProjectId, project.id) || null, force: Boolean(params.force) };
+			change.title = { value: qualifyEditedRefsFor(params.title as string, getTaskTitle(task), writerProjectId, project.id) || null, force: Boolean(params.force) };
 		}
 		if (params.description !== undefined) change.description = qualifyEditedRefsFor(params.description as string, task.description, writerProjectId, project.id);
 		// Task type and the preamble in the description move together, always — in the
