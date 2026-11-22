@@ -155,7 +155,9 @@ and ranks them (`src/mainview/go-to-sources/`, `decisions/2026/11/22/go-to-sourc
 the host opens a row only by app id.
 The file preview's body comes from the internal `fileViewers`
 contribution slot, first match by `order`; review-comment anchoring stays in the host (`src/mainview/file-viewers/`,
-`decisions/2026/11/22/file-viewers-slot.md`). The public
+`decisions/2026/11/22/file-viewers-slot.md`). A finished task's detail body (sections and metadata rows) comes from the
+internal `taskDetailSections` contribution slot; the draft editor stays host-owned (`src/mainview/task-detail-sections/`,
+`decisions/2026/11/22/task-detail-sections-slot.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:
@@ -183,6 +185,11 @@ contribution slot, first match by `order`; review-comment anchoring stays in the
 - Before `fileViewers` opens, its anchoring contract (`data-preview-line` marks, `imageRef` on the picture) is public
   API and must be documented in `docs/extensions.md`, and an extension viewer that matches every file must not hide
   dev3's own viewers (rank built-ins first for kinds they own, or scope extension matchers by path).
+- Before `taskDetailSections` opens: an extension metadata row over the budget of 3 is only logged today, and its
+  reason must reach the extension's Extensions row; an extension section's heading is its own `title()`, and it must
+  become the host-drawn `From <extension name>` label, which needs the extension's identity on the item; and a
+  section must stay read-only (links and navigation only), which the host cannot enforce while extensions share the
+  renderer's JS realm.
 
 ## Tech debt
 

@@ -56,6 +56,9 @@ import { BUILTIN_OPEN_IN_TARGETS_PLUGIN } from "../../open-in-targets/builtins";
 import { resetOpenInTargetFailuresForTests } from "../../open-in-targets/rows";
 import { invalidateAvailableApps } from "../../hooks/useAvailableApps";
 import { importAppSlots } from "./app-slots";
+import TaskDetailModal from "../../components/TaskDetailModal";
+import { BUILTIN_TASK_DETAIL_SECTIONS_PLUGIN } from "../../task-detail-sections/builtins";
+import { resetTaskDetailFailuresForTests } from "../../task-detail-sections/TaskDetailSections";
 import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
 import GoToPalette from "../../components/GoToPalette";
@@ -88,6 +91,8 @@ vi.mock("../../rpc", () => ({
 			updateTipState: vi.fn(),
 			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
+			getTaskTerminalBackend: vi.fn(() => new Promise(() => {})),
+			getNativeTerminalAvailability: vi.fn(() => new Promise(() => {})),
 		},
 	},
 }));
@@ -645,6 +650,30 @@ const CASES: CrashCase[] = [
 		},
 		logs: callback === "matches" ? "[fileViewers] matches of file viewer crash:viewer threw" : "fileViewers item crash:viewer crashed",
 	})),
+	...(["component", "builtin component", "value", "when", "title", "label"] as const).map((callback): CrashCase => ({
+		slot: "taskDetailSections",
+		callback,
+		builtins: [BUILTIN_TASK_DETAIL_SECTIONS_PLUGIN],
+		contribute(ctx) {
+			const id = callback === "builtin component" ? "builtin:crash.section" : "crash:detail";
+			if (callback === "value" || callback === "label") {
+				ctx.taskDetailSections.register({ id, region: "meta", label: callback === "label" ? boom : () => "Crash", value: callback === "value" ? Boom : () => null });
+				return;
+			}
+			ctx.taskDetailSections.register({
+				id, region: "main", when: callback === "when" ? boom : undefined,
+				title: callback === "title" ? boom : () => "Crash", component: callback.endsWith("component") ? Boom : () => null,
+			});
+		},
+		render() {
+			mount(<TaskDetailModal task={{ ...task, status: "completed" }} project={project} dispatch={vi.fn()} onClose={vi.fn()} />);
+		},
+		alive() {
+			expect(screen.getByText("Notes")).toBeInTheDocument();
+			if (callback === "builtin component") expect(screen.getByRole("alert")).toBeInTheDocument();
+		},
+		logs: callback === "builtin component" ? "builtin:crash.section" : "crash:detail",
+	})),
 	{
 		slot: "terminalCompanion",
 		callback: "component",
@@ -689,6 +718,7 @@ beforeEach(() => {
 	resetTaskDocksForTests();
 	resetTipFailuresForTests();
 	resetOpenInTargetFailuresForTests();
+	resetTaskDetailFailuresForTests();
 	invalidateAvailableApps();
 	localStorage.clear();
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());

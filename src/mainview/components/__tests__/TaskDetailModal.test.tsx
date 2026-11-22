@@ -4,6 +4,8 @@ import TaskDetailModal from "../TaskDetailModal";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task, TaskStatus } from "../../../shared/types";
 import type { AppAction } from "../../state";
+import { resetPluginsForTests } from "../../plugins/runtime";
+import { installTaskDetailSectionBuiltins } from "../../task-detail-sections/__tests__/install-builtins";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -125,8 +127,10 @@ function renderModal(
 }
 
 describe("TaskDetailModal", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
+		resetPluginsForTests();
+		await installTaskDetailSectionBuiltins();
 	});
 
 	describe("focus trap", () => {

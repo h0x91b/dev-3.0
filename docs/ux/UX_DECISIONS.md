@@ -764,3 +764,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-21 — Surfaces become plugin slots, internal first
 - **Rule:** two slot kinds, replace (chooser + built-in fallback) and contribution (host owns order and budget); extensions are add-only and get slots only after every surface has moved internally. Bible §5.12, yaml `plugin_slots`.
 - **Why:** no sandbox, so replacing Push or Accounts is a phishing surface; rejected opening each slot as soon as it landed. `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
+
+## 2026-11-22 — Finished-task detail is a contribution slot; the draft editor is not
+- **Rule:** `taskDetailSections` covers the archived view's body (`main`, `meta`), built-ins first; extensions read-only, 2 sections then `More from extensions (N)`, 3 meta rows. Bible §5.12, §9.
+- **Why:** sections inside an edit form break focus, dirty state and the one-primary rule. `decisions/2026/11/22/task-detail-sections-slot.md`.

@@ -1,0 +1,1 @@
+A finished task's detail view now draws its body (shared outputs, description, notes and the metadata rows) from an internal `taskDetailSections` contribution slot, with built-ins first and room budgeted for future extensions; the draft editor is unchanged and the view looks exactly as before.
