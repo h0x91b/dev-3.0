@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { isSpaceSensitive, type Project, type Space } from "../../shared/types";
 import { HOME_GROUP_ID, type DashboardGroup } from "../utils/spaceGroups";
-import { digitBadgeById, mixedEntryId, type MixedEntry } from "../utils/digitOrder";
+import { mixedEntryId, type MixedEntry } from "../utils/digitOrder";
+import { digitKeyLabel } from "../utils/platform";
+import { DIGIT_KEY_GROUP, DigitKeyControl } from "./DigitKeyControl";
 import { MASK_CLASS } from "../sensitive-projects";
 import { api } from "../rpc";
 import { toast } from "../toast";
@@ -56,8 +58,6 @@ export interface RowReorderCtx {
 	canMoveDown: boolean;
 	onMoveUp: () => void;
 	onMoveDown: () => void;
-	/** ⌘N digit this row answers to (mixed order only), shown beside its name. */
-	digitHint?: string;
 }
 
 /** Scope key of the mixed top-level list: spaces and standalone projects together. */
@@ -67,7 +67,7 @@ export const MIXED_SCOPE_KEY = "mixed";
 export function DigitHint({ digit }: { digit: string }) {
 	return (
 		<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
-			<span className="text-micro">⌘</span>{digit}
+			{digitKeyLabel(digit)}
 		</kbd>
 	);
 }
@@ -79,8 +79,6 @@ export interface MixedOrderConfig {
 	onReorder: (sourceId: string, targetId: string, side: "before" | "after") => void;
 	onStep: (id: string, delta: -1 | 1) => void;
 	drag: Pick<ReturnType<typeof useReorderDrag>, "active" | "begin" | "rowRef">;
-	/** ⌘1–9 hints are desktop-only: the browser keeps those keys in remote mode. */
-	showDigitHints: boolean;
 }
 
 interface SpaceGroupedProjectsProps {
@@ -118,7 +116,6 @@ interface SpaceGroupedProjectsProps {
 interface SpaceGroupMixed {
 	dragEnabled: boolean;
 	onGripPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
-	hint?: string;
 	outerRef: (el: HTMLElement | null) => void;
 	isDragged: boolean;
 	/** Any block of the mixed list is being dragged: the list is one-line entries, evenly spaced. */
@@ -180,7 +177,7 @@ function SpaceGroup({
 			data-testid={`space-group-${space.id}`}
 			data-reorder-placeholder={mixed?.isDragged || undefined}
 		>
-			<div className="flex items-center gap-2">
+			<div className={`${DIGIT_KEY_GROUP} flex items-center gap-2`}>
 				{mixed?.dragEnabled && (
 					<div className="hidden md:flex -ml-1.5 items-center select-none">
 						{/* Pointer-only, like the project row's grip: the header menu's
@@ -226,7 +223,6 @@ function SpaceGroup({
 					<span className={`text-fg-muted text-xs tabular-nums flex-shrink-0 ${masked ? MASK_CLASS : ""}`}>
 						{t.plural("spaces.projectCount", projectCount)}
 					</span>
-					{mixed?.hint && <DigitHint digit={mixed.hint} />}
 					{/* Words, no colour marker: a dot needs a legend, and the
 					    only legend was this same line saying it out loud. */}
 					{needsYou > 0 && (
@@ -274,6 +270,8 @@ function SpaceGroup({
 						canMoveDown={canMoveDown}
 					/>
 				)}
+				{/* Last in the header, so a keyless space's hover-only chip leaves no hole mid-line. */}
+				<DigitKeyControl id={space.id} name={space.name} masked={masked} />
 			</div>
 			{!isCollapsed && <div className={ROWS_CLASS}>{renderRows()}</div>}
 		</div>
@@ -442,7 +440,6 @@ function SpaceGroupedProjects({
 		const displayedMixed = mixed.entries;
 		const ids = displayedMixed.map(mixedEntryId);
 		const dragActive = drag.active?.scope === MIXED_SCOPE_KEY;
-		const badges = mixed.showDigitHints ? digitBadgeById(displayedMixed.slice(0, 9)) : {};
 		const scope: ReorderScope = {
 			key: MIXED_SCOPE_KEY,
 			ids,
@@ -462,7 +459,6 @@ function SpaceGroupedProjects({
 							canMoveDown: index < ids.length - 1,
 							onMoveUp: () => mixed.onStep(id, -1),
 							onMoveDown: () => mixed.onStep(id, 1),
-							digitHint: badges[id],
 						};
 						return <Fragment key={`mixed:${id}`}>{renderProject(entry.project, ctx, null)}</Fragment>;
 					}
@@ -480,7 +476,6 @@ function SpaceGroupedProjects({
 							mixed: {
 								dragEnabled: canDrag,
 								onGripPointerDown: (event) => drag.begin(event, scope, id),
-								hint: badges[id],
 								outerRef: drag.rowRef(MIXED_SCOPE_KEY, id),
 								isDragged: dragActive && drag.active?.id === id,
 								dragActive,

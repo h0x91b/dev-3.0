@@ -388,6 +388,16 @@ const dashboard = {
 	"dashboard.extraFolders_other": "+{count} folders",
 	"dashboard.moreFolders_one": "Show {count} more",
 	"dashboard.moreFolders_other": "Show {count} more",
+	"digitKeys.assign": "Give {name} a number key",
+	"digitKeys.chipAuto": "{key} opens {name}. Click to change",
+	"digitKeys.chipPinned": "{key} is pinned to {name}. Click to change",
+	"digitKeys.pickerLabel": "Number key for {name}",
+	"digitKeys.free": "Empty",
+	"digitKeys.tile": "{key}: {name}",
+	"digitKeys.tilePinned": "{key}: {name}, pinned",
+	"digitKeys.hint": "Press 1–9 to choose. Pinned keys stay put; the rest follow your dashboard order.",
+	"digitKeys.unpin": "Unpin",
+	"digitKeys.unpinAll": "Unpin all keys",
 } as const;
 
 export default dashboard;

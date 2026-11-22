@@ -18,6 +18,7 @@ vi.mock("../../rpc", () => ({
 			reorderSpaces: vi.fn(),
 			reorderSpaceProjects: vi.fn(),
 			reorderMixedOrder: vi.fn(),
+			setDigitSlots: vi.fn(),
 			createSandboxProject: vi.fn(),
 			checkHarnessReadiness: vi.fn(() => Promise.resolve({ harnesses: [], usable: ["builtin-claude"], noneInstalled: false })),
 		},
@@ -269,7 +270,7 @@ describe("ActivityOverview", () => {
 		// Special identity: bracketed name, SYSTEM badge, and the ⌘0 hint.
 		expect(await screen.findByText("[ Operations ]")).toBeInTheDocument();
 		expect(screen.getByText("System")).toBeInTheDocument();
-		expect(screen.getByText("⌘0")).toBeInTheDocument();
+		expect(screen.getByText(/^(⌘|Ctrl\+|G )0$/)).toBeInTheDocument();
 		expect(screen.getByText("Code-driven tasks · repo optional")).toBeInTheDocument();
 		// The synthetic on-disk path must never be shown to the user.
 		expect(screen.queryByText("/home/user/.dev3.0/ops/operations")).not.toBeInTheDocument();
@@ -1269,18 +1270,20 @@ describe("ActivityOverview — mixed top-level order", () => {
 
 	it("on: puts a ⌘N hint on the first nine entries (desktop only)", async () => {
 		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		const mac = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
 		renderMixed();
 		await screen.findByTestId("space-group-sp_hands");
-		const hintOf = (el: Element | null) => el?.querySelector("kbd")?.textContent;
-		expect(hintOf(screen.getByText("chisim").closest("button"))).toBe("⌘1");
-		expect(hintOf(screen.getByTestId("space-header-sp_hands"))).toBe("⌘3");
-		expect(hintOf(screen.getByText("dev-3.0").closest("button"))).toBe("⌘5");
+		expect(screen.getByTestId("digit-key-chisim")).toHaveTextContent("⌘1");
+		expect(screen.getByTestId("digit-key-sp_hands")).toHaveTextContent("⌘3");
+		expect(screen.getByTestId("digit-key-dev-3.0")).toHaveTextContent("⌘5");
+		mac.mockRestore();
 	});
 
-	it("on: shows no ⌘N hints in remote mode", async () => {
+	it("on: labels keys G N in remote mode, where the digits follow G", async () => {
 		renderMixed();
 		await screen.findByTestId("space-group-sp_hands");
-		expect(document.querySelector("kbd")).toBeNull();
+		expect(screen.getByTestId("digit-key-chisim")).toHaveTextContent("G 1");
+		expect(document.body.textContent).not.toContain("⌘1");
 	});
 
 	it("on: puts a drag grip on the space header", async () => {
@@ -1345,7 +1348,7 @@ describe("ActivityOverview — mixed top-level order", () => {
 		);
 		await screen.findByTestId("space-group-rest");
 		const opsRow = screen.getByTestId("space-group-rest").parentElement!.querySelector('[data-help-id="dashboard.ops-board"]')!;
-		expect(opsRow.querySelector("kbd")?.textContent).toBe("⌘0");
+		expect(opsRow.querySelector("kbd")?.textContent).toMatch(/^(⌘|Ctrl\+|G )0$/);
 	});
 
 	it("on, but filtered to Home: falls back to the grouped path with no space grip", async () => {
@@ -1449,5 +1452,111 @@ describe("ActivityOverview — mixed order on a narrow viewport", () => {
 		const { sheet } = await openSheetOf("chisim", "home");
 		expect(within(sheet).queryByText("Move project up")).toBeNull();
 		expect(within(sheet).queryByText("Move project down")).toBeNull();
+	});
+});
+
+describe("ActivityOverview — number key slots", () => {
+	const names = ["alpha", "beta", "gamma", "delta"];
+	const board: Project[] = names.map((n) => ({ ...mockProject, id: n, name: n, path: `/tmp/${n}` }));
+	const space = { id: "sp_x", name: "Space X", parentId: null, projectIds: ["gamma", "delta"], createdAt: 1 };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMixedOrderStore();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 1, spaces: [space], order: ["sp_x"], digitSlots: [null, "delta"] });
+		// Like the host: store the pins, then push the new file.
+		mockedApi.request.setDigitSlots.mockImplementation(async ({ slots }) => {
+			const file = { version: 1, spaces: [space], order: ["sp_x"], digitSlots: slots };
+			window.dispatchEvent(new CustomEvent("rpc:spacesUpdated", { detail: { file } }));
+			return file as never;
+		});
+	});
+
+	function renderBoard(follow = false) {
+		return render(
+			<I18nProvider>
+				<ActivityOverview projects={board} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} onReorderProjects={vi.fn()} digitsFollowSpaces={follow} />
+			</I18nProvider>,
+		);
+	}
+
+	it("labels every row and space header with its key, pinned keys marked, and a click on a key pins the entry to it", async () => {
+		renderBoard();
+		const delta = await screen.findByTestId("digit-key-delta");
+		await waitFor(() => expect(delta).toHaveAttribute("data-pinned", "true"));
+		// The test page is remote, where a key is G then the digit.
+		expect(delta).toHaveTextContent("G 2");
+		expect(screen.getByTestId("digit-key-gamma")).toHaveTextContent("G 1");
+		expect(screen.getByTestId("digit-key-gamma")).not.toHaveAttribute("data-pinned");
+		expect(screen.getByTestId("digit-key-alpha")).toHaveTextContent("G 3");
+		await userEvent.click(screen.getByTestId("digit-key-sp_x"));
+		const keypad = await screen.findByTestId("digit-keypad");
+		expect(within(keypad).getByTestId("digit-keypad-2")).toHaveTextContent("delta");
+		await userEvent.click(within(keypad).getByTestId("digit-keypad-1"));
+		await waitFor(() => expect(mockedApi.request.setDigitSlots).toHaveBeenCalledWith({ slots: ["sp_x", "delta", null, null, null, null, null, null, null] }));
+		expect(screen.queryByTestId("digit-keypad")).toBeNull();
+		expect(mockedApi.request.reorderMixedOrder).not.toHaveBeenCalled();
+	});
+
+	it("a digit typed after focus leaves the keypad goes to that field and pins nothing", async () => {
+		renderBoard();
+		const chip = await screen.findByTestId("digit-key-alpha");
+		expect(chip).toHaveAccessibleName("G 3 opens alpha. Click to change");
+		await userEvent.click(chip);
+		await screen.findByTestId("digit-keypad");
+		// Focus moves without a click (Tab, a shortcut), so only focus loss can close it.
+		const search = screen.getByTestId("dashboard-project-search");
+		act(() => search.focus());
+		await userEvent.keyboard("5");
+		expect(search).toHaveValue("5");
+		expect(screen.queryByTestId("digit-keypad")).toBeNull();
+		expect(mockedApi.request.setDigitSlots).not.toHaveBeenCalled();
+	});
+
+	it("arrow keys walk the keypad grid and Enter pins the focused key", async () => {
+		renderBoard();
+		await userEvent.click(await screen.findByTestId("digit-key-alpha"));
+		const keypad = await screen.findByTestId("digit-keypad");
+		expect(within(keypad).getByTestId("digit-keypad-3")).toHaveFocus();
+		await userEvent.keyboard("{ArrowDown}");
+		expect(within(keypad).getByTestId("digit-keypad-6")).toHaveFocus();
+		await userEvent.keyboard("{ArrowLeft}");
+		expect(within(keypad).getByTestId("digit-keypad-5")).toHaveFocus();
+		await userEvent.keyboard("{Enter}");
+		await waitFor(() => expect(mockedApi.request.setDigitSlots).toHaveBeenCalledWith({ slots: [null, "delta", null, null, "alpha", null, null, null, null] }));
+	});
+
+	it("Escape closes the keypad while a space is on the board", async () => {
+		renderBoard();
+		await userEvent.click(await screen.findByTestId("digit-key-alpha"));
+		await screen.findByTestId("digit-keypad");
+		await userEvent.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByTestId("digit-keypad")).toBeNull());
+		expect(mockedApi.request.setDigitSlots).not.toHaveBeenCalled();
+	});
+
+	it("drops a pin that no longer resolves on the next write, and offers Unpin all while only such pins are stored", async () => {
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 1, spaces: [space], order: ["sp_x"], digitSlots: ["gone"] });
+		renderBoard();
+		await userEvent.click(await screen.findByTestId("digit-key-alpha"));
+		expect(await screen.findByTestId("digit-keypad-unpin-all")).toBeInTheDocument();
+		await userEvent.click(screen.getByTestId("digit-keypad-3"));
+		await waitFor(() => expect(mockedApi.request.setDigitSlots).toHaveBeenCalledWith({ slots: [null, null, "alpha", null, null, null, null, null, null] }));
+	});
+
+	it("the digit picks the key, Unpin puts one key back and Unpin all clears every pin", async () => {
+		renderBoard(true);
+		await waitFor(() => expect(screen.getByTestId("digit-key-delta")).toHaveAttribute("data-pinned", "true"));
+		await userEvent.click(screen.getByTestId("digit-key-alpha"));
+		await screen.findByTestId("digit-keypad");
+		await userEvent.keyboard("4");
+		await waitFor(() => expect(mockedApi.request.setDigitSlots).toHaveBeenCalledWith({ slots: [null, "delta", null, "alpha", null, null, null, null, null] }));
+		await userEvent.click(screen.getByTestId("digit-key-delta"));
+		await userEvent.click(await screen.findByTestId("digit-keypad-unpin"));
+		await waitFor(() => expect(mockedApi.request.setDigitSlots).toHaveBeenLastCalledWith({ slots: [null, null, null, "alpha", null, null, null, null, null] }));
+		await userEvent.click(screen.getByTestId("digit-key-alpha"));
+		await userEvent.click(await screen.findByTestId("digit-keypad-unpin-all"));
+		await waitFor(() => expect(mockedApi.request.setDigitSlots).toHaveBeenLastCalledWith({ slots: [] }));
 	});
 });

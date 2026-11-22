@@ -66,10 +66,30 @@ function activeSpace(file: SpacesFile, spaceId: string): Space {
 	return space;
 }
 
-/** Soft-delete in place and drop from the display order. */
+/** Soft-delete in place and drop from the display order and the ⌘1–9 pins. */
 function softDelete(file: SpacesFile, space: Space): void {
 	space.deleted = true;
 	file.order = file.order.filter((id) => id !== space.id);
+	unpinDigit(file, space.id);
+}
+
+/** Take `id` off every ⌘1–9 key; false when no key held it. */
+function unpinDigit(file: SpacesFile, id: string): boolean {
+	if (!file.digitSlots?.includes(id)) return false;
+	writeDigitSlots(file, file.digitSlots.map((pin) => (pin === id ? null : pin)));
+	return true;
+}
+
+function writeDigitSlots(file: SpacesFile, slots: (string | null)[]): void {
+	const seen = new Set<string>();
+	const next = slots.slice(0, 9).map((id) => {
+		if (typeof id !== "string" || id.length === 0 || seen.has(id)) return null;
+		seen.add(id);
+		return id;
+	});
+	while (next.length > 0 && next[next.length - 1] === null) next.pop();
+	if (next.length === 0) delete file.digitSlots;
+	else file.digitSlots = next;
 }
 
 export async function loadSpacesFile(): Promise<SpacesFile> {
@@ -166,6 +186,23 @@ export async function reorderMixed(ids: string[]): Promise<SpacesFile> {
 		file.mixedOrder = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
 		return structuredClone(file);
 	});
+}
+
+/** Store the ⌘1–9 pins: nine slots at most, trailing empties dropped, no id pinned twice. */
+export async function setDigitSlots(slots: (string | null)[]): Promise<SpacesFile> {
+	return mutate((file) => {
+		writeDigitSlots(file, slots);
+		return structuredClone(file);
+	});
+}
+
+/**
+ * Unpin a removed project from its key. Re-adding the same repo revives the same
+ * id, so a pin left behind would silently come back.
+ */
+export async function unpinRemovedProject(projectId: string): Promise<boolean> {
+	if (!(await loadSpacesFile()).digitSlots?.includes(projectId)) return false;
+	return mutate((file) => unpinDigit(file, projectId));
 }
 
 export async function reorderSpaceProjects(spaceId: string, projectIds: string[]): Promise<Space> {

@@ -87,6 +87,11 @@ export function resolveMixedOrder(projects: Project[], file: SpacesFile): MixedE
 	return [...ordered, ...rest];
 }
 
+/** A digit slot: what it opens, or null when nothing fills it. */
+export type DigitSlot = MixedEntry | null;
+
+const DIGIT_SLOTS = 9;
+
 /**
  * Ordinary projects top to bottom as the dashboard lists them with the mixed
  * order off: each space's members in rail order, then Home. A project in several
@@ -101,15 +106,56 @@ export function dashboardProjectOrder(projects: Project[], file: SpacesFile): Pr
 }
 
 /**
- * What ⌘1..9 (index 0..8) open: the first nine entries in dashboard order —
- * the mixed list when "Number keys follow spaces" is on, else
- * `dashboardProjectOrder`. Every digit consumer reads this one list.
+ * What ⌘1..9 (index 0..8) open. A slot the user pinned (`digitSlots`) opens its
+ * pin; every other slot takes the next entry of the default order not pinned
+ * elsewhere. Trailing empty slots are dropped. Every digit consumer reads this.
  */
-export function digitTargets(projects: Project[], file: SpacesFile, followSpaces: boolean): MixedEntry[] {
-	if (followSpaces) return resolveMixedOrder(projects, file).slice(0, 9);
+export function digitTargets(projects: Project[], file: SpacesFile, followSpaces: boolean): DigitSlot[] {
+	const pins = resolveDigitPins(projects, file);
+	const pinned = new Set(pins.filter((p): p is MixedEntry => p !== null).map(mixedEntryId));
+	const fill = digitCandidates(projects, file, followSpaces).filter((entry) => !pinned.has(mixedEntryId(entry)));
+	const slots: DigitSlot[] = [];
+	for (let i = 0; i < DIGIT_SLOTS; i++) slots.push(pins[i] ?? fill.shift() ?? null);
+	while (slots.length > 0 && slots[slots.length - 1] === null) slots.pop();
+	return slots;
+}
+
+/** The pinned entry per slot (null = follows the default); a pin that no longer resolves is null. */
+export function resolveDigitPins(projects: Project[], file: SpacesFile): DigitSlot[] {
+	const pool = new Map(digitPinPool(projects, file).map((entry) => [mixedEntryId(entry), entry]));
+	return Array.from({ length: DIGIT_SLOTS }, (_, i) => {
+		const id = file.digitSlots?.[i];
+		return (id && pool.get(id)) || null;
+	});
+}
+
+/** Everything a slot can be pinned to, whatever the mode: every space with a live member, then every project. */
+export function digitPinPool(projects: Project[], file: SpacesFile): MixedEntry[] {
+	const eligible = projects.filter((p) => !p.deleted && !isBuiltinOpsProject(p));
+	const byId = new Map(eligible.map((p) => [p.id, p]));
+	const spaces: MixedEntry[] = [];
+	for (const space of orderSpaces(file.spaces, file.order)) {
+		const members = space.projectIds.map((id) => byId.get(id)).filter((p): p is Project => p !== undefined);
+		if (members.length > 0) spaces.push({ kind: "space", space, projects: members });
+	}
+	return [...spaces, ...eligible.map((project): MixedEntry => ({ kind: "project", project }))];
+}
+
+/**
+ * The default order the unpinned slots fill from, as the dashboard shows it: the
+ * mixed list when "Number keys follow spaces" is on, else `dashboardProjectOrder`.
+ */
+export function digitCandidates(projects: Project[], file: SpacesFile, followSpaces: boolean): MixedEntry[] {
+	if (followSpaces) return resolveMixedOrder(projects, file);
 	return dashboardProjectOrder(projects, file)
-		.slice(0, 9)
 		.map((project) => ({ kind: "project", project }));
+}
+
+/** `digitSlots` with slot `index` pinned to `id` (null clears it), the id taken off any other slot. */
+export function pinnedSlots(current: (string | null)[] | undefined, index: number, id: string | null): (string | null)[] {
+	const next = Array.from({ length: DIGIT_SLOTS }, (_, i) => current?.[i] ?? null).map((pin) => (pin === id ? null : pin));
+	next[index] = id;
+	return next;
 }
 
 /**
@@ -125,10 +171,10 @@ export function isDigitTargetOnScreen(target: MixedEntry, route: Route): boolean
 }
 
 /** Digit badge ("1".."9") per target id, for surfaces that label rows with their shortcut. */
-export function digitBadgeById(targets: MixedEntry[]): Record<string, string> {
+export function digitBadgeById(targets: DigitSlot[]): Record<string, string> {
 	const badges: Record<string, string> = {};
 	targets.forEach((target, i) => {
-		badges[mixedEntryId(target)] = String(i + 1);
+		if (target) badges[mixedEntryId(target)] = String(i + 1);
 	});
 	return badges;
 }

@@ -3,7 +3,7 @@ import * as spacesData from "../spaces-data";
 import { getPushMessage } from "./shared";
 
 /** Broadcast the fresh file after any mutation so every window stays in sync. */
-async function pushSpacesUpdated(): Promise<void> {
+export async function pushSpacesUpdated(): Promise<void> {
 	const file = await spacesData.loadSpacesFile();
 	getPushMessage()?.("spacesUpdated", { file });
 }
@@ -55,6 +55,12 @@ async function reorderMixedOrder(params: { ids: string[] }): Promise<SpacesFile>
 	return file;
 }
 
+async function setDigitSlots(params: { slots: (string | null)[] }): Promise<SpacesFile> {
+	const file = await spacesData.setDigitSlots(params.slots);
+	await pushSpacesUpdated();
+	return file;
+}
+
 async function reorderSpaceProjects(params: { spaceId: string; projectIds: string[] }): Promise<Space> {
 	const space = await spacesData.reorderSpaceProjects(params.spaceId, params.projectIds);
 	await pushSpacesUpdated();
@@ -70,5 +76,6 @@ export const spacesHandlers = {
 	setProjectSpaces,
 	reorderSpaces,
 	reorderMixedOrder,
+	setDigitSlots,
 	reorderSpaceProjects,
 };

@@ -11,7 +11,7 @@ import { useSpaces } from "../useSpaces";
 import { groupProjectsForSwitcher, HOME_GROUP_ID } from "../utils/spaceGroups";
 import { readSwitcherCollapsed, writeSwitcherCollapsed } from "../utils/switcherCollapse";
 import { digitBadgeById, digitTargets } from "../utils/digitOrder";
-import { useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
+import { useDigitSpacesFile } from "../mixed-order-store";
 import { projectLastActivityMs } from "../utils/projectActivity";
 import { fuzzyScore } from "../utils/fuzzyMatch";
 import { projectSearchHaystack } from "../utils/projectSearchHaystack";
@@ -20,7 +20,7 @@ import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
-import { isMac, isRemote } from "../utils/platform";
+import { digitKeyLabel, isMac, isRemote } from "../utils/platform";
 import { subscribeFullscreen, isFullscreenActive, isFullscreenSupported, toggleFullscreen } from "../fullscreen";
 import { toast, usePinnedToastSlot } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
@@ -146,7 +146,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const highlightHelp = !helpDiscovered && !tourRunning && !suppressHelpCallout && HELP_ATTRACTOR_SCREENS.has(route.screen);
 	const privacy = useProjectPrivacy();
 	const { file: spacesFile } = useSpaces();
-	const mixedPending = useMixedPending();
+	const digitSpacesFile = useDigitSpacesFile(spacesFile);
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const mobileBrowser = useMobileBrowser();
@@ -595,7 +595,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	}, [availableProjects, navigate]);
 	// ⌘N badges come from the shared digit list, so they keep matching the shortcut
 	// once spaces regroup the rows (same source as the ⇧⌘K palette's badges).
-	const switcherShortcutById: Record<string, string> = digitBadgeById(digitTargets(projects, withPendingMixedOrder(spacesFile, mixedPending), digitsFollowSpaces));
+	const switcherShortcutById: Record<string, string> = digitBadgeById(digitTargets(projects, digitSpacesFile, digitsFollowSpaces));
 	for (const p of availableProjects) if (isBuiltinOpsProject(p)) switcherShortcutById[p.id] = "0";
 	// Spaces group the switcher exactly as they group the dashboard, except the
 	// current project's own space is hoisted first. null = no space holds a
@@ -733,7 +733,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				</span>
 				{shortcutLabel && (
 					<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
-						<span className="text-micro">{"⌘"}</span>{shortcutLabel}
+						{digitKeyLabel(shortcutLabel)}
 					</kbd>
 				)}
 			</button>
@@ -1091,7 +1091,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 																	</span>
 																	{switcherShortcutById[group.space.id] && (
 																		<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
-																			<span className="text-micro">{"⌘"}</span>{switcherShortcutById[group.space.id]}
+																			{digitKeyLabel(switcherShortcutById[group.space.id])}
 																		</kbd>
 																	)}
 																</button>

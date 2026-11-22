@@ -44,7 +44,10 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 139,
+	// 139 → 140 for the §10 ⌘1–9 slot pins row (~190 B). The first cut of that row fitted by trimming
+	// unrelated rationale (§5 rail, §10 space order) whose why exists nowhere else; review restored it.
+	// The UX_DECISIONS entry is a one-line pointer to its record, so the tree total still fits.
+	"PRODUCT_UX_BIBLE.md": 140,
 	// 137 → 139 for plugin slots (§5.12): a new surface pattern every later surface migration lands
 	// on — replace vs contribution slots, add-only extensions, what is never a slot, the Extensions
 	// page grouping — plus the §5.1 registry bullet, the §5.10 move/swap menu and two §9 rows. `main`

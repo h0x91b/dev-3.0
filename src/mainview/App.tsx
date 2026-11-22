@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { digitTargets, isDigitTargetOnScreen, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
-import { useMixedPending, withPendingMixedOrder } from "./mixed-order-store";
+import { useDigitSpacesFile } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
@@ -1214,10 +1214,10 @@ function App() {
 	// ⌘1..9, ⇧⌘1..9 and `g` + digit share this list; a space target opens its board
 	// anchored on the member last used there, else the first one.
 	const followSpaces = globalSettings.digitsFollowSpaces === true;
-	const mixedPending = useMixedPending();
+	const digitSpacesFile = useDigitSpacesFile(spacesFile);
 	const digitTargetList = useMemo(
-		() => digitTargets(state.projects, withPendingMixedOrder(spacesFile, mixedPending), followSpaces),
-		[state.projects, spacesFile, mixedPending, followSpaces],
+		() => digitTargets(state.projects, digitSpacesFile, followSpaces),
+		[state.projects, digitSpacesFile, followSpaces],
 	);
 	const digitTargetBoard = useCallback((target: MixedEntry): { projectId: string; spaceId?: string } => {
 		if (target.kind === "project") return { projectId: target.project.id };
@@ -1305,7 +1305,7 @@ function App() {
 		// would disagree with its shortcut. Spaces carry a badge too (mixed mode).
 		const shortcutIndexById: Record<string, number> = {};
 		digitTargetList.forEach((target, i) => {
-			shortcutIndexById[mixedEntryId(target)] = i;
+			if (target) shortcutIndexById[mixedEntryId(target)] = i;
 		});
 		// Pin the builtin Operations board first (consistent with the dashboard,
 		// header switcher, and sidebar), then recency, then board order. Any "Go to"

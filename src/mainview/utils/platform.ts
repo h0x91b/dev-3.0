@@ -16,6 +16,11 @@ export function modifierLabel(): string {
 	return isMac() ? "⌘" : "Ctrl+";
 }
 
+/** How a number key is pressed here: `G 3` in a browser tab, else `⌘3` / `Ctrl+3`. */
+export function digitKeyLabel(digit: number | string): string {
+	return isRemote() ? `G ${digit}` : `${modifierLabel()}${digit}`;
+}
+
 export function isWindows(): boolean {
 	if (typeof navigator === "undefined") return false;
 	return /Win/.test(navigator.platform || "") || (navigator.userAgent || "").includes("Windows");

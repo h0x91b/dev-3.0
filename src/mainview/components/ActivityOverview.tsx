@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Dispatch } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
+import { isSpaceSensitive } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskAgentless, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -17,9 +18,10 @@ import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
 import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import SpaceGroupedProjects, { DigitHint, MIXED_SCOPE_KEY, type RowReorderCtx } from "./SpaceGroupedProjects";
-import { mixedEntryId, movedIds, resolveMixedOrder, steppedIds } from "../utils/digitOrder";
-import { commitMixedOrder, useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
-import { isRemote } from "../utils/platform";
+import { DIGIT_KEY_GROUP, DigitKeyControl, DigitKeysContext, type DigitKeys } from "./DigitKeyControl";
+import { digitPinPool, digitTargets, mixedEntryId, movedIds, pinnedSlots, resolveDigitPins, resolveMixedOrder, steppedIds } from "../utils/digitOrder";
+import { commitDigitSlots, commitMixedOrder, useDigitSpacesFile, useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
+import { digitKeyLabel, isRemote } from "../utils/platform";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useReorderDrag, type ReorderScope } from "../hooks/useReorderDrag";
 import { statusKey } from "../i18n/status";
@@ -177,6 +179,25 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		() => (digitsFollowSpaces ? resolveMixedOrder(projects, withPendingMixedOrder(spacesFile, mixedPending)) : []),
 		[digitsFollowSpaces, projects, spacesFile, mixedPending],
 	);
+	const sensitiveProjectIds = useMemo(() => new Set(projects.filter((p) => p.sensitive).map((p) => p.id)), [projects]);
+	// What ⌘1–9 open (pins over the default order). Every row and space header
+	// shows its key as a chip that opens the keypad to change it.
+	const digitFile = useDigitSpacesFile(spacesFile);
+	const digitKeys = useMemo<DigitKeys>(() => {
+		const pins = resolveDigitPins(projects, digitFile);
+		// Written from the pins that resolve, so an id that no longer does is dropped, not carried forward.
+		const live = pins.map((pin) => (pin ? mixedEntryId(pin) : null));
+		return {
+			targets: digitTargets(projects, digitFile, digitsFollowSpaces),
+			pins,
+			anyStored: (digitFile.digitSlots ?? []).some((id) => id !== null),
+			pinnable: new Set(digitPinPool(projects, digitFile).map(mixedEntryId)),
+			isMasked: (entry) => privacy.streamerMode && (entry.kind === "space" ? isSpaceSensitive(entry.space, sensitiveProjectIds) : privacy.isLocked(entry.project)),
+			onPin: (index, id) => commitDigitSlots(pinnedSlots(live, index, id)),
+			onUnpinAll: () => commitDigitSlots([]),
+		};
+	}, [projects, digitFile, digitsFollowSpaces, privacy, sensitiveProjectIds]);
+
 	const mixedOrder = {
 		entries: mixedEntries,
 		reorder: (sourceId: string, targetId: string, side: "before" | "after") => {
@@ -399,13 +420,11 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	});
 	// Search and the rail filter show a subset, so there is no whole list to drag in.
 	const mixedActive = digitsFollowSpaces && selectedSpaceId === null && projectQuery.trim() === "";
-	const showDigitHints = mixedActive && !isRemote();
 	// ⌘0 is Operations whenever the setting is on, search and filter included.
 	const opsDigitHint = digitsFollowSpaces && !isRemote();
 	// With the setting on, the flat project order is not what ⌘1–9 follow, so the
 	// rows outside the mixed list and outside a space block offer no reorder.
 	const flatReorderOff = digitsFollowSpaces && !mixedActive;
-	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
 	const hasPinnedBuiltin = visibleProjects.length > 0 && isBuiltinOpsProject(visibleProjects[0]);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
@@ -606,7 +625,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				data-reorder-placeholder={isDragged || undefined}
 			>
 				{/* Project header */}
-				<div data-project-row-header className={`group flex items-center gap-2 px-3 md:px-5 ${compact ? "py-1.5" : hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+				<div data-project-row-header className={`group ${DIGIT_KEY_GROUP} flex items-center gap-2 px-3 md:px-5 ${compact ? "py-1.5" : hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
 					{/* Reorder cluster — desktop only. On touch, drag and the
 					    step buttons are unusable; reorder lives in the action sheet. */}
 					{/* A grouped row alone in its space has nothing to reorder. */}
@@ -705,7 +724,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						    link emphasis on row hover. Without it the only cue was the
 						    background lifting one step, which reads as "row", not "link". */}
 						<span className={`truncate select-text ${locked || compact ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{projectDisplayName(project, t("ops.boardName"))}</span>
-									{reorder?.digitHint && !compact && <DigitHint digit={reorder.digitHint} />}
 									{!isBuiltinOps && !compact && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
@@ -724,7 +742,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									<span className="hidden md:inline-flex"><DigitHint digit="0" /></span>
 								)}
 								{isBuiltinOps && !compact && !opsDigitHint && (
-									<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
+									<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">{digitKeyLabel(0)}</span>
 								)}
 							</div>
 							{/* Subtitle (path / virtual hint) is dead weight on a phone —
@@ -736,6 +754,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							)}
 						</div>
 					</button>
+					{!compact && !isBuiltinOps && <DigitKeyControl id={project.id} name={project.name} masked={locked} />}
 					{!compact && <ProjectFoldersToggle project={project} />}
 					{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
 					<div className={compact ? "hidden" : "hidden md:flex"}>
@@ -981,6 +1000,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	}
 
 	return (
+		<DigitKeysContext.Provider value={digitKeys}>
 		<div className="h-full overflow-y-auto p-3 md:p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
 				{noRepositoryYet ? (
@@ -1155,7 +1175,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								onReorder: mixedOrder.reorder,
 								onStep: mixedOrder.step,
 								drag: reorderDrag,
-								showDigitHints,
 							} : undefined}
 							renderProject={(p, ctx, spaceId) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), ctx, spaceId)}
 							renderBottomBlockProject={(p, block) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), undefined, undefined, flatScope(block.map((b) => b.id), "no-space"))}
@@ -1208,6 +1227,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				)}
 			</div>
 		</div>
+		</DigitKeysContext.Provider>
 	);
 }
 
