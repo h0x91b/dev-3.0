@@ -193,12 +193,6 @@ function ActiveTasksSidebar({
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("terminal");
 	// One filter for the whole sidebar, like its scope: it follows the user across tasks and projects.
 	const [searchQuery, setSearchQuery] = useRememberedFilter("active-tasks");
-	// Re-render once per second so the status-age badges stay live.
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), 1000);
-		return () => clearInterval(id);
-	}, []);
 	const [scope, setScopeState] = useState<SidebarScope | null>(readScope);
 	const [showHidden, setShowHiddenState] = useState(readShowHidden);
 	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
@@ -899,7 +893,6 @@ function ActiveTasksSidebar({
 											prInfo={taskPrMap.get(task.id)}
 											statusColors={statusColors}
 											color={taskColor(task)}
-											now={now}
 											dispatch={dispatch}
 											navigate={navigate}
 											onOpen={() => handleTaskClick(task)}

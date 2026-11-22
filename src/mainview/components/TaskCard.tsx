@@ -1,4 +1,4 @@
-import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
+import { Fragment, memo, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
@@ -89,7 +89,8 @@ interface TaskCardProps {
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
-	siblingMap?: Map<string, Task[]>;
+	/** The task's variant group, when it has one. Per card, not the board's whole map, so one task's change leaves other cards' props equal. */
+	groupMembers?: Task[];
 	prInfo?: TaskPRBadgeInfo;
 	/** Opens the selected task's diff at its first unresolved review thread. */
 	onOpenUnresolvedComments?: (task: Task) => void;
@@ -109,7 +110,7 @@ interface TaskCardProps {
 	onFilterByEpic?: (epic: Epic) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, dependency, onFilterByEpic }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, groupMembers: groupMembersProp, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, dependency, onFilterByEpic }: TaskCardProps) {
 	const { byId: epicsById } = useEpics();
 	const epic = task.epicId ? epicsById.get(task.epicId) : undefined;
 	const t = useT();
@@ -130,9 +131,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	/** Mobile has no "+ Add label" button, so the picker anchors to the chip row. */
 	const labelRowRef = useRef<HTMLDivElement>(null);
 
-	const groupMembers = task.groupId && siblingMap
-		? (siblingMap.get(task.groupId) ?? [])
-		: [];
+	const groupMembers = task.groupId ? (groupMembersProp ?? EMPTY_GROUP) : EMPTY_GROUP;
 
 	const preview = useTerminalPreview();
 	const cardRef = useRef<HTMLDivElement>(null);
@@ -1488,4 +1487,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	);
 }
 
-export default TaskCard;
+const EMPTY_GROUP: Task[] = [];
+
+// Every board-level change re-renders the host; memo keeps that to the cards whose own props changed.
+export default memo(TaskCard);

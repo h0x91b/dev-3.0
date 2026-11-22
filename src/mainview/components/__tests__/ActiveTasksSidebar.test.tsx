@@ -38,6 +38,20 @@ vi.mock("../../hooks/useTerminalPreview", () => ({
 	useTerminalPreview: () => terminalPreview,
 }));
 
+// Counts row renders: every ActiveTaskRow renders exactly one PriorityBadge.
+const priorityBadgeRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../PriorityBadge", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../PriorityBadge")>();
+	const Real = actual.default;
+	return {
+		...actual,
+		default: (props: React.ComponentProps<typeof Real>) => {
+			priorityBadgeRenders.count++;
+			return <Real {...props} />;
+		},
+	};
+});
+
 vi.mock("../../utils/confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn(() => Promise.resolve(false)),
 }));
@@ -1091,6 +1105,35 @@ function makeTask(overrides?: Partial<Task>): Task {
 		const tooltip = await screen.findByRole("tooltip");
 		expect(tooltip).toHaveTextContent("Status changed");
 		expect(tooltip).toHaveTextContent("5m ago");
+	});
+
+	it("ticks the seconds stamp every second without re-rendering any row", async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ["setInterval", "clearInterval", "Date"] });
+		try {
+			const day = 86_400_000;
+			const tasks = Array.from({ length: 10 }, (_, i) => makeTask({
+				id: `t${i + 1}`, seq: i + 1, groupId: null, variantIndex: null,
+				createdAt: new Date(Date.now() - 3 * day).toISOString(),
+				movedAt: new Date(Date.now() - (i === 0 ? 5_000 : 2 * day)).toISOString(),
+			}));
+			render(
+				<I18nProvider>
+					<ActiveTasksSidebar project={project} tasks={tasks} dispatch={vi.fn()}
+						navigate={vi.fn()} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+				</I18nProvider>,
+			);
+			await act(async () => {});
+			expect(screen.getByTestId("sidebar-age-t1-activity")).toHaveTextContent("5s");
+
+			priorityBadgeRenders.count = 0;
+			await act(async () => { vi.advanceTimersByTime(3_000); });
+
+			expect(screen.getByTestId("sidebar-age-t1-activity")).toHaveTextContent("8s");
+			// A row-level clock re-renders all 10 rows on each of the 3 ticks.
+			expect(priorityBadgeRenders.count).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("falls back to the creation time when the task never changed status", () => {

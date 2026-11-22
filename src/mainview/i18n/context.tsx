@@ -3,6 +3,7 @@ import {
 	useContext,
 	useState,
 	useCallback,
+	useMemo,
 	type ReactNode,
 } from "react";
 import { ALL_LOCALES, type Locale } from "./types";
@@ -145,9 +146,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 	};
 
 	activeT = t;
+	// A fresh object per render would re-render every translated component whenever the provider does.
+	const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
 
 	return (
-		<I18nContext.Provider value={{ locale, setLocale, t }}>
+		<I18nContext.Provider value={value}>
 			{children}
 		</I18nContext.Provider>
 	);

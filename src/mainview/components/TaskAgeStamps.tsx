@@ -1,6 +1,6 @@
 import type { Task } from "../../shared/types";
 import { useLocale, useT } from "../i18n";
-import { useSharedNow } from "../hooks/useNow";
+import { readSharedNow, useSharedClockValue } from "../hooks/useNow";
 import { ageParts, compactAge, freshness, type AgeUnit, type Freshness } from "../utils/statusAge";
 import Tooltip from "./Tooltip";
 
@@ -87,8 +87,19 @@ export default function TaskAgeStamps({ task, now, testId, fit = "both" }: TaskA
 	);
 }
 
-/** The same stamps on the shared 15s clock, for surfaces that have no clock of their own. */
-export function LiveTaskAgeStamps(props: Omit<TaskAgeStampsProps, "now">) {
-	const now = useSharedNow();
-	return <TaskAgeStamps {...props} now={now} />;
+/** Everything the stamps show that depends on the clock; equal keys render identically. */
+function ageStampsKey(task: TaskAgeStampsProps["task"], now: number): string {
+	const activityAt = task.movedAt ?? task.createdAt;
+	const created = ageParts(task.createdAt, now);
+	const activity = ageParts(activityAt, now);
+	return `${freshness(activityAt, now)}|${created?.value}${created?.unit}|${activity?.value}${activity?.unit}`;
+}
+
+/**
+ * The same stamps on a shared clock (15 s unless `tickMs` says otherwise). A tick
+ * re-renders only the stamps whose text or colour changed, never their parent row.
+ */
+export function LiveTaskAgeStamps({ tickMs = 15_000, ...props }: Omit<TaskAgeStampsProps, "now"> & { tickMs?: number }) {
+	useSharedClockValue(tickMs, (now) => ageStampsKey(props.task, now));
+	return <TaskAgeStamps {...props} now={readSharedNow(tickMs)} />;
 }

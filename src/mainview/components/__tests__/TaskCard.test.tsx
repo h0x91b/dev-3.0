@@ -198,7 +198,7 @@ function renderCard(
 		projectOverride?: Project;
 		prInfo?: TaskPRBadgeInfo;
 		onOpenUnresolvedComments?: (task: Task) => void;
-		siblingMap?: Map<string, Task[]>;
+		groupMembers?: Task[];
 		onEditDraft?: (task: Task) => void;
 		devServer?: DevServerSummary;
 		ports?: PortInfo[];
@@ -222,7 +222,7 @@ function renderCard(
 				isMoving={opts?.isMoving}
 				prInfo={opts?.prInfo}
 				onOpenUnresolvedComments={opts?.onOpenUnresolvedComments}
-				siblingMap={opts?.siblingMap}
+				groupMembers={opts?.groupMembers}
 				onEditDraft={opts?.onEditDraft}
 				devServer={opts?.devServer}
 				ports={opts?.ports}
@@ -268,7 +268,7 @@ describe("TaskCard", () => {
 		}));
 
 		renderCard(variants[4], {
-			siblingMap: new Map([["group-1", variants]]),
+			groupMembers: variants,
 		});
 
 		expect(screen.getAllByTestId(/^variant-indicator-t5-dot-/)).toHaveLength(3);
@@ -509,17 +509,14 @@ describe("TaskCard", () => {
 		it("shows a compact N/M fraction when the group really has siblings", () => {
 			const task = makeTask({ seq: 5, variantIndex: 2, groupId: "g1" });
 			renderCard(task, {
-				siblingMap: new Map([[
-					"g1",
-					[task, makeTask({ id: "t2", seq: 5, variantIndex: 1, groupId: "g1" }), makeTask({ id: "t3", seq: 5, variantIndex: 3, groupId: "g1" })],
-				]]),
+				groupMembers: [task, makeTask({ id: "t2", seq: 5, variantIndex: 1, groupId: "g1" }), makeTask({ id: "t3", seq: 5, variantIndex: 3, groupId: "g1" })],
 			});
 			expect(screen.getByText("2/3")).toBeInTheDocument();
 		});
 
 		it("hides the fraction for a lone variant — 1/1 says nothing", () => {
 			const task = makeTask({ seq: 5, variantIndex: 1, groupId: "g1" });
-			renderCard(task, { siblingMap: new Map([["g1", [task]]]) });
+			renderCard(task, { groupMembers: [task] });
 			expect(screen.queryByText("1/1")).not.toBeInTheDocument();
 			expect(screen.getByText("#5")).toBeInTheDocument();
 		});
