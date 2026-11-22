@@ -278,3 +278,31 @@ describe("TaskPrStatusPopover - one open at a time", () => {
 		expect(screen.getByRole("dialog", { name: "PR #43 status" })).toBeInTheDocument();
 	});
 });
+
+describe("TaskPrStatusPopover — byline", () => {
+	it("shows the author alone when the commit date is missing", async () => {
+		renderPopover({ prInfo: makePrInfo({ authorLogin: "octo", lastCommitAt: null }) });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		expect(within(popover).getByTestId("pr-byline-author")).toHaveTextContent("octo");
+		expect(within(popover).getByTestId("pr-byline-author").getAttribute("href")).toBe("https://github.com/octo");
+		expect(within(popover).queryByTestId("pr-byline-commit")).not.toBeInTheDocument();
+	});
+
+	it("reads a day-old commit as yesterday", async () => {
+		renderPopover({ prInfo: makePrInfo({ lastCommitAt: new Date(Date.now() - 30 * 3_600_000).toISOString() }) });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		expect(within(popover).getByTestId("pr-byline-commit")).toHaveTextContent("last commit yesterday");
+		expect(within(popover).queryByTestId("pr-byline-author")).not.toBeInTheDocument();
+	});
+});
+
+describe("githubProfileUrl", () => {
+	it("keeps the PR's own host, so GitHub Enterprise authors link to their server", async () => {
+		const { githubProfileUrl } = await import("../PrByline");
+		expect(githubProfileUrl("octo", "https://ghe.example.com/org/repo/pull/7")).toBe("https://ghe.example.com/octo");
+		expect(githubProfileUrl("octo", "not a url")).toBe("https://github.com/octo");
+		expect(githubProfileUrl("octo")).toBe("https://github.com/octo");
+	});
+});

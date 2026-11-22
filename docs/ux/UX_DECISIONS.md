@@ -152,13 +152,13 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 ## 2026-08-20 — The board card carries the dev server: one split control, open | stop
 
 - **Rule:** `dev_server_action` gains one placement on `task_card.actions` — a single split control (open the lowest dev port | stop), conditional on active + worktree + resolved `devScript` + not hibernated; start/restart/logs stay in the inspector. The card's inline-action budget is reconciled 2 → 4 (shipped code already ran 3) and is now full. Bible §5, §9; yaml `dev-server-control-on-task-card`.
-- **Why:** "Which task is serving, on which port" was answerable only by opening each task, and a forgotten dev server is a machine-wide cost; stop earns the card because reversal is one click, while start does not. Rejected: a read-only signals badge (cannot stop anything) and hiding the control when stopped (the row reflows exactly when a server dies).
+- **Why:** "Which task serves on which port" needed opening each task, and a forgotten dev server is a machine-wide cost; stop earns the card because reversal is one click, while start does not. Rejected: a read-only signals badge (cannot stop anything) and hiding the control when stopped (the row reflows exactly when a server dies).
 - **Status:** Planned (task #1602). Evidence: `TaskCard.tsx`, `task-info-panel/TaskDevServer.tsx`, `types.ts (DevServerStatus)`.
 
 ## 2026-08-20 — A rendered document is commented by selecting its text, and must show what it collects
 
 - **Rule:** In the diff viewer's markdown preview, a text selection raises a floating `Add comment` button that opens the shared composer and writes to the same per-file/per-side/per-line thread as a gutter comment (blocks carry `data-md-line-start/end` from mdast positions); the preview must also render that file's existing local threads.
-- **Why:** A rendered document has no gutter, so the only trigger the medium offers is the selection itself — a toolbar "comment mode" toggle was rejected as a mode switch plus a toolbar slot for one action, and a per-block hover `+` was rejected as chrome on every paragraph. Creating comments without rendering them was rejected outright: the preview replaces the diff, so the click would look like a no-op.
+- **Why:** A rendered document has no gutter, so the selection itself is the only trigger. Rejected: a toolbar "comment mode" toggle (a mode switch plus a toolbar slot for one action) and a per-block hover `+` (chrome on every paragraph). Rejected outright: creating comments without rendering them — the preview replaces the diff, so the click would look like a no-op.
 - **Status:** Proposed. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/markdown-diff.tsx`, bible §5.3.
 
 ## 2026-08-22 — A breadcrumb chevron switches that segment's own object
@@ -198,7 +198,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 ## 2026-08-10 — Review export card is a title line; the composer owns the one-shot send
 
 - **Rule:** The export cluster (count + Copy + Send + icon-only Reset) sits on the card's title line, renders nothing when the review is empty, and the count is plain text — never a bordered box; the composer gains `Send now`, which delivers one remark and drops it.
-- **Why:** A reviewer's single remark cost three clicks (add → send → delete) and the card spent a third of the aside on two full-width rare-use buttons plus a boxed number that read as an editable input; keeping the batch buttons full-width was rejected as the thing being complained about.
+- **Why:** A reviewer's single remark cost three clicks (add → send → delete) and the card spent a third of the aside on two full-width rare-use buttons plus a boxed number that read as an input; keeping the full-width batch buttons was rejected as the complaint itself.
 - **Status:** Implemented. Evidence: `src/mainview/components/TaskDiffViewer.tsx` (`addAndSendInlineComment`, `InlineCommentComposer`), bible §5.3.
 
 ## 2026-08-08 — The memory breakdown may kill leftover worktree processes, and nothing else
@@ -210,7 +210,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 ## 2026-08-08 — On a phone the memory readout folds into the kebab like everything else
 
 - **Rule:** the global header's ambient resource readout (memory headroom) is a roomy-width slot only; on narrow it moves into the kebab bottom sheet next to `PreventSleepToggle` / `RateLimitIndicator`, keeps its ≥44px target there, and still opens its breakdown as a `BottomSheet`. Bible §12.6, yaml `surfaces.global_header.ambient_resource_readout.narrow`, `responsive.global_header`. Supersedes the narrow half of the 2026-07-30 entry below.
-- **Why:** the 2026-07-30 rule argued the readout matters most where screen is scarce — in practice a phone header has room for a breadcrumb and one kebab, and a number the user does not act on at a glance is exactly what should give that room back. The desktop half of the rule is unchanged: capacity is still permanent chrome at roomy widths, still capped at one.
+- **Why:** the 2026-07-30 rule argued the readout matters most where screen is scarce — in practice a phone header fits a breadcrumb and one kebab, and a number not acted on at a glance should give that room back. The desktop half of the rule is unchanged: capacity is still permanent chrome at roomy widths, still capped at one.
 - **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `MemoryHeadroomIndicator.tsx`, seq 1463.
 
 ## 2026-08-08 — A phone scales per screen: dense to work in, roomy to browse
@@ -220,7 +220,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 ## 2026-08-07 — A narrow control row sheds; it never stacks
 
 - **Rule:** bible §12.6 (`flex-nowrap`, written priority order, container-query thresholds, a sheet path for anything shed) + §12.3 for the diff viewer's four modes.
-- **Why:** a second row costs a phone a whole band of screen and moves every control the user was aiming at, which is worse than losing the least important one; measured at 340px the summary bar went 40px → 67px tall. Rejected: JS measured overflow via `ResizeObserver` (oscillates once hiding an item shrinks `scrollWidth`, and needs an offscreen clone to recover the natural width); a viewport breakpoint (the row is not the window — the same width holds a different bar depending on whether a variant switcher and output badges exist); folding the readouts unconditionally (they are status, and §12.6 keeps them resting-visible whenever they fit).
+- **Why:** a second row costs a phone a band of screen and moves every control being aimed at, worse than losing the least important one; measured at 340px the summary bar went 40px → 67px tall. Rejected: JS measured overflow via `ResizeObserver` (oscillates once hiding an item shrinks `scrollWidth`; recovering the natural width needs an offscreen clone); a viewport breakpoint (the row is not the window — one width holds different bars with or without a variant switcher and output badges); folding the readouts unconditionally (they are status, and §12.6 keeps them resting-visible whenever they fit).
 - **Refinement (seq 1676):** the diff sheds its *width*, not the control — `decisions/2026/08/25/mobile-diff-chip-pins-the-diff-mode.md`.
 - **Status:** Decided. Evidence: `TaskHeader.tsx` (`task-summary-bar`, `diff-summary-badge`, `summary-bar-diff-compact`), `TaskDiffViewer.tsx` (narrow mode row), seq 1459, seq 1676.
 
@@ -235,7 +235,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 ## 2026-08-06 — Opening a viewed artifact in the real browser is one icon next to download
 
 - **Rule:** The artifact viewer header gets one neutral external-link icon beside download; desktop hands the stored HTML path to the OS browser via RPC, browser/remote opens a blob URL synchronously in the click (§10 hand-off row). The header is now full at six controls.
-- **Why:** The real browser owns find, print, zoom, devtools and a window that outlives dev3 navigation, so the escape hatch belongs on the document; a context-menu-only entry was rejected because the viewer has no context menu and would be invisible on touch.
+- **Why:** The real browser owns find, print, zoom, devtools and a window that outlives dev3 navigation, so the escape hatch belongs on the document; rejected: a context-menu-only entry (the viewer has none, and it is invisible on touch).
 - **Status:** Implemented. Evidence: `src/mainview/components/TaskArtifactViewer.tsx`, `src/bun/rpc-handlers/app-handlers.ts`.
 
 ## 2026-08-05 — A sensitive project is masked, locked and silent — but only while streamer mode is on
@@ -245,13 +245,13 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 ## 2026-08-05 — The dashboard task row carries exactly one object action: ✓ Complete
 
 - **Rule:** each dashboard task row ends in one ✓ Complete (hover/focus-revealed on desktop, always visible ≥44×44 on narrow, always `alwaysConfirm`, hidden while hibernated) and never gains a second row action, kebab, or context menu. Bible §10 row `object_action — the one dashboard exception`, yaml `placement_rules.dashboard-task-row-single-complete`.
-- **Why:** the dashboard is the attention triage list, so clearing a finished row is the job that screen exists for, and the row is the task's own surface rather than app chrome — which is what `task-scoped-actions-in-inspector-or-menu` meant to protect. Rejected: a per-row kebab (turns triage into a second board) and a narrow-only long-press (leaves the desktop pain in the issue unfixed).
+- **Why:** the dashboard is the attention triage list, so clearing a finished row is that screen's job, and the row is the task's own surface, not the app chrome `task-scoped-actions-in-inspector-or-menu` protects. Rejected: a per-row kebab (turns triage into a second board) and a narrow-only long-press (leaves the desktop pain in the issue unfixed).
 - **Status:** Implemented. Evidence: `ActivityOverview.tsx`, `utils/moveTaskToStatus.ts (onFailure)`, issue #1252.
 
 ## 2026-08-05 — Hover raises emphasis; it never creates the control
 
 - **Rule:** An action cluster may not be hidden behind `opacity-0` → `group-hover:opacity-100`. It rests at a visible tone (`text-fg-3`, the quietest step clearing 3:1 on the light theme's `surface-raised`) and hover only lifts it to `text-fg` + `bg-elevated` — destructive to `text-danger` + `bg-danger/10`.
-- **Why:** The Dashboard project row hid settings / Finder / project-terminal / remove entirely until hover, so the four actions were undiscoverable and inconsistent with the drag + up/down reorder affordances in the same row, which were already resting-visible. Rejected alternative: keep hover-reveal and only raise the revealed contrast — it fixes legibility but not discoverability.
+- **Why:** The Dashboard project row hid settings / Finder / project-terminal / remove until hover: four undiscoverable actions beside the row's resting-visible drag + up/down reorder affordances. Rejected: keep hover-reveal and only raise its contrast — fixes legibility, not discoverability.
 - **Status:** Implemented. Evidence: `src/mainview/components/ProjectActionButtons.tsx`, `src/mainview/components/ActivityOverview.tsx`.
 - **Open tension:** the ✓ Complete action landed on the dashboard *task* row the same day is still hover-revealed on desktop. It is the one known exception to this rule and has not been reconciled yet.
 
@@ -264,7 +264,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 ## 2026-08-03 — Local review comments send one-by-one; the batch send covers only unsent ones
 
 - **Rule:** Every local inline review comment carries its own `Send to agent` (role `secondary`, beside Edit/Delete, sending/sent states + toasts); a sent comment is marked `Sent` and leaves the Review export card's copy/batch-send payload, which is now scoped to unsent comments. Bible §5.3, yaml `surfaces.diff_review_viewer.inline_comment_actions`.
-- **Why:** reviewers want a comment delivered the moment they write it, and a batch that still carries already-sent comments makes the agent re-handle them. Rejected: keeping send batch-only (the reported pain) and hiding sent comments from the card (they must stay visible and re-readable).
+- **Why:** reviewers want a comment delivered as soon as it is written, and a batch that still carries already-sent comments makes the agent re-handle them. Rejected: keeping send batch-only (the reported pain) and hiding sent comments from the card (they must stay visible and re-readable).
 - **Status:** Decided. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/GithubThreadView.tsx`.
 
 ## 2026-08-03 — A shortcut has a primary slot and an alias slot; presets are not a way to turn shortcuts off
@@ -274,25 +274,25 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 ## 2026-08-02 — The keymap registry now dispatches, and rebinding lives in Settings, not the ⌘/ overlay
 
 - **Rule:** `keymap.ts` holds machine-readable bindings and drives dispatch (`matchesShortcut(e, id)`); rebinding is `configuration` and belongs to a new eighth Settings category **Keyboard** (which also absorbs the terminal keymap preset), while the ⌘/ overlay stays read-only reference showing the *resolved* combo plus one "Customize…" link. Structural bindings (g-chords, ⌘1–9 families, hold-modifier switcher, Esc) render read-only **with a stated reason**. Bible §5.2, yaml `surfaces.keyboard_shortcuts_editor`.
-- **Why:** the 2026-06-19 "registry documents, does not dispatch" split made user rebinding impossible without editing two places, so it had to be reversed; a per-shortcut matcher confines the risk that entry feared to one tested function instead of a rewrite. Rejected: editing inside the ⌘/ overlay (durable configuration in a help surface), and hiding non-remappable rows (an editor that silently omits a third of the keymap reads as broken).
+- **Why:** the 2026-06-19 "registry documents, does not dispatch" split made user rebinding impossible without editing two places, so it is reversed; a per-shortcut matcher confines that entry's feared risk to one tested function, not a rewrite. Rejected: editing inside the ⌘/ overlay (durable configuration in a help surface), and hiding non-remappable rows (an editor that silently omits a third of the keymap reads as broken).
 - **Status:** Implemented. Evidence: `keymap.ts`, `keymap-bindings.ts`, `KeyboardSettingsSection.tsx`, `ShortcutRow.tsx`, `settings-registry.ts`, `App.tsx`. Supersedes the dispatch half of the 2026-06-19 entry.
 
 ## 2026-08-01 — Split resize lives on the boundary, never in a toolbar
 
 - **Rule:** Native terminal split boundaries carry a `role="separator"` grab strip (resting grip, ≥9px hit target, `col-resize`/`row-resize`, ghost line, commit on release, Arrow-key steps) and no control anywhere else; absent for a single pane, a zoomed pane, and the narrow carousel. Bible §10 row `layout boundary manipulation`, yaml `surfaces.native_terminal_panes`.
-- **Why:** the boundary is a direct-manipulation object, so a "Resize panes" button would be chrome on the one canvas the app keeps chrome-free, and an invisible boundary is undiscoverable without a resting grip. Rejected: keyboard-only resize (it already existed and nobody found it) and per-pointermove commits (SIGWINCH storm repainting every TUI).
+- **Why:** the boundary is a direct-manipulation object, so a "Resize panes" button would be chrome on the app's one chrome-free canvas, and without a resting grip the boundary is undiscoverable. Rejected: keyboard-only resize (it already existed and nobody found it) and per-pointermove commits (SIGWINCH storm repainting every TUI).
 - **Status:** Implemented. Evidence: `NativePaneDividers.tsx`, `TaskTerminal.tsx`, `split-tree.ts (getSplitBoundaries)`, `rpc-handlers/task-panes.ts (setSplitRatio)`.
 
 ## 2026-07-31 — An agent request keeps one identity, but borrows its severity from the action
 
 - **Rule:** Every agent-initiated request wears the same identity (accent border, AI-agent-request badge, autofocused decline) while the accepting button takes its role from what the action does — `destructive` for completion, `primary` for a launch; a request needing more than yes/no gets its own modal and `confirm()` stays boolean. Bible §6 row `agent_request`, yaml `surfaces.modal.agent_request`.
-- **Why:** the 2026-06-10 completion rule bundled identity and severity, so a second instance (an agent asking to *start* a task, which is reversible and creates state) would have shipped a red button for a safe action and spent the danger token on nothing. Rejected: extending `confirm()` to host the agent picker — that turns a boolean service into a form host.
+- **Why:** the 2026-06-10 completion rule bundled identity and severity, so a second instance (an agent asking to *start* a task, reversible and creating state) would have shipped a red button for a safe action, wasting the danger token. Rejected: extending `confirm()` to host the agent picker — a boolean service turned form host.
 - **Status:** Implemented. Evidence: `AgentLaunchRequestModal.tsx`, `TaskDialogSubjectCard.tsx`, `confirm.tsx`, `agent-requests.ts`, `cli-socket/approvals.ts`. Extends the 2026-06-10 entry.
 
 ## 2026-07-30 — Capacity telemetry is permanent header chrome; faults are not
 
 - **Rule:** Host-machine capacity (memory headroom) gets **one** permanent global-header readout at every width — framed as headroom *left*, coloured by the OS's own pressure verdict — plus a non-blocking banner at the launch decision point. Capped at one; a second ambient readout folds into the narrow sheet. Bible §5, §10 row `ambient resource telemetry`, §12.6.
-- **Why:** §5.5 doctrine keeps *faults* (transport health, diagnostics) as conditional chrome so the happy path stays clean, and that reads as forbidding this widget — but capacity is a continuous decision input: the user learns *normal* only by seeing it while nothing is wrong, and needs it with zero tasks running. Same class as the always-on prevent-sleep toggle, not an error indicator. Rejected: a pressure-only conditional pill (too late to inform a launch), folding it into the narrow kebab (kills the signal exactly when screen is scarce and load is high), and colouring by an invented percentage threshold (meaningless across 8 GB and 512 GB machines).
+- **Why:** §5.5 keeps *faults* (transport health, diagnostics) as conditional chrome for a clean happy path, which reads as forbidding this widget — but capacity is a continuous decision input: the user learns *normal* only by seeing it while nothing is wrong, even with zero tasks running. Same class as the always-on prevent-sleep toggle, not an error indicator. Rejected: a pressure-only conditional pill (too late to inform a launch), folding it into the narrow kebab (kills the signal when screen is scarce and load high), and colouring by an invented percentage threshold (meaningless from 8 GB to 512 GB).
 - **Status:** Proposed. Evidence: `GlobalHeader.tsx`, `PreventSleepToggle.tsx` (`--awake` precedent), `BottomSheet.tsx`, `SiblingPopover.tsx` (popover row → navigate precedent).
 
 ## 2026-07-30 — Hibernated is a card state, not a column or a card action
@@ -301,12 +301,12 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 ## 2026-07-30 — A global default's rare per-object override lives in that object's detail modal
 
 - **Rule:** a durable machine-local preference lives in Global Settings (bible §10 `configuration`); its rare per-object exception lives in the object's **detail modal** as a low-emphasis segmented control — never on the board, a toolbar/header, the create modal, or live object chrome. An unavailable choice stays visible, `disabled`, with its reason in `--warning` text next to it. Evidence: `src/mainview/components/global-settings/TerminalBackendSetting.tsx`, `src/mainview/components/TaskTerminalBackendRow.tsx`.
-- **Why:** the terminal-backend rollout needed both a fleet-wide default and a one-task escape hatch; the modal already allows `focused_config`, so the exception rides an existing surface instead of adding toolbar buttons (the project's top anti-pattern). Rejected: a board card affordance and a Create Task field — both would advertise a rare expert switch on the happy path.
+- **Why:** the terminal-backend rollout needed both a fleet-wide default and a one-task escape hatch; the modal already allows `focused_config`, so the exception rides an existing surface, not new toolbar buttons (the project's top anti-pattern). Rejected: a board card affordance and a Create Task field — both advertise a rare expert switch on the happy path.
 
 ## 2026-07-30 — Find-in-content follows the content, not the viewer header
 
 - **Rule:** `⌘F` over a viewer's rendered content puts the search UI in that surface's *content* toolbar where one exists (diff viewer §5.3), otherwise on a floating top-right bar over the content, focus-gated to that viewer; the header may carry **exactly one** magnifier icon that toggles that bar and nothing else. Bible §10 row `find in content`.
-- **Why:** the two live precedents disagreed (diff viewer = toolbar toggle, terminal = floating keyboard-only bar), and the artifact header is artifact-level chrome already at 8 slots — so the search *field* stays out of it while one icon is an accepted §11 exception (user-requested: a keyboard-only find is invisible to a pointer user). Rejected: a search input in the header, and multiple entry points per viewer.
+- **Why:** the two live precedents disagreed (diff viewer = toolbar toggle, terminal = floating keyboard-only bar), and the artifact header already has 8 slots — so the search *field* stays out while one icon is an accepted §11 exception (user-requested: a keyboard-only find is invisible to a pointer user). Rejected: a search input in the header, and multiple entry points per viewer.
 - **Status:** Observed (artifact viewer). Evidence: `TaskArtifactViewer.tsx`, `ArtifactSearchBar.tsx`, `TerminalSearchBar.tsx`, `TaskDiffViewer.tsx`, `utils/artifactDocument.ts`, `keymap.ts`.
 
 ## 2026-07-29 — Artifact bundles separate authoring from the stable shell

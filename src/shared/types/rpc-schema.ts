@@ -2456,6 +2456,8 @@ export type AppRPCSchema = {
 				checks: PRCheckInfo[];
 				prTitle: string | null;
 				isDraft: boolean | null;
+				authorLogin?: string | null;
+				lastCommitAt?: string | null;
 			};
 			/** An automation changed (CRUD, a run fired, nextRunAt advanced) — refresh the Automations panel. */
 			automationsUpdated: { projectId: string };

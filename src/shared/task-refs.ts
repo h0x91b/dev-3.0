@@ -98,11 +98,14 @@ export const PROJECT_REF_PREFIX_LENGTH = 8;
 const KIND_BY_TAG: Record<string, RefKind> = { seq: "task", pr: "pr" };
 const TAG_BY_KIND: Record<RefKind, string> = { task: "seq", pr: "pr" };
 
-const BODY = String.raw`(seq|pr):(?:([A-Za-z0-9][\w.-]{0,63})\/)?(\d{1,9})`;
+const QUALIFIER = String.raw`[A-Za-z0-9][\w.-]{0,63}`;
+const BODY = String.raw`(seq|pr):(?:(${QUALIFIER})\/)?(\d{1,9})`;
 // Canonical `<seq:…>` first; otherwise a bare `seq:…` not glued to a word, a
 // path or a URL on either side (so `https://x/seq:1` and `foo-seq:1` stay text).
 const REF_TEXT_REGEX = new RegExp(String.raw`<${BODY}>|(?<![\w/:.<-])${BODY}(?![\w/])`, "gi");
 const REF_URI_REGEX = new RegExp(String.raw`^${BODY}$`, "i");
+const TASK_HANDLE_REGEX = new RegExp(String.raw`^seq:(?:(${QUALIFIER})\/)?(\d+)$`);
+const TASK_ARG_BRACKETED_REGEX = new RegExp(String.raw`^<seq:(?:(${QUALIFIER})\/)?(\d{1,9})>$`, "i");
 // dev3 spells a cross-project CLI handle `--task seq:N [--variant i] --project P`
 // (see `agentReplyCommand`); P qualifies the bare `seq:N` in front of it.
 const CLI_PROJECT_FLAG_REGEX = /^(?:\s+--variant\s+\d+)?\s+--project\s+([A-Za-z0-9][\w.-]{0,63})/;
@@ -142,12 +145,22 @@ export function parseRefUri(uri: string): TaskPrRef | null {
 
 /**
  * A `--task` argument as the CLI expects it: an agent pasting the canonical
- * `<seq:115>` gets the same `seq:115` the flag has always taken. Anything else
- * passes through untouched.
+ * `<seq:115>` or `<seq:a1c9fe4e/115>` gets the bare form. Anything else passes through.
  */
 export function normalizeTaskArg(raw: string): string {
-	const match = /^<seq:(\d{1,9})>$/i.exec(raw.trim());
-	return match ? `seq:${match[1]}` : raw;
+	const match = TASK_ARG_BRACKETED_REGEX.exec(raw.trim());
+	return match ? `seq:${match[1] ? `${match[1]}/` : ""}${match[2]}` : raw;
+}
+
+/**
+ * A `seq:<N>` / `seq:<project>/<N>` task handle as the CLI and the socket take it.
+ * `project` is the qualifier as written, absent for a handle on the caller's board.
+ */
+export function parseTaskHandle(raw: string): { seq: number; project?: string } | null {
+	const match = TASK_HANDLE_REGEX.exec(raw);
+	if (!match) return null;
+	const seq = Number(match[2]);
+	return match[1] ? { seq, project: match[1] } : { seq };
 }
 
 /** The cross-project qualifier for a project id: its first 8 characters. */
@@ -172,8 +185,8 @@ export function formatTaskRefFor(seq: number, projectId: string, readerProjectId
 
 /**
  * Text written on `writerProjectId`, as a reader on another project must see it:
- * each bracketed `<seq:N>` / `<pr:N>` gains the writer's project. A bare `seq:N`
- * stays as written — it is the CLI's `--task` handle, and a qualifier would break the command.
+ * each unqualified ref gains the writer's project and keeps its form, so a bare
+ * `seq:N` (a CLI argument, or a plain-text title) becomes `seq:a1c9fe4e/N`.
  */
 export function qualifyRefsFor(text: string, writerProjectId: string | undefined, readerProjectId: string | undefined): string {
 	if (!writerProjectId || writerProjectId === readerProjectId) return text;
@@ -181,11 +194,25 @@ export function qualifyRefsFor(text: string, writerProjectId: string | undefined
 	let out = "";
 	let cursor = 0;
 	for (const { ref, raw, start, end } of findRefsInText(text)) {
-		if (ref.project || !raw.startsWith("<")) continue;
-		out += text.slice(cursor, start) + formatRef({ ...ref, project });
+		if (ref.project) continue;
+		const qualified = { ...ref, project };
+		out += text.slice(cursor, start) + (raw.startsWith("<") ? formatRef(qualified) : refUri(qualified));
 		cursor = end;
 	}
 	return cursor === 0 ? text : out + text.slice(cursor);
+}
+
+/**
+ * {@link qualifyRefsFor} for an edit of `previous`: a line already in `previous`
+ * stays as written, because its refs were the reader's own before the writer
+ * read it back. Only the lines the writer added gain its project.
+ */
+export function qualifyEditedRefsFor(text: string, previous: string | null | undefined, writerProjectId: string | undefined, readerProjectId: string | undefined): string {
+	const qualified = qualifyRefsFor(text, writerProjectId, readerProjectId);
+	if (qualified === text || !previous) return qualified;
+	const kept = new Set(previous.split("\n"));
+	const original = text.split("\n");
+	return qualified.split("\n").map((line, i) => (kept.has(original[i]!) ? original[i]! : line)).join("\n");
 }
 
 export function formatRef(ref: TaskPrRef): string {

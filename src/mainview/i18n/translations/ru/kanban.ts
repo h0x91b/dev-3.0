@@ -770,6 +770,9 @@ const kanban = {
 	"boardTree.nested_few": "+{count} внутри",
 	"boardTree.nested_many": "+{count} внутри",
 	"boardTree.nested_other": "+{count} внутри",
+	"task.prAuthor": "Автор: {author}",
+	"task.prLastCommit": "последний коммит {ago}",
+	"task.prLastCommitAt": "Последний коммит {date}",
 };
 
 export default kanban;

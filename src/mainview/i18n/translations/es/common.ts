@@ -747,6 +747,19 @@ const common = {
 	"slots.more": "Más",
 	"destinationBody.crashed": "Esta pantalla no se pudo cargar, así que se muestra la integrada.",
 	"destinationBody.extensionFailed": "La extensión «{name}» no se cargó, así que se muestra la pantalla integrada.",
+	"time.ago.minute_one": "hace un minuto",
+	"time.ago.minute_other": "hace {count} minutos",
+	"time.ago.hour_one": "hace una hora",
+	"time.ago.hour_other": "hace {count} horas",
+	"time.ago.yesterday": "ayer",
+	"time.ago.day_one": "hace {count} día",
+	"time.ago.day_other": "hace {count} días",
+	"time.ago.week_one": "hace una semana",
+	"time.ago.week_other": "hace {count} semanas",
+	"time.ago.month_one": "hace un mes",
+	"time.ago.month_other": "hace {count} meses",
+	"time.ago.year_one": "hace un año",
+	"time.ago.year_other": "hace {count} años",
 };
 
 export default common;

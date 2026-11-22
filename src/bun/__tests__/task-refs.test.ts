@@ -5,8 +5,10 @@ import {
 	formatTaskRef,
 	formatTaskRefFor,
 	normalizeTaskArg,
+	parseTaskHandle,
 	parseRefUri,
 	projectMatchesQualifier,
+	qualifyEditedRefsFor,
 	qualifyRefsFor,
 	refUri,
 } from "../../shared/task-refs";
@@ -97,15 +99,58 @@ describe("qualifyRefsFor", () => {
 		expect(qualifyRefsFor("<seq:12>", PROJECT, undefined)).toBe("<seq:a1c9fe4e/12>");
 	});
 
-	it("keeps qualified tokens and the bare CLI handle as written", () => {
-		const text = "see <seq:bbbbbbbb/3>, run dev3 task show --task seq:4";
+	it("keeps qualified tokens as written", () => {
+		expect(qualifyRefsFor("see <seq:bbbbbbbb/3>, run dev3 task show --task seq:4", PROJECT, OTHER))
+			.toBe("see <seq:bbbbbbbb/3>, run dev3 task show --task seq:a1c9fe4e/4");
+	});
+
+	it("qualifies bare refs written in prose", () => {
+		expect(qualifyRefsFor("Source (seq:60 split it); see pr:7.", PROJECT, OTHER))
+			.toBe("Source (seq:a1c9fe4e/60 split it); see pr:a1c9fe4e/7.");
+		expect(qualifyRefsFor("SEQ:3 first\nthen seq:4", PROJECT, OTHER)).toBe("seq:a1c9fe4e/3 first\nthen seq:a1c9fe4e/4");
+	});
+
+	it("qualifies a CLI argument too, keeping it bare so the command still parses", () => {
+		const cases: [string, string][] = [
+			["run `dev3 note add --task seq:4 hi`", "run `dev3 note add --task seq:a1c9fe4e/4 hi`"],
+			["```\ndev3 task show seq:4\n```", "```\ndev3 task show seq:a1c9fe4e/4\n```"],
+			["dev3 task create --depends-on seq:3,seq:4", "dev3 task create --depends-on seq:a1c9fe4e/3,seq:a1c9fe4e/4"],
+			["dev3 note add --task \"seq:4\" x", "dev3 note add --task \"seq:a1c9fe4e/4\" x"],
+			["seq:3 waits; run `dev3 task show seq:3`", "seq:a1c9fe4e/3 waits; run `dev3 task show seq:a1c9fe4e/3`"],
+		];
+		for (const [text, expected] of cases) expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(expected);
+	});
+
+	it("leaves a CLI handle that already names its board through --project", () => {
+		const text = "dev3 message --task seq:4 --project bbbbbbbb hi";
 		expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
+	});
+
+	it("is idempotent", () => {
+		const once = qualifyRefsFor("seq:1, <seq:2> and pr:3", PROJECT, OTHER);
+		expect(qualifyRefsFor(once, PROJECT, OTHER)).toBe(once);
 	});
 
 	it("changes nothing on the same project or when the writer's project is unknown", () => {
 		expect(qualifyRefsFor("<seq:12>", PROJECT, PROJECT)).toBe("<seq:12>");
 		expect(qualifyRefsFor("<seq:12>", undefined, OTHER)).toBe("<seq:12>");
 		expect(qualifyRefsFor("no refs here", PROJECT, OTHER)).toBe("no refs here");
+	});
+});
+
+describe("qualifyEditedRefsFor", () => {
+	const OTHER = "bbbbbbbb-1111-2222-3333-444455556666";
+
+	it("keeps lines the writer read back and qualifies only the lines it added", () => {
+		const previous = "Goal: ship it.\nAfter seq:3 lands.";
+		expect(qualifyEditedRefsFor(`${previous}\nAlso see seq:7.`, previous, PROJECT, OTHER))
+			.toBe("Goal: ship it.\nAfter seq:3 lands.\nAlso see seq:a1c9fe4e/7.");
+	});
+
+	it("qualifies everything when there was no previous text, and nothing on the same project", () => {
+		expect(qualifyEditedRefsFor("see seq:3", null, PROJECT, OTHER)).toBe("see seq:a1c9fe4e/3");
+		expect(qualifyEditedRefsFor("see seq:3", "", PROJECT, OTHER)).toBe("see seq:a1c9fe4e/3");
+		expect(qualifyEditedRefsFor("see seq:3", "old", PROJECT, PROJECT)).toBe("see seq:3");
 	});
 });
 
@@ -135,11 +180,23 @@ describe("projectMatchesQualifier", () => {
 	});
 });
 
+describe("parseTaskHandle", () => {
+	it("reads bare and qualified seq handles, and nothing else", () => {
+		expect(parseTaskHandle("seq:60")).toEqual({ seq: 60 });
+		expect(parseTaskHandle("seq:a1c9fe4e/60")).toEqual({ seq: 60, project: "a1c9fe4e" });
+		expect(parseTaskHandle("<seq:60>")).toBeNull();
+		expect(parseTaskHandle("pr:60")).toBeNull();
+		expect(parseTaskHandle("seq:/60")).toBeNull();
+		expect(parseTaskHandle("a1c9fe4e")).toBeNull();
+	});
+});
+
 describe("normalizeTaskArg", () => {
 	it("turns a pasted token into the CLI's seq form", () => {
 		expect(normalizeTaskArg("<seq:115>")).toBe("seq:115");
 		expect(normalizeTaskArg("seq:115")).toBe("seq:115");
 		expect(normalizeTaskArg("a1c9fe4e")).toBe("a1c9fe4e");
-		expect(normalizeTaskArg("<seq:proj/1>")).toBe("<seq:proj/1>");
+		expect(normalizeTaskArg("<seq:a1c9fe4e/1>")).toBe("seq:a1c9fe4e/1");
+		expect(normalizeTaskArg("<pr:1>")).toBe("<pr:1>");
 	});
 });

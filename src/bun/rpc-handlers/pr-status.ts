@@ -179,5 +179,7 @@ export function prSummaryStatus(pr: GitHubPullRequestSummary) {
 		checks: normalizeChecks(pr.statusCheckRollup),
 		prTitle: typeof pr.title === "string" ? pr.title : null,
 		isDraft: typeof pr.isDraft === "boolean" ? pr.isDraft : null,
+		authorLogin: typeof pr.author?.login === "string" && pr.author.login ? pr.author.login : null,
+		lastCommitAt: typeof pr.lastCommitAt === "string" && pr.lastCommitAt ? pr.lastCommitAt : null,
 	};
 }

@@ -1,5 +1,7 @@
 # Canonical task and PR reference tokens: `<seq:N>` and `<pr:N>`
 
+> Superseded in part on 2026-11-21 by `decisions/2026/11/21/qualify-bare-refs-in-cross-project-text.md`: `qualifyRefsFor` now also qualifies a bare `seq:N` / `pr:N`, CLI arguments included, and the CLI resolves `seq:<project>/<N>`. `task create` and `task update` run from a task on another board use it too.
+
 ## 1. Context
 
 Agents and coordinators named other tasks as "seq 115", "#115", "seq:115", "task 115" and more. `#115` also collides with GitHub PR and issue numbers, and none of the forms was clickable anywhere in dev3.
@@ -36,7 +38,7 @@ Agents and coordinators named other tasks as "seq 115", "#115", "seq:115", "task
 
 - A bare `seq:N` in the middle of prose is now a link. That is intended, since it was never anything else.
 - A bare token in cross-project text resolves on the reader's context project. Emitters qualify whenever they know the projects differ (`formatTaskRefFor`).
-  - A cross-project agent message is such an emitter. `wrapAgentMessage` and the spill file pass the body and subject through `qualifyRefsFor`. It qualifies only the bracketed token, because a bare `seq:N` is usually a CLI `--task` handle and a qualifier would break the command.
+  - A cross-project agent message is such an emitter. `wrapAgentMessage` and the spill file pass the body and subject through `qualifyRefsFor`. It qualifies bracketed and bare tokens and keeps each form. A bare CLI handle becomes `seq:<project>/<N>`, which the CLI resolves (see `qualify-bare-refs-in-cross-project-text`).
   - The parser reads the CLI's cross-project handle, `--task seq:N [--variant i] --project P`, as task N on P. The reply command in an envelope therefore links to the sender's board.
 - HTML artifacts get nothing. They are sandboxed agent HTML, where `<seq:115>` even parses as an unknown element.
 - Telemetry: nothing new leaves the machine, because resolution is a local RPC.

@@ -1,5 +1,5 @@
 import type { CliResponse, DevServerEntry, DevServerStatus } from "../../shared/types";
-import { normalizeTaskArg } from "../../shared/task-refs";
+import { normalizeTaskArg, parseTaskHandle } from "../../shared/task-refs";
 import { DEV_SERVER_LOG_DEFAULT_LINES, DEV_SERVER_LOG_MAX_LINES } from "../../shared/dev-server-log";
 import { readDevServerLogTail } from "../../bun/dev-server-log";
 import { CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID, CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
@@ -135,9 +135,9 @@ function collectEnvFlag(args: ParsedArgs, action: string): Record<string, string
 	return env;
 }
 
-/** A positional that can only be a task: `seq:<N>`, a UUID, or a hex id prefix. */
+/** A positional that can only be a task: `seq:<N>` or `seq:<project>/<N>`, a UUID, or a hex id prefix. */
 function looksLikeTaskRef(raw: string): boolean {
-	return /^seq:\d+$/.test(normalizeTaskArg(raw)) || /^[0-9a-f-]{6,}$/i.test(raw);
+	return parseTaskHandle(normalizeTaskArg(raw)) !== null || /^[0-9a-f-]{6,}$/i.test(raw);
 }
 
 /**

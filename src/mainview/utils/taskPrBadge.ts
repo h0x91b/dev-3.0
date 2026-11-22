@@ -52,6 +52,8 @@ export function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): Ta
 		checks: cached?.checks ?? [],
 		prTitle: cached?.prTitle ?? null,
 		isDraft: cached?.isDraft ?? null,
+		authorLogin: cached?.authorLogin ?? null,
+		lastCommitAt: cached?.lastCommitAt ?? null,
 	};
 }
 
@@ -81,6 +83,8 @@ export function mergeTaskPRBadge(
 		checks: existing.checks && existing.checks.length > 0 ? existing.checks : stored.checks,
 		prTitle: existing.prTitle ?? stored.prTitle,
 		isDraft: existing.isDraft ?? stored.isDraft,
+		authorLogin: existing.authorLogin ?? stored.authorLogin,
+		lastCommitAt: existing.lastCommitAt ?? stored.lastCommitAt,
 	};
 }
 
