@@ -723,6 +723,9 @@ const kanban = {
 	"boardTree.variants_other": "{count} variants",
 	"boardTree.nested_one": "+{count} inside",
 	"boardTree.nested_other": "+{count} inside",
+	"task.prAuthor": "Author: {author}",
+	"task.prLastCommit": "last commit {ago}",
+	"task.prLastCommitAt": "Last commit {date}",
 } as const;
 
 export default kanban;

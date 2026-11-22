@@ -746,6 +746,20 @@ const common = {
 	"slots.more": "More",
 	"destinationBody.crashed": "This screen failed to load, so the built-in one is shown.",
 	"destinationBody.extensionFailed": "Extension “{name}” failed to load, so the built-in screen is shown.",
+	// Spoken relative time ("2 hours ago"); counts that agree with their noun.
+	"time.ago.minute_one": "a minute ago",
+	"time.ago.minute_other": "{count} minutes ago",
+	"time.ago.hour_one": "an hour ago",
+	"time.ago.hour_other": "{count} hours ago",
+	"time.ago.yesterday": "yesterday",
+	"time.ago.day_one": "{count} day ago",
+	"time.ago.day_other": "{count} days ago",
+	"time.ago.week_one": "a week ago",
+	"time.ago.week_other": "{count} weeks ago",
+	"time.ago.month_one": "a month ago",
+	"time.ago.month_other": "{count} months ago",
+	"time.ago.year_one": "a year ago",
+	"time.ago.year_other": "{count} years ago",
 } as const;
 
 export default common;

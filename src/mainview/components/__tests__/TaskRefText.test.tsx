@@ -198,4 +198,32 @@ describe("PrRefSummary", () => {
 		expect(open.getAttribute("target")).toBe("_blank");
 		expect(open.getAttribute("rel")).toContain("noopener");
 	});
+	it("names the author and the last commit's age, with the exact time on hover", async () => {
+		const { PrRefSummary } = await import("../TaskRefPreviewCard");
+		const lastCommitAt = new Date(Date.now() - 2 * 3_600_000 - 60_000).toISOString();
+		wrap(<PrRefSummary preview={{
+			kind: "pr",
+			target: { kind: "pr", number: 9, projectId: "p-1", projectName: "x", url: "https://github.com/o/r/pull/9" },
+			badge: { number: 9, url: "https://github.com/o/r/pull/9", prTitle: "Fork fix", authorLogin: "outside-dev", lastCommitAt },
+		}} />);
+		const author = screen.getByTestId("pr-byline-author");
+		expect(author.textContent).toBe("outside-dev");
+		expect(author.getAttribute("href")).toBe("https://github.com/outside-dev");
+		expect(author.getAttribute("target")).toBe("_blank");
+		expect(author.closest("[data-testid=pr-byline]")).toBeNull();
+		const commit = screen.getByTestId("pr-byline-commit");
+		expect(commit.textContent).toBe("last commit 2 hours ago");
+		expect(commit.getAttribute("datetime")).toBe(lastCommitAt);
+		expect(commit.getAttribute("title")).toMatch(/^Last commit /);
+	});
+
+	it("drops the byline when GitHub sent neither field (an older cache)", async () => {
+		const { PrRefSummary } = await import("../TaskRefPreviewCard");
+		wrap(<PrRefSummary preview={{
+			kind: "pr",
+			target: { kind: "pr", number: 9, projectId: "p-1", projectName: "x", url: "https://github.com/o/r/pull/9" },
+			badge: { number: 9, url: "https://github.com/o/r/pull/9", prTitle: "Old cache" },
+		}} />);
+		expect(screen.queryByTestId("pr-byline")).toBeNull();
+	});
 });

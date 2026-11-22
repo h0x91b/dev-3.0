@@ -55,6 +55,10 @@ export interface TaskPRStatusCache {
 	prTitle: string | null;
 	isDraft: boolean | null;
 	/** Head branch of the cached PR; absent in caches written before this field existed. */
+	/** GitHub login of the PR author; absent in caches written before this field existed. */
+	authorLogin?: string | null;
+	/** ISO committer date of the head commit; absent in older caches. */
+	lastCommitAt?: string | null;
 	headRefName?: string | null;
 	cachedAt: string;
 }
@@ -106,6 +110,9 @@ export interface TaskPRBadgeInfo {
 	checks?: PRCheckInfo[];
 	prTitle?: string | null;
 	isDraft?: boolean | null;
+	authorLogin?: string | null;
+	/** ISO committer date of the head commit. */
+	lastCommitAt?: string | null;
 }
 
 // ---- PR review comments (read-only GitHub layer in the diff viewer) ----

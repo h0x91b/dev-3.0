@@ -101,6 +101,8 @@ export function useTaskPrBadges({ tasks, discoverProjectIds, knowsProject }: Use
 					checks: detail.checks ?? [],
 					prTitle: detail.prTitle,
 					isDraft: detail.isDraft,
+					authorLogin: detail.authorLogin,
+					lastCommitAt: detail.lastCommitAt,
 				});
 				return next;
 			});

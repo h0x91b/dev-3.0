@@ -10,6 +10,7 @@ import { computeBesidePosition, type RectLike } from "../utils/popoverPosition";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
+import PrByline from "./PrByline";
 
 interface TaskPrStatusPopoverProps {
 	prInfo: TaskPRBadgeInfo;
@@ -407,6 +408,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-fg-3/10 px-1.5 py-0.5 font-medium text-fg-2">{t("task.prDraft")}</span>}
 				</div>
 			)}
+			<PrByline prInfo={prInfo} className={sheet ? "mt-1" : "mt-0.5"} />
 
 			{prInfo.unresolvedCount != null && prInfo.unresolvedCount > 0 && (
 				onShowUnresolved ? (
