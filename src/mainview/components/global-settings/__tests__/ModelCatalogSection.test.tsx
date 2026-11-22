@@ -26,9 +26,13 @@ import { api } from "../../../rpc";
 import { confirm } from "../../../confirm";
 
 /** Stub translator: keys make assertions stable and locale-agnostic. */
-const t = Object.assign((key: string, params?: Record<string, unknown>) => (params?.url ? `${key}|${params.url}` : key), {
-	plural: (key: string, count: number) => `${key}|${count}`,
-}) as unknown as TFunction;
+const t = Object.assign(
+	(key: string, params?: Record<string, unknown>) =>
+		params?.url ? `${key}|${params.url}` : params?.seconds ? `${key}|${params.seconds}s` : key,
+	{
+		plural: (key: string, count: number) => `${key}|${count}`,
+	},
+) as unknown as TFunction;
 
 const CATALOG: ModelCatalogView = {
 	providers: [{ id: "p-or", kind: "openrouter", label: "OpenRouter", hasKey: true }],
@@ -79,12 +83,24 @@ describe("the proxy's state", () => {
 
 	it("says it will try again by itself, instead of looking stopped, after a failed start", async () => {
 		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(
-			status({ lastError: "failed to download pricing data: HTTP 503", restart: { attempt: 2, at: Date.now() + 10_000 } }),
+			status({ lastError: "failed to download pricing data: HTTP 503", restart: { attempt: 2, inMs: 9_200 } }),
 		);
 		renderSection();
-		expect(await screen.findByText("catalog.proxyRestarting")).toBeTruthy();
+		// The host sends how long is left, so a remote browser's skewed clock cannot shift it.
+		expect(await screen.findByText("catalog.proxyRestarting|10s")).toBeTruthy();
 		expect(screen.queryByText("catalog.proxyStopped")).toBeNull();
 		expect(screen.getByText(/HTTP 503/)).toBeTruthy();
+	});
+
+	it("lets the user stop the retries while one is queued, even with no provider saved", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue({ providers: [], models: [] });
+		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(status({ restart: { attempt: 6, inMs: 80_000 } }));
+		vi.mocked(api.request.modelSidecarStop).mockResolvedValue(status());
+		renderSection();
+		const stop = await screen.findByRole("button", { name: "catalog.stopRetrying" });
+		expect(screen.queryByRole("button", { name: "catalog.startProxy" })).toBeNull();
+		await userEvent.click(stop);
+		expect(api.request.modelSidecarStop).toHaveBeenCalledOnce();
 	});
 
 	it("offers to stop it once it is running", async () => {

@@ -14,7 +14,6 @@ on:
       - scripts/network-retry.ts
       - src/shared/bifrost-release.ts
       - src/shared/model-catalog.ts
-      - src/bun/model-sidecar.ts
       - .github/workflows/bifrost-smoke.yml
   workflow_dispatch:
 

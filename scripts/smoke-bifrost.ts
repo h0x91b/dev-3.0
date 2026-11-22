@@ -78,7 +78,8 @@ async function bootOnce(): Promise<AttemptResult> {
 	const base = `http://127.0.0.1:${port}`;
 	const startedAt = Date.now();
 	let ready = false;
-	while (!ready && Date.now() - startedAt < READY_DEADLINE_MS) {
+	// A process that already exited will never answer; stop polling at once.
+	while (!ready && proc.exitCode === null && Date.now() - startedAt < READY_DEADLINE_MS) {
 		await Bun.sleep(500);
 		try {
 			ready = (await fetch(`${base}/health`, { signal: AbortSignal.timeout(1000) })).ok;
@@ -89,7 +90,8 @@ async function bootOnce(): Promise<AttemptResult> {
 	const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
 	if (!ready) {
 		const output = await shutdown();
-		console.error(`[smoke-bifrost] the proxy never answered /health within ${READY_DEADLINE_MS / 1000}s\n${output}`);
+		const why = proc.exitCode === null ? `never answered /health within ${READY_DEADLINE_MS / 1000}s` : `exited (code ${proc.exitCode}) after ${seconds}s`;
+		console.error(`[smoke-bifrost] the proxy ${why}\n${output}`);
 		return { exitCode: 1, output };
 	}
 	console.log(`[smoke-bifrost] healthy after ${seconds}s (port ${port})`);

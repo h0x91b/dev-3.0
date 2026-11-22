@@ -438,7 +438,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 					) : status?.restart ? (
 						<StatusRow tone="warning">
 							{t("catalog.proxyRestarting", {
-								seconds: String(Math.max(0, Math.ceil((status.restart.at - Date.now()) / 1000))),
+								seconds: String(Math.ceil(status.restart.inMs / 1000)),
 								attempt: String(status.restart.attempt),
 							})}
 						</StatusRow>
@@ -456,6 +456,10 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 						{status?.running ? (
 							<button type="button" onClick={stopProxy} disabled={busy} className={BUTTON_CLASS}>
 								{t("catalog.stopProxy")}
+							</button>
+						) : status?.restart ? (
+							<button type="button" onClick={stopProxy} disabled={busy} className={BUTTON_CLASS}>
+								{t("catalog.stopRetrying")}
 							</button>
 						) : (
 							<Gated reason={startReason}>

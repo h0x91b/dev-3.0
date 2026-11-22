@@ -48,8 +48,9 @@ export interface ModelSidecarStatus {
 	modelCount: number;
 	/** Why the last start failed, including the process's own last output. */
 	lastError?: string;
-	/** The automatic restart queued after a failed start: which one, and when (epoch ms). */
-	restart?: { attempt: number; at: number };
+	/** The automatic restart queued after a failed start: which one, and how long
+	 *  until it fires. A duration, not an epoch: a remote browser's clock may differ. */
+	restart?: { attempt: number; inMs: number };
 }
 
 /** Why a preset's role bindings cannot be launched right now. */

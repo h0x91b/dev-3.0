@@ -963,6 +963,7 @@ const settings = {
 	"catalog.proxyStopped": "Model proxy stopped — it starts itself when an agent needs it, or when you load the available models",
 	"catalog.startProxy": "Start proxy",
 	"catalog.stopProxy": "Stop proxy",
+	"catalog.stopRetrying": "Stop retrying",
 	"catalog.refreshModels": "Load available models",
 	"catalog.refreshModelsBusy": "Loading models…",
 	"catalog.listUnavailable": "Could not load the list — try again, or type the model id by hand.",

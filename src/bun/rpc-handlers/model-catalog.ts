@@ -16,6 +16,7 @@ import {
 	setProviderKey,
 } from "../model-catalog-store";
 import {
+	cancelScheduledRestart,
 	getModelSidecarStatus,
 	ensureModelSidecar,
 	listSidecarModels,
@@ -82,8 +83,11 @@ export async function modelCatalogSave(params: {
 	forgetProviderKeys(catalog.providers);
 
 	// The sidecar reads its config once at startup, so edits need a fresh process.
+	// A queued retry counts too: the save may be the fix it is waiting for.
 	const status = getModelSidecarStatus();
-	if (status.running || status.starting) {
+	if (status.restart && catalog.providers.length === 0) {
+		cancelScheduledRestart();
+	} else if (status.running || status.starting || status.restart) {
 		await restartModelSidecar().catch((err) => log.warn("Sidecar restart after save failed", { error: String(err) }));
 	}
 	return toView(catalog, loadProviderKeys());

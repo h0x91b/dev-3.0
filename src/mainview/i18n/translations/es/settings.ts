@@ -965,6 +965,7 @@ const settings = {
 	"catalog.proxyStopped": "Proxy de modelos detenido — arranca solo cuando un agente lo necesita o cuando cargas los modelos disponibles",
 	"catalog.startProxy": "Arrancar proxy",
 	"catalog.stopProxy": "Detener proxy",
+	"catalog.stopRetrying": "Dejar de reintentar",
 	"catalog.refreshModels": "Cargar modelos disponibles",
 	"catalog.refreshModelsBusy": "Cargando modelos…",
 	"catalog.listUnavailable": "No se pudo cargar la lista — inténtalo de nuevo o escribe el id del modelo a mano.",

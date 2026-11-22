@@ -425,9 +425,11 @@ export function cancelScheduledRestart(): void {
 }
 
 /** Try again later, for as long as the app runs — unless there is nothing a
- *  retry could fix (no binary) or the app is quitting. Stop and quit cancel it. */
+ *  retry could fix (no binary, no provider) or the app is quitting. Stop and
+ *  quit cancel it. */
 function scheduleRestart(): void {
 	if (shuttingDown || running || restartTimer || !resolveSidecarBinary()) return;
+	if (loadModelCatalog().providers.length === 0) return;
 	restartAttempt += 1;
 	const delay = restartBackoffMs(restartAttempt);
 	nextRestartAt = Date.now() + delay;
@@ -435,6 +437,11 @@ function scheduleRestart(): void {
 	restartTimer = setTimeout(() => {
 		restartTimer = null;
 		nextRestartAt = undefined;
+		// The catalog may have been emptied while this waited: nothing to serve.
+		if (loadModelCatalog().providers.length === 0) {
+			cancelScheduledRestart();
+			return;
+		}
 		ensureModelSidecar().catch(() => undefined);
 	}, delay);
 	restartTimer.unref?.();
@@ -631,7 +638,9 @@ export function getModelSidecarStatus(): ModelSidecarStatus {
 		providerCount: catalog.providers.length,
 		modelCount: catalog.models.length,
 		lastError,
-		...(nextRestartAt !== undefined ? { restart: { attempt: restartAttempt, at: nextRestartAt } } : {}),
+		...(nextRestartAt !== undefined
+			? { restart: { attempt: restartAttempt, inMs: Math.max(0, nextRestartAt - Date.now()) } }
+			: {}),
 	};
 }
 

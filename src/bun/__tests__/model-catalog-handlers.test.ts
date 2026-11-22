@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSidecarConfig, catalogModelWireName, providerDisplayName, type ModelCatalog } from "../../shared/model-catalog";
-import type { ModelCatalogView } from "../../shared/types";
+import type { ModelCatalogView, ModelSidecarStatus } from "../../shared/types";
 
 const h = vi.hoisted(() => ({
 	save: vi.fn(),
@@ -8,8 +8,11 @@ const h = vi.hoisted(() => ({
 	loadKeys: vi.fn(() => ({}) as Record<string, string>),
 	setKey: vi.fn(),
 	forget: vi.fn(),
-	status: vi.fn(() => ({ running: false, starting: false, binaryAvailable: true, version: "v0", providerCount: 0, modelCount: 0 })),
+	status: vi.fn(
+		(): ModelSidecarStatus => ({ running: false, starting: false, binaryAvailable: true, version: "v0", providerCount: 0, modelCount: 0 }),
+	),
 	restart: vi.fn(),
+	cancelRestart: vi.fn(),
 }));
 
 vi.mock("../model-catalog-store", () => ({
@@ -20,6 +23,7 @@ vi.mock("../model-catalog-store", () => ({
 	forgetProviderKeys: h.forget,
 }));
 vi.mock("../model-sidecar", () => ({
+	cancelScheduledRestart: h.cancelRestart,
 	getModelSidecarStatus: h.status,
 	ensureModelSidecar: vi.fn(),
 	listSidecarModels: vi.fn(),
@@ -63,6 +67,34 @@ describe("saving the catalog", () => {
 			models: [],
 		};
 		await expect(modelCatalogSave({ catalog: view })).rejects.toThrow(/already serves "custom-my-box"/);
+	});
+});
+
+describe("saving while a restart is queued after a failed start", () => {
+	const queued = (): ModelSidecarStatus => ({
+		running: false, starting: false, binaryAvailable: true, version: "v0", providerCount: 1, modelCount: 0,
+		restart: { attempt: 3, inMs: 90_000 },
+	});
+
+	it("restarts now instead of waiting out the backoff — the save may be the fix", async () => {
+		h.status.mockReturnValueOnce(queued());
+		h.restart.mockResolvedValueOnce(queued());
+		await modelCatalogSave({ catalog: { providers: [OPENROUTER], models: [] } });
+		expect(h.restart).toHaveBeenCalledOnce();
+		expect(h.cancelRestart).not.toHaveBeenCalled();
+	});
+
+	it("drops the queued restart when the last provider was removed", async () => {
+		h.status.mockReturnValueOnce(queued());
+		await modelCatalogSave({ catalog: { providers: [], models: [] } });
+		expect(h.cancelRestart).toHaveBeenCalledOnce();
+		expect(h.restart).not.toHaveBeenCalled();
+	});
+
+	it("leaves a stopped proxy with nothing queued alone", async () => {
+		await modelCatalogSave({ catalog: { providers: [OPENROUTER], models: [] } });
+		expect(h.restart).not.toHaveBeenCalled();
+		expect(h.cancelRestart).not.toHaveBeenCalled();
 	});
 });
 

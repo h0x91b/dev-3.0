@@ -996,6 +996,7 @@ const settings = {
 	"catalog.proxyStopped": "Прокси моделей остановлен — поднимется сам, когда понадобится агенту или когда вы загрузите доступные модели",
 	"catalog.startProxy": "Запустить прокси",
 	"catalog.stopProxy": "Остановить прокси",
+	"catalog.stopRetrying": "Перестать повторять",
 	"catalog.refreshModels": "Загрузить доступные модели",
 	"catalog.refreshModelsBusy": "Загружаем модели…",
 	"catalog.listUnavailable": "Список не загрузился — попробуйте снова или впишите id модели руками.",

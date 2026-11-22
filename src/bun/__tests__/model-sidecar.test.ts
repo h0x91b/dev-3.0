@@ -679,12 +679,12 @@ describe("restarting after a failed start", () => {
 		await failedStart(ensureModelSidecar());
 		const first = getModelSidecarStatus();
 		expect(first.restart?.attempt).toBe(1);
-		expect((first.restart?.at ?? 0) - Date.now()).toBeGreaterThan(4_000);
+		expect(first.restart?.inMs).toBeGreaterThan(4_000);
 		expect(first.lastError).toMatch(/HTTP 503/);
 
 		await advanceUntil(() => getModelSidecarStatus().restart?.attempt === 2);
 		expect(h.spawnMock).toHaveBeenCalledTimes(8);
-		expect((getModelSidecarStatus().restart?.at ?? 0) - Date.now()).toBeGreaterThan(9_000);
+		expect(getModelSidecarStatus().restart?.inMs).toBeGreaterThan(9_000);
 
 		await advanceUntil(() => getModelSidecarStatus().running);
 		const status = getModelSidecarStatus();
@@ -712,6 +712,25 @@ describe("restarting after a failed start", () => {
 		expect(getModelSidecarStatus().restart).toBeUndefined();
 		await vi.advanceTimersByTimeAsync(600_000);
 		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+	});
+
+	it("drops the queued restart once the catalog has no provider left", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		const spawned = h.spawnMock.mock.calls.length;
+		h.catalog.mockReturnValue({ providers: [], models: [] });
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+	});
+
+	it("does not queue a restart when the catalog has no provider", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		h.catalog.mockReturnValue({ providers: [], models: [] });
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		expect(getModelSidecarStatus().restart).toBeUndefined();
 	});
 
 	it("does not queue a restart when the build has no proxy to start", async () => {
