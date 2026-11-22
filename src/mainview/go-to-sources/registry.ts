@@ -78,9 +78,9 @@ export type AnyGoToSource = GoToSourceItem<any>;
 
 export type GoToSourceCallback = "rows" | "matches" | "rankText" | "textClassName" | "right" | "render" | "select";
 
-const reported = new WeakMap<AnyGoToSource, Set<GoToSourceCallback>>();
+let reported = new WeakMap<AnyGoToSource, Set<GoToSourceCallback>>();
 
-/** Runs one source callback; a throw falls back and is logged once per registered source and callback. */
+/** Runs one source callback; a throw falls back and is reported (see `reportGoToSourceFailure`). */
 export function guardGoToSource<T>(source: AnyGoToSource, callback: GoToSourceCallback, run: () => T, fallback: T): T {
 	try {
 		return run();
@@ -90,12 +90,22 @@ export function guardGoToSource<T>(source: AnyGoToSource, callback: GoToSourceCa
 	}
 }
 
+/**
+ * Render-path callbacks run on every keystroke, so each is logged once per source. A
+ * `select` is one click, so every failing one is logged: a transient failure must not go silent.
+ */
 export function reportGoToSourceFailure(source: AnyGoToSource, callback: GoToSourceCallback, err: unknown): void {
-	const seen = reported.get(source) ?? new Set<GoToSourceCallback>();
-	reported.set(source, seen);
-	if (seen.has(callback)) return;
-	seen.add(callback);
+	if (callback !== "select") {
+		const seen = reported.get(source) ?? new Set<GoToSourceCallback>();
+		reported.set(source, seen);
+		if (seen.has(callback)) return;
+		seen.add(callback);
+	}
 	console.error(`[goToSources] ${callback} of go-to source ${source.id} threw:`, err);
+}
+
+export function resetGoToSourceFailuresForTests(): void {
+	reported = new WeakMap();
 }
 
 export class GoToSourceRegistry extends SlotRegistry<AnyGoToSource> {

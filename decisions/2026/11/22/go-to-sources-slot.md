@@ -20,8 +20,9 @@ exists and adds nothing. The slot is internal: no manifest kind, no public servi
 - **Snapshots, not lookups.** Rows are rebuilt only when the slot or the data (`GoToData`) changes; a keystroke only
   filters the prebuilt rows. Open callbacks go through a ref so a parent re-render does not rebuild rows.
 - **Isolation.** Every source callback is guarded: a throw falls back (no rows, no match, `text` as the haystack,
-  no class, no badge, no-op select) and is logged once per registered source and callback. A trailing node that
-  crashes on render is caught by its own boundary and reported the same way.
+  no class, no badge, no-op select). Render-path callbacks are logged once per registered source and callback;
+  a failing `select` is one click, so every one is logged, the same rule as menu runs. A trailing node that
+  crashes on render is caught by its own boundary and reported once, like the render path.
 
 ## Risks
 - The task pool is a host service, loaded only in task-bearing modes. A future source that needs tasks in Projects

@@ -119,6 +119,19 @@ describe("goToSources slot", () => {
 		expect(reports.sort()).toEqual(["[goToSources] matches of go-to source acme:docs threw:", "[goToSources] rows of go-to source acme:broken threw:"]);
 	});
 
+	it("logs every failing select, since each is a click rather than a render", async () => {
+		await contribute(acme({ right: undefined, select: () => { throw new Error("select boom"); } }));
+		renderPalette();
+		const user = userEvent.setup();
+		await waitFor(() => expect(options()).toContain("Acme readme"));
+		await user.click(screen.getByText("Acme readme"));
+		renderPalette();
+		await waitFor(() => expect(screen.getAllByText("Acme readme")).toHaveLength(2));
+		await user.click(screen.getAllByText("Acme readme")[1]);
+		const reports = errors.mock.calls.map((call: unknown[]) => String(call[0])).filter((line: string) => line.includes("go-to source"));
+		expect(reports).toEqual(["[goToSources] select of go-to source acme:docs threw:", "[goToSources] select of go-to source acme:docs threw:"]);
+	});
+
 	it("keeps a row whose trailing content throws or crashes, without that content", async () => {
 		const Crash = () => {
 			throw new Error("render boom");

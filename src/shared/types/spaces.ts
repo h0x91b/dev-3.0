@@ -58,7 +58,7 @@ export function orderSpaces(spaces: Space[], order: string[]): Space[] {
 }
 
 /** Every non-deleted space the project belongs to, in input order. */
-export function spacesOfProject(spaces: Space[], projectId: string): Space[] {
+export function spacesOfProject(spaces: readonly Space[], projectId: string): Space[] {
 	return spaces.filter((s) => !s.deleted && s.projectIds.includes(projectId));
 }
 

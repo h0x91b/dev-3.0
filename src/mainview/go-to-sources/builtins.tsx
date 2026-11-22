@@ -20,7 +20,7 @@ function lockGlyph(view: GoToView, ariaKey: TranslationKey) {
 
 /** Starts with the display name, so fuzzy indices stay aligned with the highlighted text. */
 function projectHaystack(project: Project, data: GoToData): string {
-	return isBuiltinOpsProject(project) ? projectDisplayName(project, data.t("ops.boardName")) : projectSearchHaystack(project.name, data.spaces as Space[], project.id);
+	return isBuiltinOpsProject(project) ? projectDisplayName(project, data.t("ops.boardName")) : projectSearchHaystack(project.name, data.spaces, project.id);
 }
 
 export const PROJECT_GO_TO_SOURCE: GoToSourceItem<Project> = {
