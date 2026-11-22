@@ -1,8 +1,6 @@
 /**
- * QA (independent) tests for named saved views in the board host. They target what
- * SavedViews.test.tsx does not: form factors, board switching, StrictMode, the v
- * chord, a failed save, the name dialog's Escape and backdrop, odd names, and
- * apply/Revert on a preset saved with the default layout.
+ * Board-host edge cases beyond SavedViews.test.tsx: form factors, board switching, StrictMode,
+ * the v chord, a failed save, the name dialog, odd names, and Revert without a layout.
  */
 import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";

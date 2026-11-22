@@ -1,7 +1,6 @@
 /**
- * QA (independent) tests for the host side of named saved views: concurrent named
- * changes and plain saves against one real file, with the real file lock (the
- * author's data test replaces the lock with a pass-through).
+ * Host side of named saved views: concurrent named changes and plain saves against one
+ * real file, with the real file lock (board-view-state-data.test.ts mocks it out).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";

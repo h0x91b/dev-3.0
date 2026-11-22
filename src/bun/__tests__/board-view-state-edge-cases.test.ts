@@ -1,8 +1,6 @@
 /**
- * QA (independent) tests for named saved views in src/shared/board-view-state.ts.
- * They target what board-view-state.test.ts "named saved views" does not: fuzzed
- * input, duplicate ids, odd names, op sequences, a round trip through the pre-change
- * build, and Revert when a named view has no layout of its own.
+ * Edge cases for named saved views beyond board-view-state.test.ts: fuzzed input, duplicate
+ * ids, odd names, op sequences, a round trip through the older build, Revert without a layout.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -317,9 +315,8 @@ describe("QA: apply restores what the named view holds", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Verbatim copy of normalize + updateActive/withViewType/withLayout from the build
- * before this change (git show 2b7bb8c22:src/shared/board-view-state.ts, the merge
- * base with upstream/main). Kept inline so the test needs no git history.
+ * Verbatim copy of normalize, updateActive, withViewType and withLayout from 2b7bb8c22, the
+ * build before named views, kept inline so the test needs no git history.
  */
 const old = (() => {
 	const DEFAULT = "sv-default";

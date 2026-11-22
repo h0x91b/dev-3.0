@@ -239,9 +239,8 @@ export function withoutNamedView(state: BoardViewState, id: string): BoardViewSt
 }
 
 /**
- * Loads a named view into the form factor's working view: its view type, and that
- * view type's layout exactly (absent when the named view has none). Other view
- * types keep their layouts. The query is the caller's: the board query lives in memory.
+ * Loads a named view into the form factor's working view: its view type and exactly that type's
+ * layout (absent if the view has none). The caller sets the query, which lives in memory.
  */
 export function withNamedViewApplied(state: BoardViewState, formFactor: BoardFormFactor, id: string): BoardViewState {
 	const named = state.savedViews.find((view) => view.id === id && view.name !== null);
