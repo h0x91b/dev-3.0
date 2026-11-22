@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 
 // Unit-test agent-prompt against a mock tmux singleton (the standard seam for
 // handler-level tests). The real ../tmux module has module-load side effects
@@ -487,6 +488,56 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 		await runPrompt(sendPromptToAgentPane(TASK, "open a PR", [agentPane("%1")]));
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+	});
+});
+
+describe("a Cursor pane gets one more Enter, which steers a queued follow-up into its turn", () => {
+	afterEach(() => resetAgentMessageHolds());
+	const cursorPane = { ...agentPane("%1"), agentCmd: "agent" } as PaneSessionEntry;
+	const CURSOR_TASK = { ...TASK, sessionState: { panes: [cursorPane] } } as Task;
+
+	it("presses Enter twice after a held message lands in a Cursor pane", async () => {
+		await holdMessageForPane(CURSOR_TASK, "%1", "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + 3 * AGENT_PROMPT_ENTER_DELAY_MS);
+
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(3);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+		expect(sentChunks(2)).toEqual([{ keys: ["Enter"] }]);
+	});
+
+	it("skips the steer Enter when the user typed after the submit, so his draft is never sent", async () => {
+		await holdMessageForPane(CURSOR_TASK, "%1", "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+
+		deferHeldAgentMessagesForTask(TASK_ID);
+		await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+	});
+
+	it("skips the steer Enter when a prompt opened in the pane meanwhile, so it never answers the menu", async () => {
+		await holdMessageForPane(CURSOR_TASK, "%1", "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+
+		agentPromptLedger.claudePermissionRequest({ taskId: TASK_ID, sessionId: "s1", toolName: "Bash", paneId: "%1" });
+		try {
+			await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
+			expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		} finally {
+			agentPromptLedger.reset();
+		}
+	});
+
+	it("does the same for a direct prompt, and keeps a Claude pane at one Enter", async () => {
+		const cursor = sendPromptToAgentPane(CURSOR_TASK, "commit", [cursorPane]);
+		await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
+		await expect(cursor).resolves.toMatchObject({ status: "delivered" });
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(3);
+
+		vi.mocked(tmux.sendKeysGuarded).mockClear();
+		await runPrompt(sendPromptToAgentPane(TASK, "commit", [agentPane("%1")]));
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 	});
 });
 

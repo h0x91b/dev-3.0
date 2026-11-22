@@ -1,3 +1,5 @@
+import { beigeHex, parseBeigeTone } from "../shared/beige-palette";
+
 /** Terminal palettes for both app themes, shared by the terminal and the prompt previews. */
 export const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -44,3 +46,13 @@ export const LIGHT_TERMINAL_THEME = {
 	brightCyan: "#3192aa",
 	brightWhite: "#d1d5da",
 };
+
+/** The palette for the current app theme: Beige swaps Light's white paper for the
+ *  same warm background tmux paints, at the sliders' tone. */
+export function terminalThemeFor(resolved: "dark" | "light"): typeof LIGHT_TERMINAL_THEME {
+	if (resolved !== "light") return DARK_TERMINAL_THEME;
+	const { palette, beigeTone } = document.documentElement.dataset;
+	if (palette !== "beige") return LIGHT_TERMINAL_THEME;
+	const background = beigeHex("tmux-bg", parseBeigeTone(beigeTone));
+	return { ...LIGHT_TERMINAL_THEME, background, foreground: "#3d3a34", cursor: "#3d3a34" };
+}

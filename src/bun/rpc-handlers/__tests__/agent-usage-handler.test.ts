@@ -29,7 +29,7 @@ vi.mock("node:os", async (importOriginal) => ({
 	homedir: () => testHome,
 }));
 
-import { getAgentUsage, getTaskAgentUsage, isSubagentTranscript, taskStartedAt } from "../agent-usage";
+import { claudeParentTranscript, getAgentUsage, getTaskAgentUsage, isSubagentTranscript, taskStartedAt } from "../agent-usage";
 import { taskDir } from "../../git";
 import { log } from "../shared";
 import { atomicWriteFile } from "../../atomic-write";
@@ -161,6 +161,52 @@ describe("getAgentUsage", () => {
 		expect((await getAgentUsage()).days[0].costUsd).toBe(2);
 		rmSync(catalogFile);
 		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+	});
+
+	it("splits cost into API key spend, plan-covered usage and unknown billing from each log's own evidence", async () => {
+		const catalogFile = join(tempRoot, ".dev3.0", "model-catalog.json");
+		mkdirSync(dirname(catalogFile), { recursive: true });
+		writeFileSync(catalogFile, JSON.stringify({
+			providers: [{ id: "router", kind: "openrouter", label: "OpenRouter" }],
+			models: [{ id: "route", providerId: "router", name: "my-label", modelId: "openai/gpt-6.1-sol" }],
+		}));
+		const timestamp = "2026-10-20T12:00:00Z";
+		const claude = (id: string, model = "claude-sonnet-4-6") => ({
+			type: "assistant", requestId: id, timestamp, message: { id, model, usage: { input_tokens: 1_000_000 } },
+		});
+		const store = join(tempRoot, "claude", "projects", "repo");
+		// The owner line is written after the first response, and the subagent has none of its own.
+		writeJsonl(join(store, "plan.jsonl"), [claude("p1"), { type: "session-owner", accountUuid: "acc", sessionId: "plan" }]);
+		writeJsonl(join(store, "plan", "subagents", "agent-a.jsonl"), [claude("p2")]);
+		writeJsonl(join(store, "nologin.jsonl"), [claude("u1")]);
+		writeJsonl(join(store, "routed.jsonl"), [claude("r1", "openrouter/my-label")]);
+		writeJsonl(join(tempRoot, "codex", "sessions", "rollout-plan.jsonl"), [
+			{ type: "session_meta", timestamp, payload: { id: "codex-plan" } },
+			{ type: "turn_context", timestamp, payload: { model: "gpt-6-sol" } },
+			{ type: "event_msg", timestamp, payload: {
+				type: "token_count", rate_limits: { plan_type: "plus" },
+				info: { last_token_usage: { input_tokens: 1_000_000, output_tokens: 0 }, total_token_usage: { input_tokens: 1_000_000, output_tokens: 0 } },
+			} },
+		]);
+
+		const days = (await getAgentUsage()).days;
+		const sum = (pick: (d: (typeof days)[number]) => number) => days.reduce((total, d) => total + pick(d), 0);
+		const claudeDay = days.find((d) => d.source === "claude")!;
+		// Sonnet input is $3/M: two plan responses, one unknown, and the routed one priced as its native model.
+		expect(claudeDay).toMatchObject({ subscriptionCostUsd: 6, unclassifiedCostUsd: 3, apiCostUsd: 2 });
+		expect(days.find((d) => d.source === "codex")).toMatchObject({ apiCostUsd: 0, unclassifiedCostUsd: 0 });
+		expect(days.find((d) => d.source === "codex")!.subscriptionCostUsd).toBeGreaterThan(0);
+		expect(sum((d) => d.apiCostUsd + d.subscriptionCostUsd + d.unclassifiedCostUsd)).toBeCloseTo(sum((d) => d.costUsd), 9);
+
+		// The history keeps the split after every source log is gone.
+		rmSync(join(tempRoot, "claude"), { recursive: true, force: true });
+		rmSync(join(tempRoot, "codex"), { recursive: true, force: true });
+		expect((await getAgentUsage()).days.find((d) => d.source === "claude")).toMatchObject({ subscriptionCostUsd: 6, unclassifiedCostUsd: 3, apiCostUsd: 2 });
+	});
+
+	it("maps a subagent transcript to its session's own file", () => {
+		expect(claudeParentTranscript(join("store", "sess", "subagents", "agent-a.jsonl"))).toBe(join("store", "sess.jsonl"));
+		expect(claudeParentTranscript(join("store", "sess.jsonl"))).toBeNull();
 	});
 
 	it("reconciles a previously retained legacy echo when its native response arrives later", async () => {

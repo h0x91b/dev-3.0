@@ -35,7 +35,8 @@ import {
 } from "../deep-link-nav";
 
 const project = (id: string): Project => ({ id } as Project);
-const task = (id: string): Task => ({ id } as Task);
+const task = (id: string, status: Task["status"] = "in-progress", extra: Partial<Task> = {}): Task =>
+	({ id, status, ...extra } as Task);
 
 describe("parseDeepLink", () => {
 	it("parses a task link", () => {
@@ -179,6 +180,18 @@ describe("resolveDeepLink", () => {
 			taskId: "t-in-p2",
 			projectId: "p2",
 		});
+	});
+
+	it("flags a task with no terminal (To Do, completed, cancelled) to open as its board card (#2347)", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([task("t-todo", "todo"), task("t-done", "completed"), task("t-gone", "cancelled")]);
+		for (const taskId of ["t-todo", "t-done", "t-gone"]) {
+			expect(await resolveDeepLink({ kind: "task", taskId })).toEqual({ kind: "task", taskId, projectId: "p1", archived: true });
+		}
+	});
+
+	it("keeps a hibernated task in an active column on its task view, where the wake screen is", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([task("t-zz", "in-progress", { hibernated: true })]);
+		expect(await resolveDeepLink({ kind: "task", taskId: "t-zz" })).toEqual({ kind: "task", taskId: "t-zz", projectId: "p1" });
 	});
 
 	it("returns null for an unknown task", async () => {

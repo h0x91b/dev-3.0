@@ -22,13 +22,14 @@
  * Run: bun run test:pane-run-exec
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "../../bun/spawn";
 import { paneRunLogPath, paneRunSpecPath, paneRunStatusPath, PANE_RUN_VERB } from "../../bun/pane-run-store";
 import { launchDialect } from "../../shared/platform-launch";
 import { PANE_RUN_AUTO_CLOSE_SECONDS } from "../../shared/pane-runs";
+import { removeTempTree } from "../../bun/__tests__/helpers/remove-temp-tree";
 
 const IS_WINDOWS = process.platform === "win32";
 /** Non-ASCII on purpose: this is what a wrong output encoding destroys. */
@@ -276,7 +277,7 @@ try {
 		console.log("  skip - the %SystemRoot% fallback is Windows-only; POSIX has no such variable");
 	}
 } finally {
-	rmSync(root, { recursive: true, force: true });
+	removeTempTree(root);
 }
 
 if (failures > 0) {

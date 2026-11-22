@@ -61,7 +61,7 @@ import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
-interface Props {
+export interface AgentTrafficScreenProps {
 	/** The project the user came from; seeds the scope filter, nothing else. */
 	projectId: string | null;
 	/**
@@ -120,7 +120,7 @@ function retentionStatus(t: TFunction, retentionDays: number | null, oldestDay: 
  * path in analytics. It is a route now — the shell above it is the ordinary one,
  * so this component owns nothing but its own content.
  */
-export default function AgentTrafficScreen(props: Props) {
+export default function AgentTrafficScreen(props: AgentTrafficScreenProps) {
 	return (
 		<div className="traffic-screen" data-testid="agent-traffic-screen">
 			<div className="traffic-frame">
@@ -365,7 +365,7 @@ const ENTRY_WINDOW = "hour";
 /** What `Live` returns to — unchanged, and deliberately not {@link ENTRY_WINDOW}. */
 const LIVE_WINDOW = "day";
 
-function TrafficView({ projectId, focus, onOpenTask }: Props) {
+function TrafficView({ projectId, focus, onOpenTask }: AgentTrafficScreenProps) {
 	const t = useT();
 	const [locale] = useLocale();
 	const [windowSize, setWindowSize] = useState(ENTRY_WINDOW);

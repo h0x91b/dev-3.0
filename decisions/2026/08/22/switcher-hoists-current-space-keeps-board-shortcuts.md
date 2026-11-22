@@ -1,5 +1,7 @@
 # Header switcher hoists the current space, but ⌘N stays on board order
 
+> Superseded in part on 2026-11-22 by `decisions/2026/11/22/digits-follow-dashboard-order.md`: the ⌘N badges and shortcuts now follow the dashboard's grouped order, not the flat board order. The hoisting itself is unchanged.
+
 ## Context
 
 The header project breadcrumb's dropdown listed every project in one flat board-ordered

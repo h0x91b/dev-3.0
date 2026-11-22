@@ -7,6 +7,7 @@ import { api } from "../../../rpc";
 import { resetTaskVisibilityForTests } from "../../useTaskVisibility";
 import { toast } from "../../../toast";
 import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../../shared/types";
+import { installTipBuiltins } from "../../../tips/__tests__/install-builtins";
 
 vi.mock("../../../rpc", () => ({
 	api: {
@@ -440,9 +441,10 @@ describe("label filter ordering", () => {
 });
 
 describe("tip rotation", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
 		localStorage.clear();
+		await installTipBuiltins();
 	});
 
 	async function renderForRotation() {

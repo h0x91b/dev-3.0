@@ -28,7 +28,7 @@
  * TerminalBackend / UI / RPC / settings, and never touches the tmux path.
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +44,7 @@ import {
 	type NativeSessionRecord,
 } from "../record";
 import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -245,7 +246,7 @@ async function run(): Promise<void> {
 			// already gone
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}

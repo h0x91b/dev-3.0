@@ -67,9 +67,7 @@ function SpaceHeaderMenu({
 		setDraft(space.name);
 	}
 
-	useEscapeKey(() => {
-		if (open) close();
-	});
+	useEscapeKey(close, { enabled: open });
 
 	useLayoutEffect(() => {
 		if (!open || !anchorRef.current || !menuRef.current) return;

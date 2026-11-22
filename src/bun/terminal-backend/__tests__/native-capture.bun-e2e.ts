@@ -5,7 +5,7 @@
  * production's shape, and must read as `not-enabled` on the first try.
  */
 
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultCoordinatorDeps, type CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
@@ -21,6 +21,7 @@ import type { NativeCaptureMode } from "../../native-terminal-registry/capture-m
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeTerminalBackend } from "../native-backend";
 import { isCapturedPane, type TerminalPaneCapture } from "../capture";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -269,7 +270,7 @@ async function main(): Promise<void> {
 	}
 
 	delete process.env[NATIVE_MULTIPANE_DIR_ENV];
-	rmSync(root, { recursive: true, force: true });
+	removeTempTree(root);
 
 	if (failures > 0) {
 		console.error(`\n${failures} check(s) failed`);

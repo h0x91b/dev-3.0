@@ -1,5 +1,7 @@
 import { readdirSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
+import { providerBilling } from "../../shared/agent-billing";
+import { readProviderAuthTypes } from "./provider-auth";
 import { mergeUsageRecord, type UsageState } from "../rpc-handlers/agent-usage-parse";
 import type { ReadonlySqliteQuery } from "../sqlite-readonly";
 
@@ -24,7 +26,7 @@ FROM part p JOIN message m ON m.id = p.message_id
 WHERE p.data LIKE '%"step-finish"%'`;
 
 /** OpenCode reports input without cache reads/writes and reasoning apart from output. */
-export function foldOpenCodeStep(state: UsageState, row: Record<string, unknown>): void {
+export function foldOpenCodeStep(state: UsageState, row: Record<string, unknown>, authTypes: ReadonlyMap<string, string> = new Map()): void {
 	const part = parse(row.part);
 	const message = parse(row.message);
 	if (typeof row.id !== "string" || !row.id || part?.type !== "step-finish" || message?.role !== "assistant") return;
@@ -36,9 +38,11 @@ export function foldOpenCodeStep(state: UsageState, row: Record<string, unknown>
 	const created = typeof row.created === "number" && Number.isFinite(row.created) && row.created > 0
 		? row.created : object(message.time)?.created;
 	if (typeof created !== "number" || !Number.isFinite(created) || created <= 0) return;
+	const billing = providerBilling(message.providerID, authTypes);
 	mergeUsageRecord(state, `opencode:${JSON.stringify([row.id])}`, {
 		model: typeof message.modelID === "string" && message.modelID.trim() ? message.modelID : "unknown",
 		timestamp: created,
+		...(billing ? { billing } : {}),
 		counts: { inputTokens: input, outputTokens: output + reasoning, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheWrite },
 	});
 }
@@ -63,6 +67,8 @@ export function collectOpenCodeUsage(state: UsageState, databases: string[], que
 		let rows: Record<string, unknown>[];
 		try { rows = query(db, STEP_SQL); }
 		catch (error) { warn(db, error); continue; }
-		for (const row of rows) foldOpenCodeStep(state, row);
+		// The store's sibling auth.json says how today's login pays for an ambiguous provider.
+		const authTypes = readProviderAuthTypes(join(dirname(db), "auth.json"));
+		for (const row of rows) foldOpenCodeStep(state, row, authTypes);
 	}
 }

@@ -53,9 +53,11 @@ export function foldCursorHookUsage(state: UsageState, payload: unknown, timesta
 	if (!snapshot) return false;
 	const key = identity(snapshot);
 	const previous = state.records.get(key);
+	// Cursor Agent only runs on a Cursor plan login; the on-disk ledger stays counts-only.
 	mergeUsageRecord(state, key, {
 		...snapshot.usage,
 		timestamp: Math.min(previous?.timestamp ?? timestamp, timestamp),
+		billing: "subscription",
 	});
 	return true;
 }

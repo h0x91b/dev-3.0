@@ -1,4 +1,5 @@
 import { interfaceOnboarding } from "../interface-onboarding";
+import { getAutoHibernateSuggestion, presentAutoHibernateSuggestion, respondAutoHibernateSuggestion } from "../auto-hibernate";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
@@ -1032,35 +1033,49 @@ function resolveZedCli(): string | null {
 	return null;
 }
 
-async function openInApp(params: { appName: string; path: string }): Promise<void> {
-	log.info("→ openInApp", { appName: params.appName, path: params.path });
+/** The apps a path may open in: the built-in defaults, then the user's own from Settings. */
+async function knownExternalApps(): Promise<ExternalApp[]> {
+	const settings = await loadSettings();
+	return [...DEFAULT_EXTERNAL_APPS, ...(settings.externalApps ?? [])];
+}
+
+/**
+ * Opens `path` in a known app, named by its id. Only an id the defaults or the user's settings define
+ * can launch anything: the renderer, and any plugin in it, never names an arbitrary app.
+ */
+async function openInApp(params: { appId: string; path: string }): Promise<void> {
+	log.info("→ openInApp", { appId: params.appId, path: params.path });
 	if (!isFullyQualifiedPath(params.path, process.platform)) {
 		throw new Error("Invalid path");
 	}
-	if (!params.appName || params.appName.includes("/")) {
+	const app = (await knownExternalApps()).find((candidate) => candidate.id === params.appId);
+	if (!app) {
+		throw new Error("Unknown app");
+	}
+	const appName = app.macAppName;
+	if (!appName || appName.includes("/")) {
 		throw new Error("Invalid app name");
 	}
-	if (params.appName === "Finder") {
+	if (appName === "Finder") {
 		spawn(["open", params.path], { stdout: "ignore", stderr: "ignore" });
 		return;
 	}
 	// Zed reuses its current window when opened via `open -a`; use the Zed CLI's
 	// `-n` flag to give each worktree its own window. Fall back to `open -a` when
 	// the CLI binary can't be located.
-	if (params.appName === "Zed") {
+	if (appName === "Zed") {
 		const zedCli = resolveZedCli();
 		if (zedCli) {
 			spawn([zedCli, "-n", params.path], { stdout: "ignore", stderr: "ignore" });
 			return;
 		}
 	}
-	spawn(["open", "-a", params.appName, params.path], { stdout: "ignore", stderr: "ignore" });
+	spawn(["open", "-a", appName, params.path], { stdout: "ignore", stderr: "ignore" });
 }
 
 async function getAvailableApps(): Promise<ExternalApp[]> {
 	log.info("→ getAvailableApps");
-	const settings = await loadSettings();
-	const allApps = [...DEFAULT_EXTERNAL_APPS, ...(settings.externalApps ?? [])];
+	const allApps = await knownExternalApps();
 
 	const checks = allApps.map(async (app): Promise<ExternalApp | null> => {
 		if (app.id === "finder" || app.id === "terminal") return app;
@@ -1177,6 +1192,9 @@ export const appHandlers = {
 	setWindowTitleContext,
 	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
+	getAutoHibernateSuggestion: async () => getAutoHibernateSuggestion(),
+	presentAutoHibernateSuggestion: async (params: { id: string }) => presentAutoHibernateSuggestion(params.id),
+	respondAutoHibernateSuggestion,
 	setStreamerPrivacy: setStreamerPrivacyHandler,
 	ping,
 	updateMenuContext,

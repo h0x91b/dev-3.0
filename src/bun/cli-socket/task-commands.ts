@@ -1,6 +1,6 @@
 import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
-import type { DeepLinkNav } from "../../shared/deep-link";
+import { taskDeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
 import * as labelOps from "../board-operations/labels";
@@ -645,7 +645,7 @@ export const taskHandlers: Record<string, Handler> = {
 	 */
 	"task.open": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const nav: DeepLinkNav = { kind: "task", taskId: task.id, projectId: project.id };
+		const nav = taskDeepLinkNav(task.id, project.id, task.status);
 		if (process.env.DEV3_HEADLESS !== "1") {
 			const { focusFocusedWindow, getWindowCount, openNewWindow } = await import("../window-manager");
 			if (getWindowCount() === 0) {
@@ -799,7 +799,7 @@ export const taskHandlers: Record<string, Handler> = {
 	// approves or declines in the app UI. Approval executes the move even if
 	// the requesting CLI has already disconnected (its tmux session may have
 	// hit a client-side timeout while the dialog stayed open).
-	"task.requestCompletion": async (params) => requestDestructiveApproval("complete", params),
+	"task.requestCompletion": async (params, ctx) => requestDestructiveApproval("complete", params, ctx?.signal),
 
 	// Agent-initiated request to CANCEL a task — an agent cleaning up a task it
 	// should not have created. Same approval model as `task.requestCompletion`,
@@ -807,13 +807,13 @@ export const taskHandlers: Record<string, Handler> = {
 	// work away, and the dialog asking for it must not look like the other one.
 	// Never auto-approved (no `autoApproveAfterMs`) — nobody loses a worktree to
 	// a dialog they never saw.
-	"task.requestCancellation": async (params) => requestDestructiveApproval("cancel", params),
+	"task.requestCancellation": async (params, ctx) => requestDestructiveApproval("cancel", params, ctx?.signal),
 
 	// `dev3 task move --status todo`. A task that needs a reset (active, or still
 	// owning a worktree) is reset only after the user approves it in the app —
 	// from any caller, task context or not. Never auto-approved; a request whose
 	// run ends first is voided, not approved. Anything else is a plain move.
-	"task.requestReset": async (params) => requestDestructiveApproval("reset", params),
+	"task.requestReset": async (params, ctx) => requestDestructiveApproval("reset", params, ctx?.signal),
 
 	// Read-only: where a completion/cancellation request stands. Never creates,
 	// joins or answers one — it is what a CLI asks after its wait timed out.

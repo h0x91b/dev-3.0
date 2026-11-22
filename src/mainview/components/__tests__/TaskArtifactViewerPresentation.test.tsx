@@ -1,9 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SharedArtifact } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskArtifactViewer from "../TaskArtifactViewer";
-import { setArtifactDock } from "../../utils/artifact-dock";
 import { artifactActivity, resetArtifactActivity } from "../../artifact-activity";
 
 vi.mock("../../rpc", () => ({
@@ -41,16 +40,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	act(() => setArtifactDock(null));
 	dock?.remove();
 	dock = null;
 	document.documentElement.removeAttribute("data-artifact-viewer");
 });
 
+/** The element the artifact panel hands the viewer as `dock`. */
 function mountDock(): HTMLDivElement {
 	dock = document.createElement("div");
 	document.body.appendChild(dock);
-	act(() => setArtifactDock(dock));
 	return dock;
 }
 
@@ -83,7 +81,7 @@ describe("TaskArtifactViewer presentation", () => {
 
 	it("renders inside the published dock and leaves the terminal visible", async () => {
 		const slot = mountDock();
-		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} dock={slot} onClose={vi.fn()} /></I18nProvider>);
 		const viewer = await screen.findByTestId("artifact-viewer");
 		expect(viewer).toHaveAttribute("data-presentation", "docked");
 		expect(slot.contains(viewer)).toBe(true);
@@ -93,12 +91,13 @@ describe("TaskArtifactViewer presentation", () => {
 	});
 
 	it("keeps the same viewer and its loaded document when the dock disappears", async () => {
-		mountDock();
-		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const list = [artifact()];
+		const onClose = vi.fn();
+		const view = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} dock={mountDock()} onClose={onClose} /></I18nProvider>);
 		await screen.findByTestId("artifact-viewer");
 		await waitFor(() => expect(mockedApi.request.readArtifactContent).toHaveBeenCalledTimes(1));
 
-		act(() => setArtifactDock(null));
+		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} dock={null} onClose={onClose} /></I18nProvider>);
 
 		const viewer = await screen.findByTestId("artifact-viewer");
 		expect(viewer).toHaveAttribute("data-presentation", "popup");
@@ -110,11 +109,14 @@ describe("TaskArtifactViewer presentation", () => {
 	// The other direction: turning the preference off (or walking back into the
 	// task) hands the live popup into the slot without reloading it.
 	it("keeps the same viewer when a dock appears under an open popup", async () => {
-		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const list = [artifact()];
+		const onClose = vi.fn();
+		const view = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} onClose={onClose} /></I18nProvider>);
 		await screen.findByTestId("artifact-viewer");
 		await waitFor(() => expect(mockedApi.request.readArtifactContent).toHaveBeenCalledTimes(1));
 
 		const slot = mountDock();
+		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} dock={slot} onClose={onClose} /></I18nProvider>);
 
 		const viewer = await screen.findByTestId("artifact-viewer");
 		expect(viewer).toHaveAttribute("data-presentation", "docked");
@@ -131,12 +133,10 @@ describe("TaskArtifactViewer presentation", () => {
 		// One stable list across rerenders — a fresh array is a new artifact to the
 		// viewer and would legitimately re-fetch, hiding the point of this test.
 		const list = [artifact()];
-		mountDock();
-		const view = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		const view = render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} dock={mountDock()} onClose={onClose} /></I18nProvider>);
 		await screen.findByTestId("artifact-viewer");
 		await waitFor(() => expect(mockedApi.request.readArtifactContent).toHaveBeenCalledTimes(1));
 
-		act(() => setArtifactDock(null));
 		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} offscreen onClose={onClose} /></I18nProvider>);
 
 		const hidden = screen.getByTestId("artifact-viewer");
@@ -149,7 +149,7 @@ describe("TaskArtifactViewer presentation", () => {
 		expect(onClose).not.toHaveBeenCalled();
 
 		const slot = mountDock();
-		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		view.rerender(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={list} initialIndex={0} dock={slot} onClose={onClose} /></I18nProvider>);
 
 		const viewer = screen.getByTestId("artifact-viewer");
 		expect(viewer).toHaveAttribute("data-presentation", "docked");
@@ -159,8 +159,8 @@ describe("TaskArtifactViewer presentation", () => {
 
 	it("docked, Escape only closes while focus is inside the panel", async () => {
 		const onClose = vi.fn();
-		mountDock();
-		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		const slot = mountDock();
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} dock={slot} onClose={onClose} /></I18nProvider>);
 		await screen.findByTestId("artifact-viewer");
 
 		const outside = document.createElement("button");
@@ -184,8 +184,8 @@ describe("TaskArtifactViewer presentation", () => {
 	});
 
 	it("docked fullscreen covers the terminal and hides the WebGL canvas", async () => {
-		mountDock();
-		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const slot = mountDock();
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact()]} initialIndex={0} dock={slot} onClose={vi.fn()} /></I18nProvider>);
 		await screen.findByTestId("artifact-viewer");
 		await userEvent.click(screen.getByTestId("artifact-viewer-fullscreen"));
 
@@ -198,8 +198,8 @@ describe("TaskArtifactViewer presentation", () => {
 	// A docked panel can be dragged narrower than its own toolbar. Everything else
 	// may scroll out of sight there; Close may not, or the panel has no way out.
 	it("keeps Close out of the row that scrolls when the panel is narrow", async () => {
-		mountDock();
-		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact(), { ...artifact(), id: "a2", title: "Second" }]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const slot = mountDock();
+		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact(), { ...artifact(), id: "a2", title: "Second" }]} initialIndex={0} dock={slot} onClose={vi.fn()} /></I18nProvider>);
 		const actions = await screen.findByTestId("artifact-viewer-actions");
 
 		expect(actions.contains(screen.getByTestId("artifact-viewer-close"))).toBe(false);

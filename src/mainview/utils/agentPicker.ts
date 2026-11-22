@@ -49,6 +49,11 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	"gemini-3.1-pro-preview": "Gemini 3.1 Pro",
 	"gemini-3-flash-preview": "Gemini 3 Flash",
 	"gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
+	// Antigravity
+	"gemini-4-neon": "Neon",
+	"gemini-4-carbon": "Carbon",
+	"gemini-4-argon": "Argon",
+	"gemini-4-hydrogen": "Hydrogen",
 	// Cursor Agent
 	"claude-opus-5-thinking-high": "Opus 5",
 	"claude-sonnet-5-thinking-high": "Sonnet 5",
@@ -81,6 +86,16 @@ const EFFORT_LABELS: Record<string, string> = {
 	high: "High",
 	xhigh: "X-High",
 };
+
+/** Agents whose CLI is installed first, each group in its original order. An agent with no
+ *  availability result yet counts as installed, so the list does not jump while the check runs. */
+export function installedAgentsFirst<T extends { id: string }>(
+	agents: T[],
+	availability: { agentId: string; installed: boolean }[],
+): T[] {
+	const missing = (agent: T) => availability.some((a) => a.agentId === agent.id && !a.installed);
+	return [...agents.filter((a) => !missing(a)), ...agents.filter(missing)];
+}
 
 /** Best-effort prettifier for a model string not in MODEL_GROUP_LABELS.
  *  Strips a `[duration]` suffix and a `vendor/` prefix, drops `-preview`/

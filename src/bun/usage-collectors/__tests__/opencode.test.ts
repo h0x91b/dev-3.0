@@ -64,6 +64,20 @@ describe("collectOpenCodeUsage", () => {
 		]);
 	});
 
+	it("tags each step with how its provider was paid, reading only the login kind from auth.json", () => {
+		const message = (providerID: string) => ({ ...assistant(), providerID });
+		createDb(join(dataDir(), "opencode.db"), {
+			messages: [["a", message("anthropic")], ["o", message("openai")], ["r", message("openrouter")], ["g", message("google")]],
+			parts: [["pa", "a", step(1, 1)], ["po", "o", step(1, 1)], ["pr", "r", step(1, 1)], ["pg", "g", step(1, 1)]],
+		});
+		writeFileSync(join(dataDir(), "auth.json"), JSON.stringify({ anthropic: { type: "api", key: "sk" }, openai: { type: "oauth" } }));
+		const state = newUsageState();
+		collectOpenCodeUsage(state, openCodeDatabases(home, {}), queryReadonlySqlite);
+		expect(Object.fromEntries([...state.records].map(([key, r]) => [key, r.billing]))).toEqual({
+			'opencode:["pa"]': "api", 'opencode:["po"]': "subscription", 'opencode:["pr"]': "api", 'opencode:["pg"]': undefined,
+		});
+	});
+
 	it("deduplicates parts copied into channel databases and honours an OPENCODE_DB override", () => {
 		const rows = { messages: [["msg1", assistant()]] as [string, unknown][], parts: [["p1", "msg1", step(1, 1)]] as [string, string, unknown][] };
 		createDb(join(dataDir(), "opencode.db"), rows);

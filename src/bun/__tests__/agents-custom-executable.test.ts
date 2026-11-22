@@ -25,7 +25,7 @@ vi.mock("../agent-accounts", async (importOriginal) => {
 });
 
 import { claudeAccountDir, prepareClaudeLogin, registerStagedClaudeAccount, importCurrentClaudeAccount, setActiveClaudeAccount, type AccountPaths } from "../agent-accounts";
-import { claudeLaunchKeepsProjectFolder, resolveCommandForAgent, resolveCommandForProject } from "../agents";
+import { claudeLaunchKeepsProjectFolder, resolveClaudePickLaunch, resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { DEV3_HOME } from "../paths";
@@ -400,5 +400,18 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		expect(claudeLaunchKeepsProjectFolder(account.id, { ...where, resume: true, sessionId: "elsewhere" })).toBe(false);
 		const { account: other } = await accountSignedInAs("person-2");
 		expect(claudeLaunchKeepsProjectFolder(other.id, { ...where, resume: true, sessionId: "s-3" })).toBe(false);
+	});
+
+	it("tells the picker where each pick runs, with the launch's own answer", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const { account: other } = await accountSignedInAs("person-2");
+		transcript(projectDir, "s-4.jsonl", 10);
+		const where = { projectEnv: { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" }, projectPath: ctx.projectPath, worktreePath: ctx.worktreePath };
+		await expect(resolveClaudePickLaunch(undefined, where)).resolves.toEqual({ projectFolder: true, keepsProjectBackend: true });
+		await expect(resolveClaudePickLaunch(null, where)).resolves.toEqual({ projectFolder: false, keepsProjectBackend: false });
+		await expect(resolveClaudePickLaunch(account.id, where)).resolves.toEqual({ projectFolder: true, keepsProjectBackend: false });
+		await expect(resolveClaudePickLaunch(other.id, where)).resolves.toEqual({ projectFolder: false, keepsProjectBackend: false });
+		await expect(resolveClaudePickLaunch(account.id, { ...where, resume: true, sessionId: "elsewhere" })).resolves.toMatchObject({ projectFolder: false });
+		await expect(resolveClaudePickLaunch(account.id, { ...where, resume: true, sessionId: "s-4" })).resolves.toMatchObject({ projectFolder: true });
 	});
 });

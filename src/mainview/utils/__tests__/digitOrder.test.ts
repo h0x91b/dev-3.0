@@ -1,5 +1,6 @@
-import { digitBadgeById, digitTargets, isDigitTargetOnScreen, mixedEntryId, resolveMixedOrder, type MixedEntry } from "../digitOrder";
+import { dashboardProjectOrder, digitBadgeById, digitTargets, isDigitTargetOnScreen, mixedEntryId, resolveMixedOrder, type MixedEntry } from "../digitOrder";
 import type { Project, Space, SpacesFile } from "../../../shared/types";
+import { groupProjectsForDashboard } from "../spaceGroups";
 
 const proj = (id: string, over?: Partial<Project>): Project => ({
 	id,
@@ -133,13 +134,42 @@ describe("resolveMixedOrder", () => {
 });
 
 describe("digitTargets", () => {
-	it("off: ordinary projects in board order, Operations and deleted ones excluded, capped at nine", () => {
+	it("off, no spaces: ordinary projects in board order, Operations and deleted ones excluded, capped at nine", () => {
 		const ops = proj("ops", { kind: "virtual", builtin: true });
 		const projects = [ops, proj("x", { deleted: true }), ...board, proj("extra")];
-		const targets = digitTargets(projects, fileOf([hands]), false);
+		const targets = digitTargets(projects, fileOf([]), false);
 		expect(targets).toHaveLength(9);
 		expect(targets.every((t) => t.kind === "project")).toBe(true);
 		expect(ids(targets)).toEqual(names);
+	});
+
+	it("off, with spaces: the dashboard's top-to-bottom order — space members first, then Home", () => {
+		expect(ids(digitTargets(board, fileOf([hands]), false))).toEqual([
+			"bus", "pollex", "voxscript", "ds_api", "aux", "chisim", "polymarket", "Nerd-Dictum", "dev-3.0",
+		]);
+	});
+
+	it("off, with spaces: follows the rail order and each space's own member order", () => {
+		const work = sp("work", ["gamma", "alpha"]);
+		const media = sp("media", ["delta"]);
+		const projects = ["alpha", "video-editor", "base44-debug", "gamma", "delta"].map((n) => proj(n));
+		const file = { ...fileOf([work, media]), order: ["media", "work"] };
+		expect(ids(digitTargets(projects, file, false))).toEqual(["delta", "gamma", "alpha", "video-editor", "base44-debug"]);
+	});
+
+	it("off: matches the groups the dashboard renders, a project in two spaces counted once", () => {
+		const a = sp("a", ["pollex", "bus"]);
+		const b = sp("b", ["bus", "chisim"]);
+		const file = fileOf([a, b]);
+		const rendered = (groupProjectsForDashboard(board, file) ?? []).flatMap((g) => g.projects.map((p) => p.id));
+		const firstSeen = rendered.filter((id, i) => rendered.indexOf(id) === i);
+		expect(dashboardProjectOrder(board, file).map((p) => p.id)).toEqual(firstSeen);
+		expect(firstSeen.slice(0, 3)).toEqual(["pollex", "bus", "chisim"]);
+	});
+
+	it("off: a deleted space falls back out of the order", () => {
+		const gone = sp("gone", ["dev-3.0"], { deleted: true });
+		expect(ids(digitTargets(board, fileOf([gone]), false))).toEqual(names);
 	});
 
 	it("on: the first nine mixed entries", () => {

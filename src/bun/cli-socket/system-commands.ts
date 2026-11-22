@@ -6,6 +6,7 @@ import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } fro
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "../agent-prompt-native";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "../pane-input-native";
 import type { PaneInputProgram } from "../../shared/pane-input";
+import { clearProjectFoldersCache } from "../project-folders";
 import * as repoConfig from "../repo-config";
 import { COMMAND_BEARING_CONFIG_KEYS, resolveConfigPath } from "../../shared/config-schema";
 import type { Project } from "../../shared/types";
@@ -250,6 +251,7 @@ async function editConfigKey(params: Record<string, unknown>, mode: "set" | "uns
 		throw err;
 	}
 	if (local) await repoConfig.ensureGitignore(base);
+	clearProjectFoldersCache(project.id);
 	const layers = repoConfig.listConfigLayers(project, worktreePath, { foreignCode });
 	const { shadowedBy, ignoredAsForeign } = repoConfig.describeEditReach(layers, file, key, sub);
 	getPushMessage()?.("projectUpdated", { project: await repoConfig.resolveProjectConfig(project) });

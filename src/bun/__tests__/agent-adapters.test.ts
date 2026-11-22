@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PANE_INPUT_LIMITS } from "../../shared/pane-input";
 import {
 	getAgentAdapter,
@@ -16,13 +16,16 @@ import {
 	copilotAdapter,
 	ompAdapter,
 	piAdapter,
+	agyAdapter,
+	agySessionSettings,
 	genericAdapter,
 	shellEscape,
 	type AdapterLaunchOptions,
 	type TemplateContext,
 } from "../../shared/agent-adapters";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY } from "../../shared/agent-skill-content";
-import type { AgentConfiguration } from "../../shared/types";
+import { DEV3_AUTO_APPROVED_SUBCOMMANDS } from "../../shared/agent-hooks";
+import { AGY_SKILL_BODY, CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY } from "../../shared/agent-skill-content";
+import { DEFAULT_AGENTS, type AgentConfiguration } from "../../shared/types";
 
 // ---------------------------------------------------------------------------
 // Seam B — per-adapter contract tests. Each adapter is a PURE descriptor, so
@@ -68,6 +71,7 @@ describe("registry", () => {
 		expect(getAgentAdapter("omp")).toBe(ompAdapter);
 		expect(getAgentAdapter("pi")).toBe(piAdapter);
 		expect(getAgentAdapter("/home/u/.local/bin/pi")).toBe(piAdapter);
+		expect(getAgentAdapter("/Users/me/.local/bin/agy")).toBe(agyAdapter);
 	});
 
 	it("falls back to the generic adapter for unknown / custom commands", () => {
@@ -89,7 +93,7 @@ describe("registry", () => {
 // drag every skill body (~32 KB) along — so families.ts restates those facts as
 // plain data. These are the tests that keep the copy honest.
 describe("agent families (the renderer's copy of the registry)", () => {
-	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter];
+	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter, agyAdapter];
 
 	it("lists exactly the commands that have a first-class adapter", () => {
 		expect([...KNOWN_AGENT_COMMANDS].sort()).toEqual(ADAPTERS.map((a) => a.command).sort());
@@ -177,6 +181,7 @@ describe("capability flags", () => {
 		[copilotAdapter, "copilot", true, true],
 		[ompAdapter, "omp", true, false],
 		[piAdapter, "pi", true, true],
+		[agyAdapter, "agy", true, false],
 		[genericAdapter, "", false, false],
 	] as const)("%s", (adapter, command, resume, preassign) => {
 		expect(adapter.command).toBe(command);
@@ -195,6 +200,7 @@ describe("trustKinds", () => {
 		[copilotAdapter, ["claude", "copilot"]],
 		[ompAdapter, ["claude"]],
 		[piAdapter, ["claude"]],
+		[agyAdapter, ["claude"]],
 		[genericAdapter, ["claude"]],
 	] as const)("%s", (adapter, kinds) => {
 		expect(adapter.trustKinds).toEqual(kinds);
@@ -219,6 +225,9 @@ describe("hooksSpec", () => {
 	it("pi is a bare pi spec (the executor turns it into --extension <extension>)", () => {
 		expect(piAdapter.hooksSpec()).toEqual({ kind: "pi" });
 	});
+	it("agy is a bare agy spec (the executor writes the worktree .agents/ config)", () => {
+		expect(agyAdapter.hooksSpec()).toEqual({ kind: "agy" });
+	});
 	it("Cursor installs accounting hooks while keeping its generic lifecycle prompt", () => {
 		expect(cursorAdapter.hooksSpec()).toEqual({ kind: "cursor" });
 		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
@@ -231,7 +240,7 @@ describe("hooksSpec", () => {
 });
 
 describe("hooksReportPermissionWaits", () => {
-	it.each([claudeAdapter, codexAdapter, ompAdapter, piAdapter])(
+	it.each([claudeAdapter, codexAdapter, ompAdapter, piAdapter, agyAdapter])(
 		"$command hooks move the task to user-questions on a permission wait",
 		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(true),
 	);
@@ -250,6 +259,7 @@ describe("exitProgram", () => {
 		[opencodeAdapter, "/exit"],
 		[copilotAdapter, "/exit"],
 		[piAdapter, "/quit"],
+		[agyAdapter, "/quit"],
 	] as const)("%s interrupts, types its quit command, then submits", (adapter, command) => {
 		const program = adapter.exitProgram();
 		expect(program).not.toBeNull();
@@ -289,6 +299,8 @@ describe("buildResumeCommand", () => {
 		[ompAdapter, "omp", "sid", "omp --resume sid"],
 		[piAdapter, "pi", undefined, "pi -c"],
 		[piAdapter, "pi", "0199aaaa-bbbb-7ccc", "pi --session-id 0199aaaa-bbbb-7ccc"],
+		[agyAdapter, "agy", undefined, "agy --continue"],
+		[agyAdapter, "agy", "c0ffee-1", "agy --conversation c0ffee-1"],
 		[genericAdapter, "aider", "sid", null],
 	] as const)("%s (sid=%s)", (adapter, base, sid, expected) => {
 		expect(adapter.buildResumeCommand(base, sid ?? undefined)).toBe(expected);
@@ -501,6 +513,201 @@ describe("launchArgs — Copilot", () => {
 	});
 });
 
+describe("launchArgs — agy", () => {
+	/** The one `--settings` argument, parsed back out of its shell quoting. */
+	function sessionSettings(args: string[]): Record<string, any> {
+		const raw = args[args.indexOf("--settings") + 1]!;
+		return JSON.parse(raw.slice(1, -1).replaceAll("'\\''", "'"));
+	}
+	const SETTINGS = `--settings ${shellEscape(agySessionSettings("/path/to/worktree"))}`;
+
+	it("fresh: the prompt via -i (stays interactive) and no protocol on the command line", () => {
+		expect(launch("agy", cfg())).toBe(`agy ${SETTINGS} -i 'Fix the login bug'`);
+	});
+	it("fresh: model, effort, permission flag, then settings, then the user's own args, then the prompt", () => {
+		expect(launch("agy", cfg({ model: "gemini-4-neon-high", effort: "high", permissionMode: "acceptEdits", additionalArgs: ["--add-dir", "/x"] })))
+			.toBe(`agy --model gemini-4-neon-high --effort high --mode accept-edits ${SETTINGS} --add-dir /x -i 'Fix the login bug'`);
+	});
+	it("passes no --effort unless the preset sets one: effort is part of the model slug", () => {
+		expect(launch("agy", cfg({ model: "gemini-4-neon-high" }))).not.toContain("--effort");
+	});
+	it("quotes a model name that carries spaces and parentheses", () => {
+		expect(launch("agy", cfg({ model: "Gemini 4 Neon (High)" })))
+			.toBe(`agy --model 'Gemini 4 Neon (High)' ${SETTINGS} -i 'Fix the login bug'`);
+	});
+	it("quotes a conversation id that is not a plain token, on launch and on resume", () => {
+		expect(launch("agy", cfg(), { resume: true, sessionId: "a b;c" })).toContain("--conversation 'a b;c' ");
+		expect(agyAdapter.buildResumeCommand!("agy", "a b;c")).toBe("agy --conversation 'a b;c'");
+		expect(agyAdapter.buildResumeCommand!("agy", "ok-1.2_x")).toBe("agy --conversation ok-1.2_x");
+	});
+	it("maps every dev3 permission mode to agy's own flags", () => {
+		const flags = (permissionMode: AgentConfiguration["permissionMode"]) => launch("agy", cfg({ permissionMode })).split(` ${SETTINGS}`)[0];
+		expect(flags("acceptEdits")).toBe("agy --mode accept-edits");
+		expect(flags("plan")).toBe("agy --mode plan");
+		expect(flags("auto")).toBe("agy --mode auto");
+		expect(flags("bypassPermissions")).toBe("agy --dangerously-skip-permissions");
+		expect(flags("dontAsk")).toBe("agy --dangerously-skip-permissions");
+		expect(flags("default")).toBe("agy");
+	});
+	it("resumes by conversation id, or the most recent one, with no prompt", () => {
+		expect(launch("agy", cfg({ model: "m" }), { resume: true, sessionId: "abc-123" }))
+			.toBe(`agy --conversation abc-123 --model m ${SETTINGS}`);
+		expect(launch("agy", cfg(), { resume: true })).toBe(`agy --continue ${SETTINGS}`);
+	});
+
+	describe("the per-session --settings", () => {
+		it("never asks agy for the terminal bell: it rings at every turn end and fought the Stop hook", () => {
+			for (const resume of [false, true]) {
+				expect(sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { resume }))).not.toHaveProperty("notifications");
+			}
+		});
+		it("trusts the worktree, on fresh and resumed launches alike", () => {
+			const ctx = { ...CTX, worktreePath: "/w/with space/it's" };
+			for (const resume of [false, true]) {
+				const settings = sessionSettings(agyAdapter.launchArgs("agy", cfg(), ctx, { resume }));
+				expect(settings.trustedWorkspaces).toEqual(["/w/with space/it's"]);
+			}
+		});
+		it("trusts the worktree's REALPATH when the backend resolved one: agy ignores /tmp, it matches /private/tmp", () => {
+			const ctx = { ...CTX, worktreePath: "/tmp/wt" };
+			const settings = sessionSettings(agyAdapter.launchArgs("agy", cfg(), ctx, { agy: { worktreeRealPath: "/private/tmp/wt" } }));
+			expect(settings.trustedWorkspaces).toEqual(["/private/tmp/wt"]);
+		});
+		it("leaves the trusted workspaces out when the launch has no worktree path", () => {
+			const settings = sessionSettings(agyAdapter.launchArgs("agy", cfg(), { ...CTX, worktreePath: "" }));
+			expect(settings).not.toHaveProperty("trustedWorkspaces");
+			expect(settings.permissions).toBeDefined();
+		});
+		it("allows exactly the auto-approved dev3 metadata subcommands, one rule per word-prefix and spelling", () => {
+			const { allow } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX)).permissions;
+			expect(allow).toEqual(["dev3", "~/.dev3.0/bin/dev3"].flatMap((cli) => DEV3_AUTO_APPROVED_SUBCOMMANDS.map((sub) => `command(${cli} ${sub})`)));
+			expect(allow).toContain("command(dev3 note)");
+			expect(allow).toContain("command(dev3 projects list)");
+			// Whatever starts a process stays behind agy's own prompt.
+			for (const rule of ["command(dev3 pane run)", "command(dev3 dev-server start)", "command(dev3 agent spawn)", "command(dev3 remote)"]) {
+				expect(allow).not.toContain(rule);
+			}
+		});
+		it("also allows the account-home absolute spelling the agent types after reading a hook command", () => {
+			const { allow } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me/" } })).permissions;
+			expect(allow).toContain("command(/Users/me/.dev3.0/bin/dev3 overview)");
+			expect(allow).toContain("command(dev3 overview)");
+			expect(allow).toContain("command(/Users/me/.dev3.0/bin/dev3 projects list)");
+			expect(allow).not.toContain("command(/Users/me/.dev3.0/bin/dev3 pane run)");
+			// `~` points into a launcher's HOME once the account home is known.
+			expect(allow.some((rule: string) => rule.includes("~"))).toBe(false);
+			expect(allow).toHaveLength(DEV3_AUTO_APPROVED_SUBCOMMANDS.length * 2);
+		});
+		it("reports quota and permission waits through a silent statusLine stacked under agy's own", () => {
+			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX));
+			expect(statusLine.stack_with_default).toBe(true);
+			expect(statusLine.command).toBe(`sh -c '[ -z "$DEV3_TASK_ID" ] || exec ~/.dev3.0/bin/dev3 statusline agy'`);
+		});
+		it("runs the CLI by an absolute path under the account home the backend gives: a launcher's HOME redirects ~", () => {
+			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me" } }));
+			expect(statusLine.command).toBe(`sh -c '[ -z "$DEV3_TASK_ID" ] || exec /Users/me/.dev3.0/bin/dev3 statusline agy'`);
+		});
+		it("keeps quota out of the dump while rate-limit tracking is off", () => {
+			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { trackRateLimits: false } }));
+			expect(statusLine.command).toContain("statusline agy --no-limits");
+		});
+		it("comes before the user's own args, so a later --settings of theirs wins", () => {
+			const args = agyAdapter.launchArgs("agy", cfg({ additionalArgs: ["--add-dir", "/x"] }), CTX);
+			expect(args.indexOf("--settings")).toBeLessThan(args.indexOf("--add-dir"));
+		});
+	});
+
+	it("drops maxBudgetUsd — agy has no budget flag", () => {
+		expect(launch("agy", cfg({ maxBudgetUsd: 12 }))).toBe(`agy ${SETTINGS} -i 'Fix the login bug'`);
+	});
+	it("carries a wrapper's declared family: the same adapter on a renamed command", () => {
+		const args = getAgentAdapter("my-agy-launcher", "agy").launchArgs("my-agy-launcher", cfg(), CTX);
+		expect(args[0]).toBe("my-agy-launcher");
+		expect(args).toContain("-i");
+	});
+	it("renders its own skill body: hook-aware status, no approval-wait claim", () => {
+		expect(agyAdapter.skillBody).toBe(AGY_SKILL_BODY);
+		expect(AGY_SKILL_BODY).toContain("native hooks into every agy pane");
+		expect(AGY_SKILL_BODY).toContain("tool approval waits → `user-questions`");
+		expect(AGY_SKILL_BODY).not.toContain("bell");
+	});
+});
+
+describe("ready evidence", () => {
+	it("only agy asks the launch handoff to wait for its session capture", () => {
+		expect(agyAdapter.readyEvidence).toBe("session-capture");
+		for (const adapter of [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter]) expect(adapter.readyEvidence).toBeUndefined();
+	});
+});
+
+describe("agy presets", () => {
+	const agy = DEFAULT_AGENTS.find((a) => a.id === "builtin-agy")!;
+	const byId = (id: string) => agy.configurations.find((c) => c.id === id)!;
+
+	it("follows the Claude scheme: 'Mode (Model, Effort)', model without effort, effort and mode as fields", () => {
+		expect(byId("agy-auto-neon-high")).toMatchObject({ name: "Auto (Neon, High)", model: "gemini-4-neon", effort: "high", permissionMode: "auto" });
+		expect(byId("agy-bypass-hydrogen-xhigh")).toMatchObject({ name: "Bypass (Hydrogen, X-High)", model: "gemini-4-hydrogen", effort: "xhigh", permissionMode: "bypassPermissions" });
+		expect(byId("agy-plan-carbon-high")).toMatchObject({ name: "Plan (Carbon, High)", permissionMode: "plan" });
+		expect(byId("agy-approvals-argon-high")).toMatchObject({ name: "Accept Edits (Argon, High)", permissionMode: "acceptEdits" });
+		expect(byId("agy-default-neon-high")).toMatchObject({ name: "Default (Neon, High)", model: "gemini-4-neon" });
+		expect(byId("agy-default-neon-high").permissionMode).toBeUndefined();
+		expect(agy.defaultConfigId).toBe("agy-auto-neon-high");
+	});
+	it("offers each model's own efforts in Auto and Bypass, and High once in the other modes", () => {
+		const efforts = (prefix: string) => agy.configurations.filter((c) => c.id.startsWith(prefix)).map((c) => c.effort);
+		expect(efforts("agy-auto-neon-")).toEqual(["low", "medium", "high", "xhigh"]);
+		expect(efforts("agy-auto-carbon-")).toEqual(["low", "medium", "high"]);
+		expect(efforts("agy-bypass-argon-")).toEqual(["low", "medium", "high"]);
+		expect(efforts("agy-bypass-hydrogen-")).toEqual(["low", "medium", "high", "xhigh"]);
+		for (const mode of ["default", "plan", "approvals"]) expect(agy.configurations.filter((c) => c.id.startsWith(`agy-${mode}-`))).toHaveLength(4);
+		expect(new Set(agy.configurations.map((c) => c.id)).size).toBe(agy.configurations.length);
+		expect(agy.configurations.some((c) => /gemini/i.test(c.name))).toBe(false);
+	});
+	it("launches with the alias, --effort and the mode flag, and no additional args", () => {
+		const args = (id: string) => launch("agy", byId(id)).split(" --settings ")[0];
+		expect(args("agy-auto-neon-low")).toBe("agy --model gemini-4-neon --effort low --mode auto");
+		expect(args("agy-bypass-carbon-medium")).toBe("agy --model gemini-4-carbon --effort medium --dangerously-skip-permissions");
+		expect(args("agy-approvals-argon-high")).toBe("agy --model gemini-4-argon --effort high --mode accept-edits");
+		expect(args("agy-plan-hydrogen-high")).toBe("agy --model gemini-4-hydrogen --effort high --mode plan");
+		expect(args("agy-default-neon-high")).toBe("agy --model gemini-4-neon --effort high");
+		expect(agy.configurations.every((c) => !c.additionalArgs)).toBe(true);
+	});
+	it("matches the account's `agy models` slugs, which carry an effort the preset does not", () => {
+		const probe = agyAdapter.modelListProbe!;
+		const available = new Set(probe.parse("gemini-4-neon-high   Gemini 4 Neon (High)\ngemini-4-neon-low   Gemini 4 Neon (Low)\n")!.map(probe.normalize!));
+		expect(available.has(probe.normalize!(byId("agy-auto-neon-high").model!))).toBe(true);
+		expect(available.has(probe.normalize!(byId("agy-auto-carbon-high").model!))).toBe(false);
+	});
+});
+
+describe("agy modelListProbe", () => {
+	const probe = agyAdapter.modelListProbe!;
+	const OUTPUT = [
+		"gemini-4-neon-high             Gemini 4 Neon (High)",
+		"gemini-pro-orchestrator-neon   Orchestrator (Neon)",
+		"claude-opus-5-5-high   Claude Opus 5.5 (High)",
+		"",
+	].join("\n");
+
+	it("lists the slugs, one per line, by the first token", () => {
+		expect(probe.args).toEqual(["models"]);
+		expect(probe.parse(OUTPUT)).toEqual(["gemini-4-neon-high", "gemini-pro-orchestrator-neon", "claude-opus-5-5-high"]);
+	});
+	it("skips a header and colour codes, and answers null when nothing parses", () => {
+		expect(probe.parse("Available models:\n\u001B[1mgemini-4-neon-high\u001B[0m   Neon (High)\n")).toEqual(["gemini-4-neon-high"]);
+		expect(probe.parse("")).toBeNull();
+		expect(probe.parse("Error: not signed in\n")).toBeNull();
+	});
+	it("compares on the model family: a preset's effort tier does not hide it", () => {
+		const normalize = probe.normalize!;
+		expect(normalize("gemini-4-neon-high")).toBe("gemini-4-neon");
+		expect(normalize("gemini-4-neon-xhigh")).toBe("gemini-4-neon");
+		expect(normalize("claude-opus-5-5-max")).toBe("claude-opus-5-5");
+		expect(normalize("gemini-pro-orchestrator-neon")).toBe("gemini-pro-orchestrator-neon");
+		expect(normalize("gemini-4-neon")).toBe("gemini-4-neon");
+	});
+});
+
 describe("launchArgs — omp", () => {
 	it("omp maps permission mode to its approval tiers", () => {
 		expect(launch("omp", cfg({ permissionMode: "acceptEdits" })))
@@ -602,5 +809,25 @@ describe("launchArgs — provider routing args (registry promise)", () => {
 		const user = cmd.indexOf('model_provider="my-own"');
 		expect(injected).toBeGreaterThan(-1);
 		expect(user).toBeGreaterThan(injected);
+	});
+});
+
+describe("agy allow rules on Windows", () => {
+	const realPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+	afterEach(() => {
+		if (realPlatform) Object.defineProperty(process, "platform", realPlatform);
+		vi.resetModules();
+	});
+
+	it("spell the CLI as the absolute dev3.exe the hooks use, and never as a POSIX path", async () => {
+		Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+		vi.resetModules();
+		const mod = await import("../../shared/agent-adapters/agy");
+		const settings = JSON.parse(mod.agySessionSettings("C:/wt", { accountHome: "C:/Users/me" }));
+		const allow: string[] = settings.permissions.allow;
+		expect(allow).toContain("command(dev3 overview)");
+		expect(allow.some((rule) => rule.includes(".exe"))).toBe(true);
+		expect(allow.some((rule) => rule.includes("~") || rule.includes("/.dev3.0/bin/dev3 "))).toBe(false);
+		expect(JSON.parse(mod.agySessionSettings("C:/wt")).permissions.allow.some((rule: string) => rule.includes("~"))).toBe(false);
 	});
 });

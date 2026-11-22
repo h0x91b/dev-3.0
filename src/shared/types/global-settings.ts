@@ -77,6 +77,16 @@ export type AgentTrafficExperiment = "1" | "2";
 /** What an install with no recorded preference renders. */
 export const DEFAULT_AGENT_TRAFFIC_EXPERIMENT: AgentTrafficExperiment = "2";
 
+/** How the user rearranged the task header. Item ids are `taskHeader` registry ids. */
+export interface TaskHeaderUserLayout {
+	/** Per bar or group: the user's order of its items. Ids not listed keep their default place after these. */
+	order?: Record<string, string[]>;
+	/** Items the user moved to their bar's More menu. */
+	overflow?: string[];
+	/** Extension items the user brought out of More into the bar. */
+	pinned?: string[];
+}
+
 export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
@@ -88,8 +98,11 @@ export interface GlobalSettings {
 	 */
 	taskSortOrder: "oldest-first" | "newest-first";
 	updateChannel: UpdateChannel;
-	theme?: "dark" | "light" | "system";
+	theme?: "dark" | "light" | "beige" | "system";
 	resolvedTheme?: "dark" | "light";
+	/** Beige theme tone, each 0 … 1 (see shared/beige-palette.ts); drives the tmux palette. */
+	beigeDepth?: number;
+	beigeWarmth?: number;
 	/**
 	 * The id PostHog buckets this install by, owned by bun so every renderer —
 	 * desktop window and remote browser alike — reports the same one. Seeded once
@@ -156,6 +169,12 @@ export interface GlobalSettings {
 	simplifiedMode?: boolean;
 	/** Original installation cohort; manual transitions are tracked by the host. */
 	simplifiedModeSource?: "fresh" | "existing";
+	/**
+	 * The user's own arrangement of the task header's bars (bible §5.1, §5.10): one
+	 * layout for every task. Hiding is not here: hidden items live in `hiddenControls`
+	 * with every other hideable control. Local only — never sent anywhere.
+	 */
+	taskHeaderLayout?: TaskHeaderUserLayout;
 	/**
 	 * Which agent-traffic presentation the surface renders: `"1"` is the 3D orbit
 	 * of planets, `"2"` the flat animated node graph. Absent means Experiment 2 —
@@ -343,6 +362,10 @@ export interface GlobalSettings {
 	agentLaunchAutoApproveMinutes?: number;
 	/** Where the CPU and disk readouts turn yellow / red. Sparse: absent keys use the defaults. */
 	resourceLevels?: Partial<ResourceLevels>;
+	/** Inactivity before a hibernation suggestion; absent uses 24 hours, 0 disables. */
+	autoHibernateMinutes?: number;
+	/** Suggestion auto-confirm delay in whole minutes; absent uses 30 minutes. */
+	autoHibernateConfirmMinutes?: number;
 	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists

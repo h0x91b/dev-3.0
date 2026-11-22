@@ -71,6 +71,7 @@ const common = {
 	"agentLaunch.resumeNoteAccount": "Откроет сохранённые разговоры, каждый со своим агентом и пресетом. Панели Claude можно перенести на другой аккаунт ниже.",
 	"agentLaunch.resumeConversation": "Разговор {id}",
 	"agentLaunch.resumeLatest": "Нет сохранённого id разговора — агент откроет свой последний",
+	"agentLaunch.resumeStartAgain": "Запустить заново (агент не стартовал)",
 	"agentLaunch.resume": "Возобновить",
 	"agentLaunch.resuming": "Возобновляю…",
 	"agentLaunch.initialPrompt": "Начальные инструкции",
@@ -438,6 +439,8 @@ const common = {
 
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Активные задачи",
+	"sidebar.crashed": "Эта боковая панель не загрузилась, поэтому показан встроенный список активных задач.",
+	"sidebar.extensionFailed": "Расширение «{name}» не загрузилось, поэтому показан встроенный список активных задач.",
 	"sidebar.noActiveTasks": "Нет активных задач",
 	"sidebar.noActiveTasksHint": "Запустите задачу с доски, чтобы она появилась здесь.",
 	"sidebar.allTasksHidden": "Все активные задачи скрыты",
@@ -764,7 +767,10 @@ const common = {
 	"artifactViewer.reviewSendAll_other": "Отправить {count} агенту",
 	"artifactViewer.loadFailed": "Артефакт недоступен",
 	"artifactViewer.loading": "Загрузка артефакта…",
-	"artifactViewer.resize": "Изменить ширину панели артефакта",
+	"taskDock.resize": "Изменить ширину боковой панели",
+	"taskDock.tabs": "Боковые панели",
+	"taskDock.closeTab": "Закрыть «{title}»",
+	"taskDock.panelCrashed": "Эта панель перестала работать.",
 	"artifactViewer.themeMode": "Тема артефакта: {mode}",
 	"artifactViewer.themeFollow": "Как в dev3",
 	"artifactViewer.themeLight": "Светлая",
@@ -802,6 +808,9 @@ const common = {
 	"taskRef.previewMore_few": "ещё {count}",
 	"taskRef.previewMore_many": "ещё {count}",
 	"taskRef.previewMore_other": "ещё {count}",
+	"slots.more": "Ещё",
+	"destinationBody.crashed": "Этот экран не загрузился, поэтому показан встроенный.",
+	"destinationBody.extensionFailed": "Расширение «{name}» не загрузилось, поэтому показан встроенный экран.",
 };
 
 export default common;

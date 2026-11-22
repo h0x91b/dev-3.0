@@ -30,7 +30,7 @@
  * Run: bun run test:git-op-pane   (all three platforms)
  */
 
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "../spawn";
@@ -44,6 +44,7 @@ import {
 } from "../git-op-script";
 import { listBranchCommitMessages } from "../git";
 import { generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "../rpc-handlers/shared-pure";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -388,7 +389,7 @@ async function main(): Promise<void> {
 		await testRebaseConflict(root);
 		await testMerge(root);
 	} finally {
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 	console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 	process.exit(failures === 0 ? 0 : 1);

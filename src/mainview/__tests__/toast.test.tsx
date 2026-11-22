@@ -1017,8 +1017,8 @@ describe("ToastHost — the stack starts below the visible toolbars", () => {
 	// toasts back over its buttons on that screen only.
 	it.each([
 		["App.tsx", "<header ref={toastClearanceRef}"],
-		["components/TaskInfoPanel.tsx", "toastClearanceRef(node)"],
-		["components/TaskInfoPanel.tsx", "ref={setPanelRef}"],
+		["components/TaskHeader.tsx", "toastClearanceRef(node)"],
+		["components/TaskHeader.tsx", "ref={setPanelRef}"],
 		["components/ProjectTerminal.tsx", "ref={toastClearanceRef}"],
 	])("keeps %s registered as toast clearance (%s)", (file, wiring) => {
 		const source = readFileSync(resolve(__dirname, "..", file), "utf-8");

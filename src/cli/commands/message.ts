@@ -203,13 +203,18 @@ export async function handleMessage(
 			paneId?: string;
 			agentRole?: string;
 			replyUnavailable?: string;
+			heldBehindPrompt?: boolean;
 		};
 		const shortId = data.taskId.slice(0, 8);
 		const role = data.agentRole ? AGENT_ROLE_LABELS[data.agentRole] : undefined;
 		const recipient = data.paneId ? ` (${role ? `${role}, ` : ""}pane ${data.paneId})` : "";
 		process.stderr.write(replyUnavailableNotice(data.replyUnavailable));
 		if (json) {
-			process.stdout.write(`${JSON.stringify({ status: data.status ?? "delivered", messageId: data.messageId ?? null })}\n`);
+			process.stdout.write(`${JSON.stringify({
+				status: data.status ?? "delivered",
+				messageId: data.messageId ?? null,
+				...(data.heldBehindPrompt ? { heldBehindPrompt: true } : {}),
+			})}\n`);
 			if (data.status === "unconfirmed") process.exit(CLI_EXIT_CODE_DELIVERY_UNCONFIRMED);
 			return;
 		}
@@ -222,6 +227,16 @@ export async function handleMessage(
 					`Check the task's terminal before sending it again.\n`,
 			);
 			process.exit(CLI_EXIT_CODE_DELIVERY_UNCONFIRMED);
+		}
+		// Exit 0 on purpose: a sender that read a failure would retry, and every retry
+		// would wait behind the same prompt and arrive as a duplicate.
+		if (data.heldBehindPrompt) {
+			process.stdout.write(
+				`Message held for task ${shortId}${recipient}: the agent is showing a prompt (a permission menu, ` +
+					`a plan approval or a question), so nothing is typed into it. It is delivered after that prompt ` +
+					`is answered. Do not send it again.\n`,
+			);
+			return;
 		}
 		// Nothing has been typed yet, and saying "sent" would read as "the agent is
 		// reading it now". The whole message waits for the pane to go quiet, so it can

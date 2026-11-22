@@ -1,6 +1,6 @@
 import { syncGlobalSettingsCache } from "../../global-settings-cache";
 import { setHiddenControlsForTests } from "../../hidden-controls";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
@@ -8,6 +8,10 @@ import { toast } from "../../toast";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
 import type { SettingsEntryAnchor } from "../../settings-registry";
+import type { Context } from "cordis";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { getAppRoot } from "../../plugins/root";
+import { BUILTIN_SETTINGS_SECTIONS_PLUGIN } from "../../settings-sections/builtins";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -185,11 +189,14 @@ async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerI
 }
 
 describe("GlobalSettings", () => {
+	beforeAll(() => applyBuiltinPlugins([], [BUILTIN_SETTINGS_SECTIONS_PLUGIN]));
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
 		setViewport(1024);
 		document.documentElement.dataset.theme = "dark";
+		// The Simplified Mode tests leave its preset applied, which hides the Keyboard category.
+		setHiddenControlsForTests([]);
 	});
 
 	describe("initial load", () => {
@@ -334,6 +341,60 @@ describe("GlobalSettings", () => {
 			expect(document.documentElement.dataset.theme).toBe("dark");
 			expect(localStorage.getItem("dev3-theme")).toBe("system");
 			expect(mockedApi.request.setTmuxTheme).toHaveBeenCalledWith({ theme: "dark", preference: "system" });
+		});
+	});
+
+	describe("beige tone sliders", () => {
+		const beigeCalls = () =>
+			vi.mocked(mockedApi.request.setTmuxTheme).mock.calls.filter(([p]) => p.preference === "beige");
+
+		it("does not re-assert Beige when a theme pick lands before the slider settles", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+			const before = beigeCalls().length;
+
+			fireEvent.change(document.getElementById("beige-depth")!, { target: { value: "80" } });
+			await user.click(screen.getByText("Dark"));
+			await new Promise((r) => setTimeout(r, 400));
+
+			expect(beigeCalls()).toHaveLength(before);
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenLastCalledWith({ theme: "dark", preference: "dark" });
+		});
+
+		it("moves the slider to a tone saved from another window", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", {
+					detail: { ...mockGlobalSettings, theme: "beige", beigeDepth: 0.42, beigeWarmth: 0.5 },
+				}));
+			});
+
+			await waitFor(() => expect((document.getElementById("beige-depth") as HTMLInputElement).value).toBe("42"));
+		});
+
+		it("hands the last tone to the terminal when Settings closes mid-settle", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			const { unmount } = renderGlobalSettings();
+			await waitForLoad();
+			await user.click(screen.getByText("Beige"));
+
+			fireEvent.change(document.getElementById("beige-warmth")!, { target: { value: "90" } });
+			unmount();
+
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenLastCalledWith({
+				theme: "light",
+				preference: "beige",
+				beigeTone: expect.objectContaining({ warmth: 0.9 }),
+			});
 		});
 	});
 
@@ -1029,6 +1090,84 @@ describe("GlobalSettings", () => {
 
 			expect(document.getElementById("settings-category-title")).toHaveTextContent("System");
 			expect(screen.getByText("Token-saving proxy (experimental)")).toBeInTheDocument();
+		});
+	});
+
+	describe("deep links through the sections slot", () => {
+		// One anchor per category, from its LAST section, so a link past the first section still lands.
+		const LINKS: [SettingsSectionId, SettingsEntryAnchor][] = [
+			["appearance", "simplify-mode"],
+			["tasks", "epics"],
+			["notifications", "watch-by-default"],
+			["keyboard", "digits-follow-spaces"],
+			["terminal", "terminal-shell-prompt"],
+			["agents", "claude-mods"],
+			["accounts", "agent-accounts"],
+			["models", "model-catalog"],
+			["extensions", "extensions-kill-switch"],
+			["workspace", "external-apps"],
+			["system", "developer-tools"],
+		];
+		let scrolled: Element[] = [];
+		let original: PropertyDescriptor | undefined;
+		beforeEach(() => {
+			scrolled = [];
+			original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+			Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+				configurable: true,
+				value(this: Element) {
+					scrolled.push(this);
+				},
+			});
+		});
+		afterEach(() => {
+			if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+			else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+		});
+
+		it.each(LINKS)("route.section %s + route.anchor %s scrolls to that section", async (section, anchor) => {
+			setupMocks();
+			renderGlobalSettings(section, anchor);
+			await waitForLoad();
+			await waitFor(() => expect(scrolled.map((el) => el.getAttribute("data-settings-entry"))).toContain(anchor));
+		});
+
+		// OPEN_SETTINGS_SECTION_EVENT becomes a new route (App.tsx); the open page follows it.
+		it.each(LINKS)("an already open page follows a new route to %s / %s", async (section, anchor) => {
+			setupMocks();
+			const view = renderGlobalSettings(section === "appearance" ? "system" : "appearance");
+			await waitForLoad();
+			view.rerender(
+				<I18nProvider>
+					<GlobalSettings section={section} anchor={anchor} />
+				</I18nProvider>,
+			);
+			await waitFor(() => expect(scrolled.map((el) => el.getAttribute("data-settings-entry"))).toContain(anchor));
+		});
+	});
+
+	describe("a section that throws", () => {
+		it("leaves a notice in its place and the rest of the category page working", async () => {
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			function Broken(): never {
+				throw new Error("boom");
+			}
+			const fiber = getAppRoot().plugin({
+				name: "test:broken-section",
+				inject: ["settingsSections"],
+				apply(ctx: Context) {
+					ctx.settingsSections.register({ id: "builtin:broken", region: "models", order: -1, entries: [], component: Broken });
+				},
+			});
+			try {
+				setupMocks();
+				renderGlobalSettings("models");
+				await waitForLoad();
+				expect(screen.getByRole("alert")).toHaveTextContent("This section could not be shown.");
+				expect(document.querySelector('[data-settings-entry="model-catalog"]')).not.toBeNull();
+			} finally {
+				await fiber.dispose();
+			}
 		});
 	});
 

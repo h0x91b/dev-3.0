@@ -92,6 +92,17 @@ import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import type { CardLineage } from "../../utils/taskLineage";
 import { resetLiveSessionStatsForTests } from "../../hooks/useLiveSessionStats";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { installTaskMarkerBuiltins } from "../../task-markers/__tests__/install-builtins";
+import { installOpenInTargetBuiltins } from "../../open-in-targets/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins,
+// and the identity glyphs from the taskMarkers slot.
+beforeEach(async () => {
+	await installTaskMenuBuiltins();
+	await installTaskMarkerBuiltins();
+	await installOpenInTargetBuiltins();
+});
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
@@ -187,7 +198,7 @@ function renderCard(
 		projectOverride?: Project;
 		prInfo?: TaskPRBadgeInfo;
 		onOpenUnresolvedComments?: (task: Task) => void;
-		siblingMap?: Map<string, Task[]>;
+		groupMembers?: Task[];
 		onEditDraft?: (task: Task) => void;
 		devServer?: DevServerSummary;
 		ports?: PortInfo[];
@@ -211,7 +222,7 @@ function renderCard(
 				isMoving={opts?.isMoving}
 				prInfo={opts?.prInfo}
 				onOpenUnresolvedComments={opts?.onOpenUnresolvedComments}
-				siblingMap={opts?.siblingMap}
+				groupMembers={opts?.groupMembers}
 				onEditDraft={opts?.onEditDraft}
 				devServer={opts?.devServer}
 				ports={opts?.ports}
@@ -257,7 +268,7 @@ describe("TaskCard", () => {
 		}));
 
 		renderCard(variants[4], {
-			siblingMap: new Map([["group-1", variants]]),
+			groupMembers: variants,
 		});
 
 		expect(screen.getAllByTestId(/^variant-indicator-t5-dot-/)).toHaveLength(3);
@@ -498,17 +509,14 @@ describe("TaskCard", () => {
 		it("shows a compact N/M fraction when the group really has siblings", () => {
 			const task = makeTask({ seq: 5, variantIndex: 2, groupId: "g1" });
 			renderCard(task, {
-				siblingMap: new Map([[
-					"g1",
-					[task, makeTask({ id: "t2", seq: 5, variantIndex: 1, groupId: "g1" }), makeTask({ id: "t3", seq: 5, variantIndex: 3, groupId: "g1" })],
-				]]),
+				groupMembers: [task, makeTask({ id: "t2", seq: 5, variantIndex: 1, groupId: "g1" }), makeTask({ id: "t3", seq: 5, variantIndex: 3, groupId: "g1" })],
 			});
 			expect(screen.getByText("2/3")).toBeInTheDocument();
 		});
 
 		it("hides the fraction for a lone variant — 1/1 says nothing", () => {
 			const task = makeTask({ seq: 5, variantIndex: 1, groupId: "g1" });
-			renderCard(task, { siblingMap: new Map([["g1", [task]]]) });
+			renderCard(task, { groupMembers: [task] });
 			expect(screen.queryByText("1/1")).not.toBeInTheDocument();
 			expect(screen.getByText("#5")).toBeInTheDocument();
 		});
@@ -1792,7 +1800,7 @@ describe("TaskCard", () => {
 
 			await waitFor(() => {
 				expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
-					appName: "Finder",
+					appId: "finder",
 					path: "/tmp/worktree",
 				});
 			});

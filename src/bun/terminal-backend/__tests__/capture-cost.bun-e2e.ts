@@ -19,7 +19,7 @@
  *    min/p50/p95 plus every raw round are printed.
  */
 
-import { mkdtempSync, rmSync, statSync, watch } from "node:fs";
+import { mkdtempSync, statSync, watch } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultCoordinatorDeps, type CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
@@ -33,6 +33,7 @@ import { spawnSync } from "../../spawn";
 import { isCapturedPane } from "../capture";
 import type { TerminalAttachment } from "../contract";
 import { NativeTerminalBackend } from "../native-backend";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 const PANE_COUNTS = [1, 4, 6];
 const MODES: NativeCaptureMode[] = ["none", "semantic", "compact", "semantic-and-compact"];
@@ -409,7 +410,7 @@ async function main(): Promise<void> {
 
 	delete process.env[NATIVE_MULTIPANE_DIR_ENV];
 	delete process.env[NATIVE_SESSIONS_DIR_ENV];
-	rmSync(root, { recursive: true, force: true });
+	removeTempTree(root);
 }
 
 await main();

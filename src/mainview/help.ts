@@ -4,7 +4,7 @@ import type { TaskStatus } from "../shared/types";
 /**
  * Single source of truth for every inline-help topic (bible §5.4).
  *
- * Like `keymap.ts` and `tips.ts`, this registry declares help content as data:
+ * Like `keymap.ts` and `tips/builtins.ts`, this registry declares help content as data:
  * the same topics feed the section-level `HelpSpot` (i) buttons, the
  * screen-wide help-mode overlay (`HelpOverlay`), and any future docs surface.
  * Help copy is NEVER hardcoded in components — components reference a topic id

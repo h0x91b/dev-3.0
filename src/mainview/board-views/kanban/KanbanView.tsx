@@ -14,6 +14,7 @@ import { useIsControlHidden } from "../../hooks/useIsControlHidden";
 import { useStatusColors } from "../../hooks/useStatusColors";
 import type { BoardColumn } from "../board-service";
 import { useBoard } from "../react";
+import { useLatestCallback } from "../../hooks/useLatestCallback";
 import KanbanColumn from "./KanbanColumn";
 
 /** Which column a dragged card left, so columns can refuse or dim before the drop. */
@@ -71,10 +72,11 @@ export function KanbanView(_props: { ctx: Context }) {
 
 	const findTask = (taskId: string) => scopeTasks.find((task) => task.id === taskId);
 
-	function handleDragStart(taskId: string) {
+	// Stable: every card receives it, and memoized cards would re-render on a fresh closure.
+	const handleDragStart = useLatestCallback((taskId: string) => {
 		const task = findTask(taskId);
 		if (task) setDragOrigin({ status: task.status, customColumnId: task.customColumnId ?? null, draft: task.draft === true, projectId: task.projectId });
-	}
+	});
 
 	async function handleTaskDrop(taskId: string, targetStatus: TaskStatus) {
 		setDragOrigin(null);

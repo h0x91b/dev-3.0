@@ -139,6 +139,10 @@ const dashboard = {
 	"header.activeTaskCount_one": "{count} en curso",
 	"header.activeTaskCount_other": "{count} en curso",
 	"header.noActiveTasks": "Sin tareas activas",
+	"header.switcherCollapseGroup": "Contraer grupo",
+	"header.switcherExpandGroup": "Expandir grupo",
+	"header.switcherGroupPinnedOpen": "El grupo del proyecto actual siempre queda abierto",
+	"header.switcherGroupSearchOpen": "La búsqueda muestra todos los grupos",
 
 	// Prevent-sleep (caffeine) toggle
 	"caffeine.label": "No suspender",
@@ -159,6 +163,8 @@ const dashboard = {
 	"rateLimits.credits": "créditos: {balance}",
 	"rateLimits.unlimited": "∞ ilimitado",
 	"rateLimits.monthlyLabel": "créditos mensuales",
+	"rateLimits.otherFiveHourLabel": "otros 5h",
+	"rateLimits.otherWeeklyLabel": "otros 7d",
 	"rateLimits.monthlyUsage": "{used} / {limit} usados · {remaining}% restantes",
 	"rateLimits.captured": "capturado hace {time}",
 	"rateLimits.capturedNow": "capturado ahora mismo",
@@ -373,6 +379,10 @@ const dashboard = {
 	"memory.bannerOutOfRoom_one": "Esta máquina se ha quedado sin memoria: una tarea más la ralentizará.",
 	"memory.bannerOutOfRoom_other": "Esta máquina se ha quedado sin memoria: {count} tareas más la ralentizarán.",
 	"dashboard.noSpaceGroup": "Home",
+	"dashboard.extraFolders_one": "+{count} carpeta",
+	"dashboard.extraFolders_other": "+{count} carpetas",
+	"dashboard.moreFolders_one": "Mostrar {count} más",
+	"dashboard.moreFolders_other": "Mostrar {count} más",
 };
 
 export default dashboard;

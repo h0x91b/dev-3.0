@@ -1,13 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import type { Context } from "cordis";
+import { getAppRoot } from "../../plugins/root";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import CommandPaletteModal from "../CommandPaletteModal";
-import type { CommandContext } from "../../commands";
+import { BUILTIN_COMMANDS_PLUGIN } from "../../commands/builtins";
+import type { CommandContext, CommandItem } from "../../commands/registry";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
 
 function renderModal(
 	context: CommandContext = { hasProject: true, hasTask: true },
-	handlers: { onRun?: (id: string) => void; onClose?: () => void } = {},
+	handlers: { onRun?: (command: CommandItem) => void; onClose?: () => void } = {},
 ) {
 	const onRun = handlers.onRun ?? vi.fn();
 	const onClose = handlers.onClose ?? vi.fn();
@@ -20,6 +24,8 @@ function renderModal(
 }
 
 describe("CommandPaletteModal", () => {
+	beforeAll(() => applyBuiltinPlugins([], [BUILTIN_COMMANDS_PLUGIN]));
+
 	it("traps focus inside the dialog on open", () => {
 		renderModal();
 		const dialog = screen.getByRole("dialog");
@@ -35,12 +41,12 @@ describe("CommandPaletteModal", () => {
 		expect(options[0].textContent).toContain("dark");
 	});
 
-	it("runs the highlighted command on Enter via its action id", async () => {
+	it("hands the highlighted command to onRun on Enter", async () => {
 		const user = userEvent.setup();
 		const { onRun } = renderModal();
 		await user.type(screen.getByRole("textbox"), "Theme: light");
 		await user.keyboard("{Enter}");
-		expect(onRun).toHaveBeenCalledWith("set-theme-light");
+		expect(onRun).toHaveBeenCalledWith(expect.objectContaining({ id: "builtin:set-theme-light" }));
 	});
 
 	it("hides task-scoped commands when there is no active task", async () => {
@@ -55,6 +61,36 @@ describe("CommandPaletteModal", () => {
 		const { onClose } = renderModal();
 		await user.keyboard("{Escape}");
 		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("[dispose] drops a plugin's command from the open palette when the plugin unloads", async () => {
+		const user = userEvent.setup();
+		const fiber = getAppRoot().plugin({
+			name: "leaving-commands",
+			inject: ["commands"],
+			apply(ctx: Context) {
+				ctx.commands.register({ id: "leaving:probe", order: 999, labelKey: "command.boardView", labelVars: { name: "Zebra probe" }, category: "nav", scope: "always", run: () => {} });
+			},
+		});
+		try {
+			await act(async () => {
+				await fiber;
+			});
+			renderModal();
+			await user.type(screen.getByRole("textbox"), "Zebra probe");
+			expect(screen.getAllByRole("option")).toHaveLength(1);
+			await act(async () => {
+				await fiber.dispose();
+			});
+			expect(screen.queryAllByRole("option")).toHaveLength(0);
+			expect(screen.getByRole("dialog")).toBeInTheDocument();
+			await user.clear(screen.getByRole("textbox"));
+			await user.type(screen.getByRole("textbox"), "Theme: light");
+			expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+		} finally {
+			// This file shares one root across tests: a failed assertion must not leak the probe.
+			await fiber.dispose();
+		}
 	});
 
 	it("shows an empty state when nothing matches", async () => {

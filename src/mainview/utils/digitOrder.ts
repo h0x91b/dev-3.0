@@ -1,5 +1,6 @@
 import { isBuiltinOpsProject, orderSpaces, type Project, type Space, type SpacesFile } from "../../shared/types";
 import type { Route } from "../state";
+import { groupProjectsForDashboard } from "./spaceGroups";
 
 export type MixedEntry =
 	| { kind: "space"; space: Space; projects: Project[] }
@@ -87,13 +88,26 @@ export function resolveMixedOrder(projects: Project[], file: SpacesFile): MixedE
 }
 
 /**
- * What ⌘1..9 (index 0..8) open. Off: ordinary projects in board order. On: the
- * first nine mixed entries. Every digit consumer reads this one list.
+ * Ordinary projects top to bottom as the dashboard lists them with the mixed
+ * order off: each space's members in rail order, then Home. A project in several
+ * spaces counts where it first appears. Collapsing a space hides rows but keeps
+ * their digits, so a click never renumbers the list.
+ */
+export function dashboardProjectOrder(projects: Project[], file: SpacesFile): Project[] {
+	const visible = projects.filter((p) => !p.deleted && !isBuiltinOpsProject(p));
+	const groups = groupProjectsForDashboard(visible, file);
+	if (!groups) return visible;
+	return [...new Set(groups.flatMap((g) => g.projects))];
+}
+
+/**
+ * What ⌘1..9 (index 0..8) open: the first nine entries in dashboard order —
+ * the mixed list when "Number keys follow spaces" is on, else
+ * `dashboardProjectOrder`. Every digit consumer reads this one list.
  */
 export function digitTargets(projects: Project[], file: SpacesFile, followSpaces: boolean): MixedEntry[] {
 	if (followSpaces) return resolveMixedOrder(projects, file).slice(0, 9);
-	return projects
-		.filter((p) => !p.deleted && !isBuiltinOpsProject(p))
+	return dashboardProjectOrder(projects, file)
 		.slice(0, 9)
 		.map((project) => ({ kind: "project", project }));
 }

@@ -1,4 +1,6 @@
 import { normalizeSimplifiedInterface } from "../../shared/simplified-interface";
+import { normalizeAutoHibernateMinutes, normalizeAutoHibernateConfirmMinutes } from "../../shared/auto-hibernate";
+import { recordAutoHibernatePolicyChange } from "../task-activity";
 import { noteInterfaceModeChange } from "../interface-onboarding";
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -17,11 +19,13 @@ import type { AgentLiveModels } from "../../shared/agent-live-models";
 import * as github from "../github";
 import * as updater from "../updater";
 import * as rosetta from "../rosetta";
+import { clearProjectFoldersCache } from "../project-folders";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { SESSION_OVERVIEW_FORMAT, tmux } from "../tmux";
 import { tmuxRestartImpact } from "../tmux-restart-impact";
-import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
+import { setTmuxBeigeTone, setTmuxPaneDimming, setTmuxPaneTitles, tmuxThemeFor, writeTmuxConfigs, type TmuxTheme } from "../tmux/config";
+import { clampBeigeTone } from "../../shared/beige-palette";
 import { loadSettings, readSettingsFileStrict, saveSettings } from "../settings";
 import { collectLogRetentionUsage, pruneAllLogs } from "../log-retention";
 import { isRetentionDayCount, isShorterRetention, resolveLogRetentionDays, storedLogRetention, type LogRetentionUsage, type LogRetentionValue } from "../../shared/log-retention";
@@ -236,6 +240,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 			: {}),
 	};
 	const saved = await data.updateProject(params.projectId, updates);
+	clearProjectFoldersCache(saved.id);
 	// Return the RESOLVED project: the caller renders what will actually run,
 	// not a raw record a config file may override.
 	const updated = saved.kind === "virtual" ? saved : await repoConfig.resolveProjectConfig(saved);
@@ -260,6 +265,7 @@ async function saveRepoConfig(params: { projectId: string; worktreePath?: string
 	const configPath = params.worktreePath || project.path;
 	const config = extractConfigFromParams(params) as Dev3RepoConfig;
 	await repoConfig.saveRepoConfig(configPath, config);
+	clearProjectFoldersCache(project.id);
 	if (params.autoCommit && params.worktreePath) {
 		try {
 			const proc = spawn(["git", "-C", params.worktreePath, "add", ".dev3/config.json"]);
@@ -284,6 +290,7 @@ async function saveLocalConfig(params: { projectId: string; worktreePath?: strin
 	const configPath = params.worktreePath || project.path;
 	const config = extractConfigFromParams(params) as Dev3RepoConfig;
 	await repoConfig.saveRepoLocalConfig(configPath, config);
+	clearProjectFoldersCache(project.id);
 	log.info("← saveLocalConfig done");
 }
 
@@ -350,7 +357,7 @@ function getShellAvailability(): ShellAvailability {
  * goes through `applyTmuxTheme`, which also pins the active themed config path.
  */
 async function applyTmuxConfigChange(
-	theme: "dark" | "light",
+	theme: TmuxTheme,
 	options: { refreshShell: boolean; dimInactivePanes: boolean; dimChanged: boolean; paneTitles: boolean; titlesChanged: boolean },
 ): Promise<void> {
 	try {
@@ -385,6 +392,15 @@ function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 }
 
 async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
+	if (params.autoHibernateMinutes !== undefined && params.autoHibernateMinutes !== 0
+		&& normalizeAutoHibernateMinutes(params.autoHibernateMinutes) === 0) {
+		throw new Error("Hibernation suggestions must be off or a whole number of minutes from 1 to 43200.");
+	}
+	if (params.autoHibernateConfirmMinutes !== undefined && (typeof params.autoHibernateConfirmMinutes !== "number"
+		|| !Number.isInteger(params.autoHibernateConfirmMinutes) || params.autoHibernateConfirmMinutes < 1
+		|| params.autoHibernateConfirmMinutes > 43_200)) {
+		throw new Error("Hibernation confirmation must be a whole number of minutes from 1 to 43200.");
+	}
 	log.info("→ saveGlobalSettings", { params });
 	// Terminals launched after this point must use the newly chosen shell; the
 	// resolver caches for an hour, so it has to be told.
@@ -400,6 +416,10 @@ async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
 	// minted after the snapshot was taken, so trusting the payload erased it on every
 	// settings change and the install got a new id on every launch.
 	const stored = await loadSettings();
+	if (normalizeAutoHibernateMinutes(stored.autoHibernateMinutes) !== normalizeAutoHibernateMinutes(params.autoHibernateMinutes)
+		|| normalizeAutoHibernateConfirmMinutes(stored.autoHibernateConfirmMinutes) !== normalizeAutoHibernateConfirmMinutes(params.autoHibernateConfirmMinutes)) {
+		recordAutoHibernatePolicyChange();
+	}
 	const next: GlobalSettings = {
 		...params,
 		...normalizeSimplifiedInterface({
@@ -421,6 +441,9 @@ async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
 		autoAccountExclusions: stored.autoAccountExclusions,
 		// Only for the push below: `saveSettings` keeps the file's own value whatever this says.
 		logRetentionDays: stored.logRetentionDays,
+		// Written only by setTmuxTheme (the Beige sliders), after the snapshot was taken.
+		beigeDepth: stored.beigeDepth,
+		beigeWarmth: stored.beigeWarmth,
 	};
 	await saveSettings(next);
 	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");
@@ -461,7 +484,7 @@ async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
 	const dimChanged = (stored.dimInactivePanes !== false) !== (next.dimInactivePanes !== false);
 	const titlesChanged = (stored.paneTitles === true) !== (next.paneTitles === true);
 	if (process.platform !== "win32" && (shellChanged || dimChanged || titlesChanged)) {
-		await applyTmuxConfigChange(next.resolvedTheme ?? getCurrentUiTheme(), {
+		await applyTmuxConfigChange(tmuxThemeFor(next.theme, next.resolvedTheme ?? getCurrentUiTheme()), {
 			refreshShell: shellChanged,
 			dimInactivePanes: next.dimInactivePanes !== false,
 			dimChanged,
@@ -966,16 +989,32 @@ async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> 
 	log.info("<- clearAgentBinaryPath saved");
 }
 
-async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" }): Promise<void> {
+async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system"; beigeTone?: { depth: number; warmth: number } }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
-	const settings = await loadSettings();
-	await saveSettings({
-		...settings,
-		...(params.preference !== undefined ? { theme: params.preference } : {}),
-		resolvedTheme: params.theme,
+	const tone = params.beigeTone ? clampBeigeTone(params.beigeTone) : undefined;
+	// Through the settings queue, so a concurrent full-snapshot save cannot undo the tone.
+	const settings = await serializeSettingsWrite(async () => {
+		const stored = await loadSettings();
+		const next: GlobalSettings = {
+			...stored,
+			...(params.preference !== undefined ? { theme: params.preference } : {}),
+			resolvedTheme: params.theme,
+			...(tone ? { beigeDepth: tone.depth, beigeWarmth: tone.warmth } : {}),
+		};
+		await saveSettings(next);
+		// Other windows (and an open Settings screen) follow the tone from this push.
+		if (tone && (stored.beigeDepth !== tone.depth || stored.beigeWarmth !== tone.warmth)) {
+			getPushMessage()?.("globalSettingsUpdated", next);
+		}
+		return next;
 	});
 	setCurrentUiTheme(params.theme);
-	await pty.applyTmuxTheme(params.theme);
+	const tmuxTheme = tmuxThemeFor(settings.theme, params.theme);
+	if (tmuxTheme === "beige" && process.platform !== "win32") {
+		setTmuxBeigeTone({ depth: settings.beigeDepth, warmth: settings.beigeWarmth });
+		writeTmuxConfigs();
+	}
+	await pty.applyTmuxTheme(tmuxTheme);
 }
 
 /**

@@ -9,6 +9,7 @@
  * renamed build of Claude Code is Claude Code and must run through the very
  * same adapter.
  */
+import { agyAdapter } from "./agy";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotAdapter } from "./copilot";
@@ -33,6 +34,7 @@ const REGISTRY: Record<string, AgentAdapter> = {
 	[opencodeAdapter.command]: opencodeAdapter,
 	[ompAdapter.command]: ompAdapter,
 	[piAdapter.command]: piAdapter,
+	[agyAdapter.command]: agyAdapter,
 };
 
 /** The adapter for an agent; GenericAdapter for unknown/custom commands. */

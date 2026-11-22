@@ -127,6 +127,20 @@ describe("message — immediate (bare form)", () => {
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sourceTaskId: CTX.taskId, sourcePaneId: "%3", sourcePid: process.pid });
 	});
 
+	it("says a message waits behind the receiver's open prompt, exits 0 and warns against resending", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", heldBehindPrompt: true, taskId: CTX.taskId, paneId: "%3" }));
+		await handleMessage(args(["ping"]), SOCKET, CTX);
+		expect(stdoutOutput).toContain("Message held for task aaaaaaaa (pane %3): the agent is showing a prompt");
+		expect(stdoutOutput).toContain("Do not send it again.");
+		expect(stdoutOutput).not.toContain("Message queued");
+	});
+
+	it("carries the prompt hold into --json", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", heldBehindPrompt: true, messageId: "m1", taskId: CTX.taskId }));
+		await handleMessage(args(["ping"], { json: "true" }), SOCKET, CTX);
+		expect(JSON.parse(stdoutOutput)).toEqual({ status: "held", messageId: "m1", heldBehindPrompt: true });
+	});
+
 	it("names the agent and pane it went to", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", taskId: CTX.taskId, paneId: "%3", agentRole: "review" }));
 		await handleMessage(args(["ping"]), SOCKET, CTX);

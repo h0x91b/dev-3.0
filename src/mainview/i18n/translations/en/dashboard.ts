@@ -141,6 +141,10 @@ const dashboard = {
 	"header.activeTaskCount_one": "{count} active",
 	"header.activeTaskCount_other": "{count} active",
 	"header.noActiveTasks": "No active tasks",
+	"header.switcherCollapseGroup": "Collapse group",
+	"header.switcherExpandGroup": "Expand group",
+	"header.switcherGroupPinnedOpen": "The group holding the current project stays open",
+	"header.switcherGroupSearchOpen": "Search shows every group",
 
 	// Prevent-sleep (caffeine) toggle
 	"caffeine.label": "No Sleep",
@@ -161,6 +165,8 @@ const dashboard = {
 	"rateLimits.credits": "credits: {balance}",
 	"rateLimits.unlimited": "∞ unlimited",
 	"rateLimits.monthlyLabel": "monthly credits",
+	"rateLimits.otherFiveHourLabel": "other 5h",
+	"rateLimits.otherWeeklyLabel": "other 7d",
 	"rateLimits.monthlyUsage": "{used} / {limit} used · {remaining}% left",
 	"rateLimits.captured": "captured {time} ago",
 	"rateLimits.capturedNow": "captured just now",
@@ -378,6 +384,10 @@ const dashboard = {
 	"memory.bannerOutOfRoom_one": "This machine is out of memory — one more task will likely make it crawl.",
 	"memory.bannerOutOfRoom_other": "This machine is out of memory — {count} more tasks will likely make it crawl.",
 	"dashboard.noSpaceGroup": "Home",
+	"dashboard.extraFolders_one": "+{count} folder",
+	"dashboard.extraFolders_other": "+{count} folders",
+	"dashboard.moreFolders_one": "Show {count} more",
+	"dashboard.moreFolders_other": "Show {count} more",
 } as const;
 
 export default dashboard;

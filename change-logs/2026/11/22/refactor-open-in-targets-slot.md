@@ -1,0 +1,1 @@
+The "Open in…" launcher and menus now draw their rows from an internal openInTargets slot, with the same apps, order, icons and colours. Opening a path in an app now requires a known app id (a built-in default or one added in Settings) and is refused at the backend otherwise, where before any app name was accepted.

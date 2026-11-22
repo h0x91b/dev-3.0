@@ -326,6 +326,7 @@ describe("injectInitialThemeBootstrap", () => {
 
 		expect(html).toContain('window.__DEV3_INITIAL_THEME__="light"');
 		expect(html).toContain('window.__DEV3_INITIAL_RESOLVED_THEME__="light"');
+		expect(html).toMatch(/window\.__DEV3_INITIAL_BEIGE_TONE__=\{"depth":[\d.]+,"warmth":[\d.]+\}/);
 	});
 });
 

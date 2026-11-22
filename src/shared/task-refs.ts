@@ -8,8 +8,10 @@
 // Everything dev3 teaches or emits uses these forms. The parser also accepts the
 // bare `seq:115` / `pr:115` a markdown renderer leaves behind once it has eaten
 // the angle brackets (CommonMark reads `<seq:115>` as an autolink), and the same
-// strings as a link href. Older prose forms ("#115", "seq 115", "task 115") are
-// deliberately NOT recognised: "#115" collides with GitHub numbers.
+// strings as a link href. A bare `seq:115` followed by `--project a1c9fe4e`, the
+// CLI's cross-project handle, takes that flag as its qualifier. Older prose forms
+// ("#115", "seq 115", "task 115") are deliberately NOT recognised: "#115" collides
+// with GitHub numbers.
 // See decisions/2026/11/05/canonical-task-pr-reference-tokens.md.
 
 import type { Label, Project, SharedArtifact, SharedImage, Task, TaskPRBadgeInfo, TaskStatus } from "./types";
@@ -101,6 +103,9 @@ const BODY = String.raw`(seq|pr):(?:([A-Za-z0-9][\w.-]{0,63})\/)?(\d{1,9})`;
 // path or a URL on either side (so `https://x/seq:1` and `foo-seq:1` stay text).
 const REF_TEXT_REGEX = new RegExp(String.raw`<${BODY}>|(?<![\w/:.<-])${BODY}(?![\w/])`, "gi");
 const REF_URI_REGEX = new RegExp(String.raw`^${BODY}$`, "i");
+// dev3 spells a cross-project CLI handle `--task seq:N [--variant i] --project P`
+// (see `agentReplyCommand`); P qualifies the bare `seq:N` in front of it.
+const CLI_PROJECT_FLAG_REGEX = /^(?:\s+--variant\s+\d+)?\s+--project\s+([A-Za-z0-9][\w.-]{0,63})/;
 
 function buildRef(tag: string, project: string | undefined, digits: string): TaskPrRef | null {
 	const kind = KIND_BY_TAG[tag.toLowerCase()];
@@ -116,9 +121,11 @@ export function findRefsInText(text: string): RefMatch[] {
 	REF_TEXT_REGEX.lastIndex = 0;
 	let match: RegExpExecArray | null;
 	while ((match = REF_TEXT_REGEX.exec(text)) !== null) {
-		const ref = match[1] ? buildRef(match[1], match[2], match[3]) : buildRef(match[4], match[5], match[6]);
+		const end = match.index + match[0].length;
+		const cliProject = match[1] || match[5] ? undefined : CLI_PROJECT_FLAG_REGEX.exec(text.slice(end))?.[1];
+		const ref = match[1] ? buildRef(match[1], match[2], match[3]) : buildRef(match[4], match[5] ?? cliProject, match[6]);
 		if (!ref) continue;
-		found.push({ ref, raw: match[0], start: match.index, end: match.index + match[0].length });
+		found.push({ ref, raw: match[0], start: match.index, end });
 	}
 	return found;
 }
@@ -161,6 +168,24 @@ export function formatPrRef(number: number, projectId?: string): string {
 /** Qualify with `projectId` only when it differs from the reader's project. */
 export function formatTaskRefFor(seq: number, projectId: string, readerProjectId: string | undefined): string {
 	return formatTaskRef(seq, readerProjectId && readerProjectId === projectId ? undefined : projectId);
+}
+
+/**
+ * Text written on `writerProjectId`, as a reader on another project must see it:
+ * each bracketed `<seq:N>` / `<pr:N>` gains the writer's project. A bare `seq:N`
+ * stays as written — it is the CLI's `--task` handle, and a qualifier would break the command.
+ */
+export function qualifyRefsFor(text: string, writerProjectId: string | undefined, readerProjectId: string | undefined): string {
+	if (!writerProjectId || writerProjectId === readerProjectId) return text;
+	const project = projectRefQualifier(writerProjectId);
+	let out = "";
+	let cursor = 0;
+	for (const { ref, raw, start, end } of findRefsInText(text)) {
+		if (ref.project || !raw.startsWith("<")) continue;
+		out += text.slice(cursor, start) + formatRef({ ...ref, project });
+		cursor = end;
+	}
+	return cursor === 0 ? text : out + text.slice(cursor);
 }
 
 export function formatRef(ref: TaskPrRef): string {

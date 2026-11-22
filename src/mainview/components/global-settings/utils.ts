@@ -17,7 +17,7 @@ import { type ModelCatalog, resolveModelRoleLaunch, roleUnsetEnv } from "../../.
  *  shows their shape rather than inventing values it cannot know. */
 const PREVIEW_RUNTIME = { baseUrl: "http://127.0.0.1:PORT", sessionKey: "sk-bf-…" };
 
-export type Theme = "dark" | "light" | "system";
+export type Theme = "dark" | "light" | "beige" | "system";
 
 /** Shown until the host answers. Never a save base: every save sends the whole
  *  object, so persisting this would overwrite the user's settings.json. */
@@ -35,7 +35,7 @@ export function resolveTheme(
 	if (theme === "system") {
 		return prefersDark ? "dark" : "light";
 	}
-	return theme;
+	return theme === "beige" ? "light" : theme;
 }
 
 export function toStoredTaskOpenMode(

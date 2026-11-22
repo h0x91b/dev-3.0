@@ -222,7 +222,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Rule:** bible §12.6 (`flex-nowrap`, written priority order, container-query thresholds, a sheet path for anything shed) + §12.3 for the diff viewer's four modes.
 - **Why:** a second row costs a phone a whole band of screen and moves every control the user was aiming at, which is worse than losing the least important one; measured at 340px the summary bar went 40px → 67px tall. Rejected: JS measured overflow via `ResizeObserver` (oscillates once hiding an item shrinks `scrollWidth`, and needs an offscreen clone to recover the natural width); a viewport breakpoint (the row is not the window — the same width holds a different bar depending on whether a variant switcher and output badges exist); folding the readouts unconditionally (they are status, and §12.6 keeps them resting-visible whenever they fit).
 - **Refinement (seq 1676):** the diff sheds its *width*, not the control — `decisions/2026/08/25/mobile-diff-chip-pins-the-diff-mode.md`.
-- **Status:** Decided. Evidence: `TaskInfoPanel.tsx` (`task-summary-bar`, `diff-summary-badge`, `summary-bar-diff-compact`), `TaskDiffViewer.tsx` (narrow mode row), seq 1459, seq 1676.
+- **Status:** Decided. Evidence: `TaskHeader.tsx` (`task-summary-bar`, `diff-summary-badge`, `summary-bar-diff-compact`), `TaskDiffViewer.tsx` (narrow mode row), seq 1459, seq 1676.
 
 ## 2026-08-07 — The Active Tasks sidebar row carries the Kanban card's lifecycle rail
 - **Rule:** the sidebar row mounts `TaskCardRail` with `autoLabel` — ring, bell and the glued ✓ → Completed always, and the upright status word only when the rail measures tall enough to hold it whole — then title → signals → a muted identity line; the agent config no longer opens the row — bible §5.
@@ -259,7 +259,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 
 - **Rule:** On narrow, `Images` / `Artifacts` render as conditional 44px readouts on the inspector summary bar next to priority AND stay as rows in the actions sheet (`surfaces.task_inspector`, bible §12.6).
 - **Why:** An unread output must be visible without opening a kebab — the same status-not-action logic as the ambient header readout; folding them (the shipped behaviour) hid a produced artifact behind two taps, and the sheet copy is kept because the sheet is the phone's complete action inventory.
-- **Status:** Implemented. Evidence: `src/mainview/components/TaskInfoPanel.tsx`, `src/mainview/components/task-info-panel/TaskSharedImages.tsx`.
+- **Status:** Implemented. Evidence: `src/mainview/components/TaskHeader.tsx`, `src/mainview/components/task-info-panel/TaskSharedImages.tsx`.
 
 ## 2026-08-03 — Local review comments send one-by-one; the batch send covers only unsent ones
 
@@ -317,7 +317,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 
 - **Rule:** The card's status control may carry a second half that commits the pipeline's own terminal move (today: a ✓ straight to Completed) and still spends one slot of the §9 `max_inline_actions: 2` budget — but only when it is glued to the status trigger, shares its hover surface, is desktop-only (the narrow path stays the BottomSheet's promoted Completed row, ≥44px), and hides whenever `getAllowedTransitions` forbids the target. Anything not on the object's own lifecycle is a normal action and costs its own slot.
 - **Why:** Completing was two clicks on the densest surface, and a standalone card button is exactly the toolbar-button-creep the budget exists to stop; scoping the exception to the control's own lifecycle move keeps it from becoming the loophole. A duplicate "Complete task" CTA under the menu was rejected — the Completed row is promoted (success role + ✓) instead of doubled. Confirmation is unchanged: `moveTaskToStatus` → `confirmTaskCompletion`.
-- **Status:** Observed. Evidence: `PipelineRing.tsx`, `PipelineDropdown.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, bible §9/§11.
+- **Status:** Observed. Evidence: `PipelineRing.tsx`, `PipelineDropdown.tsx`, `TaskCard.tsx`, `TaskHeader.tsx`, bible §9/§11.
 
 ## 2026-07-25 — Transport health is a docked pill + per-screen fetch states, not a banner
 
@@ -381,7 +381,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 
 - **Rule:** The TaskInfoPanel fullscreen toggle plus F11 / Cmd/Ctrl+Shift+F enters a task-bound renderer view with only a thin `dev3` strip and a wide neutral Exit full screen button; agent-facing notifications and viewer events queue during immersive fullscreen or persistent Focus Mode and flush when the active mode ends, with in-app toast clicks exiting immersive fullscreen before normal task navigation (OS notification clicks never navigate).
 - **Why:** Keeping the existing Route and tmux session preserves the user's exact layout and makes the feature identical in desktop and browser mode. Rejected native/browser fullscreen and tmux `resize-pane -Z` because they either diverge by transport or overwrite user-controlled pane state.
-- **Status:** Implemented. Evidence: `App.tsx`, `TaskInfoPanel.tsx`, `keymap.ts`, `webNotification.ts`.
+- **Status:** Implemented. Evidence: `App.tsx`, `TaskHeader.tsx`, `keymap.ts`, `webNotification.ts`.
 
 ## 2026-07-13 — "Recent commits" diff mode is a split-button, N not persisted
 - **Rule:** A 4th diff mode `recent` joins the diff-viewer segmented control (peer to branch/uncommitted/unpushed): a split-button whose body activates `HEAD~N..HEAD` (committed-only, clamped to the branch's own commits via the local `origin/base` merge-base — no origin fetch) and whose `▾` caret opens a fixed — bible §5.3.
@@ -462,7 +462,7 @@ Folded: rule and reasoning in `decisions/2026/07/03/close-pane-visual-picker.md`
 
 - **Rule:** Access-to-produced-output controls belong in the inspector's Runtime & access bar (row 2 right); the images button renders only when count > 0 and is a relocation, not an addition. Bible §5.1.
 - **Why:** The Context-bar chip read as passive metadata and was undiscoverable; row 2 is the "Outputs" domain (open-in, dev-server) so produced screenshots belong there; rejected duplicating the control (bar creep) and an always-visible disabled button at zero.
-- **Status:** Observed (2026-07-02). Evidence: `task-info-panel/TaskSharedImages.tsx`, `TaskInfoPanel.tsx`.
+- **Status:** Observed (2026-07-02). Evidence: `task-info-panel/TaskSharedImages.tsx`, `TaskHeader.tsx`.
 
 ## 2026-07-02 — Task image viewer v2: windowed card, fill-to-frame, per-image captions
 
@@ -568,7 +568,7 @@ Folded into bible §12 (terminal windows row).
 
 - **Rule:** Tips carry a required `contexts` field used as a sort *boost, never a filter* (matching tips lead, then the full catalogue cycles); the `ActiveTasksSidebar` is the tip carrier for the task/terminal view via the shared `useTipRotation` hook.
 - **Why:** Tips previously reached only the Kanban board, so terminal-surface discovery facts never reached terminal dwellers; boost-not-filter keeps every surface cycling everything. Rejected: a ticker (annoying), a permanent terminal footer (chrome creep), an exclusive-context flag.
-- **Status:** Observed. Evidence: `tips.ts` (`TipContext`), `hooks/useTipRotation.ts`.
+- **Status:** Observed. Evidence: `tips/registry.ts` (`TipContext`), `hooks/useTipRotation.ts`.
 
 ## 2026-07-11 — Active Tasks sidebar: readiness tiers + visible priority (supersedes 2026-06-22)
 - **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; tiers sort by priority; NEEDS YOU: questions first. Non-hibernated coordinators form a headerless tier above all of them.
@@ -600,9 +600,9 @@ Folded into bible §12 (terminal windows row).
 
 ## 2026-06-18 — Action palette (⇧⌘P): two-surfaces-one-shell; DOM mirror of the native menu
 
-- **Rule:** Navigation (⇧⌘K) and actions (⇧⌘P) are two surfaces on one extracted `PaletteShell`; the action palette runs commands via the existing `handleMenuAction` router (a mirror, not a second command runner); destructive lifecycle + modal flows are excluded by policy (destructive needs friction, not fuzzy-Enter); language-switch labels stay identical across locales so English is always findable.
-- **Why:** VSCode's chord convention; routing through `handleMenuAction` also fixed several previously-inert native menu items. Decision 072.
-- **Status:** Observed. Evidence: `CommandPaletteModal.tsx`, `commands.ts`, `PaletteShell.tsx`.
+- **Rule:** Navigation (⇧⌘K) and actions (⇧⌘P) are two surfaces on one extracted `PaletteShell`; the action palette runs commands from the internal `commands` slot (each runs itself); destructive lifecycle + modal flows are excluded by policy (destructive needs friction, not fuzzy-Enter); language-switch labels stay identical across locales so English is always findable.
+- **Why:** VSCode's chord convention; commands left `handleMenuAction` for the `commands` slot (2026-11). Decision 072.
+- **Status:** Observed. Evidence: `CommandPaletteModal.tsx`, `commands/`, `PaletteShell.tsx`.
 
 ## 2026-06-18 — Navigation palette introduced (key moved to ⇧⌘K on 2026-10-01)
 
@@ -672,7 +672,7 @@ Folded into bible §12 (terminal windows row).
 
 - **Rule:** The inspector header is a 2×2 grid of quickbars, one per domain — Context / Session-Agent (row 1 = "Drive"), Git / Runtime (row 2 = "Outputs"); panel chrome pinned far-right of row 1 is not a bar; labels truncate to 4 chips + `+k`. Bible §5.1.
 - **Why:** Row-1-right had become a 4-domain dumpster; the panel has a hard `MAX_RATIO=0.33` height budget, so domains separate horizontally, not by adding rows.
-- **Status:** Observed. Evidence: `TaskInfoPanel.tsx`.
+- **Status:** Observed. Evidence: `TaskHeader.tsx`.
 
 ## 2026-06-03 — macOS dock-persistence + React quit-confirmation modal
 
@@ -764,3 +764,11 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-16 — The phone actions sheet is the complete inventory
 - **Rule:** Full screen (first) and Hibernate (last) are narrow sheet rows; narrow offers no hiding and ignores personal hiding (Simplified Mode still trims). Card long-press stays the drag; move = status-rail tap. Bible §12.3, §5.10.
 - **Why:** no touch path existed and hidden rows had no restore on a phone. Rejected a restore row and a per-user mobile button setting. `decisions/2026/11/16/phone-task-actions-sheet-is-the-complete-inventory.md`.
+
+## 2026-11-21 — Surfaces become plugin slots, internal first
+- **Rule:** two slot kinds, replace (chooser + built-in fallback) and contribution (host owns order and budget); extensions are add-only and get slots only after every surface has moved internally. Bible §5.12, yaml `plugin_slots`.
+- **Why:** no sandbox, so replacing Push or Accounts is a phishing surface; rejected opening each slot as soon as it landed. `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
+
+## 2026-11-22 — Finished-task detail is a contribution slot; the draft editor is not
+- **Rule:** `taskDetailSections` covers the archived view's body (`main`, `meta`), built-ins first; extensions read-only, 2 sections then `More from extensions (N)`, 3 meta rows. Bible §5.12, §9.
+- **Why:** sections inside an edit form break focus, dirty state and the one-primary rule. `decisions/2026/11/22/task-detail-sections-slot.md`.

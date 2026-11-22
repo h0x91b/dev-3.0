@@ -1,0 +1,1 @@
+The task header (formerly `TaskInfoPanel`, now `TaskHeader`) draws its four bars from an internal `taskHeader` contribution slot with one built-in item per bar, at every mount site and in the collapsed, expanded and narrow layouts. No visible change.

@@ -226,6 +226,29 @@ describe("task.requestCancellation", () => {
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
+	// The own agent is blocked on a cancel ask the same way as on a completion ask.
+	it("parks its own agent's task in Has Questions while it waits and restores it on decline", async () => {
+		const task = makeTask();
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockImplementation(async (p) => ({ ...task, status: p.newStatus ?? task.status }));
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: task.id }));
+		await vi.waitFor(() => expect(moveTask).toHaveBeenCalledWith({
+			taskId: task.id, projectId: "proj-1", newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true,
+		}));
+
+		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		resolveAgentRequest(payload.requestId, { approved: false });
+
+		expect((await respPromise).data).toEqual({ approved: false });
+		expect(moveTask).toHaveBeenLastCalledWith({
+			taskId: task.id, projectId: "proj-1", newStatus: "in-progress", ifStatus: "user-questions",
+		});
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "cancelled" }));
+	});
+
 	// Cancellation is its own request KIND, so a pending cancel must not be
 	// answerable through the completion pending list (and vice versa) — that
 	// would let a "yes" meant for one dialog destroy a worktree via the other.

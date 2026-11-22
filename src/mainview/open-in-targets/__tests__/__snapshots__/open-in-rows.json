@@ -1,0 +1,128 @@
+[
+ {
+  "appId": "finder",
+  "name": "Finder",
+  "custom": false,
+  "menuGlyph": "",
+  "launcherGlyph": "",
+  "brandColor": "#4a90d9",
+  "category": "files"
+ },
+ {
+  "appId": "vscode",
+  "name": "VS Code",
+  "custom": false,
+  "menuGlyph": "󰨞",
+  "launcherGlyph": "󰨞",
+  "brandColor": "#2b9df4",
+  "category": "editor"
+ },
+ {
+  "appId": "cursor",
+  "name": "Cursor",
+  "custom": false,
+  "menuGlyph": "󰨞",
+  "launcherGlyph": "󰨞",
+  "brandColor": "#8b5cf6",
+  "category": "editor"
+ },
+ {
+  "appId": "ghostty",
+  "name": "Ghostty",
+  "custom": false,
+  "menuGlyph": "",
+  "launcherGlyph": "",
+  "brandColor": "#38bdf8",
+  "category": "terminal"
+ },
+ {
+  "appId": "iterm",
+  "name": "iTerm",
+  "custom": false,
+  "menuGlyph": "",
+  "launcherGlyph": "",
+  "brandColor": "#10b981",
+  "category": "terminal"
+ },
+ {
+  "appId": "terminal",
+  "name": "Terminal",
+  "custom": false,
+  "menuGlyph": "",
+  "launcherGlyph": "",
+  "brandColor": "#64748b",
+  "category": "terminal"
+ },
+ {
+  "appId": "intellij",
+  "name": "IntelliJ",
+  "custom": false,
+  "menuGlyph": "󰆄",
+  "launcherGlyph": "󰆄",
+  "brandColor": "#ec4899",
+  "category": "editor"
+ },
+ {
+  "appId": "intellij-ultimate",
+  "name": "IntelliJ",
+  "custom": false,
+  "menuGlyph": "󰆄",
+  "launcherGlyph": "󰆄",
+  "brandColor": "#ec4899",
+  "category": "editor"
+ },
+ {
+  "appId": "intellij-ce",
+  "name": "IntelliJ",
+  "custom": false,
+  "menuGlyph": "󰆄",
+  "launcherGlyph": "󰆄",
+  "brandColor": "#ec4899",
+  "category": "editor"
+ },
+ {
+  "appId": "pycharm",
+  "name": "PyCharm",
+  "custom": false,
+  "menuGlyph": "󰆄",
+  "launcherGlyph": "󰆄",
+  "brandColor": "#22c55e",
+  "category": "editor"
+ },
+ {
+  "appId": "zed",
+  "name": "Zed",
+  "custom": false,
+  "menuGlyph": "󰖙",
+  "launcherGlyph": "󰖙",
+  "brandColor": "#f59e0b",
+  "category": "editor"
+ },
+ {
+  "appId": "sublime",
+  "name": "Sublime Text",
+  "custom": false,
+  "menuGlyph": "󰳅",
+  "launcherGlyph": "󰳅",
+  "brandColor": "#f97316",
+  "category": "editor"
+ },
+ {
+  "appId": "custom-fork",
+  "name": "Fork",
+  "custom": true,
+  "menuGlyph": "󰙅",
+  "launcherGlyph": "F",
+  "brandColor": "#84cc16",
+  "category": "custom"
+ },
+ {
+  "appId": "my-editor",
+  "name": "My Editor",
+  "custom": true,
+  "menuGlyph": "󰙅",
+  "launcherGlyph": "M",
+  "brandColor": "#84cc16",
+  "category": "custom"
+ }
+]

@@ -1,3 +1,4 @@
+import { agentPromptLedger } from "./agent-prompt-ledger";
 import type { PaneSessionEntry, Task } from "../shared/types";
 import {
 	type PaneIncarnation,
@@ -11,9 +12,11 @@ import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-promp
 import type { AgentPromptEpilogue } from "./agent-prompt-delivery";
 import { deliverPaneInput, newPaneInputDeliveryId, pinTaskPane, sendPaneInput } from "./pane-input";
 import {
+	agentMessageHeldBehindPrompt,
 	agentMessageHoldKey,
 	hasStrandedAgentMessage,
 	holdAgentMessage,
+	humanTypedSince,
 	type HeldAgentMessageReport,
 	type HeldDeliveryResult,
 	type HeldMessageBatch,
@@ -23,6 +26,7 @@ import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-promp
 import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
 import { DEFAULT_TMUX_SOCKET, tmux, taskSessionName, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
+import { getAgentAdapter } from "../shared/agent-adapters/registry";
 
 const log = createLogger("agent-prompt");
 
@@ -191,10 +195,7 @@ export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, cont
  * content reads like a key name (`C-c`, `Escape`) is delivered rather than pressed.
  */
 function agentPromptStages(prompt: string): PaneInputStage[] {
-	return [
-		{ steps: [{ kind: "text", text: prompt }] },
-		{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] },
-	];
+	return [{ steps: [{ kind: "text", text: prompt }] }, ...agentPromptSubmitStages()];
 }
 
 /** The text-only program a held message's own paste is delivered as. */
@@ -214,6 +215,30 @@ function agentMessageTextStages(prompt: string): PaneInputStage[] {
  */
 function agentPromptSubmitStages(): PaneInputStage[] {
 	return [{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] }];
+}
+
+/**
+ * Cursor queues a prompt submitted into a busy turn; one more Enter on the emptied box
+ * steers it into that turn. Skipped once the user typed after the submit — that Enter
+ * would send his draft — or once the pane shows a prompt. A pane with no session entry (a review pane) keeps one Enter.
+ */
+export function scheduleQueuedPromptSteer(
+	task: Task,
+	paneId: string,
+	press: () => unknown,
+	panes: readonly PaneSessionEntry[] | undefined = task.sessionState?.panes,
+): void {
+	const entry = panes?.find((pane) => pane.paneId === paneId);
+	if (!entry || !getAgentAdapter(entry.agentCmd, entry.agentFamily ?? undefined).enterSteersQueuedPrompt) return;
+	const submittedAt = Date.now();
+	scheduleAgentPromptSubmit(async () => {
+		// A menu that opened meanwhile would take this Enter as its answer.
+		if (!humanTypedSince(task.id, submittedAt) && !agentPromptLedger.isPromptOpen(task.id, paneId)) await press();
+	}, { taskId: task.id.slice(0, 8), paneId });
+}
+
+function steerTmuxPane(task: Task, paneId: string): Promise<PaneInputOutcome> {
+	return sendPaneInput(task, paneId, [{ steps: [{ kind: "key", key: "enter" }] }], { idPrefix: "agent-steer" });
 }
 
 /** A scrolled-up pane refused the keys but is still the same pane: the hold waits for it. */
@@ -380,13 +405,14 @@ function holdAgentMessageForPane(
 			submit: async () => {
 				const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(), { idPrefix: "agent-submit" });
 				const result = heldDeliveryResult(submit);
+				if (result === "landed") scheduleQueuedPromptSteer(task, paneId, () => steerTmuxPane(task, paneId));
 				if (result === "failed") log.warn("held agent message submit did not land", { ...context, status: submit.status });
 				return result;
 			},
 		},
 		context,
 	);
-	return { ...agentPromptHeld(delayMs), paneId };
+	return { ...agentPromptHeld(delayMs, agentMessageHeldBehindPrompt(holdKey)), paneId };
 }
 
 /** The verdict for a prompt that never found a pane to aim at. */
@@ -431,7 +457,9 @@ export async function sendPromptToAgentPane(
 	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
 	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxSession}`);
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, targetPane))) return inputOccupied(targetPane);
-	return sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	const outcome = await sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	if (outcome.status === "delivered") scheduleQueuedPromptSteer(task, targetPane, () => steerTmuxPane(task, targetPane), agentPanes);
+	return outcome;
 }
 
 /**
@@ -464,5 +492,7 @@ export async function holdMessageForPane(
  */
 export async function sendPromptToPane(task: Task, paneId: string, prompt: string): Promise<PaneInputOutcome> {
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, paneId))) return inputOccupied(paneId);
-	return sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	const outcome = await sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	if (outcome.status === "delivered") scheduleQueuedPromptSteer(task, paneId, () => steerTmuxPane(task, paneId));
+	return outcome;
 }

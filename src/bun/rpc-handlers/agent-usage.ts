@@ -1,14 +1,15 @@
-import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { TERMINAL_STATUSES, type AgentUsageReport, type AgentUsageSource, type Project, type SystemLoadSnapshot, type SystemMemorySnapshot, type Task, type TaskUsageReport, type WorktreeOrphanGroup } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
 import { getBusyTaskShortIds, getSystemLoadSnapshot, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
 import { scanWorktreeDiskUsage } from "../worktree-disk-usage";
 import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper";
-import { nativeModelIdForWireName } from "../../shared/model-catalog";
+import { catalogProviderForWireName, nativeModelIdForWireName, type ModelCatalog } from "../../shared/model-catalog";
+import { claudeTranscriptBilling, codexRolloutBilling, type UsageBilling } from "../../shared/agent-billing";
 import { loadModelCatalog } from "../model-catalog-store";
 import { listAgentDirAccountDirs, listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
 import { retainUsageHistory, usageHistoryStamp } from "../agent-usage-history";
@@ -26,7 +27,7 @@ import { toPosixSeparators } from "../../shared/project-storage-key";
 import { conversationDumpDir } from "../conversation-parse";
 import { taskWorkingDir } from "../task-conversation";
 import { taskDir } from "../git";
-import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, summarizeUsageByModel, type UsageState } from "./agent-usage-parse";
+import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, summarizeUsageByModel, type UsageRecord, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
 /**
@@ -80,11 +81,10 @@ async function foldJsonlFiles(
 	files: string[],
 	state: UsageState,
 	fold: (state: UsageState, entry: unknown) => void,
-	beforeFile?: (state: UsageState) => void,
+	beforeFile: (state: UsageState, file: string, text: string) => void,
 ): Promise<string[]> {
 	const unread: string[] = [];
 	for (const file of files) {
-		beforeFile?.(state);
 		let text: string;
 		try {
 			text = await readFile(file, "utf8");
@@ -93,6 +93,7 @@ async function foldJsonlFiles(
 			unread.push(file);
 			continue;
 		}
+		beforeFile(state, file, text);
 		for (let start = 0; start <= text.length;) {
 			const newline = text.indexOf("\n", start);
 			const end = newline === -1 ? text.length : newline;
@@ -140,6 +141,40 @@ function windowStart(since: string | undefined): number {
 	return new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
 }
 
+/** A subagent transcript sits in `<session>/subagents/`; the session's own file holds the login evidence. */
+export function claudeParentTranscript(file: string): string | null {
+	for (let dir = dirname(file); dir !== dirname(dir); dir = dirname(dir)) {
+		if (basename(dir) === "subagents") return `${dirname(dir)}.jsonl`;
+	}
+	return null;
+}
+
+/** Stamps each Claude file with the billing its own session proves; parents are read once per scan. */
+function claudeBillingHook(): (state: UsageState, file: string, text: string) => void {
+	const parents = new Map<string, UsageBilling | undefined>();
+	return (state, file, text) => {
+		const parent = claudeParentTranscript(file);
+		if (!parent) { state.fileBilling = claudeTranscriptBilling(text); return; }
+		if (!parents.has(parent)) {
+			let billing: UsageBilling | undefined;
+			try { billing = claudeTranscriptBilling(readFileSync(parent, "utf8")); } catch { /* parent pruned: unknown */ }
+			parents.set(parent, billing);
+		}
+		state.fileBilling = claudeTranscriptBilling(text) ?? parents.get(parent);
+	};
+}
+
+function codexBillingHook(state: UsageState, _file: string, text: string): void {
+	beginCodexRollout(state);
+	state.fileBilling = codexRolloutBilling(text);
+}
+
+/** A routed model is paid with the provider's key, unless the provider is a tracked plan. */
+function stampRoutedBilling(catalog: ModelCatalog, record: UsageRecord): void {
+	const provider = catalogProviderForWireName(catalog, record.model);
+	if (provider) record.billing = provider.usageSource ? "subscription" : "api";
+}
+
 const usageScans = new Map<number, Promise<AgentUsageReport>>();
 
 /**
@@ -169,13 +204,13 @@ async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
 	// A managed account's store is often a symlink onto the home one; read it once.
 	for (const dir of uniqueRealDirs(claudeProjectRoots())) collectTranscriptFiles(dir, claudeFiles);
 	const claudeToRead = transcriptsToRead(claudeFiles, notBefore, seen);
-	const unread = await foldJsonlFiles(claudeToRead, claudeState, foldClaudeEntry);
+	const unread = await foldJsonlFiles(claudeToRead, claudeState, foldClaudeEntry, claudeBillingHook());
 
 	const codexState = newUsageState();
 	const codexFiles: string[] = [];
 	for (const store of codexStores()) collectTranscriptFiles(store, codexFiles, true);
 	const codexToRead = transcriptsToRead(codexFiles, notBefore, seen);
-	unread.push(...await foldJsonlFiles(codexToRead, codexState, foldCodexEntry, beginCodexRollout));
+	unread.push(...await foldJsonlFiles(codexToRead, codexState, foldCodexEntry, codexBillingHook));
 	const cacheHits = seen.size - claudeToRead.length - codexToRead.length;
 	for (const file of unread) seen.delete(file);
 	const states = {
@@ -204,6 +239,7 @@ async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
 		for (const usage of state.records.values()) {
 			const native = nativeModelIdForWireName(catalog, usage.model);
 			if (native) usage.pricingModel = native;
+			stampRoutedBilling(catalog, usage);
 		}
 	}
 
@@ -408,10 +444,10 @@ export async function getTaskAgentUsage(project: Project, task: Task): Promise<T
 	const workingDir = taskWorkingDir(project, task);
 	const state = newUsageState();
 	const ownClaude = taskClaudeFiles(workingDir);
-	await foldJsonlFiles(ownClaude, state, foldClaudeEntry);
+	await foldJsonlFiles(ownClaude, state, foldClaudeEntry, claudeBillingHook());
 	const rollouts = allCodexRollouts();
 	const ownCodex = taskCodexFiles(rollouts, workingDir);
-	await foldJsonlFiles(ownCodex, state, foldCodexEntry, beginCodexRollout);
+	await foldJsonlFiles(ownCodex, state, foldCodexEntry, codexBillingHook);
 	const sharedWorkingDir = project.kind === "virtual" && !!task.opsWorkDir?.trim();
 	if (sharedWorkingDir) keepTaskLifetime(state, task);
 
@@ -420,8 +456,8 @@ export async function getTaskAgentUsage(project: Project, task: Task): Promise<T
 	const resumedClaude = resumedClaudeFiles(ids, new Set(ownClaude));
 	const resumedCodex = resumedCodexFiles(rollouts, ids, new Set(ownCodex));
 	const resumed = newUsageState();
-	await foldJsonlFiles(resumedClaude, resumed, foldClaudeEntry);
-	await foldJsonlFiles(resumedCodex, resumed, foldCodexEntry, beginCodexRollout);
+	await foldJsonlFiles(resumedClaude, resumed, foldClaudeEntry, claudeBillingHook());
+	await foldJsonlFiles(resumedCodex, resumed, foldCodexEntry, codexBillingHook);
 	keepTaskLifetime(resumed, task);
 	for (const [key, record] of resumed.records) if (!state.records.has(key)) state.records.set(key, record);
 	const claudeFiles = [...ownClaude, ...resumedClaude];

@@ -81,10 +81,10 @@ describe("--reason on approval-gated commands", () => {
 		expect(paramsOf("task.requestCompletion")).toEqual({ taskId: OTHER_ID, projectId: "proj-001", reason: REASON, sourceTaskId: OWN_ID });
 	});
 
-	it("a completion without a reason sends exactly what it did before", async () => {
+	it("a completion without a reason sends no reason, only the asking task", async () => {
 		mockSend.mockResolvedValue(ok({ approved: true, task: { id: OTHER_ID, status: "completed" } }));
 		await handleTask("move", args([OTHER_ID], { status: "completed" }), SOCKET, CTX);
-		expect(paramsOf("task.requestCompletion")).toEqual({ taskId: OTHER_ID, projectId: "proj-001" });
+		expect(paramsOf("task.requestCompletion")).toEqual({ taskId: OTHER_ID, projectId: "proj-001", sourceTaskId: OWN_ID });
 	});
 
 	it.each(["cancelled", "todo"])("--status %s forwards the reason", async (status) => {

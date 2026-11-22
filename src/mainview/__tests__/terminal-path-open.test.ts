@@ -38,7 +38,7 @@ describe("task and PR references", () => {
 	const resolveTaskPrRef = api.request.resolveTaskPrRef as unknown as ReturnType<typeof vi.fn>;
 
 	it("resolves a printed <seq:N> on the terminal's own project and opens the task", async () => {
-		resolveTaskPrRef.mockResolvedValueOnce({ kind: "task", taskId: "t-3", projectId: "proj-1", projectName: "p", seq: 3, title: "x", status: "todo" });
+		resolveTaskPrRef.mockResolvedValueOnce({ kind: "task", taskId: "t-3", projectId: "proj-1", projectName: "p", seq: 3, title: "x", status: "in-progress" });
 		const opened = new Promise<unknown>((resolve) =>
 			window.addEventListener("rpc:openDeepLink", (e) => resolve((e as CustomEvent).detail), { once: true }));
 		await activateDeepLinkUri("<seq:3>", { t, taskId: "task-1", projectId: "proj-1" });

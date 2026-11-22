@@ -15,7 +15,7 @@ vi.mock("../tmux", () => ({
 	TMUX_AGENT_PANE_OPTION: "@dev3_agent",
 	TMUX_LAST_AGENT_PANE_OPTION: "@dev3_last_agent_pane",
 }));
-vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn() }));
+vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn(), inspectNativeTaskPane: vi.fn() }));
 vi.mock("../pty-server", () => ({
 	nativePaneTerminal: vi.fn(),
 	reattachNativeTaskSession: vi.fn(),
@@ -30,13 +30,14 @@ vi.mock("../logger", () => ({
 }));
 
 import type { NativeTaskPane, NativeTaskPanesState } from "../native-task-panes";
-import { nativeTaskPanesState } from "../native-task-panes";
+import { inspectNativeTaskPane, nativeTaskPanesState } from "../native-task-panes";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 import { ensureNativePanePtySession, nativePaneTerminal, reattachNativeTaskSession } from "../pty-server";
 import { forwardToOwner, resolvePaneOwner } from "../native-pane-owner";
 import type { NativeTaskTerminal } from "../native-task-terminal";
 import { tmux } from "../tmux";
 import { AGENT_PROMPT_ENTER_DELAY_MS } from "../agent-prompt";
-import { flushHeldAgentMessagesForTask, resetAgentMessageHolds } from "../agent-message-hold";
+import { flushHeldAgentMessagesForTask, pendingAgentMessageHoldCount, resetAgentMessageHolds } from "../agent-message-hold";
 import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../../shared/agent-message-hold-timing";
 import {
 	NATIVE_AGENT_PANE_ID,
@@ -147,6 +148,16 @@ describe("sendPromptToNativeAgentPane — this process owns the lease", () => {
 		expect(forwardToOwner).not.toHaveBeenCalled();
 	});
 
+	it("adds a second carriage return for Cursor, which steers its queued follow-up into the turn", async () => {
+		const { terminal, writes } = fakeTerminal("writer");
+		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+		const cursor = { paneId: NATIVE_AGENT_PANE_ID, agentCmd: "agent", sessionId: null, agentId: null, configId: null };
+
+		await sendPromptToNativeAgentPane(task({ sessionState: { panes: [cursor] } } as Partial<Task>), "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS * 3);
+		expect(writes).toEqual(["check CI", "\r", "\r"]);
+	});
+
 	it("writes NOTHING until the quiet window closes, then both texts and one CR", async () => {
 		const { terminal, writes } = fakeTerminal("writer");
 		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
@@ -170,6 +181,28 @@ describe("sendPromptToNativeAgentPane — this process owns the lease", () => {
 		expect(writes).toEqual(["one", "\n\ntwo", "\r"]);
 
 		resetAgentMessageHolds();
+	});
+
+	it("ends the wait when the pane died while a prompt kept the message held", async () => {
+		const { terminal, writes } = fakeTerminal("writer");
+		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+		agentPromptLedger.claudePermissionRequest({ taskId: TASK_ID, sessionId: "s1", paneId: NATIVE_AGENT_PANE_ID, toolName: "Bash" });
+		vi.mocked(inspectNativeTaskPane).mockResolvedValue({ kind: "observed", sessionId: "s", host: { pid: 1, startSignature: "a" }, shell: { pid: 2, startSignature: "b" }, ownership: "live" } as never);
+
+		await expect(sendPromptToNativeAgentPane(task(), "one", { hold: true })).resolves.toMatchObject({ status: "held", reason: "behind-prompt" });
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		expect(writes).toEqual([]);
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+
+		vi.mocked(inspectNativeTaskPane).mockResolvedValue({ kind: "pane-absent" });
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(agentPromptLedger.isPromptOpen(TASK_ID, NATIVE_AGENT_PANE_ID)).toBe(false);
+		expect(pendingAgentMessageHoldCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(writes).toEqual([]);
+
+		resetAgentMessageHolds();
+		agentPromptLedger.reset();
 	});
 
 	it("writes the held message the moment the user submits his own line", async () => {

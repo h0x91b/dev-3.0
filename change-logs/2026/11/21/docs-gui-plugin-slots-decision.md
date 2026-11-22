@@ -1,0 +1,1 @@
+Recorded the GUI plugin slot model (replace and contribution slots, add-only for third parties), the internal-first migration order, the extension API versioning policy and the built-ins-on-public-contract tech debt, and marked the GUI-on-Cordis migration as planned in the extensions platform doc.

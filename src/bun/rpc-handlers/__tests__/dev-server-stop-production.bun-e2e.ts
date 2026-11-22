@@ -38,6 +38,7 @@ import { spawnSync as nodeSpawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -297,7 +298,7 @@ async function run(): Promise<void> {
 			check(freed, `pool port ${port} is free after teardown`);
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch (err) {
 			check(false, `removing temp state threw — ${String(err)}`);
 		}

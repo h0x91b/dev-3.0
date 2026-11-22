@@ -2,7 +2,7 @@ import type { SVGProps } from "react";
 
 /**
  * Hand-drawn git-action glyphs shared by the task info panel git row
- * (TaskGitActions) and the diff include-tests toggle (TaskInfoPanel).
+ * (`task-header/builtin-git.tsx`) and the diff include-tests toggle (TaskHeader).
  *
  * Every icon carries `gtx-*` animation hooks: when a `.git-anim` ancestor
  * (the button / toggle) is hovered, pure-CSS keyframes in index.css act out

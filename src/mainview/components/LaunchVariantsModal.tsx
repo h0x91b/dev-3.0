@@ -506,6 +506,7 @@ function LaunchVariantsModal({
 									agentId={variant.agentId}
 									configId={variant.configId}
 									agentAvailability={agentAvailability}
+									installedFirst
 									onChange={(next) => updateVariant(index, next)}
 									accountId={variant.accountId}
 									onAccountChange={(accountId) => updateVariant(index, { accountId })}

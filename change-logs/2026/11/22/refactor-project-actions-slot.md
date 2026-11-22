@@ -1,0 +1,1 @@
+The dashboard's per-project actions (the row icons and the narrow action sheet) now come from an internal projectActions slot, with no visible change, pinned by a test. Reorder stays the dashboard's own, and Remove stays last.
