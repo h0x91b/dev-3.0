@@ -41,3 +41,12 @@ export function coordinatorCandidates(tasks: Task[], currentTaskId: string | nul
 			return b.task.seq - a.task.seq;
 		});
 }
+
+/**
+ * The coordinator a project digit opens from a task view: the first candidate
+ * among the target's projects, in the finder's order. Null → the board as before.
+ */
+export function digitCoordinator(tasks: Task[], projectIds: string[], currentTaskId: string | null, mru: string[]): Task | null {
+	const targets = new Set(projectIds);
+	return coordinatorCandidates(tasks.filter((task) => targets.has(task.projectId)), currentTaskId, mru)[0]?.task ?? null;
+}

@@ -337,6 +337,13 @@ function fakePlatform(os: "mac" | "linux") {
 	Object.defineProperty(globalThis, "navigator", { value, writable: true, configurable: true });
 }
 
+/** ⌘/g + digit from a task view looks the target's coordinator up first; let that land. */
+async function settleDigitJump() {
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+}
+
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
 		// These assert the DESKTOP keymap (⌘Q, ⌘N, zoom, ⌘1–9). happy-dom looks like
@@ -996,6 +1003,7 @@ describe("App keyboard shortcuts", () => {
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			const digit = alphaDigit(follow);
 			press({ key: digit, code: `Digit${digit}`, metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-space-id", "");
 			expect(project()).toHaveAttribute("data-task-view", "true");
@@ -1009,6 +1017,7 @@ describe("App keyboard shortcuts", () => {
 			await renderWith(false);
 			await userEvent.click(screen.getByTestId("mock-make-dirty"));
 			press({ key: "3", code: "Digit3", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
 			expect(project()).toHaveAttribute("data-project-id", "p1");
@@ -1060,6 +1069,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(false);
 			press({ key: "3", code: "Digit3", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1071,6 +1081,7 @@ describe("App keyboard shortcuts", () => {
 			await renderWith(false);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "3", code: "Digit3" });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1081,6 +1092,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(true);
 			press({ key: "2", code: "Digit2", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p3");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
@@ -1091,6 +1103,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await renderWith(true);
 			press({ key: "2", code: "Digit2", metaKey: true });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p2");
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			expect(project()).toHaveAttribute("data-active-task-id", "");
@@ -1103,8 +1116,81 @@ describe("App keyboard shortcuts", () => {
 			await renderWith(true);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "3", code: "Digit3" });
+			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p4");
 			expect(project()).toHaveAttribute("data-active-task-id", "");
+		});
+
+		describe("from a task view, the digit opens the target's coordinator", () => {
+			const coordinator = (id: string, projectId: string, over: Record<string, unknown> = {}) => ({
+				id, seq: Number(id.replace(/\D/g, "")), projectId, title: id, status: "in-progress", taskType: "coordinator", worktreePath: `/w/${id}`, ...over,
+			});
+			function mockBoards(boards: Record<string, unknown[]>) {
+				(api.request as { getTasks?: unknown }).getTasks = vi.fn(({ projectId }: { projectId: string }) =>
+					Promise.resolve(boards[projectId] ?? []),
+				);
+			}
+			afterEach(() => {
+				delete (api.request as { getTasks?: unknown }).getTasks;
+			});
+			// With follow off the dashboard order makes Gamma (p3) digit 2.
+			const fromTask = () =>
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
+				});
+
+			it("⌘2 lands on the live coordinator, not a hibernated or finished one", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c1", "p3", { hibernated: true }), coordinator("c2", "p3"), coordinator("c3", "p3", { status: "completed" })] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p3" });
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "c2");
+			});
+
+			it("g then 2 does the same", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "2", code: "Digit2" });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-active-task-id", "c2");
+			});
+
+			it("a space digit finds the coordinator on any member and keeps the space", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c5", "p3")] });
+				await renderWith(true);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-active-task-id", "c5");
+			});
+
+			it("from a board the digit still opens the board and never looks one up", async () => {
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "2", code: "Digit2", metaKey: true });
+				await settleDigitJump();
+				expect(api.request.getTasks).not.toHaveBeenCalled();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "");
+			});
+
+			it("⇧⌘2 from a task still opens the board", async () => {
+				fromTask();
+				mockBoards({ p3: [coordinator("c2", "p3")] });
+				await renderWith(false);
+				press({ key: "@", code: "Digit2", metaKey: true, shiftKey: true });
+				await settleDigitJump();
+				expect(project()).toHaveAttribute("data-project-id", "p3");
+				expect(project()).toHaveAttribute("data-active-task-id", "");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			});
 		});
 
 		it("digits follow the order just chosen, before the host has stored it", async () => {
@@ -1478,6 +1564,7 @@ describe("App keyboard shortcuts", () => {
 			expect(before).toHaveAttribute("data-active-task-id", "t1");
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
@@ -1495,6 +1582,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
@@ -1512,6 +1600,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Meta>}1{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p1");
@@ -1548,6 +1637,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
@@ -1566,6 +1656,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
+			await settleDigitJump();
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");

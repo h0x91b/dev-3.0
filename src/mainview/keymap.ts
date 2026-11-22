@@ -142,6 +142,8 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "forward", primary: [mod("BracketRight")], alias: [{ code: "Minus", mods: ["Ctrl", "Shift"] }], descKey: "keymap.shortcut.forward", category: "navigation" },
 	{ id: "previous-variant", primary: [mod("BracketLeft", "Shift")], descKey: "keymap.shortcut.previousVariant", category: "navigation" },
 	{ id: "next-variant", primary: [mod("BracketRight", "Shift")], descKey: "keymap.shortcut.nextVariant", category: "navigation" },
+	// From a task view (Active Tasks or a full-page task) the digit opens the target's
+	// most recent active coordinator when it has one; ⇧ still flips to the board.
 	{
 		id: "switch-project", primary: [], descKey: "keymap.shortcut.switchProject", category: "navigation",
 		remappable: false, fixedReasonKey: "keymap.fixed.digitFamily",

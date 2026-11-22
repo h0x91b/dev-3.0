@@ -22,7 +22,7 @@ const keymap = {
 	"keymap.shortcut.forward": "Вперёд",
 	"keymap.shortcut.previousVariant": "Предыдущий живой вариант",
 	"keymap.shortcut.nextVariant": "Следующий живой вариант",
-	"keymap.shortcut.switchProject": "Переключить на проект или пространство 1–9 (сохранить вид)",
+	"keymap.shortcut.switchProject": "Переключить на проект или пространство 1–9 (сохранить вид; из задачи — открыть его координатора)",
 	"keymap.shortcut.switchProjectFlip": "Переключить на проект или пространство 1–9 (сменить вид доска/задача)",
 	"keymap.shortcut.jumpOperations": "Перейти к борду «Операции»",
 	"keymap.shortcut.taskSwitcher": "Циклический выбор активных задач (этот проект)",

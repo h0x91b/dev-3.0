@@ -1,9 +1,10 @@
 import AutoHibernateSuggestions from "./components/AutoHibernateSuggestions";
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
+import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, routeIsTaskView, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { digitTargets, isDigitTargetOnScreen, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
+import { digitCoordinator } from "./utils/coordinatorFinder";
 import { useDigitSpacesFile } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
@@ -1068,9 +1069,7 @@ function App() {
 		(projectId: string, spaceId?: string) => {
 			const route = state.route;
 			const taskOpenMode = getTaskOpenMode();
-			const inTaskView =
-				route.screen === "task" ||
-				(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+			const inTaskView = routeIsTaskView(route);
 			navigate(
 				inTaskView && taskOpenMode === "split"
 					? { screen: "project", projectId, ...(spaceId ? { spaceId } : {}), taskView: true }
@@ -1234,16 +1233,46 @@ function App() {
 		},
 		[navigate, state.route, state.projects, goToProjectView],
 	);
-	const goToProjectIndex = useCallback(
-		(n: number, view: "project" | "task" | "preserve") => {
-			const target = digitTargetList[n - 1];
-			if (!target) return; // out of range — no-op
+	// From a task view (Active Tasks or a full-page task) the digit opens the target's
+	// most recent coordinator; with none, it falls through to the board as before.
+	// The token drops a lookup a later digit press has already overtaken.
+	const digitJumpRef = useRef(0);
+	const goToProjectBoardIndex = useCallback(
+		(target: MixedEntry, view: "project" | "task" | "preserve") => {
 			if (view === "preserve" && isDigitTargetOnScreen(target, state.route)) return;
 			const { projectId, spaceId } = digitTargetBoard(target);
 			if (view === "preserve") navigateToProject(projectId, spaceId);
 			else goToProjectView(projectId, view, spaceId);
 		},
-		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView, state.route],
+		[digitTargetBoard, navigateToProject, goToProjectView, state.route],
+	);
+	const goToProjectIndex = useCallback(
+		(n: number, view: "project" | "task" | "preserve") => {
+			const target = digitTargetList[n - 1];
+			if (!target) return; // out of range — no-op
+			const token = ++digitJumpRef.current;
+			if (view !== "preserve" || !routeIsTaskView(state.route)) return goToProjectBoardIndex(target, view);
+			const projectIds = target.kind === "project" ? [target.project.id] : target.projects.map((p) => p.id);
+			const currentTaskId = routeTaskId(state.route);
+			const mru = state.taskMru;
+			const loadTasks = async (projectId: string): Promise<Task[]> => {
+				try {
+					return await api.request.getTasks({ projectId });
+				} catch {
+					return []; // an unreadable board just has no coordinator to offer
+				}
+			};
+			void Promise.all(projectIds.map(loadTasks)).then((lists) => {
+				if (token !== digitJumpRef.current) return;
+				const coordinator = digitCoordinator(lists.flat(), projectIds, currentTaskId, mru);
+				if (!coordinator) return goToProjectBoardIndex(target, view);
+				if (coordinator.id === currentTaskId) return;
+				const route = taskOpenRoute(coordinator.id, coordinator.projectId, getTaskOpenMode(), false);
+				const spaceId = target.kind === "space" ? target.space.id : undefined;
+				navigate(spaceId && (route.screen === "task" || route.screen === "project") ? { ...route, spaceId } : route, { inheritSpace: false });
+			});
+		},
+		[digitTargetList, goToProjectBoardIndex, navigate, state.route, state.taskMru],
 	);
 	const armGoToVerb = useCallback(() => {
 		goToModeRef.current = { stage: "verb" };
@@ -1690,9 +1719,7 @@ function App() {
 					e.preventDefault();
 					e.stopPropagation();
 					const { route } = state;
-					const inTaskView =
-						route.screen === "task" ||
-						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+					const inTaskView = routeIsTaskView(route);
 					const { projectId, spaceId } = digitTargetBoard(target);
 					navigate(
 						{
