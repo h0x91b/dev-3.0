@@ -49,9 +49,28 @@ describe("resolveOriginalStatusLine", () => {
 		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo local" });
 	});
 
-	it("skips a statusLine that points back at dev3 statusline (recursion guard)", () => {
-		writeSettings(home, { type: "command", command: '"/Users/x/.dev3.0/bin/dev3" statusline' });
+	it.each([
+		'"/Users/x/.dev3.0/bin/dev3" statusline',
+		"dev3 statusline",
+		"~/.dev3.0/bin/dev3 statusline | cat",
+		"exec dev3 statusline agy",
+		'"C:\\Users\\x\\.dev3.0\\bin\\dev3" statusline',
+		"dev3.cmd statusline",
+	])("skips a statusLine that points back at dev3 statusline (recursion guard): %s", (command) => {
+		writeSettings(home, { type: "command", command });
 		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
+	});
+
+	it.each([
+		"~/.dev3.0/bin/my-statusline.sh",
+		"bash /Users/x/.dev3.0/statusline.sh",
+		"~/scripts/dev3-statusline.sh",
+		"node ~/dev3/tools/statusline.js",
+		"mydev3 statusline",
+		"dev3 statusline-custom.sh",
+	])("keeps a user statusLine that only mentions dev3 and statusline: %s", (command) => {
+		writeSettings(home, { type: "command", command });
+		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command });
 	});
 
 	it("skips corrupt settings files and falls through to the next level", () => {

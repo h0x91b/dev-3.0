@@ -36,6 +36,10 @@ export const CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude-c
 
 const SAFE_ACCOUNT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+/** A `dev3` binary token (bare or at the end of a path, optionally quoted) followed by the
+ *  `statusline` subcommand — so `~/.dev3.0/bin/my-statusline.sh` is NOT mistaken for us. */
+const DEV3_STATUSLINE_INVOCATION = /(?:^|[\s/\\"'])dev3(?:\.exe|\.cmd)?["']?\s+statusline(?![\w.-])/;
+
 /** Max time the user's original statusLine command may take before we drop it. */
 const ORIGINAL_STATUSLINE_TIMEOUT_MS = 2000;
 
@@ -79,7 +83,7 @@ export function resolveOriginalStatusLine(
 		if (!found) continue;
 		// Recursion guard: if someone pointed their own statusLine at us, do not
 		// spawn ourselves forever.
-		if (found.command.includes("dev3") && found.command.includes("statusline")) continue;
+		if (DEV3_STATUSLINE_INVOCATION.test(found.command)) continue;
 		return found;
 	}
 	return null;
