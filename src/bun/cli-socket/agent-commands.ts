@@ -218,6 +218,20 @@ export const agentHandlers: Record<string, Handler> = {
 			return task;
 		}
 		recordTaskActivity(task.id);
+		// The prompt gate first: agy's PostToolUse branch below may return before the card logic.
+		const hookPane = typeof params.paneId === "string" && params.paneId ? params.paneId : null;
+		agentPromptLedger.applyStatusHookGate({
+			taskId: task.id,
+			// With no session id, one pane's events must not close another pane's prompt.
+			sessionId: sessionId ?? (hookPane ? `pane:${hookPane}` : "unknown"),
+			event,
+			harness,
+			paneId: hookPane,
+			toolName: typeof params.toolName === "string" ? params.toolName : undefined,
+			toolUseId: typeof params.toolUseId === "string" ? params.toolUseId : undefined,
+			promptEnd: params.promptEnd === true,
+			heartbeat: params.heartbeat === true,
+		});
 		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
 		const agyWaitKey = sessionId ?? (typeof params.paneId === "string" ? params.paneId : "unknown");
 		if (harness === "agy" && event === "PermissionRequest" && resumeKey && task.status === "user-questions"
@@ -262,7 +276,7 @@ export const agentHandlers: Record<string, Handler> = {
 			event,
 			status: task.status === "user-questions" ? rememberedResumeStatus ?? task.status : task.status,
 			harness,
-			paneId: typeof params.paneId === "string" && params.paneId ? params.paneId : null,
+			paneId: hookPane,
 			toolName: typeof params.toolName === "string" ? params.toolName : undefined,
 			toolUseId: typeof params.toolUseId === "string" ? params.toolUseId : undefined,
 			questionIds: Array.isArray(params.questionIds) ? params.questionIds.filter((id): id is string => typeof id === "string") : undefined,

@@ -49,6 +49,20 @@ describe("Claude prompt hooks → what the message hold does", () => {
 		expect(agentMessageHeldBehindPrompt(KEY)).toBe(false);
 	});
 
+	it("a failed call stops a later menu of its tool from waiting on it, and moves nothing", async () => {
+		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
+		const failure = claudePromptHookHandlers["task.claudePostToolUseFailure"]!;
+		await preTool({ taskId: "task-1", sessionId: "s1", toolName: "Bash", toolUseId: "toolu_failed", paneId: "%3" });
+		await preTool({ taskId: "task-1", sessionId: "s1", toolName: "Bash", toolUseId: "toolu_ok", paneId: "%3" });
+		await permission({ taskId: "task-1", sessionId: "s1", toolName: "Bash", paneId: "%3" });
+		await postTool({ taskId: "task-1", sessionId: "s1", toolName: "Bash", toolUseId: "toolu_ok" });
+		move.mockClear();
+		await expect(failure({ taskId: "task-1", sessionId: "s1", toolName: "Bash", toolUseId: "toolu_failed" })).resolves.toEqual({});
+		expect(move).not.toHaveBeenCalled();
+		holdOne();
+		expect(agentMessageHeldBehindPrompt(KEY)).toBe(false);
+	});
+
 	it("an AskUserQuestion PreToolUse alone holds messages", async () => {
 		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
 		await preTool({ taskId: "task-1", sessionId: "s1", toolName: "AskUserQuestion", toolUseId: "toolu_q", paneId: "%3" });

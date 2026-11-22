@@ -48,7 +48,7 @@ export function ompStatusHookCli(lookup: Dev3CliLookup = {}): string {
  * | `tool_execution_start`    | `PreToolUse`       |
  * | `tool_execution_end`      | `PostToolUse`      |
  * | `tool_approval_requested` | `PermissionRequest`|
- * | `tool_approval_resolved`  | `PostToolUse`      |
+ * | `tool_approval_resolved`  | `PostToolUse` + `promptEnd` |
  * | `agent_end`               | `Stop`             |
  */
 const OMP_WIRING = `	// A session belongs to the agent whose runner loaded this module; an approval
@@ -75,7 +75,7 @@ const OMP_WIRING = `	// A session belongs to the agent whose runner loaded this 
 		if (ownSession(event, ctx)) reportIdle(ctx, "PermissionRequest");
 	});
 	pi.on("tool_approval_resolved", (event: { sessionId?: string }, ctx: Ctx) => {
-		if (ownSession(event, ctx)) reportWorking(ctx, "PostToolUse");
+		if (ownSession(event, ctx)) reportWorking(ctx, "PostToolUse", { promptEnd: true });
 	});
 	// An agent_end that omp will follow with its own retry is not a settle.
 	pi.on("agent_end", (event: { willContinue?: boolean }, ctx: Ctx) => {

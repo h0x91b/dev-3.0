@@ -57,7 +57,7 @@ const WORKING_REFRESH_MS = 10_000;
 const HOOK_TIMEOUT_MS = 8_000;
 
 type Ctx = { cwd?: string; sessionManager?: { getSessionId?: () => string } };
-type Payload = { event: string; sessionId?: string; prompt?: string; submissionId?: string };
+type Payload = { event: string; sessionId?: string; prompt?: string; submissionId?: string; promptEnd?: boolean };
 
 export default function dev3StatusHooks(pi: any): void {
 	// Only a pane dev3 launched carries DEV3_TASK_ID; anywhere else this module is inert.

@@ -16,6 +16,12 @@
  *    prompt waits for EVERY call of that tool still in flight for the same agent: with
  *    parallel calls dev3 cannot tell which one asked, and closing late is safe while
  *    closing early types into the menu. A later tool call never closes a prompt.
+ *  - The other harnesses feed the same rules through the status hook: Codex
+ *    `PermissionRequest`, Copilot `ask_user`, omp `tool_approval_requested`, pi
+ *    `ui_prompt_start`, agy's approval wait. A prompt with no call to wait for closes on
+ *    the PostToolUse of its tool, on the harness's own end-of-prompt marker (omp, pi), or
+ *    on any PostToolUse (agy, whose statusLine names no tool); and always on the session's
+ *    UserPromptSubmit, Stop, Interrupt, SessionStart or SessionEnd.
  *  - Esc and "No" on a Claude prompt fire no hook. Such an entry stays open until the
  *    session's next event or the user's "send now" — held late, never typed into a menu.
  *  - In memory, like the hold. A restart forgets every open prompt.
@@ -28,10 +34,13 @@ import type { TaskStatus } from "../shared/types";
 /** Every harness that reports prompt events through hooks. */
 export type PromptHarness = PromptSubmitHarness;
 
+/** What ends a prompt besides its session returning: see the module rules. */
+type PromptEnd = "calls" | "tool" | "marker" | "any";
+
 interface OpenPrompt {
 	id: string;
 	sessionId: string;
-	toolName: string;
+	toolName: string | null;
 	harness: PromptHarness;
 	paneId: string | null;
 	/** Claude's `agent_id`: set when a subagent or teammate raised it. */
@@ -43,6 +52,7 @@ interface OpenPrompt {
 	 * no PreToolUse announced: the next PostToolUse of its tool closes it.
 	 */
 	waitingFor: Set<string>;
+	endsOn: PromptEnd;
 	openedAt: number;
 }
 
@@ -52,7 +62,7 @@ interface TaskPrompts {
 	queued: Map<string, Map<string, string[]>>;
 	/** Set while the status-hook path has something pending: the lane to return to. */
 	resumeStatus: "in-progress" | "review-by-ai" | null;
-	/** Claude calls between PreToolUse and PostToolUse, per session and agent: id → tool. */
+	/** Calls between PreToolUse and PostToolUse, per session and agent: id → tool. */
 	inFlight: Map<string, Map<string, string>>;
 }
 
@@ -69,6 +79,22 @@ export interface StatusHookPromptInput {
 	answeredQuestionId?: string;
 }
 
+/** One status-hook event as the prompt gate reads it. */
+export interface StatusHookGateInput {
+	taskId: string;
+	/** Session-less hooks pass a per-pane key: one pane's events never close another's prompt. */
+	sessionId: string;
+	event: AgentStatusHookEvent;
+	harness: PromptHarness;
+	paneId?: string | null;
+	toolName?: string;
+	toolUseId?: string;
+	/** The harness says this PostToolUse ends its prompt, not a tool (omp, pi). */
+	promptEnd?: boolean;
+	/** agy's "still waiting" refresh: never a second prompt. */
+	heartbeat?: boolean;
+}
+
 export interface ClaudeToolInput {
 	taskId: string;
 	sessionId: string;
@@ -77,6 +103,23 @@ export interface ClaudeToolInput {
 	paneId?: string | null;
 	agentId?: string | null;
 }
+
+/** One tool-hook event of any harness, as the shared prompt rules read it. */
+interface ToolCall {
+	harness: PromptHarness;
+	taskId: string;
+	sessionId: string;
+	toolName: string | null;
+	toolUseId?: string;
+	paneId?: string | null;
+	agentId?: string | null;
+}
+
+/** Harnesses that mark the PostToolUse ending a prompt (`promptEnd`), so no other one closes it. */
+const PROMPT_END_MARKER_HARNESSES: ReadonlySet<PromptHarness> = new Set(["omp", "pi"]);
+
+/** Events after which the session's input box is back: no prompt of it can be up. */
+const SESSION_RETURN_EVENTS: ReadonlySet<AgentStatusHookEvent> = new Set(["UserPromptSubmit", "Stop", "Interrupt", "SessionStart", "SessionEnd"]);
 
 /** Told once per pane whose LAST open prompt just closed. */
 export type PromptClosedListener = (taskId: string, paneId: string) => void;
@@ -141,7 +184,10 @@ export class AgentPromptLedger {
 			task ??= this.createTask(taskId);
 			task.resumeStatus ??= status === "review-by-ai" ? status : "in-progress";
 		}
-		if (!task || task.resumeStatus === null) return { pending: false };
+		if (!task || task.resumeStatus === null) {
+			if (task) this.dropIfEmpty(taskId, task);
+			return { pending: false };
+		}
 
 		const callId = input.toolUseId ?? "unknown";
 		const closed = new Set<string>();
@@ -155,6 +201,7 @@ export class AgentPromptLedger {
 				agentId: null,
 				statusTracked: true,
 				waitingFor: new Set(),
+				endsOn: "tool",
 				openedAt: Date.now(),
 			});
 		}
@@ -185,59 +232,42 @@ export class AgentPromptLedger {
 		return { pending: false, resumeStatus };
 	}
 
+	/**
+	 * The prompt-gate half of a status hook (Codex, Copilot, omp, pi, agy). Separate from
+	 * {@link applyStatusHook}, which owns the card's question status and its own keys.
+	 */
+	applyStatusHookGate(input: StatusHookGateInput): void {
+		const toolName = input.toolName?.replace(/^functions\./, "") ?? null;
+		const call: ToolCall = { harness: input.harness, taskId: input.taskId, sessionId: input.sessionId, toolName, toolUseId: input.toolUseId, paneId: input.paneId };
+		if (input.event === "PreToolUse") this.callStarted(call);
+		else if (input.event === "PermissionRequest") this.promptRequested(call, input.heartbeat === true);
+		else if (input.event === "PostToolUse") this.callEnded(call, input.promptEnd === true);
+		else if (SESSION_RETURN_EVENTS.has(input.event)) this.sessionReturned(input.taskId, input.sessionId, input.harness);
+	}
+
 	/** Claude's PreToolUse: the call is in flight, and an AskUserQuestion opens a picker. */
 	claudePreToolUse(input: ClaudeToolInput): void {
-		if (!input.toolUseId) return;
-		const task = this.tasks.get(input.taskId) ?? this.createTask(input.taskId);
-		const key = agentKey(input.sessionId, input.agentId);
-		const calls = task.inFlight.get(key) ?? new Map<string, string>();
-		calls.set(input.toolUseId, input.toolName);
-		task.inFlight.set(key, calls);
-		if (input.toolName === CLAUDE_ASK_USER_TOOL) this.openClaude(task, input, input.toolUseId, new Set([input.toolUseId]));
+		const call = { ...input, harness: "claude" as const };
+		this.callStarted(call);
+		if (input.toolUseId && input.toolName === CLAUDE_ASK_USER_TOOL) {
+			const task = this.tasks.get(input.taskId) ?? this.createTask(input.taskId);
+			this.openPrompt(task, call, input.toolUseId, new Set([input.toolUseId]));
+		}
 	}
 
 	/** Claude's PermissionRequest: a permission menu, plan approval or question picker is up. */
 	claudePermissionRequest(input: ClaudeToolInput): void {
-		const task = this.tasks.get(input.taskId) ?? this.createTask(input.taskId);
-		const calls = task.inFlight.get(agentKey(input.sessionId, input.agentId));
-		const candidates = new Set([...(calls ?? [])].filter(([, tool]) => tool === input.toolName).map(([id]) => id));
-		// The AskUserQuestion picker its PreToolUse already opened is this same prompt.
-		for (const prompt of task.open.values()) {
-			if (candidates.size > 0 && [...candidates].every((id) => prompt.waitingFor.has(id))) return;
-		}
-		const id = candidates.size === 1 ? [...candidates][0]! : `permission:${input.toolName}:${++this.permissionSeq}`;
-		this.openClaude(task, input, id, candidates);
+		this.promptRequested({ ...input, harness: "claude" });
 	}
 
 	/** Claude's PostToolUse: that call finished, and every prompt waiting only on it is answered. */
 	claudePostToolUse(input: ClaudeToolInput): void {
-		const task = this.tasks.get(input.taskId);
-		if (!task) return;
-		const key = agentKey(input.sessionId, input.agentId);
-		const calls = task.inFlight.get(key);
-		if (input.toolUseId) calls?.delete(input.toolUseId);
-		if (calls?.size === 0) task.inFlight.delete(key);
-		const agentId = input.agentId ?? null;
-		const closed = new Set<string>();
-		this.takeWhere(task, (p) => {
-			if (p.harness !== "claude" || p.sessionId !== input.sessionId || p.agentId !== agentId) return false;
-			if (p.waitingFor.size === 0) return p.toolName === input.toolName;
-			if (input.toolUseId) p.waitingFor.delete(input.toolUseId);
-			return p.waitingFor.size === 0;
-		}, closed);
-		this.announce(input.taskId, closed);
-		this.dropIfEmpty(input.taskId, task);
+		this.callEnded({ ...input, harness: "claude" }, false);
 	}
 
 	/** UserPromptSubmit, Stop or SessionEnd of a Claude session: its input box is back. */
 	claudeSessionReturned(taskId: string, sessionId: string): void {
-		const task = this.tasks.get(taskId);
-		if (!task) return;
-		const closed = new Set<string>();
-		this.takeWhere(task, (p) => p.harness === "claude" && p.sessionId === sessionId, closed);
-		for (const key of [...task.inFlight.keys()]) if (key.startsWith(`${sessionId}\u0000`)) task.inFlight.delete(key);
-		this.announce(taskId, closed);
-		this.dropIfEmpty(taskId, task);
+		this.sessionReturned(taskId, sessionId, "claude");
 	}
 
 	/**
@@ -270,24 +300,97 @@ export class AgentPromptLedger {
 		this.queues.clear();
 	}
 
+	private callStarted(call: ToolCall): void {
+		if (!call.toolUseId || !call.toolName) return;
+		const task = this.tasks.get(call.taskId) ?? this.createTask(call.taskId);
+		const key = agentKey(call.sessionId, call.agentId);
+		const calls = task.inFlight.get(key) ?? new Map<string, string>();
+		calls.set(call.toolUseId, call.toolName);
+		task.inFlight.set(key, calls);
+	}
+
+	/**
+	 * A prompt is up. It waits for the call that names itself, else for every in-flight
+	 * call of its tool: dev3 cannot tell which of several parallel ones asked. A named
+	 * call dev3 never saw start still counts, so its own end is what closes the prompt.
+	 */
+	private promptRequested(call: ToolCall, heartbeat = false): void {
+		const task = this.tasks.get(call.taskId) ?? this.createTask(call.taskId);
+		const agentId = call.agentId ?? null;
+		if (heartbeat && [...task.open.values()].some((p) => !p.statusTracked && p.harness === call.harness && p.sessionId === call.sessionId && p.agentId === agentId)) return;
+		const calls = task.inFlight.get(agentKey(call.sessionId, call.agentId));
+		const candidates = call.toolUseId && calls?.has(call.toolUseId)
+			? new Set([call.toolUseId])
+			: new Set([...(calls ?? [])].filter(([, tool]) => call.toolName !== null && tool === call.toolName).map(([id]) => id));
+		if (call.toolUseId) candidates.add(call.toolUseId);
+		// The AskUserQuestion picker its PreToolUse already opened is this same prompt.
+		for (const prompt of task.open.values()) {
+			if (candidates.size > 0 && [...candidates].every((id) => prompt.waitingFor.has(id))) return;
+		}
+		const id = candidates.size === 1 ? [...candidates][0]! : `permission:${call.toolName ?? "prompt"}:${++this.permissionSeq}`;
+		this.openPrompt(task, call, id, candidates);
+	}
+
+	private callEnded(call: ToolCall, promptEnd: boolean): void {
+		const task = this.tasks.get(call.taskId);
+		if (!task) return;
+		const key = agentKey(call.sessionId, call.agentId);
+		const calls = task.inFlight.get(key);
+		if (call.toolUseId) calls?.delete(call.toolUseId);
+		if (calls?.size === 0) task.inFlight.delete(key);
+		const agentId = call.agentId ?? null;
+		const ours = (p: OpenPrompt) => !p.statusTracked && p.harness === call.harness && p.sessionId === call.sessionId && p.agentId === agentId;
+		// One end mark answers one approval: stacked ones each get their own.
+		const marked = promptEnd ? [...task.open.values()].filter((p) => ours(p) && p.endsOn === "marker").sort((x, y) => x.openedAt - y.openedAt)[0] : undefined;
+		const closed = new Set<string>();
+		this.takeWhere(task, (p) => {
+			if (!ours(p)) return false;
+			switch (p.endsOn) {
+				case "calls":
+					if (call.toolUseId) p.waitingFor.delete(call.toolUseId);
+					return p.waitingFor.size === 0;
+				case "tool": return p.toolName === call.toolName;
+				case "marker": return p === marked;
+				case "any": return true;
+			}
+		}, closed);
+		this.announce(call.taskId, closed);
+		this.dropIfEmpty(call.taskId, task);
+	}
+
+	private sessionReturned(taskId: string, sessionId: string, harness: PromptHarness): void {
+		const task = this.tasks.get(taskId);
+		if (!task) return;
+		const closed = new Set<string>();
+		this.takeWhere(task, (p) => !p.statusTracked && p.harness === harness && p.sessionId === sessionId, closed);
+		for (const key of [...task.inFlight.keys()]) if (key.startsWith(`${sessionId}\u0000`)) task.inFlight.delete(key);
+		this.announce(taskId, closed);
+		this.dropIfEmpty(taskId, task);
+	}
+
 	private createTask(taskId: string): TaskPrompts {
 		const task: TaskPrompts = { open: new Map(), queued: new Map(), resumeStatus: null, inFlight: new Map() };
 		this.tasks.set(taskId, task);
 		return task;
 	}
 
-	private openClaude(task: TaskPrompts, input: ClaudeToolInput, promptId: string, waitingFor: Set<string>): void {
-		const key = entryKey(input.sessionId, promptId);
+	private openPrompt(task: TaskPrompts, call: ToolCall, promptId: string, waitingFor: Set<string>): void {
+		const key = entryKey(call.sessionId, promptId);
 		if (task.open.has(key)) return;
+		const endsOn: PromptEnd = waitingFor.size > 0 ? "calls"
+			: call.toolName ? "tool"
+			: PROMPT_END_MARKER_HARNESSES.has(call.harness) ? "marker"
+			: "any";
 		task.open.set(key, {
 			id: promptId,
-			sessionId: input.sessionId,
-			toolName: input.toolName,
-			harness: "claude",
-			paneId: input.paneId ?? null,
-			agentId: input.agentId ?? null,
+			sessionId: call.sessionId,
+			toolName: call.toolName,
+			harness: call.harness,
+			paneId: call.paneId ?? null,
+			agentId: call.agentId ?? null,
 			statusTracked: false,
 			waitingFor,
+			endsOn,
 			openedAt: Date.now(),
 		});
 	}

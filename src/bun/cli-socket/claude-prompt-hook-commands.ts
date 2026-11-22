@@ -76,6 +76,14 @@ export const claudePromptHookHandlers: Record<string, Handler> = {
 	 * Claude's PermissionRequest: a permission menu, plan approval or question picker
 	 * is on screen. Nothing may be typed into that pane until it is answered.
 	 */
+	/** Claude's PostToolUseFailure: the call is over. Only the ledger hears it; nothing moves. */
+	"task.claudePostToolUseFailure": async (params) => {
+		await updateLedger(params, "PostToolUseFailure", (taskId) => {
+			const input = claudeToolInput(taskId, params);
+			if (input?.toolUseId) agentPromptLedger.claudePostToolUse(input);
+		});
+		return {};
+	},
 	"task.claudePermissionRequest": async (params, ctx) => {
 		await updateLedger(params, "PermissionRequest", (taskId) => {
 			const input = claudeToolInput(taskId, params);

@@ -33,7 +33,7 @@ export function piStatusExtensionPath(dev3Home?: string): string {
  * | `tool_execution_start` | `PreToolUse`                        |
  * | `tool_execution_end`   | `PostToolUse`                       |
  * | `ui_prompt_start`      | `PermissionRequest`                 |
- * | `ui_prompt_end`        | `PostToolUse` mid-run, else `Stop`  |
+ * | `ui_prompt_end`        | `PostToolUse` + `promptEnd` mid-run, else `Stop` |
  * | `agent_settled`        | `Stop`                              |
  */
 const PI_WIRING = `	// Whether a run is under way, so a prompt answered while pi is idle settles
@@ -59,7 +59,7 @@ const PI_WIRING = `	// Whether a run is under way, so a prompt answered while pi
 	pi.on("tool_execution_end", (_event: unknown, ctx: Ctx) => reportWorking(ctx, "PostToolUse"));
 	pi.on("ui_prompt_start", (_event: unknown, ctx: Ctx) => reportIdle(ctx, "PermissionRequest"));
 	pi.on("ui_prompt_end", (_event: unknown, ctx: Ctx) => {
-		if (running) reportWorking(ctx, "PostToolUse");
+		if (running) reportWorking(ctx, "PostToolUse", { promptEnd: true });
 		else reportIdle(ctx, "Stop");
 	});
 	pi.on("agent_settled", (_event: unknown, ctx: Ctx) => {
