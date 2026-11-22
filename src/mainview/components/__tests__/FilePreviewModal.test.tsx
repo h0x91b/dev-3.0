@@ -6,6 +6,7 @@ import { I18nProvider } from "../../i18n";
 import { installImmediateIntersectionObserver } from "../../test-utils/immediate-intersection";
 import type { FilePreviewResult } from "../../../shared/types";
 import { FIRST_FRAME_TIME } from "../../utils/video-first-frame";
+import { installFileViewerBuiltins } from "../../file-viewers/__tests__/install-builtins";
 
 const readFilePreview = vi.fn<(params: { path: string }) => Promise<FilePreviewResult>>();
 const getFileMediaUrl = vi.fn(async ({ path }: { path: string }) => ({ url: `/file/tok${path}`, path: `/file/tok${path}` }));
@@ -62,6 +63,8 @@ vi.mock("../../utils/clipboard-write", () => ({ writeClipboardText }));
 import { api } from "../../rpc";
 
 installImmediateIntersectionObserver();
+// The bodies come from the fileViewers slot, as in the app.
+beforeEach(installFileViewerBuiltins);
 
 function renderModal(path = "/wt/docs/guide.md", line?: number, onClose = vi.fn()) {
 	return {

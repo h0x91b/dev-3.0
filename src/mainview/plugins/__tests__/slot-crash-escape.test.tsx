@@ -60,6 +60,9 @@ import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
 import GoToPalette from "../../components/GoToPalette";
 import { BUILTIN_GO_TO_SOURCES_PLUGIN } from "../../go-to-sources/builtins";
+import FilePreviewModal from "../../components/FilePreviewModal";
+import { BUILTIN_FILE_VIEWERS_PLUGIN } from "../../file-viewers/builtins";
+import { resetFileViewerFailuresForTests } from "../../file-viewers/registry";
 
 vi.mock("../../rpc", () => ({
 	isElectrobun: false,
@@ -79,6 +82,8 @@ vi.mock("../../rpc", () => ({
 			getAvailableApps: vi.fn().mockResolvedValue([{ id: "finder", name: "Finder", macAppName: "Finder" }, { id: "my-editor", name: "My Editor", macAppName: "My Editor" }]),
 			openInApp: vi.fn(),
 			listExplorerDirectory: vi.fn(),
+			readFilePreview: vi.fn(),
+			getWindowsHostOpen: vi.fn(),
 			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			updateTipState: vi.fn(),
 			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
@@ -621,6 +626,24 @@ const CASES: CrashCase[] = [
 			expect(screen.getByRole("button", { name: /My Editor/ })).toBeInTheDocument();
 		},
 		logs: "crash:target",
+	})),
+	...(["matches", "component"] as const).map((callback): CrashCase => ({
+		slot: "fileViewers",
+		callback,
+		builtins: [BUILTIN_FILE_VIEWERS_PLUGIN],
+		contribute(ctx) {
+			ctx.fileViewers.register({ id: "crash:viewer", order: 1, matches: callback === "matches" ? boom : () => true, component: Boom });
+		},
+		render() {
+			resetFileViewerFailuresForTests();
+			vi.mocked(api.request.readFilePreview).mockResolvedValue({ kind: "text", content: "alive line", truncated: false, size: 10 });
+			vi.mocked(api.request.getWindowsHostOpen).mockResolvedValue({ available: false } as never);
+			mount(<FilePreviewModal path="/wt/a.ts" onClose={vi.fn()} />);
+		},
+		alive() {
+			expect(screen.getByTestId("file-preview-code")).toHaveTextContent("alive line");
+		},
+		logs: callback === "matches" ? "[fileViewers] matches of file viewer crash:viewer threw" : "fileViewers item crash:viewer crashed",
 	})),
 	{
 		slot: "terminalCompanion",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { useT } from "../i18n";
 import { api, isElectrobun } from "../rpc";
 import { toast } from "../toast";
@@ -14,11 +14,16 @@ import { ReviewAside } from "../review/ReviewAside";
 import { ImageRegionOverlay, regionLabel, type Region } from "../review/ImageRegionOverlay";
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
-import { MarkdownDocument } from "./pr-review/markdown";
-import FilePreviewMedia, { enginePlays } from "./FilePreviewMedia";
-import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
+import { enginePlays } from "./FilePreviewMedia";
+import { isRenderableDocPath } from "./pr-review/markdown-files";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
-import { useSyntaxLines, type SyntaxToken } from "./file-preview-syntax";
+import { useSyntaxLines } from "./file-preview-syntax";
+import type { Context } from "cordis";
+import { getFileViewerRegistry, viewerMatches, type FileViewerItem, type FileViewerMatch, type FileViewerProps } from "../file-viewers/registry";
+import { BUILTIN_FILE_VIEWERS } from "../file-viewers/builtins";
+import { CordisContext } from "../plugins/react";
+import { SlotErrorBoundary } from "../plugins/SlotHost";
+import { isBuiltinItem } from "../plugins/SlotItems";
 import { PopupBlockedError, downloadFile, errorText, openFileInNewTab, opensInBrowserTab, opensSafelyOnWindows, windowsHostOpenAvailable } from "../file-open-browser";
 // Token colours for both themes — the diff viewer's own stylesheet, scoped to its wrapper class.
 import "@git-diff-view/react/styles/diff-view-pure.css";
@@ -115,6 +120,51 @@ const ICON_FONT = "'JetBrainsMono Nerd Font Mono'";
 const GHOST_BUTTON =
 	"px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover " +
 	"transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
+
+function ViewerCrashed({ children }: { children: ReactNode }) {
+	return <div role="alert" className="mb-3 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{children}</div>;
+}
+
+/** A registered viewer, or a built-in drawn directly while the built-ins have not registered yet. */
+interface ViewerChoice { def: FileViewerItem; ctx: Context | null }
+
+function RenderViewer({ entry, props }: { entry: ViewerChoice; props: FileViewerProps }) {
+	const Viewer = entry.def.component;
+	return (
+		<CordisContext.Provider value={entry.ctx}>
+			<Viewer {...props} />
+		</CordisContext.Provider>
+	);
+}
+
+function coldStartViewer(match: FileViewerMatch): ViewerChoice | undefined {
+	const def = BUILTIN_FILE_VIEWERS.find((item) => item.matches(match));
+	return def && { def, ctx: null };
+}
+
+/**
+ * A crashed viewer leaves a notice and, when it was an extension's, the built-in for
+ * the same file in its place. Remounted per file, so the next file retries it.
+ */
+function FileViewerSlot({ viewer, builtin, props }: { viewer: ViewerChoice; builtin: ViewerChoice | undefined; props: FileViewerProps }) {
+	const t = useT();
+	const notice = <ViewerCrashed>{t("terminal.filePreviewViewerCrashed")}</ViewerCrashed>;
+	const fallback = () => (
+		<>
+			{notice}
+			{builtin && builtin !== viewer && (
+				<SlotErrorBoundary slot="fileViewers" resetKey={builtin.def.id} fallback={() => null}>
+					<RenderViewer entry={builtin} props={props} />
+				</SlotErrorBoundary>
+			)}
+		</>
+	);
+	return (
+		<SlotErrorBoundary slot="fileViewers" resetKey={viewer.def.id} fallback={fallback}>
+			<RenderViewer entry={viewer} props={props} />
+		</SlotErrorBoundary>
+	);
+}
 
 /**
  * In-app preview for a file path Cmd/Ctrl+Clicked in terminal output. Browser
@@ -235,6 +285,17 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		: anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}–${anchor.endLine}`;
 	const showAside = canComment && (pending !== null || pendingRegion !== null || fileComments.length > 0 || commentMode);
 	const theme = useResolvedTheme();
+	// Matchers run when the preview, the Raw toggle or the slot changes, never per render.
+	const viewerRegistry = getFileViewerRegistry();
+	const viewerEntries = useSyncExternalStore(viewerRegistry.subscribe, viewerRegistry.list);
+	const { viewer, builtinViewer } = useMemo(() => {
+		if (!preview) return { viewer: undefined, builtinViewer: undefined };
+		const match = { preview, path, showRaw };
+		const matching: ViewerChoice[] = viewerEntries.filter((entry) => viewerMatches(entry.def, match));
+		const builtin: ViewerChoice | undefined = matching.find((entry) => isBuiltinItem(entry.def.id))
+			?? (viewerEntries.some((entry) => isBuiltinItem(entry.def.id)) ? undefined : coldStartViewer(match));
+		return { viewer: matching[0] ?? builtin, builtinViewer: builtin };
+	}, [viewerEntries, preview, path, showRaw]);
 	const syntaxLines = useSyntaxLines(
 		preview?.kind === "text" ? preview.content : null,
 		path,
@@ -243,7 +304,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	// Re-search whenever the body is replaced: the async load landing, and the
 	// raw/rendered toggle, both swap the text the ranges point into.
 	const find = useFindInElement(bodyRef, {
-		contentKey: `${preview?.kind ?? "loading"}:${showRaw}:${wrapLines}:${syntaxLines ? "syntax" : "plain"}`,
+		contentKey: `${preview?.kind ?? "loading"}:${viewer?.def.id ?? ""}:${showRaw}:${wrapLines}:${syntaxLines ? "syntax" : "plain"}`,
 		onOpen: focusFindInput,
 	});
 
@@ -300,49 +361,35 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	const dirName = slash > 0 ? path.slice(0, slash) : "";
 	const showsCode = textContent !== null && (!isRenderable || showRaw);
 
-	function renderTokens(tokens: SyntaxToken[]) {
-		return tokens.map((token, i) => (token.className ? <span key={i} className={token.className}>{token.text}</span> : token.text));
+	const onImageLoad = useCallback((w: number, h: number) => {
+		setImageDims({ w, h });
+		measureImage();
+	}, [measureImage]);
+
+	function renderViewer(loaded: FilePreviewResult) {
+		if (!viewer) return null;
+		const props: FileViewerProps = {
+			preview: loaded,
+			path,
+			showRaw,
+			fileName,
+			dirName,
+			line,
+			targetLineRef: highlightRef,
+			wrapLines,
+			expanded,
+			syntaxLines,
+			theme,
+			commentedLines,
+			imageRef: imgRef,
+			onImageLoad,
+			onMediaUnplayable: markMediaUnplayable,
+		};
+		return <FileViewerSlot key={path} viewer={viewer} builtin={builtinViewer} props={props} />;
 	}
 
-	function renderCode(content: string) {
-		const lines = content.split("\n");
-		// The span is border-box, so its `pr-3` has to be added on top of the digits.
-		const gutterWidth = `calc(${String(lines.length).length}ch + 0.75rem)`;
-		return (
-			<div
-				className={`font-mono text-xs leading-relaxed${syntaxLines ? " diff-tailwindcss-wrapper" : ""}`}
-				data-testid="file-preview-code"
-				data-wrap={wrapLines ? "true" : "false"}
-				data-syntax={syntaxLines ? "true" : "false"}
-				data-theme={syntaxLines ? theme : undefined}
-			>
-				{lines.map((text, i) => {
-					const isTarget = line !== undefined && i + 1 === line;
-					const commented = commentedLines.has(i + 1);
-					return (
-						<div
-							key={i}
-							ref={isTarget ? highlightRef : undefined}
-							data-preview-line={i + 1}
-							data-commented={commented ? "true" : undefined}
-							className={`flex ${isTarget ? "bg-accent/10" : ""} ${commented ? "border-l-2 border-accent bg-accent/5 -ml-0.5" : ""}`}
-						>
-							<span
-								className="shrink-0 pr-3 text-right tabular-nums text-fg-muted select-none"
-								style={{ minWidth: gutterWidth }}
-							>
-								{i + 1}
-							</span>
-							<span className={`${wrapLines ? "min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre"} text-fg${syntaxLines ? " diff-line-syntax-raw" : ""}`}>
-								{syntaxLines?.has(i + 1) ? renderTokens(syntaxLines.get(i + 1)!) : text}
-							</span>
-						</div>
-					);
-				})}
-			</div>
-		);
-	}
-
+	// The host draws the frame a review comment anchors to — the selectable text
+	// body, the image with its region overlay — and the viewer only its content.
 	function renderBody() {
 		if (!preview) {
 			return <p className="text-fg-3 text-sm p-6">{t("terminal.filePreviewLoading")}</p>;
@@ -364,15 +411,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 								<span>{t("terminal.filePreviewCommentSelection")}</span>
 							</button>
 						)}
-						{isRenderable && !showRaw ? (
-							<MarkdownDocument
-								body={toRenderableMarkdown(preview.content, path)}
-								className="dev3-file-preview-md"
-								imageBaseDir={dirName || null}
-							/>
-						) : (
-							renderCode(preview.content)
-						)}
+						{renderViewer(preview)}
 						{preview.truncated && (
 							<p className="mt-4 text-fg-muted text-xs">{t("terminal.filePreviewTruncated")}</p>
 						)}
@@ -382,16 +421,7 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 				return (
 					<div className="min-h-0 flex-1 overflow-auto p-4 flex flex-col items-center justify-center gap-2">
 						<div className="relative max-w-full max-h-full">
-							<img
-								ref={imgRef}
-								src={preview.dataUrl}
-								alt={fileName}
-								onLoad={(e) => {
-									setImageDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
-									measureImage();
-								}}
-								className="max-w-full max-h-full object-contain rounded bg-base ring-1 ring-fg/10"
-							/>
+							{renderViewer(preview)}
 							{canComment && imageBox && (commentMode || fileComments.length > 0) && (
 								<ImageRegionOverlay
 									testId="file-image-review"
@@ -411,35 +441,11 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 						</p>
 					</div>
 				);
-			case "media":
-				return (
-					<FilePreviewMedia
-						key={path}
-						path={path}
-						fileName={fileName}
-						media={preview.media}
-						mime={preview.mime}
-						size={preview.size}
-						expanded={expanded}
-						onUnplayable={markMediaUnplayable}
-					/>
-				);
-			case "binary":
-				return (
-					<p className="text-fg-3 text-sm p-6">
-						{t("terminal.filePreviewBinary", { size: formatBytes(preview.size) })}
-					</p>
-				);
-			case "too-large":
-				return (
-					<p className="text-fg-3 text-sm p-6">
-						{t("terminal.filePreviewTooLarge", { size: formatBytes(preview.size) })}
-					</p>
-				);
-			case "directory":
-				return <p className="text-fg-3 text-sm p-6">{t("terminal.filePreviewDirectory")}</p>;
-			case "not-found":
-				return <p className="text-fg-3 text-sm p-6">{t("terminal.filePreviewNotFound")}</p>;
+			default:
+				// The built-ins bring their own box; another viewer gets a scrolling one.
+				return viewer && !isBuiltinItem(viewer.def.id)
+					? <div className="min-h-0 flex-1 overflow-auto p-4">{renderViewer(preview)}</div>
+					: renderViewer(preview);
 		}
 	}
 
