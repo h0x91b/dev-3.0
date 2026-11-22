@@ -959,6 +959,7 @@ const settings = {
 	"catalog.binaryMissing": "This build ships no model proxy — the catalog cannot run here.",
 	"catalog.proxyRunning": "Model proxy running on port {port}",
 	"catalog.proxyStarting": "Model proxy starting…",
+	"catalog.proxyRestarting": "Model proxy did not start — trying again in {seconds}s (attempt {attempt})",
 	"catalog.proxyStopped": "Model proxy stopped — it starts itself when an agent needs it, or when you load the available models",
 	"catalog.startProxy": "Start proxy",
 	"catalog.stopProxy": "Stop proxy",

@@ -435,6 +435,13 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 						</StatusRow>
 					) : status?.starting ? (
 						<StatusRow tone="warning">{t("catalog.proxyStarting")}</StatusRow>
+					) : status?.restart ? (
+						<StatusRow tone="warning">
+							{t("catalog.proxyRestarting", {
+								seconds: String(Math.max(0, Math.ceil((status.restart.at - Date.now()) / 1000))),
+								attempt: String(status.restart.attempt),
+							})}
+						</StatusRow>
 					) : (
 						<StatusRow tone="muted">{t("catalog.proxyStopped")}</StatusRow>
 					)}

@@ -961,6 +961,7 @@ const settings = {
 	"catalog.binaryMissing": "Esta compilación no incluye el proxy de modelos — el catálogo no funciona aquí.",
 	"catalog.proxyRunning": "Proxy de modelos activo en el puerto {port}",
 	"catalog.proxyStarting": "Arrancando el proxy de modelos…",
+	"catalog.proxyRestarting": "El proxy de modelos no arrancó: se reintentará en {seconds} s (intento {attempt})",
 	"catalog.proxyStopped": "Proxy de modelos detenido — arranca solo cuando un agente lo necesita o cuando cargas los modelos disponibles",
 	"catalog.startProxy": "Arrancar proxy",
 	"catalog.stopProxy": "Detener proxy",

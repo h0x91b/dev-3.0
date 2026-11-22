@@ -77,6 +77,16 @@ describe("the proxy's state", () => {
 		expect(await screen.findByText(/provider openrouter has no key/)).toBeTruthy();
 	});
 
+	it("says it will try again by itself, instead of looking stopped, after a failed start", async () => {
+		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(
+			status({ lastError: "failed to download pricing data: HTTP 503", restart: { attempt: 2, at: Date.now() + 10_000 } }),
+		);
+		renderSection();
+		expect(await screen.findByText("catalog.proxyRestarting")).toBeTruthy();
+		expect(screen.queryByText("catalog.proxyStopped")).toBeNull();
+		expect(screen.getByText(/HTTP 503/)).toBeTruthy();
+	});
+
 	it("offers to stop it once it is running", async () => {
 		vi.mocked(api.request.modelSidecarStatus).mockResolvedValue(status({ running: true, port: 41234 }));
 		renderSection();

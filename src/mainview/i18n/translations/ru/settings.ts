@@ -992,6 +992,7 @@ const settings = {
 	"catalog.binaryMissing": "В этой сборке нет прокси моделей — каталог здесь не работает.",
 	"catalog.proxyRunning": "Прокси моделей работает на порту {port}",
 	"catalog.proxyStarting": "Прокси моделей запускается…",
+	"catalog.proxyRestarting": "Прокси моделей не запустился — повтор через {seconds} с (попытка {attempt})",
 	"catalog.proxyStopped": "Прокси моделей остановлен — поднимется сам, когда понадобится агенту или когда вы загрузите доступные модели",
 	"catalog.startProxy": "Запустить прокси",
 	"catalog.stopProxy": "Остановить прокси",

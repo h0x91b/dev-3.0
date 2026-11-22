@@ -21,6 +21,7 @@ const NETWORK_FAILURES: RegExp[] = [
 	/NSURLErrorDomain Code=-100[15]\b/, // stapler / notarytool: request timed out, connection lost
 	/The network connection was lost/,
 	/\bHTTP 50[0234]\b/, // gh release upload: "HTTP 502: Server Error"
+	/failed to download (pricing|model parameters) data\b/, // bifrost's datasheet fetch at boot
 ];
 
 /** The first output line that proves the failure was the network's, or null. */

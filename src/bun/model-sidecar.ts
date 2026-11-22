@@ -46,8 +46,10 @@ const BINARY_NAME = process.platform === "win32" ? "bifrost-http.exe" : "bifrost
  *  dev machine actually runs things on. Taken? Fall back rather than refuse. */
 export const DEFAULT_SIDECAR_PORT = 32123;
 
-/** How long a start may take before dev3 gives up and shows the process output. */
-const READY_TIMEOUT_MS = 20_000;
+/** How long a start may take before dev3 gives up and shows the process output.
+ *  A fresh data dir downloads the catalog datasheets first: 17-29s measured on an
+ *  Intel Mac runner, so 20s failed slow-but-healthy starts. */
+const READY_TIMEOUT_MS = 45_000;
 /** How long a stop waits for the port to come back. A restart picks its port
  *  immediately after, so without this the old process still holds the fixed
  *  address and the new one silently lands on a random one — stranding every
@@ -57,6 +59,11 @@ const PORT_RELEASE_TIMEOUT_MS = 3000;
 const START_ATTEMPTS = 4;
 /** Last lines of the process output kept for a diagnosable failure message. */
 const OUTPUT_LINES = 40;
+/** A start that failed is tried again on its own, backing off from the first
+ *  delay to the cap: an upstream outage (the sidecar cannot boot on a fresh data
+ *  dir without its datasheets) ends by itself, and nobody should have to click. */
+export const RESTART_BACKOFF_FIRST_MS = 5_000;
+export const RESTART_BACKOFF_MAX_MS = 120_000;
 
 interface RunningSidecar {
 	pid: number;
@@ -76,6 +83,9 @@ let startingPid: number | undefined;
 let stoppingPid: number | undefined;
 let shuttingDown = false;
 let lastError: string | undefined;
+let restartTimer: ReturnType<typeof setTimeout> | null = null;
+let restartAttempt = 0;
+let nextRestartAt: number | undefined;
 
 /** Where the bundled binary may sit, mirroring the bundled-tmux layout: inside
  *  the app bundle's Resources, or beside the executable in a tarball. */
@@ -401,12 +411,54 @@ async function pumpStream(stream: unknown, push: (chunk: string) => void): Promi
 	}
 }
 
+/** Delay before the nth automatic restart: doubling from the first, capped. */
+export function restartBackoffMs(attempt: number): number {
+	return Math.min(RESTART_BACKOFF_MAX_MS, RESTART_BACKOFF_FIRST_MS * 2 ** Math.max(0, attempt - 1));
+}
+
+/** Drop a queued automatic restart. Stop and quit call it; so do tests. */
+export function cancelScheduledRestart(): void {
+	if (restartTimer) clearTimeout(restartTimer);
+	restartTimer = null;
+	restartAttempt = 0;
+	nextRestartAt = undefined;
+}
+
+/** Try again later, for as long as the app runs — unless there is nothing a
+ *  retry could fix (no binary) or the app is quitting. Stop and quit cancel it. */
+function scheduleRestart(): void {
+	if (shuttingDown || running || restartTimer || !resolveSidecarBinary()) return;
+	restartAttempt += 1;
+	const delay = restartBackoffMs(restartAttempt);
+	nextRestartAt = Date.now() + delay;
+	log.warn("Model proxy did not start — restarting with backoff", { attempt: restartAttempt, delayMs: delay });
+	restartTimer = setTimeout(() => {
+		restartTimer = null;
+		nextRestartAt = undefined;
+		ensureModelSidecar().catch(() => undefined);
+	}, delay);
+	restartTimer.unref?.();
+}
+
 /** Start the sidecar if it is not up and return its runtime. Concurrent callers
  *  share one start, so two launches cannot race two processes onto two ports. */
 export async function ensureModelSidecar(): Promise<{ baseUrl: string; sessionKey: string }> {
 	if (shuttingDown) throw new Error("The model proxy is shutting down.");
 	if (running) return { baseUrl: running.baseUrl, sessionKey: running.sessionKey };
-	if (!starting) starting = startSidecar().finally(() => (starting = null));
+	if (!starting) {
+		starting = startSidecar()
+			.then(
+				(instance) => {
+					cancelScheduledRestart();
+					return instance;
+				},
+				(err: unknown) => {
+					scheduleRestart();
+					throw err;
+				},
+			)
+			.finally(() => (starting = null));
+	}
 	const instance = await starting;
 	return { baseUrl: instance.baseUrl, sessionKey: instance.sessionKey };
 }
@@ -479,6 +531,7 @@ async function startSidecar(): Promise<RunningSidecar> {
 /** Quit cannot await imports, health checks or descendant scans. */
 export function killModelSidecarNow(): void {
 	shuttingDown = true;
+	cancelScheduledRestart();
 	for (const pid of new Set([running?.pid, startingPid, stoppingPid])) {
 		if (!validPid(pid)) continue;
 		try {
@@ -524,7 +577,10 @@ export async function stopModelSidecar(): Promise<void> {
 	// A start in flight has not published its instance yet, so stopping now would
 	// kill nothing and leave the finished process orphaned on the port. Nothing in
 	// the start path calls stop, so waiting here cannot deadlock.
+	cancelScheduledRestart();
 	if (starting) await starting.catch(() => undefined);
+	// The start awaited above may have failed and queued a restart of its own.
+	cancelScheduledRestart();
 	const instance = running;
 	stoppingPid = instance?.pid ?? stoppingPid;
 	running = null;
@@ -575,6 +631,7 @@ export function getModelSidecarStatus(): ModelSidecarStatus {
 		providerCount: catalog.providers.length,
 		modelCount: catalog.models.length,
 		lastError,
+		...(nextRestartAt !== undefined ? { restart: { attempt: restartAttempt, at: nextRestartAt } } : {}),
 	};
 }
 
