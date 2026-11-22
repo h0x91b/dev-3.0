@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { normalizeTaskArg } from "../shared/task-refs";
+import { normalizeTaskArg, parseTaskHandle } from "../shared/task-refs";
 import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
@@ -725,9 +725,9 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
  */
 export function expandShortId(rawId: string, context: CliContext | null): string {
 	const id = normalizeTaskArg(rawId);
-	// Stable `seq:<N>` reference — resolved server-side (seq survives launches,
-	// ids of tasks launched by older versions did not). Pass through verbatim.
-	if (/^seq:\d+$/.test(id)) return id;
+	// Stable `seq:<N>` / `seq:<project>/<N>` reference — resolved server-side (seq
+	// survives launches, ids of tasks launched by older versions did not). Pass through verbatim.
+	if (parseTaskHandle(id)) return id;
 	// Already a full UUID
 	if (id.length >= 36) return id;
 	// Check if context task matches the prefix (context is authoritative — an

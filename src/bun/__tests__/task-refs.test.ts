@@ -5,6 +5,7 @@ import {
 	formatTaskRef,
 	formatTaskRefFor,
 	normalizeTaskArg,
+	parseTaskHandle,
 	parseRefUri,
 	projectMatchesQualifier,
 	qualifyEditedRefsFor,
@@ -98,9 +99,9 @@ describe("qualifyRefsFor", () => {
 		expect(qualifyRefsFor("<seq:12>", PROJECT, undefined)).toBe("<seq:a1c9fe4e/12>");
 	});
 
-	it("keeps qualified tokens and the bare CLI handle as written", () => {
-		const text = "see <seq:bbbbbbbb/3>, run dev3 task show --task seq:4";
-		expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
+	it("keeps qualified tokens as written", () => {
+		expect(qualifyRefsFor("see <seq:bbbbbbbb/3>, run dev3 task show --task seq:4", PROJECT, OTHER))
+			.toBe("see <seq:bbbbbbbb/3>, run dev3 task show --task seq:a1c9fe4e/4");
 	});
 
 	it("qualifies bare refs written in prose", () => {
@@ -109,38 +110,20 @@ describe("qualifyRefsFor", () => {
 		expect(qualifyRefsFor("SEQ:3 first\nthen seq:4", PROJECT, OTHER)).toBe("seq:a1c9fe4e/3 first\nthen seq:a1c9fe4e/4");
 	});
 
-	it("keeps a bare ref that is a CLI argument, in code or after a flag", () => {
-		for (const text of [
-			"run `dev3 note add --task seq:4 hi`",
-			"```\ndev3 task show seq:4\n```",
-			"```sh\nseq:4 in an unterminated fence",
-			"dev3 task show seq:4",
-			"dev3 task update seq:4 --title x",
-			"dev3 task create --depends-on seq:3,seq:4",
-			"dev3 task update --start-after=seq:4",
-			"~/.dev3.0/bin/dev3 task show seq:4",
-			"dev3 note add --task \"seq:4\" x",
-			"dev3 task create --depends-on 'seq:3,seq:4'",
-			"dev3 note add --task  seq:4 x",
-			"dev3 task create --depends-on seq:3, seq:4",
-			"text\r\n--task seq:4\r\n",
-		]) expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
+	it("qualifies a CLI argument too, keeping it bare so the command still parses", () => {
+		const cases: [string, string][] = [
+			["run `dev3 note add --task seq:4 hi`", "run `dev3 note add --task seq:a1c9fe4e/4 hi`"],
+			["```\ndev3 task show seq:4\n```", "```\ndev3 task show seq:a1c9fe4e/4\n```"],
+			["dev3 task create --depends-on seq:3,seq:4", "dev3 task create --depends-on seq:a1c9fe4e/3,seq:a1c9fe4e/4"],
+			["dev3 note add --task \"seq:4\" x", "dev3 note add --task \"seq:a1c9fe4e/4\" x"],
+			["seq:3 waits; run `dev3 task show seq:3`", "seq:a1c9fe4e/3 waits; run `dev3 task show seq:a1c9fe4e/3`"],
+		];
+		for (const [text, expected] of cases) expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(expected);
 	});
 
-	it("qualifies prose next to a CLI argument on the same line, and only the prose", () => {
-		expect(qualifyRefsFor("seq:3 waits; run `dev3 task show seq:3`", PROJECT, OTHER))
-			.toBe("seq:a1c9fe4e/3 waits; run `dev3 task show seq:3`");
-		expect(qualifyRefsFor("--task seq:3 then see seq:5", PROJECT, OTHER))
-			.toBe("--task seq:3 then see seq:a1c9fe4e/5");
-	});
-
-	it("reads a stray fence mid-line as text, and an unterminated one at a line start as code", () => {
-		expect(qualifyRefsFor("use ``` for code; see seq:4", PROJECT, OTHER)).toBe("use ``` for code; see seq:a1c9fe4e/4");
-		expect(qualifyRefsFor("seq:3\n```\nseq:4", PROJECT, OTHER)).toBe("seq:a1c9fe4e/3\n```\nseq:4");
-	});
-
-	it("looks back a bounded distance for a flag", () => {
-		expect(qualifyRefsFor(`--task ${"x ".repeat(150)}seq:4`, PROJECT, OTHER)).toBe(`--task ${"x ".repeat(150)}seq:a1c9fe4e/4`);
+	it("leaves a CLI handle that already names its board through --project", () => {
+		const text = "dev3 message --task seq:4 --project bbbbbbbb hi";
+		expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
 	});
 
 	it("is idempotent", () => {
@@ -197,11 +180,23 @@ describe("projectMatchesQualifier", () => {
 	});
 });
 
+describe("parseTaskHandle", () => {
+	it("reads bare and qualified seq handles, and nothing else", () => {
+		expect(parseTaskHandle("seq:60")).toEqual({ seq: 60 });
+		expect(parseTaskHandle("seq:a1c9fe4e/60")).toEqual({ seq: 60, project: "a1c9fe4e" });
+		expect(parseTaskHandle("<seq:60>")).toBeNull();
+		expect(parseTaskHandle("pr:60")).toBeNull();
+		expect(parseTaskHandle("seq:/60")).toBeNull();
+		expect(parseTaskHandle("a1c9fe4e")).toBeNull();
+	});
+});
+
 describe("normalizeTaskArg", () => {
 	it("turns a pasted token into the CLI's seq form", () => {
 		expect(normalizeTaskArg("<seq:115>")).toBe("seq:115");
 		expect(normalizeTaskArg("seq:115")).toBe("seq:115");
 		expect(normalizeTaskArg("a1c9fe4e")).toBe("a1c9fe4e");
-		expect(normalizeTaskArg("<seq:proj/1>")).toBe("<seq:proj/1>");
+		expect(normalizeTaskArg("<seq:a1c9fe4e/1>")).toBe("seq:a1c9fe4e/1");
+		expect(normalizeTaskArg("<pr:1>")).toBe("<pr:1>");
 	});
 });

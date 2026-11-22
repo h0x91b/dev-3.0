@@ -20,6 +20,7 @@ import { log, type Handler } from "./cli-socket/shared";
 import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
 import { taskHandlers } from "./cli-socket/task-commands";
+import { withQualifiedTaskRef } from "./cli-socket/task-resolution";
 import { uiHandlers } from "./cli-socket/ui-commands";
 import { secretCliHandlers } from "./cli-socket/secret-commands";
 
@@ -85,7 +86,7 @@ export async function handleRequest(req: CliRequest, signal?: AbortSignal): Prom
 	}
 
 	try {
-		const result = await handler(req.params, { signal });
+		const result = await handler(await withQualifiedTaskRef(req.params), { signal });
 		return { id: req.id, ok: true, data: result };
 	} catch (err) {
 		const reason = (err as { cliReason?: unknown } | null)?.cliReason;

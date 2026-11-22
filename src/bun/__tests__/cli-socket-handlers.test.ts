@@ -1859,6 +1859,46 @@ describe("task.show", () => {
 		expect(resp.data).toEqual(task);
 	});
 
+	describe("a qualified seq ref", () => {
+		const mine = makeProject();
+		const other = makeProject({ id: "proj-2", name: "Other" });
+		const ownTask = makeTask({ id: "own-0000-1111-2222-333333333333", seq: 60 });
+		const otherTask = makeTask({ id: "other-000-1111-2222-333333333333", projectId: "proj-2", seq: 60 });
+
+		function wireTwoBoards() {
+			vi.mocked(data.loadProjects).mockResolvedValue([mine, other]);
+			vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+			vi.mocked(data.getProject).mockImplementation(async (id) => (id === "proj-2" ? other : mine));
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [otherTask] : [ownTask]));
+		}
+
+		it("resolves on the board it names, over the caller's own project", async () => {
+			wireTwoBoards();
+			const scoped = await handleRequest(makeRequest("task.show", { taskId: "seq:proj-2/60", projectId: "proj-1" }));
+			const unscoped = await handleRequest(makeRequest("task.show", { taskId: "seq:proj-2/60" }));
+			expect([(scoped.data as Task).id, (unscoped.data as Task).id]).toEqual([otherTask.id, otherTask.id]);
+		});
+
+		it("accepts the project name, and fails loudly on an unknown or ambiguous qualifier", async () => {
+			wireTwoBoards();
+			const byName = await handleRequest(makeRequest("task.show", { taskId: "seq:other/60", projectId: "proj-1" }));
+			expect((byName.data as Task).id).toBe(otherTask.id);
+			const unknown = await handleRequest(makeRequest("task.show", { taskId: "seq:nope1234/60", projectId: "proj-1" }));
+			expect(unknown.error).toContain('No project matches "nope1234"');
+			const ambiguous = await handleRequest(makeRequest("task.show", { taskId: "seq:proj/60", projectId: "proj-1" }));
+			expect(ambiguous.error).toContain("matches 2 projects");
+		});
+
+		it("names another board in a dependency, which stays not found on this one", async () => {
+			wireTwoBoards();
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...ownTask, ...change }));
+			const same = await handleRequest(makeRequest("task.update", { taskId: ownTask.id, projectId: "proj-1", dependsOn: ["seq:proj-1/60"] }));
+			const cross = await handleRequest(makeRequest("task.update", { taskId: ownTask.id, projectId: "proj-1", dependsOn: ["seq:proj-2/60"] }));
+			expect(same.error ?? "").not.toContain("not found");
+			expect(cross.error).toContain("Task not found");
+		});
+	});
+
 	it("returns the live branch after an out-of-band `git branch -m` (issue #1003)", async () => {
 		const project = makeProject();
 		const task = makeTask();
@@ -2310,7 +2350,7 @@ describe("task.create", () => {
 				sourceTaskId: "parent-0",
 			}));
 			expect(vi.mocked(createTask).mock.calls[0]![0].description)
-				.toBe("Source (seq:proj-2/60 split it). See <pr:proj-2/7>; run `dev3 task show seq:60` or dev3 note add --task seq:60 x");
+				.toBe("Source (seq:proj-2/60 split it). See <pr:proj-2/7>; run `dev3 task show seq:proj-2/60` or dev3 note add --task seq:proj-2/60 x");
 			expect(vi.mocked(data.updateTask).mock.calls[0]![2]).toMatchObject({ customTitle: "Follow up seq:proj-2/60" });
 		});
 

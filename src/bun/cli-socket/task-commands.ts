@@ -24,7 +24,7 @@ import { addDependencies, planDependencyChange, writeDependencyPlan } from "../t
 import { dependencyInfo, indexDependencies, summarizeDependencies, type DependencyBoard, type TaskDependencyInfo } from "../../shared/task-dependencies";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskMatchesSeqRef, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
@@ -138,7 +138,7 @@ async function writeStartAfter(project: Project, task: Task, req: StartAfterRequ
 function findDependencyTask(tasks: Task[], ref: string): Task | null {
 	const seq = parseSeqRef(ref);
 	if (seq === null) return findByIdPrefix(tasks, ref, "task");
-	return tasks.filter((t) => t.seq === seq).sort((a, b) => (a.variantIndex ?? 0) - (b.variantIndex ?? 0))[0] ?? null;
+	return tasks.filter((t) => taskMatchesSeqRef(t, seq)).sort((a, b) => (a.variantIndex ?? 0) - (b.variantIndex ?? 0))[0] ?? null;
 }
 
 /** `--depends-on` / `--no-depends-on` refs resolved on the task's board, before anything is written. */
@@ -241,7 +241,7 @@ export const taskHandlers: Record<string, Handler> = {
 			const project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const seq = parseSeqRef(ref);
-			const task = seq === null ? findTaskByRef(tasks, ref) : tasks.find((t) => t.seq === seq) ?? null;
+			const task = seq === null ? findTaskByRef(tasks, ref) : tasks.find((t) => taskMatchesSeqRef(t, seq)) ?? null;
 			if (!task) throw await scopedTaskNotFoundError(ref, project);
 			found = { project, task };
 		} else {
