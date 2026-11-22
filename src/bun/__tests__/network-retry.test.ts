@@ -11,6 +11,8 @@ const NETWORK_LINES = [
 	'Error: HTTPError(statusCode: nil, error: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out."', // 40661864794
 	'  code: "ECONNRESET"', // 40669536003
 	"::error::uploading canary-win-x64-dev-3.0-canary.zip failed: HTTP 502: Server Error (https://api.github.com/repos/h0x91b/dev-3.0/releases/assets/709022182)", // 41814991416
+	'"message":"failed to initialize pricing manager: failed to sync pricing data: failed to load pricing data from URL and no existing data available: failed to download pricing data: HTTP 503"', // 41222745880
+	"failed to sync model parameters data: failed to load model parameters from URL and no existing data in database: failed to download model parameters data: Get \"https://getbifrost.ai/datasheet/model-parameters\": read: connection reset by peer", // bifrost v1.6.10 params.go wording; no captured run
 ];
 
 const NOT_NETWORK_LINES = [

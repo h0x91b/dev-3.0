@@ -57,6 +57,8 @@ export const WINDOWS_SCOPE_PATHS = [
 	".github/workflows/pages.yml",
 	// Pins Bun only to run the release-retention tagger; in under (2) like every pin.
 	".github/workflows/release-retention.yml",
+	// Pins Bun only to boot the model-proxy sidecar on PRs that touch it; in under (2).
+	".github/workflows/bifrost-smoke.yml",
 	"electrobun.config.ts",
 	"package.json",
 	"scripts/fixtures/windows-conpty-package/**",

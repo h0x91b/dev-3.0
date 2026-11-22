@@ -117,9 +117,13 @@ function stubHttp(models: string[] = [], healthy: () => boolean = () => true) {
 	}));
 }
 
+let loaded: typeof import("../model-sidecar") | null = null;
+
 async function freshModule() {
+	loaded?.cancelScheduledRestart();
 	vi.resetModules();
-	return import("../model-sidecar");
+	loaded = await import("../model-sidecar");
+	return loaded;
 }
 
 beforeEach(() => {
@@ -141,7 +145,12 @@ beforeEach(() => {
 	stubHttp();
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+	// A failed start queues a restart; it must not fire into the next test's mocks.
+	loaded?.cancelScheduledRestart();
+	vi.useRealTimers();
+	vi.restoreAllMocks();
+});
 
 function remember(endpoint: unknown) {
 	h.fs.readFileSync.mockImplementation((target: string) => {
@@ -627,6 +636,139 @@ describe("autostart", () => {
 	});
 });
 
+describe("restarting after a failed start", () => {
+	/** Every launch dies until `upAfter` spawns have happened; the next one serves. */
+	function failUntil(upAfter: number) {
+		h.spawnMock.mockImplementation(() =>
+			h.spawnMock.mock.calls.length > upAfter ? liveProcess() : deadProcess("failed to download pricing data: HTTP 503"),
+		);
+		stubHttp([], () => h.spawnMock.mock.calls.length > upAfter);
+	}
+
+	/** Fake time in small steps, letting real I/O (port probes) through between them. */
+	async function advanceUntil(done: () => boolean, maxMs = 300_000): Promise<void> {
+		for (let elapsed = 0; elapsed < maxMs && !done(); elapsed += 50) {
+			await vi.advanceTimersByTimeAsync(50);
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+		expect(done()).toBe(true);
+	}
+
+	async function failedStart(start: Promise<unknown>): Promise<void> {
+		let settled = false;
+		const outcome = start.then(
+			() => "resolved",
+			() => "rejected",
+		).finally(() => (settled = true));
+		await advanceUntil(() => settled, 4_000);
+		expect(await outcome).toBe("rejected");
+	}
+
+	beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }));
+
+	it("backs off from 5s, doubling, and never waits longer than two minutes", async () => {
+		const { restartBackoffMs } = await freshModule();
+		expect([1, 2, 3, 4, 5, 6, 7, 30].map(restartBackoffMs)).toEqual([
+			5_000, 10_000, 20_000, 40_000, 80_000, 120_000, 120_000, 120_000,
+		]);
+	});
+
+	it("comes up on its own once the outage ends, and says when it will try next meanwhile", async () => {
+		failUntil(8); // two whole starts of four attempts each fail
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		const first = getModelSidecarStatus();
+		expect(first.restart?.attempt).toBe(1);
+		expect(first.restart?.inMs).toBeGreaterThan(4_000);
+		expect(first.lastError).toMatch(/HTTP 503/);
+
+		await advanceUntil(() => getModelSidecarStatus().restart?.attempt === 2);
+		expect(h.spawnMock).toHaveBeenCalledTimes(8);
+		expect(getModelSidecarStatus().restart?.inMs).toBeGreaterThan(9_000);
+
+		await advanceUntil(() => getModelSidecarStatus().running);
+		const status = getModelSidecarStatus();
+		expect(status.restart).toBeUndefined();
+		expect(status.lastError).toBeUndefined();
+	});
+
+	it("drops the queued restart when the user stops the proxy", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		const spawned = h.spawnMock.mock.calls.length;
+		await stopModelSidecar();
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+	});
+
+	it("never restarts after the app starts quitting", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		const { ensureModelSidecar, killModelSidecarNow, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		const spawned = h.spawnMock.mock.calls.length;
+		killModelSidecarNow();
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+	});
+
+	it("stays a stoppable retry while an automatic attempt runs, and a stop cuts that attempt short", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		// The retry hangs the way bifrost does while it retries its datasheet fetch.
+		let exit!: (code: number) => void;
+		const hanging = {
+			pid: 5152,
+			exited: new Promise<number>((resolve) => (exit = resolve)),
+			stdout: streamOf(""),
+			stderr: streamOf(""),
+			kill: vi.fn(() => exit(143)),
+		};
+		h.spawnMock.mockImplementation(() => hanging);
+		await advanceUntil(() => getModelSidecarStatus().starting, 10_000);
+		expect(getModelSidecarStatus().restart).toEqual({ attempt: 1 });
+
+		const spawned = h.spawnMock.mock.calls.length;
+		let stopped = false;
+		void stopModelSidecar().then(() => (stopped = true));
+		await advanceUntil(() => stopped, 2_000); // not the 4 × 45s the attempt would take
+		expect(hanging.kill).toHaveBeenCalled();
+		expect(getModelSidecarStatus()).toMatchObject({ starting: false, running: false, lastError: undefined });
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+	});
+
+	it("drops the queued restart once the catalog has no provider left", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		const spawned = h.spawnMock.mock.calls.length;
+		h.catalog.mockReturnValue({ providers: [], models: [] });
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+	});
+
+	it("does not queue a restart when the catalog has no provider", async () => {
+		failUntil(Number.POSITIVE_INFINITY);
+		h.catalog.mockReturnValue({ providers: [], models: [] });
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await failedStart(ensureModelSidecar());
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+	});
+
+	it("does not queue a restart when the build has no proxy to start", async () => {
+		process.env.DEV3_BIFROST_BINARY = "/nope/bifrost-http";
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await expect(ensureModelSidecar()).rejects.toThrow(/missing from this build/);
+		expect(getModelSidecarStatus().restart).toBeUndefined();
+	});
+});
+
 describe("stopping", () => {
 	it("signals the running proxy before the synchronous quit call returns", async () => {
 		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
@@ -744,7 +886,7 @@ describe("stopping", () => {
 	// Quitting seconds after a launch triggered a start used to kill nothing: the
 	// instance is only published when the start resolves, so the finished process
 	// outlived the app holding the loopback port and the provider keys.
-	it("waits for a start already in flight, so it cannot leave an orphan", async () => {
+	it("cuts a start in flight short, so it cannot leave an orphan", async () => {
 		const killed: number[] = [];
 		const killSpy = vi.spyOn(process, "kill").mockImplementation(((pid: number) => {
 			killed.push(pid);
@@ -752,12 +894,14 @@ describe("stopping", () => {
 		}) as typeof process.kill);
 		h.getDescendantPids.mockResolvedValue([]);
 
-		const { ensureModelSidecar, stopModelSidecar } = await freshModule();
-		const start = ensureModelSidecar();
+		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
+		const start = ensureModelSidecar().catch((err: unknown) => err);
 		await stopModelSidecar();
-		await start;
 
-		expect(killed).toEqual([5150]);
+		expect(String(await start)).toMatch(/start was stopped/);
+		for (const { value } of h.spawnMock.mock.results) expect(value.kill).toHaveBeenCalled();
+		expect(killed).toEqual([]);
+		expect(getModelSidecarStatus()).toMatchObject({ running: false, starting: false });
 		killSpy.mockRestore();
 	});
 

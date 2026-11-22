@@ -1,0 +1,45 @@
+# Boots the pinned model-proxy sidecar on every shipped target from a fresh data dir, the
+# way a new install meets it. Release builds run the same two scripts, but only after
+# merge — a change here used to surface first as a red canary. Needs no `bun install`: both scripts import only
+# node builtins and src/shared.
+name: Bifrost smoke
+
+on:
+  pull_request:
+    paths:
+      - scripts/fetch-bifrost.ts
+      - scripts/smoke-bifrost.ts
+      - scripts/stage-bifrost.ts
+      - scripts/bifrost-pinned.json
+      - scripts/network-retry.ts
+      - src/shared/bifrost-release.ts
+      - src/shared/model-catalog.ts
+      - .github/workflows/bifrost-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bifrost-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The release runners, so a boot time measured here is the one canary will see.
+        runner: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Fetch the pinned sidecar and its datasheets
+        run: bun scripts/fetch-bifrost.ts
+      - name: Boot it
+        run: bun scripts/smoke-bifrost.ts
