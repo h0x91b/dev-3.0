@@ -152,9 +152,19 @@ describe("fileViewers slot", () => {
 	it("shows only the notice when the built-in itself crashes", async () => {
 		await contribute({ id: "builtin:broken", order: 1, matches: () => true, component: () => { throw new Error("render boom"); } }, "broken");
 		openPreview();
-		expect(await screen.findByRole("alert")).toBeInTheDocument();
+		expect(await screen.findByRole("alert")).toHaveTextContent("This file viewer crashed and cannot show this file.");
 		expect(screen.queryByTestId("file-preview-code")).toBeNull();
 		expect(screen.getByRole("dialog")).toBeInTheDocument();
+	});
+
+	it("says the file cannot be shown when the built-in it fell back to crashes too", async () => {
+		const crash = () => { throw new Error("render boom"); };
+		await contribute(csvViewer({ component: crash }));
+		await contribute({ id: "builtin:broken-csv", order: 6, matches: ({ path }) => path.endsWith(".csv"), component: crash }, "broken");
+		openPreview();
+		expect(await screen.findByRole("alert")).toHaveTextContent("This file viewer crashed and cannot show this file.");
+		expect(screen.getAllByRole("alert")).toHaveLength(1);
+		expect(screen.queryByTestId("file-preview-code")).toBeNull();
 	});
 
 	it("draws the built-ins before they have registered", async () => {
