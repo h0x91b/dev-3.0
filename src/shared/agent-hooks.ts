@@ -333,6 +333,9 @@ export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
  * busy agent its held `dev3 message`s at its next tool call. Always exits 0.
  */
 export const CLAUDE_POST_TOOL_HOOK_SUBCOMMAND = "hook claude-post-tool";
+
+/** Claude's PostToolUseFailure: the failed call leaves the prompt ledger, nothing else (#2342). */
+export const CLAUDE_POST_TOOL_FAILED_HOOK_SUBCOMMAND = "hook claude-post-tool-failed";
 /**
  * Claude's PermissionRequest: the Has Questions move plus the prompt ledger, which keeps
  * every `dev3 message` out of the pane until the menu or picker is answered (#2342).
@@ -610,6 +613,10 @@ function buildUnguardedClaudeHooks(
 		],
 		PostToolUse: [
 			{ hooks: [{ type: "command", command: claudePostToolCommand(workingCmd, dialect) }] },
+		],
+		// A failed call is over too: its prompt and in-flight entry go, nothing else (#2342).
+		PostToolUseFailure: [
+			{ hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_POST_TOOL_FAILED_HOOK_SUBCOMMAND}`, timeout: 5 }] },
 		],
 		PermissionRequest: [
 			{ hooks: [{ type: "command", command: claudePermissionCommand(move("user-questions"), dialect), timeout: 5 }] },

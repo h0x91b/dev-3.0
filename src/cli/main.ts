@@ -54,6 +54,7 @@ import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudePreTool } from "./commands/claude-pre-tool";
 import { handleClaudePostTool } from "./commands/claude-post-tool";
 import { handleClaudePermission } from "./commands/claude-permission";
+import { handleClaudePostToolFailed } from "./commands/claude-post-tool-failed";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeClaim } from "./commands/claude-claim";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
@@ -394,6 +395,10 @@ async function main(): Promise<void> {
 	if (command === "hook" && subcommand === "claude-post-tool") {
 		// Status move plus the hook mailbox, in one request per tool call.
 		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
+	if (command === "hook" && subcommand === "claude-post-tool-failed") {
+		// The failed call leaves the prompt ledger; nothing moves.
+		return await handleClaudePostToolFailed(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
 		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);

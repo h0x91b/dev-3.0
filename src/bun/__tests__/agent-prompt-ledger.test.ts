@@ -221,3 +221,103 @@ describe("AgentPromptLedger — Claude prompts gate their pane", () => {
 		expect(ledger.applyStatusHook({ taskId: "task", sessionId: "c1", event: "PostToolUse", status: "in-progress", harness: "codex", toolName: "Bash" }).pending).toBe(false);
 	});
 });
+
+describe("AgentPromptLedger — status-hook harnesses gate their pane", () => {
+	type Harness = "codex" | "copilot" | "omp" | "pi" | "agy";
+	type Extra = { toolName?: string; toolUseId?: string; promptEnd?: boolean; heartbeat?: boolean; sessionId?: string; paneId?: string };
+	const hook = (ledger: AgentPromptLedger, harness: Harness, event: AgentStatusHookEvent, extra: Extra = {}) =>
+		ledger.applyStatusHookGate({ taskId: "task", sessionId: extra.sessionId ?? "s1", event, harness, paneId: extra.paneId ?? "%1", ...extra });
+
+	it("holds a Codex approval until its own call ends, through a parallel call of the same tool", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "codex", "PreToolUse", { toolName: "Bash", toolUseId: "a" });
+		hook(ledger, "codex", "PreToolUse", { toolName: "Bash", toolUseId: "b" });
+		hook(ledger, "codex", "PermissionRequest", { toolName: "Bash", toolUseId: "a" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "codex", "PostToolUse", { toolName: "Bash", toolUseId: "b" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "codex", "PostToolUse", { toolName: "Bash", toolUseId: "a" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("waits for every parallel call when the Codex approval names none", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "codex", "PreToolUse", { toolName: "functions.exec_command", toolUseId: "a" });
+		hook(ledger, "codex", "PreToolUse", { toolName: "exec_command", toolUseId: "b" });
+		hook(ledger, "codex", "PermissionRequest", { toolName: "exec_command" });
+		hook(ledger, "codex", "PostToolUse", { toolName: "exec_command", toolUseId: "b" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "codex", "PostToolUse", { toolName: "exec_command", toolUseId: "a" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("closes a Copilot ask_user question on that tool's postToolUse, not another tool's", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "copilot", "PermissionRequest", { toolName: "ask_user" });
+		hook(ledger, "copilot", "PostToolUse", { toolName: "bash" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "copilot", "PostToolUse", { toolName: "ask_user" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it.each(["omp", "pi"] as const)("keeps a %s prompt open through a tool's end, and closes it on the prompt's own end", (harness) => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, harness, "PermissionRequest");
+		hook(ledger, harness, "PostToolUse");
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, harness, "PostToolUse", { promptEnd: true });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("closes an agy approval wait on its PostToolUse, which names no tool", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "agy", "PermissionRequest");
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "agy", "PostToolUse");
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it.each(["UserPromptSubmit", "Stop", "Interrupt", "SessionStart", "SessionEnd"] as const)("closes on the session's %s, and only that session's", (event) => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "omp", "PermissionRequest");
+		hook(ledger, "omp", "PermissionRequest", { sessionId: "s2", paneId: "%2" });
+		hook(ledger, "omp", event);
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+		expect(ledger.isPromptOpen("task", "%2")).toBe(true);
+	});
+
+	it("leaves the card's question status alone: an approval is not a pending Codex question", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "codex", "PermissionRequest", { toolName: "Bash" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		expect(ledger.applyStatusHook({ taskId: "task", sessionId: "s1", event: "PermissionRequest", status: "in-progress", harness: "codex", paneId: "%1", toolName: "Bash" }).pending).toBe(false);
+	});
+
+	it("keeps a Codex approval for a call it never saw start open through other calls of that tool", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "codex", "PreToolUse", { toolName: "Bash", toolUseId: "other" });
+		hook(ledger, "codex", "PermissionRequest", { toolName: "Bash", toolUseId: "asker" });
+		hook(ledger, "codex", "PostToolUse", { toolName: "Bash", toolUseId: "other" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "codex", "PostToolUse", { toolName: "Bash", toolUseId: "asker" });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("closes stacked omp approvals one end mark at a time", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "omp", "PermissionRequest");
+		hook(ledger, "omp", "PermissionRequest");
+		hook(ledger, "omp", "PostToolUse", { promptEnd: true });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
+		hook(ledger, "omp", "PostToolUse", { promptEnd: true });
+		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	});
+
+	it("opens no second prompt for an agy heartbeat of a wait already open", () => {
+		const ledger = new AgentPromptLedger();
+		hook(ledger, "agy", "PermissionRequest");
+		hook(ledger, "agy", "PermissionRequest", { heartbeat: true });
+		hook(ledger, "agy", "PermissionRequest", { heartbeat: true });
+		expect(ledger.closePane("task", "%1")).toBe(1);
+	});
+});

@@ -70,6 +70,8 @@ export async function handleCopilotHook(
 				harness: "copilot",
 				...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
 				...(paneId ? { paneId } : {}),
+				// The prompt ledger closes an `ask_user` question on that tool's postToolUse only.
+				...(payload.toolName ? { toolName: payload.toolName } : {}),
 				...(event === "userPromptSubmitted" && payload.prompt ? { prompt: payload.prompt } : {}),
 				...(payload.turnId ? { turnId: payload.turnId } : {}),
 			}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });

@@ -17,6 +17,7 @@ function parsePayload(harness: ExtensionHookHarness, rawInput: string): StatusHo
 			sessionId?: unknown;
 			prompt?: unknown;
 			submissionId?: unknown;
+			promptEnd?: unknown;
 		};
 		if (typeof parsed.event !== "string") return null;
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(parsed.event as AgentStatusHookEvent)) return null;
@@ -28,6 +29,7 @@ function parsePayload(harness: ExtensionHookHarness, rawInput: string): StatusHo
 			...(typeof parsed.submissionId === "string" && parsed.submissionId
 				? { turnId: parsed.submissionId }
 				: {}),
+			...(parsed.event === "PostToolUse" && parsed.promptEnd === true ? { promptEnd: true } : {}),
 		};
 	} catch {
 		return null;
