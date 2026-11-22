@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { TaskStatus, TmuxWindowEntry } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
@@ -10,6 +10,8 @@ import { toast } from "../toast";
 import Tooltip from "./Tooltip";
 import { getDecorationCrashVersion, getTerminalTabDecorationRegistry, placeTerminalTabDecorations, subscribeDecorationCrashes } from "../terminal-tab-decorations/registry";
 import { TerminalTabDecorations } from "../terminal-tab-decorations/TerminalTabDecorations";
+import { groupMenuRows, runMenuItem } from "../plugins/menu-rows";
+import { getTerminalWindowMenuRegistry, TERMINAL_WINDOW_MENU_GROUPS, type TerminalWindowMenuItem, type TerminalWindowMenuScope } from "../terminal-window-menu/registry";
 
 /**
  * Desktop navigator for a task's tmux WINDOWS (full-terminal workspaces inside
@@ -56,6 +58,7 @@ export default function TerminalWindowNav({
 		<div className="flex-1 min-h-0 min-w-0 flex flex-col">
 			{visible && (
 				<WindowTabs
+					taskId={taskId}
 					windows={windows}
 					unseen={unseen}
 					agentWorking={taskStatus === "in-progress"}
@@ -96,6 +99,7 @@ function windowStateText(w: TmuxWindowEntry, decorationLabels: readonly string[]
 }
 
 function WindowTabs({
+	taskId,
 	windows,
 	unseen,
 	agentWorking,
@@ -107,6 +111,7 @@ function WindowTabs({
 	homeTitle,
 	t,
 }: {
+	taskId: string;
 	windows: TmuxWindowEntry[];
 	unseen: ReadonlySet<string>;
 	agentWorking: boolean;
@@ -278,7 +283,7 @@ function WindowTabs({
 					</div>
 				);
 			})}
-			{menu && <WindowMenu state={menu} closable={closable} onSelect={onSelect} onClose={onClose} onRename={startRename} onDismiss={() => setMenu(null)} t={t} />}
+			{menu && <WindowMenu state={menu} taskId={taskId} closable={closable} onSelect={onSelect} onClose={onClose} onRename={startRename} onDismiss={() => setMenu(null)} t={t} />}
 		</div>
 			{/* Right after the last tab, like the tmux bar's own +; it lands on the new window. */}
 			<Tooltip content={t("tmux.newWindowDesc")} placement="bottom">
@@ -307,6 +312,7 @@ interface WindowMenuState {
 /** Right-click (or ⇧F10) menu on a window: switch to it, rename it, or close it. */
 function WindowMenu({
 	state,
+	taskId,
 	closable,
 	onSelect,
 	onClose,
@@ -315,6 +321,7 @@ function WindowMenu({
 	t,
 }: {
 	state: WindowMenuState;
+	taskId: string;
 	closable: boolean;
 	onSelect: (w: TmuxWindowEntry) => void;
 	onClose: (w: TmuxWindowEntry) => void;
@@ -324,6 +331,9 @@ function WindowMenu({
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const w = state.window;
+	const registry = getTerminalWindowMenuRegistry();
+	const entries = useSyncExternalStore(registry.subscribe, registry.list);
+	const scope: TerminalWindowMenuScope = { window: w, taskId, closable, t, select: () => onSelect(w), rename: () => onRename(w), close: () => onClose(w) };
 
 	useEffect(() => {
 		menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
@@ -333,9 +343,9 @@ function WindowMenu({
 		onDismiss();
 		if (restoreFocus) state.opener.focus();
 	};
-	const run = (action: () => void) => {
+	const run = (item: TerminalWindowMenuItem) => {
 		dismiss(false);
-		action();
+		runMenuItem("terminalWindowMenu", item.id, item.run, scope);
 	};
 
 	function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -351,7 +361,7 @@ function WindowMenu({
 		}
 	}
 
-	const item = "w-full text-left px-3 py-1.5 text-xs transition-colors focus-visible:outline-none";
+	const itemClass = "w-full text-left px-3 py-1.5 text-xs transition-colors focus-visible:outline-none";
 	return createPortal(
 		<>
 			<div
@@ -370,19 +380,22 @@ function WindowMenu({
 				className="fixed z-[201] min-w-[10rem] rounded-lg border border-edge bg-overlay py-1 shadow-2xl"
 				style={{ top: state.y, left: state.x }}
 			>
-				{!w.active && (
-					<button type="button" role="menuitem" onClick={() => run(() => onSelect(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
-						{t("windowNav.switchTo")}
-					</button>
-				)}
-				<button type="button" role="menuitem" onClick={() => run(() => onRename(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
-					{t("windowNav.renameItem")}
-				</button>
-				{closable && (
-					<button type="button" role="menuitem" onClick={() => run(() => onClose(w))} className={`${item} text-danger hover:bg-danger/10 focus:bg-danger/10`}>
-						{t("tmux.closeWindowDesc")}
-					</button>
-				)}
+				{groupMenuRows("terminalWindowMenu", entries, scope, TERMINAL_WINDOW_MENU_GROUPS).map((group, groupIndex) => (
+					<Fragment key={group[0].key}>
+						{groupIndex > 0 && <div className="my-1 border-t border-edge" />}
+						{group.map(({ item, key, label }) => (
+							<button
+								key={key}
+								type="button"
+								role="menuitem"
+								onClick={() => run(item)}
+								className={`${itemClass} ${item.danger ? "text-danger hover:bg-danger/10 focus:bg-danger/10" : "text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg"}`}
+							>
+								{label}
+							</button>
+						))}
+					</Fragment>
+				))}
 			</div>
 		</>,
 		document.body,

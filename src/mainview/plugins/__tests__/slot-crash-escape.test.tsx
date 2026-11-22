@@ -48,8 +48,11 @@ import { resetDecorationFailuresForTests } from "../../terminal-tab-decorations/
 import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
 import type { TmuxWindowEntry } from "../../../shared/types";
 import { importAppSlots } from "./app-slots";
+import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
+import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
 
 vi.mock("../../rpc", () => ({
+	isElectrobun: false,
 	api: {
 		request: {
 			getAgents: vi.fn().mockResolvedValue([]),
@@ -63,6 +66,7 @@ vi.mock("../../rpc", () => ({
 			setBoardFilterState: vi.fn(async ({ state }) => state),
 			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
 			tmuxWindowNavigate: vi.fn(),
+			listExplorerDirectory: vi.fn(),
 		},
 	},
 }));
@@ -72,6 +76,9 @@ vi.mock("../../board-views/kanban/KanbanView", () => ({ KanbanView: () => <div d
 vi.mock("../../components/ActiveTasksSidebar", () => ({ default: () => <div data-testid="active-tasks" /> }));
 vi.mock("../../components/Changelog", () => ({ default: () => <div data-testid="body-changelog" /> }));
 vi.mock("../../components/FileExplorer", () => ({ default: () => <div data-testid="explorer" />, ExplorerRailGlyph: () => null }));
+
+// The terminalCompanion row needs the explorer stubbed; the fileMenu rows need the real one.
+const { default: RealFileExplorer } = await vi.importActual<typeof import("../../components/FileExplorer")>("../../components/FileExplorer");
 
 /** Anything that reaches it escaped the slot: the host surface itself went down. */
 class EscapeBoundary extends Component<{ children: ReactNode }, { escaped: boolean }> {
@@ -462,6 +469,78 @@ const CASES: CrashCase[] = [
 			expect(logged(`${callback} of terminal tab decoration crash:decoration threw`)).toHaveLength(1);
 		},
 		logs: `${callback} of terminal tab decoration crash:decoration threw`,
+	})),
+	...(["when", "label", "icon", "run"] as const).map((callback): CrashCase => ({
+		slot: "fileMenu",
+		callback,
+		builtins: [BUILTIN_FILE_MENU_PLUGIN],
+		contribute(ctx) {
+			ctx.fileMenu.register({
+				id: "crash:item",
+				region: "open",
+				when: callback === "when" ? boom : () => true,
+				label: callback === "label" ? boom : () => "Crash item",
+				icon: callback === "icon" ? Boom : undefined,
+				run: boom,
+			});
+		},
+		render() {
+			const readme = { name: "README.md", path: "/wt/README.md", relPath: "README.md", kind: "file", ignored: false };
+			vi.mocked(api.request.listExplorerDirectory).mockImplementation((async ({ relPath }: { relPath?: string }) => ({ root: "/wt", relPath: relPath ?? "", entries: relPath ? [] : [readme] })) as never);
+			mount(<RealFileExplorer projectId="p1" taskId="t1" rootLabel="branch" pinned onTogglePin={vi.fn()} onHide={vi.fn()} />);
+		},
+		async interact() {
+			fireEvent.contextMenu(await screen.findByRole("treeitem", { name: /README\.md/ }));
+			if (callback === "run" || callback === "icon") await user.click(screen.getByRole("menuitem", { name: "Crash item" }));
+		},
+		alive() {
+			expect(screen.getByRole("treeitem", { name: /README\.md/ })).toBeInTheDocument();
+			// run closes the menu first, as for any row; the rest leave it open with dev3's rows.
+			if (callback !== "run" && callback !== "icon") expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeInTheDocument();
+		},
+		logs: {
+			when: '[fileMenu] "crash:item" failed to resolve',
+			label: '[fileMenu] "crash:item" failed to resolve',
+			icon: "[slots] fileMenu item crash:item crashed",
+			run: '[fileMenu] "crash:item" failed',
+		}[callback],
+	})),
+	...(["when", "label", "run"] as const).map((callback): CrashCase => ({
+		slot: "terminalWindowMenu",
+		callback,
+		builtins: [BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN],
+		contribute(ctx) {
+			ctx.terminalWindowMenu.register({
+				id: "crash:item",
+				region: "window",
+				when: callback === "when" ? boom : () => true,
+				label: callback === "label" ? boom : () => "Crash item",
+				run: boom,
+			});
+		},
+		render() {
+			const win = (index: number, extra: Partial<TmuxWindowEntry>): TmuxWindowEntry => ({ windowId: `@${index}`, index, label: `w${index}`, active: false, home: false, panes: 1, activity: 100, bell: false, ...extra });
+			vi.mocked(api.request.tmuxWindowNavigate).mockResolvedValue({ windows: [win(1, { active: true, home: true }), win(2, {})] } as never);
+			mount(
+				<TerminalWindowNav taskId="t1">
+					<div data-testid="terminal" />
+				</TerminalWindowNav>,
+			);
+		},
+		async interact() {
+			fireEvent.contextMenu(await screen.findByRole("tab", { name: "w2" }));
+			if (callback === "run") await user.click(screen.getByRole("menuitem", { name: "Crash item" }));
+		},
+		alive() {
+			expect(screen.getByTestId("terminal")).toBeInTheDocument();
+			expect(screen.getAllByRole("tab")).toHaveLength(2);
+			if (callback !== "run") expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+		},
+		logs: {
+			when: '[terminalWindowMenu] "crash:item" failed to resolve',
+			label: '[terminalWindowMenu] "crash:item" failed to resolve',
+			run: '[terminalWindowMenu] "crash:item" failed',
+		}[callback],
 	})),
 	{
 		slot: "terminalCompanion",

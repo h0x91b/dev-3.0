@@ -22,7 +22,8 @@ vi.mock("../../rpc", () => ({
 
 import { api } from "../../rpc";
 import FileExplorerFrame from "../FileExplorerFrame";
-import { quoteForShell } from "../FileExplorer";
+import { quoteForShell } from "../../file-menu/builtins";
+import { installFileMenuBuiltins } from "../../file-menu/__tests__/install-builtins";
 import { OPEN_FILE_PREVIEW_EVENT } from "../../terminal-path-open";
 import {
 	_resetFileExplorerPrefs,
@@ -70,7 +71,8 @@ function renderFrame(taskId: string | null = "task-1") {
 	);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+	await installFileMenuBuiltins();
 	vi.clearAllMocks();
 	localStorage.removeItem("dev3-file-explorer");
 	_resetFileExplorerPrefs();

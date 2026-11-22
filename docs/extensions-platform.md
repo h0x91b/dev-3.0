@@ -143,7 +143,10 @@ replace slot (`src/mainview/terminal-companion/`, `decisions/2026/11/21/terminal
 (file paths, OSC 8, `dev3://`, tap targets) come from the internal `terminalLinks` contribution slot
 (`src/mainview/terminal-links/`, `decisions/2026/11/22/terminal-link-providers-slot.md`). Passive
 glyphs after a terminal window tab's name come from the internal `terminalTabDecorations` contribution slot
-(`src/mainview/terminal-tab-decorations/`, `decisions/2026/11/22/terminal-tab-decorations-slot.md`). The public
+(`src/mainview/terminal-tab-decorations/`, `decisions/2026/11/22/terminal-tab-decorations-slot.md`). The file
+explorer's row menu and a window tab's menu draw from the internal `fileMenu` and `terminalWindowMenu` contribution
+slots, which share `taskMenu`'s guarded row helper (`src/mainview/plugins/menu-rows.ts`,
+`decisions/2026/11/22/file-and-window-menu-slots.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:

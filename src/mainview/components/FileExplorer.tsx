@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { EXPLORER_MAX_ENTRIES, type ExplorerEntry, type ExplorerListing, type ProjectFolder } from "../../shared/types";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
 import { toast } from "../toast";
 import { openFilePreview } from "../terminal-path-open";
-import { requestTerminalPaste, terminalPasteTarget } from "../terminal-paste-request";
 import { writeClipboardText } from "../utils/clipboard-write";
 import Tooltip from "./Tooltip";
-import { isMac, isWindows } from "../utils/platform";
+import { groupMenuRows, runMenuItem } from "../plugins/menu-rows";
+import { SlotErrorBoundary } from "../plugins/SlotHost";
+import { FILE_MENU_GROUPS, getFileMenuRegistry, type FileMenuScope } from "../file-menu/registry";
+import { fileManagerKeys, PathGlyph, RevealGlyph } from "../file-menu/builtins";
 import {
 	clearRevealRequest,
 	folderSourceLabel,
@@ -33,16 +35,6 @@ interface MenuItem {
 	label: string;
 	icon: ReactNode;
 	run: () => void;
-}
-
-type RevealKey = "fileExplorer.revealFinder" | "fileExplorer.revealExplorer" | "fileExplorer.reveal";
-type OpenRootKey = "fileExplorer.openRootFinder" | "fileExplorer.openRootExplorer" | "fileExplorer.openRoot";
-
-/** The host's file manager by name: these items only exist in the desktop shell, whose OS is the host's. */
-function fileManagerKeys(): { reveal: RevealKey; openRoot: OpenRootKey } {
-	if (isMac()) return { reveal: "fileExplorer.revealFinder", openRoot: "fileExplorer.openRootFinder" };
-	if (isWindows()) return { reveal: "fileExplorer.revealExplorer", openRoot: "fileExplorer.openRootExplorer" };
-	return { reveal: "fileExplorer.reveal", openRoot: "fileExplorer.openRoot" };
 }
 
 /** One top-level folder of the tree: the worktree or checkout (`id` ""), or an extra folder keyed by its path. */
@@ -124,26 +116,6 @@ function errorMessage(listing: ExplorerListing, t: ReturnType<typeof useT>): str
 		case "not-found": return t("fileExplorer.notFound");
 		default: return t("fileExplorer.unreadable");
 	}
-}
-
-/**
- * Anything outside a conservative safe set gets single quotes, which mean the
- * same to POSIX shells and PowerShell; only an embedded quote is escaped the
- * POSIX way, so a name with `'` still needs care in PowerShell.
- *
- * A control byte never reaches the terminal: `ESC[201~` in a file name would end
- * bracketed paste and run the rest as typed input. Each one becomes an unquoted
- * `?`, which a POSIX shell globs back to the real file.
- */
-export function quoteForShell(relPath: string): string {
-	return relPath.split(CONTROL_BYTE).map(quotePart).join("?");
-}
-
-const CONTROL_BYTE = /[\u0000-\u001f\u007f-\u009f]/;
-
-function quotePart(part: string): string {
-	if (part === "") return "";
-	return /^[\w./@%+=:,-]+$/.test(part) ? part : `'${part.replace(/'/g, "'\\''")}'`;
 }
 
 interface RememberedTree {
@@ -462,32 +434,30 @@ export default function FileExplorer({
 
 	const rootState = dirs.get(keyOf(PRIMARY, ""));
 	const fileManager = fileManagerKeys();
+	const fileMenuRegistry = getFileMenuRegistry();
+	const fileMenuEntries = useSyncExternalStore(fileMenuRegistry.subscribe, fileMenuRegistry.list);
 
+	/** The row menu comes from the `fileMenu` slot; only resolved while it is open. */
 	function contextMenuSections(entry: ExplorerEntry, rootId: string): MenuItem[][] {
-		const sections: MenuItem[][] = [];
-		if (entry.kind === "file") sections.push([{ id: "open", label: t("fileExplorer.open"), icon: <EyeGlyph />, run: () => openFile(entry) }]);
-		sections.push([
-			{
-				id: "insert",
-				label: t("fileExplorer.insertPath"),
-				icon: <InsertGlyph />,
-				run: () => {
-					// The terminal runs in the worktree or checkout: an extra folder's path only resolves absolute.
-					requestTerminalPaste(terminalPasteTarget(projectId, taskId), `${quoteForShell(rootId === PRIMARY ? entry.relPath : entry.path)} `);
-					onHandOff?.();
-				},
-			},
-			{ id: "copy-relative", label: t("fileExplorer.copyRelativePath"), icon: <CopyGlyph />, run: () => void copyText(entry.relPath) },
-			{ id: "copy-path", label: t("fileExplorer.copyPath"), icon: <PathGlyph />, run: () => void copyText(entry.path) },
-		]);
-		// Desktop only: in a browser tab these would open the file on the host machine.
-		if (isElectrobun) {
-			const host: MenuItem[] = [];
-			if (entry.kind === "file") host.push({ id: "open-system", label: t("fileExplorer.openSystem"), icon: <ExternalGlyph />, run: () => void openWithSystem(entry.path, "system") });
-			host.push({ id: "reveal", label: t(fileManager.reveal), icon: <RevealGlyph />, run: () => void openWithSystem(entry.path, "reveal") });
-			sections.push(host);
-		}
-		return sections;
+		const scope: FileMenuScope = {
+			entry,
+			inPrimaryRoot: rootId === PRIMARY,
+			projectId,
+			taskId: taskId ?? null,
+			t,
+			openFile: () => openFile(entry),
+			handOff: () => onHandOff?.(),
+			copyText: (text) => void copyText(text),
+			openWithSystem: (path, mode) => void openWithSystem(path, mode),
+		};
+		return groupMenuRows("fileMenu", fileMenuEntries, scope, FILE_MENU_GROUPS).map((group) =>
+			group.map(({ item, key, label }) => ({
+				id: key,
+				label,
+				icon: item.icon ? <MenuIcon id={item.id} icon={item.icon} /> : null,
+				run: () => runMenuItem("fileMenu", item.id, item.run, scope),
+			})),
+		);
 	}
 
 	const rootItems: MenuItem[] = [];
@@ -910,6 +880,15 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 	);
 }
 
+/** A crashing glyph leaves its row without an icon, never the menu without rows. */
+function MenuIcon({ id, icon: Icon }: { id: string; icon: ComponentType }) {
+	return (
+		<SlotErrorBoundary slot="fileMenu" resetKey={id} fallback={() => null}>
+			<Icon />
+		</SlotErrorBoundary>
+	);
+}
+
 function ExplorerMenu({ top, left, alignEnd = false, title, sections, onClose }: {
 	top: number;
 	left: number;
@@ -1056,64 +1035,6 @@ export function ExplorerRailGlyph() {
 
 // Menu glyphs: one outline set, a lighter stroke to sit beside 12px regular text.
 const menuGlyph = { ...glyph, strokeWidth: 1.75 };
-
-function EyeGlyph() {
-	return (
-		<svg {...menuGlyph}>
-			<path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
-			<circle cx="12" cy="12" r="2.75" />
-		</svg>
-	);
-}
-
-function InsertGlyph() {
-	return (
-		<svg {...menuGlyph}>
-			<rect x="3" y="4.5" width="18" height="15" rx="2.5" />
-			<path d="m7.5 10 2.5 2-2.5 2" />
-			<path d="M12.5 14.5h4" />
-		</svg>
-	);
-}
-
-function CopyGlyph() {
-	return (
-		<svg {...menuGlyph}>
-			<rect x="8.5" y="8.5" width="12" height="12" rx="2" />
-			<path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" />
-		</svg>
-	);
-}
-
-function PathGlyph() {
-	return (
-		<svg {...menuGlyph}>
-			<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1" />
-			<path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" />
-		</svg>
-	);
-}
-
-function ExternalGlyph() {
-	return (
-		<svg {...menuGlyph}>
-			<path d="M14 4h6v6" />
-			<path d="M20 4 11 13" />
-			<path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
-		</svg>
-	);
-}
-
-function RevealGlyph() {
-	return (
-		<svg {...menuGlyph}>
-			<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v3" />
-			<path d="M3 6v12a2 2 0 0 0 2 2h6" />
-			<circle cx="16.5" cy="16.5" r="3" />
-			<path d="m21 21-2.4-2.4" />
-		</svg>
-	);
-}
 
 function TuiGlyph() {
 	return (

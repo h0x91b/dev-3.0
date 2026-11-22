@@ -4,7 +4,8 @@ import type { Project, Task } from "../../shared/types";
 import type { AppAction } from "../state";
 import type { TFunction } from "../i18n";
 import { defineAppSlot } from "../plugins/root";
-import { SlotRegistry, type SlotItem } from "../plugins/slot-registry";
+import { SlotRegistry } from "../plugins/slot-registry";
+import type { MenuSlotItem } from "../plugins/menu-rows";
 
 // Internal for now: no manifest kind declares `taskMenu`, so the extension guard
 // unloads any extension that registers here (decisions/2026/11/21/task-menu-slot.md).
@@ -55,16 +56,7 @@ export interface TaskMenuSubmenu {
 	sheet: (scope: TaskMenuScope, anchor: TaskMenuAnchor) => ReactNode;
 }
 
-interface TaskMenuItemBase extends SlotItem {
-	region: TaskMenuGroup;
-	label: (scope: TaskMenuScope) => string;
-	/** Shown only when this holds. */
-	when?: (scope: TaskMenuScope) => boolean;
-	disabled?: (scope: TaskMenuScope) => boolean;
-	/** A ✓ before the label, for toggles whose label does not already name the action. */
-	checked?: (scope: TaskMenuScope) => boolean;
-	danger?: boolean;
-}
+type TaskMenuItemBase = MenuSlotItem<TaskMenuScope, TaskMenuGroup>;
 
 /** One row of the task context menu. `region` is its group; it runs itself, nothing routes it by id. */
 export type TaskMenuItem = TaskMenuItemBase &
