@@ -5,6 +5,7 @@ import { useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
 import type { TranslationKey } from "../i18n";
 import Tooltip from "../components/Tooltip";
 import ScheduledMessagesChip from "../components/ScheduledMessagesChip";
+import HeldMessagesChip from "../components/HeldMessagesChip";
 import TaskPaneControls from "../components/task-info-panel/TaskPaneControls";
 import { AddAgentIcon, FindBugsIcon, HibernateIcon, SendLaterIcon } from "../components/TaskIcons";
 import type { SlotItemProps } from "../plugins/SlotItems";
@@ -176,11 +177,16 @@ function HibernateItem() {
 	);
 }
 
-/** The session's pending scheduled messages; opens downward under the bar. */
+/** Messages held behind an agent prompt, then the pending scheduled ones; both open downward. */
 function ScheduledMessagesItem() {
 	const { task, project, dispatch } = useTaskHeaderScope();
 	if (!useOnDesktopBar()) return null;
-	return <ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />;
+	return (
+		<>
+			<HeldMessagesChip taskId={task.id} placement="down" />
+			<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
+		</>
+	);
 }
 
 function PaneControlsItem() {

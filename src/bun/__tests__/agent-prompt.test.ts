@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 
 // Unit-test agent-prompt against a mock tmux singleton (the standard seam for
 // handler-level tests). The real ../tmux module has module-load side effects
@@ -512,6 +513,20 @@ describe("a Cursor pane gets one more Enter, which steers a queued follow-up int
 		deferHeldAgentMessagesForTask(TASK_ID);
 		await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+	});
+
+	it("skips the steer Enter when a prompt opened in the pane meanwhile, so it never answers the menu", async () => {
+		await holdMessageForPane(CURSOR_TASK, "%1", "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+
+		agentPromptLedger.claudePermissionRequest({ taskId: TASK_ID, sessionId: "s1", toolName: "Bash", paneId: "%1" });
+		try {
+			await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
+			expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		} finally {
+			agentPromptLedger.reset();
+		}
 	});
 
 	it("does the same for a direct prompt, and keeps a Claude pane at one Enter", async () => {

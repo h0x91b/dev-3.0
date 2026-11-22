@@ -1,5 +1,7 @@
 # Preserve Codex question waits across tool activity
 
+Superseded in part on 2026-11-21 by `decisions/2026/11/21/hold-agent-messages-behind-open-prompts.md`: `CodexQuestionState` is gone; its blocking calls and async cards now live in `AgentPromptLedger` (`src/bun/agent-prompt-ledger.ts`), with the same status semantics.
+
 ## Context
 
 Codex question cards could remain unanswered after a turn while dev3 showed Your Review. The generated tool matcher excluded both question tools, and the CLI discarded their identity; ordinary tool activity also cleared a manually selected Has Questions status.

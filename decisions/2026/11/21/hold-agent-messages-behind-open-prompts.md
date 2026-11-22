@@ -1,0 +1,27 @@
+# Hold agent messages behind open prompts
+
+## Context
+
+`dev3 message` typed its text and an Enter into the agent pane after a quiet window, whatever the pane showed. In a Claude permission menu a digit picks a row with no Enter and the Enter approves the highlighted one; in an AskUserQuestion picker the whole message became the user's answer (issue #2342, reproduced live). Agreed design and rejected options: the #2342 spec (prompt-safe delivery, Option A — hook-fed ledger only).
+
+## Investigation
+
+Probe on Claude Code 2.1.330 with a logging hook on every event, default permission mode:
+- `PermissionRequest` fires for Bash/Write permission menus, AskUserQuestion and ExitPlanMode, always right after that tool's `PreToolUse`. Its payload has `session_id` and `tool_name` but **no `tool_use_id`**.
+- Answering Yes fires `PostToolUse` with the `tool_use_id`. Esc on a picker and "No" on a menu fire **nothing** — no `PostToolUse`, no `Stop`, no `PermissionDenied`; the next hook is the user's `UserPromptSubmit`.
+- A single digit selects a menu row without Enter: probe text containing `c1.txt` typed into an open Bash menu approved the command.
+
+## Decision
+
+`AgentPromptLedger` (`src/bun/agent-prompt-ledger.ts`) is the one per-pane registry of open prompts; Codex question status (formerly `CodexQuestionState`) reads the same entries. Claude opens a prompt on `PermissionRequest` (new `dev3 hook claude-permission`, which still moves the card to Has Questions) and on `PreToolUse(AskUserQuestion)`. With no `tool_use_id`, a `PermissionRequest` waits for every call of that tool the same agent (`agent_id`) still has in flight (between `PreToolUse` and `PostToolUse`). It closes once all of them have their `PostToolUse`, or on `UserPromptSubmit`/`Stop`/`SessionEnd`, the pane dying, or the user's Send now. The gate is in `release()` of `agent-message-hold.ts`: an open prompt keeps the hold (no ceiling, retried each quiet window, rearmed one quiet window after the close), which also covers the user's own Enter flush. The sender gets `held` with reason `behind-prompt` (exit 0); the card and inspector show a "N waiting" chip with Send now.
+
+## Risks
+
+- Esc / "No" leave the entry open until the session's next prompt or Send now: messages arrive late, never into a menu.
+- With parallel calls of one tool, dev3 cannot tell which one asked, so the prompt may stay open until the slowest of them finishes. That is the safe side: typing early lands in the menu. A later tool call never closes a prompt; an earlier version did, and a parallel call that needed no permission closed the menu early.
+- In memory: a restart while a picker is open forgets it. Hookless harnesses (Cursor, Gemini, OpenCode) and Notification-only dialogs stay unprotected.
+- A native pane held by another app process (owner routing) is gated only if that process received the hooks.
+
+## Alternatives considered
+
+Screen detection via `capture-pane` and Claude transcript tailing for the Esc close (rejected: tmux-only / extra watcher; Send now covers it); the card's `user-questions` status as the gate (rejected: scratch tasks and completion waits sit there with no prompt); a wait ceiling that forces delivery (rejected: a forced Enter is the bug).

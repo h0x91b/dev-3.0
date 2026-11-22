@@ -614,6 +614,16 @@ const kanban = {
 	"task.scheduledMessageTooltip": "Запланированное сообщение — нажмите для опций",
 	"task.sendNow": "Отправить сейчас",
 	"task.sendNowFailed": "Не удалось отправить сообщение: {error}",
+	"task.heldMessages_one": "{count} ждёт",
+	"task.heldMessages_few": "{count} ждут",
+	"task.heldMessages_many": "{count} ждут",
+	"task.heldMessages_other": "{count} ждут",
+	"task.heldMessagesTooltip_one": "{count} сообщение ждёт ответа на вопрос агента",
+	"task.heldMessagesTooltip_few": "{count} сообщения ждут ответа на вопрос агента",
+	"task.heldMessagesTooltip_many": "{count} сообщений ждут ответа на вопрос агента",
+	"task.heldMessagesTooltip_other": "{count} сообщения ждут ответа на вопрос агента",
+	"task.heldMessagesHint": "Пока агент показывает меню разрешений или вопрос, в его панель ничего не вводится. Отправляйте сейчас, только если вопроса на экране нет.",
+	"task.heldMessagesSendFailed": "Не удалось отправить ждущие сообщения: {error}",
 
 	// Pipeline
 	"pipeline.current": "текущий",

@@ -580,6 +580,14 @@ const kanban = {
 	"task.scheduledMessageTooltip": "Mensaje programado — clic para opciones",
 	"task.sendNow": "Enviar ahora",
 	"task.sendNowFailed": "Error al enviar el mensaje: {error}",
+	"task.heldMessages_one": "{count} en espera",
+	"task.heldMessages_many": "{count} en espera",
+	"task.heldMessages_other": "{count} en espera",
+	"task.heldMessagesTooltip_one": "{count} mensaje espera a que respondas al agente",
+	"task.heldMessagesTooltip_many": "{count} mensajes esperan a que respondas al agente",
+	"task.heldMessagesTooltip_other": "{count} mensajes esperan a que respondas al agente",
+	"task.heldMessagesHint": "No se escribe nada en un panel mientras el agente muestra un menú de permisos o una pregunta. Envía ahora solo si no ves ninguna pregunta.",
+	"task.heldMessagesSendFailed": "No se pudieron enviar los mensajes en espera: {error}",
 
 	// Pipeline
 	"pipeline.current": "actual",

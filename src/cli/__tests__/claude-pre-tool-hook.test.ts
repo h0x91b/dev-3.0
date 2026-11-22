@@ -27,8 +27,18 @@ describe("Claude pre-tool hook imported by Cursor", () => {
 		expect(JSON.parse(stdout)).toEqual({});
 	});
 
-	it("preserves the review guard when moving its own task", async () => {
-		await handleClaudePreTool("{}", context.socketPath, context);
+	it("preserves the review guard when moving its own task, and reports the call to the prompt ledger", async () => {
+		const payload = { hook_event_name: "PreToolUse", session_id: "s1", tool_name: "AskUserQuestion", tool_use_id: "toolu_1", tool_input: {} };
+		await handleClaudePreTool(JSON.stringify(payload), context.socketPath, context, { TMUX_PANE: "%4" });
+		expect(sendRequest).toHaveBeenCalledWith(context.socketPath, "task.claudePreToolUse", {
+			taskId: context.taskId, projectId: context.projectId, sourceTaskId: context.taskId,
+			newStatus: "in-progress", ifStatusNot: "review-by-ai",
+			sessionId: "s1", toolName: "AskUserQuestion", toolUseId: "toolu_1", paneId: "%4",
+		}, expect.objectContaining({ timeoutMs: 3_000 }));
+	});
+
+	it("keeps Cursor on the plain move: it reports no prompts dev3 could track", async () => {
+		await handleClaudePreTool('{"cursor_version":"1.7.2","session_id":"s1","tool_name":"Shell"}', context.socketPath, context, { TMUX_PANE: "%4" });
 		expect(sendRequest).toHaveBeenCalledWith(context.socketPath, "task.move", {
 			taskId: context.taskId, projectId: context.projectId, sourceTaskId: context.taskId,
 			newStatus: "in-progress", ifStatusNot: "review-by-ai",

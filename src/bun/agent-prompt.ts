@@ -1,3 +1,4 @@
+import { agentPromptLedger } from "./agent-prompt-ledger";
 import type { PaneSessionEntry, Task } from "../shared/types";
 import {
 	type PaneIncarnation,
@@ -11,6 +12,7 @@ import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-promp
 import type { AgentPromptEpilogue } from "./agent-prompt-delivery";
 import { deliverPaneInput, newPaneInputDeliveryId, pinTaskPane, sendPaneInput } from "./pane-input";
 import {
+	agentMessageHeldBehindPrompt,
 	agentMessageHoldKey,
 	hasStrandedAgentMessage,
 	holdAgentMessage,
@@ -218,7 +220,7 @@ function agentPromptSubmitStages(): PaneInputStage[] {
 /**
  * Cursor queues a prompt submitted into a busy turn; one more Enter on the emptied box
  * steers it into that turn. Skipped once the user typed after the submit — that Enter
- * would send his draft. A pane with no session entry (a review pane) keeps one Enter.
+ * would send his draft — or once the pane shows a prompt. A pane with no session entry (a review pane) keeps one Enter.
  */
 export function scheduleQueuedPromptSteer(
 	task: Task,
@@ -230,7 +232,8 @@ export function scheduleQueuedPromptSteer(
 	if (!entry || !getAgentAdapter(entry.agentCmd, entry.agentFamily ?? undefined).enterSteersQueuedPrompt) return;
 	const submittedAt = Date.now();
 	scheduleAgentPromptSubmit(async () => {
-		if (!humanTypedSince(task.id, submittedAt)) await press();
+		// A menu that opened meanwhile would take this Enter as its answer.
+		if (!humanTypedSince(task.id, submittedAt) && !agentPromptLedger.isPromptOpen(task.id, paneId)) await press();
 	}, { taskId: task.id.slice(0, 8), paneId });
 }
 
@@ -409,7 +412,7 @@ function holdAgentMessageForPane(
 		},
 		context,
 	);
-	return { ...agentPromptHeld(delayMs), paneId };
+	return { ...agentPromptHeld(delayMs, agentMessageHeldBehindPrompt(holdKey)), paneId };
 }
 
 /** The verdict for a prompt that never found a pane to aim at. */
