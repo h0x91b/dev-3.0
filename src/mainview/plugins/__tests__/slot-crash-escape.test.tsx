@@ -671,6 +671,7 @@ const CASES: CrashCase[] = [
 		alive() {
 			expect(screen.getByText("Notes")).toBeInTheDocument();
 			if (callback === "builtin component") expect(screen.getByRole("alert")).toBeInTheDocument();
+			if (callback === "component") expect(screen.queryByText("Crash")).toBeNull();
 		},
 		logs: callback === "builtin component" ? "builtin:crash.section" : "crash:detail",
 	})),

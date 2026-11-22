@@ -126,6 +126,15 @@ describe("taskDetailSections slot", () => {
 		expect(errors.mock.calls.filter((call) => String(call[0]).includes("probe:bad"))).toHaveLength(1);
 	});
 
+	it("logs a built-in metadata row that has no cells, once", async () => {
+		contribute({ id: "builtin:probe.row", region: "meta", label: () => "Row", value: () => <>Value</> });
+		await settle();
+		renderModal();
+		await settle();
+		expect(screen.queryByText("Row")).toBeNull();
+		expect(errors.mock.calls.filter((call) => String(call[0]).includes("builtin:probe.row: has no cells"))).toHaveLength(1);
+	});
+
 	it("leaves a notice where a built-in section crashed, and the rest of the view working", async () => {
 		contribute({ id: "builtin:probe.crash", region: "main", component: () => { throw new Error("boom"); } });
 		await settle();

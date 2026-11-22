@@ -90,11 +90,16 @@ function Item({ entry, scope, fallback, children }: { entry: SlotEntry<TaskDetai
 function ExtensionSection({ entry, title, scope }: { entry: Entry<TaskDetailMainSection>; title: string; scope: TaskDetailScope }) {
 	const headingId = useId();
 	const Section = entry.def.component;
+	// The boundary wraps the heading too: a crashed section must not leave its title behind.
 	return (
-		<section aria-labelledby={headingId} className="border-t border-edge pt-4 mt-6">
-			<h3 id={headingId} className="text-xs text-fg-3 font-semibold uppercase tracking-wider mb-3">{title}</h3>
-			<Item entry={entry} scope={scope} fallback={() => null}>{(props) => <Section {...props} />}</Item>
-		</section>
+		<Item entry={entry} scope={scope} fallback={() => null}>
+			{(props) => (
+				<section aria-labelledby={headingId} className="border-t border-edge pt-4 mt-6">
+					<h3 id={headingId} className="text-xs text-fg-3 font-semibold uppercase tracking-wider mb-3">{title}</h3>
+					<Section {...props} />
+				</section>
+			)}
+		</Item>
 	);
 }
 
@@ -156,7 +161,10 @@ export function TaskDetailMeta({ scope, entries }: { scope: TaskDetailScope; ent
 		<>
 			{builtins.map((entry) => {
 				const Cells = entry.def.cells;
-				if (!Cells) return null;
+				if (!Cells) {
+					reportOnce(entry.def.id, "has no cells");
+					return null;
+				}
 				return <Item key={entry.def.id} entry={entry} scope={scope} fallback={() => null}>{(props) => <Cells {...props} />}</Item>;
 			})}
 			{labelled.slice(0, TASK_DETAIL_META_EXTENSION_BUDGET).map(({ entry, label, Value }) => {
