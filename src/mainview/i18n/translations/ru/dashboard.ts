@@ -431,6 +431,16 @@ const dashboard = {
 	"dashboard.moreFolders_few": "Ещё {count}",
 	"dashboard.moreFolders_many": "Ещё {count}",
 	"dashboard.moreFolders_other": "Ещё {count}",
+	"digitKeys.assign": "Назначить цифровую клавишу для {name}",
+	"digitKeys.chipAuto": "{key} открывает {name}. Нажмите, чтобы изменить",
+	"digitKeys.chipPinned": "{key} закреплена за {name}. Нажмите, чтобы изменить",
+	"digitKeys.pickerLabel": "Клавиша для {name}",
+	"digitKeys.free": "Пусто",
+	"digitKeys.tile": "{key}: {name}",
+	"digitKeys.tilePinned": "{key}: {name}, закреплено",
+	"digitKeys.hint": "Нажмите 1–9, чтобы выбрать. Закреплённые клавиши остаются на месте, остальные идут по порядку дашборда.",
+	"digitKeys.unpin": "Открепить",
+	"digitKeys.unpinAll": "Открепить все",
 };
 
 export default dashboard;

@@ -768,3 +768,5 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-22 — Finished-task detail is a contribution slot; the draft editor is not
 - **Rule:** `taskDetailSections` covers the archived view's body (`main`, `meta`), built-ins first; extensions read-only, 2 sections then `More from extensions (N)`, 3 meta rows. Bible §5.12, §9.
 - **Why:** sections inside an edit form break focus, dirty state and the one-primary rule. `decisions/2026/11/22/task-detail-sections-slot.md`.
+
+2026-11-22 — ⌘1–9 keys are pinned from the row's own ⌘N chip (bible §10 slot pins). Why: decisions/2026/11/22/digit-slot-pins-over-default-order.md.

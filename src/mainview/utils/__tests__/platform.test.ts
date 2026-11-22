@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hasAppModifier, isMacSecondaryClick, isTouchPrimary } from "../platform";
+import { digitKeyLabel, hasAppModifier, isMacSecondaryClick, isTouchPrimary } from "../platform";
 
 const originalNavigator = globalThis.navigator;
 
@@ -41,6 +41,23 @@ describe("hasAppModifier", () => {
 		expect(hasAppModifier(keyEvent("o", {}))).toBe(false);
 		setPlatform("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
 		expect(hasAppModifier(keyEvent("o", {}))).toBe(false);
+	});
+});
+
+describe("digitKeyLabel", () => {
+	const win = window as unknown as { __electrobunWebviewId?: number };
+	afterEach(() => {
+		delete win.__electrobunWebviewId;
+	});
+
+	it("spells the desktop modifier per OS and the G chord in a browser tab", () => {
+		win.__electrobunWebviewId = 1;
+		setPlatform("MacIntel", "Mozilla/5.0 (Macintosh)");
+		expect(digitKeyLabel(3)).toBe("⌘3");
+		setPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0)");
+		expect(digitKeyLabel(3)).toBe("Ctrl+3");
+		delete win.__electrobunWebviewId;
+		expect(digitKeyLabel(3)).toBe("G 3");
 	});
 });
 

@@ -383,6 +383,16 @@ const dashboard = {
 	"dashboard.extraFolders_other": "+{count} carpetas",
 	"dashboard.moreFolders_one": "Mostrar {count} más",
 	"dashboard.moreFolders_other": "Mostrar {count} más",
+	"digitKeys.assign": "Asignar una tecla numérica a {name}",
+	"digitKeys.chipAuto": "{key} abre {name}. Haz clic para cambiarla",
+	"digitKeys.chipPinned": "{key} está fijada a {name}. Haz clic para cambiarla",
+	"digitKeys.pickerLabel": "Tecla para {name}",
+	"digitKeys.free": "Vacía",
+	"digitKeys.tile": "{key}: {name}",
+	"digitKeys.tilePinned": "{key}: {name}, fijada",
+	"digitKeys.hint": "Pulsa 1–9 para elegir. Las teclas fijadas no se mueven; el resto sigue el orden del panel.",
+	"digitKeys.unpin": "Desfijar",
+	"digitKeys.unpinAll": "Desfijar todas",
 };
 
 export default dashboard;

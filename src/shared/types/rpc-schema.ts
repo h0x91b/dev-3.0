@@ -134,6 +134,10 @@ export type AppRPCSchema = {
 				params: { ids: string[] };
 				response: SpacesFile;
 			};
+			setDigitSlots: {
+				params: { slots: (string | null)[] };
+				response: SpacesFile;
+			};
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;

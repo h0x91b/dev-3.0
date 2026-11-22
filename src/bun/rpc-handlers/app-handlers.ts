@@ -11,6 +11,8 @@ import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_
 import { parseChangelogCredits } from "../../shared/changelog-credits";
 import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
 import * as data from "../data";
+import * as spacesData from "../spaces-data";
+import { pushSpacesUpdated } from "./spaces";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import { ptyHttpUrl } from "../pty-server-access";
@@ -640,6 +642,12 @@ async function removeProject(params: { projectId: string }): Promise<void> {
 		git.removeFetchCache(project.path);
 	} catch {}
 	await data.removeProject(params.projectId);
+	// Best-effort: the project is already gone, so a failed unpin must not fail the removal.
+	try {
+		if (await spacesData.unpinRemovedProject(params.projectId)) await pushSpacesUpdated();
+	} catch (err) {
+		log.warn("removeProject: could not unpin its number key", { projectId: params.projectId, error: String(err) });
+	}
 	log.info("← removeProject done");
 }
 

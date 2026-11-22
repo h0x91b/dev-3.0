@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
+import { DigitKeysContext } from "../DigitKeyControl";
 import SpaceGroupedProjects, { type RowReorderCtx } from "../SpaceGroupedProjects";
 import type { DashboardGroup } from "../../utils/spaceGroups";
 import type { Project, Space } from "../../../shared/types";
@@ -411,17 +412,19 @@ describe("SpaceGroupedProjects — mixed top-level list", () => {
 	function renderMixed(active: { scope: string; id: string } | null = null, onStep = vi.fn()) {
 		return render(
 			<I18nProvider>
+				<DigitKeysContext.Provider value={{ targets: entries, pins: [], anyStored: false, pinnable: new Set(["solo", "sp_a"]), isMasked: () => false, onPin: vi.fn(), onUnpinAll: vi.fn() }}>
 				<SpaceGroupedProjects
 					groups={[{ space: alpha, projects: [proj("p1"), proj("p2")] }, { space: null, projects: [proj("solo")] }]}
 					sensitiveProjectIds={new Set()}
 					needsYouCountOf={() => 0}
 					workingCountOf={() => 0}
-					renderProject={(p, ctx) => <div data-testid={`row-${p.id}`} data-scope={ctx.scope.key} data-hint={ctx.digitHint}>{p.name}</div>}
+					renderProject={(p, ctx) => <div data-testid={`row-${p.id}`} data-scope={ctx.scope.key}>{p.name}</div>}
 					renderBottomBlockProject={(p) => <div data-testid={`rest-row-${p.id}`}>{p.name}</div>}
 					onRenameSpace={vi.fn()}
 					onDeleteSpace={vi.fn()}
-					mixed={{ entries, onReorder: vi.fn(), onStep, drag: { active, begin, rowRef }, showDigitHints: true }}
+					mixed={{ entries, onReorder: vi.fn(), onStep, drag: { active, begin, rowRef } }}
 				/>
+				</DigitKeysContext.Provider>
 			</I18nProvider>,
 		);
 	}
@@ -433,9 +436,8 @@ describe("SpaceGroupedProjects — mixed top-level list", () => {
 		const group = screen.getByTestId("space-group-sp_a");
 		expect(solo.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(solo).toHaveAttribute("data-scope", "mixed");
-		expect(solo).toHaveAttribute("data-hint", "1");
 		expect(screen.getByTestId("row-p1")).toHaveAttribute("data-scope", "space:sp_a");
-		expect(screen.getByTestId("space-header-sp_a").querySelector("kbd")).toHaveTextContent("⌘2");
+		expect(screen.getByTestId("digit-key-sp_a")).toHaveTextContent("G 2");
 	});
 
 	it("starts a mixed drag from the header grip, scoped to every entry id", () => {

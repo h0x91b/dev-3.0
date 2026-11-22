@@ -43,7 +43,9 @@ import {
 	reorderMixed,
 	reorderSpaceProjects,
 	reorderSpaces,
+	setDigitSlots,
 	setProjectSpaces,
+	unpinRemovedProject,
 	setSpaceSensitive,
 } from "../spaces-data";
 import type { SpacesFile } from "../../shared/types";
@@ -153,6 +155,43 @@ describe("reordering", () => {
 	it("reorderMixed drops anything that is not a non-empty string id", async () => {
 		const next = await reorderMixed(["p1", "", 7, null, "p2"] as unknown as string[]);
 		expect(next.mixedOrder).toEqual(["p1", "p2"]);
+	});
+
+	it("setDigitSlots keeps nine slots, blanks repeats and junk, and trims trailing empties", async () => {
+		const next = await setDigitSlots(["p1", null, "p1", "", 7, "sp_a", null, null, null, "p10", "p11"] as unknown as (string | null)[]);
+		expect(next.digitSlots).toEqual(["p1", null, null, null, null, "sp_a"]);
+		expect((await loadSpacesFile()).digitSlots).toEqual(["p1", null, null, null, null, "sp_a"]);
+	});
+
+	it("setDigitSlots with nothing pinned removes the field and keeps the rest", async () => {
+		await reorderMixed(["p2", "p1"]);
+		await setDigitSlots(["p1"]);
+		const next = await setDigitSlots([null, null]);
+		expect("digitSlots" in next).toBe(false);
+		expect(next.mixedOrder).toEqual(["p2", "p1"]);
+	});
+
+	it("later space edits keep digitSlots, which older builds never write", async () => {
+		const a = await createSpace("A", ["p1"]);
+		await setDigitSlots([null, a.id]);
+		await renameSpace(a.id, "A2");
+		await reorderMixed([a.id]);
+		expect((await loadSpacesFile()).digitSlots).toEqual([null, a.id]);
+	});
+
+	it("deleting a space or removing a project takes it off its key, so neither comes back pinned", async () => {
+		const a = await createSpace("A", ["p1"]);
+		await setDigitSlots(["p2", a.id, "p3"]);
+		await deleteSpace(a.id);
+		expect((await loadSpacesFile()).digitSlots).toEqual(["p2", null, "p3"]);
+		expect(await unpinRemovedProject("p3")).toBe(true);
+		expect(await unpinRemovedProject("p9")).toBe(false);
+		expect((await loadSpacesFile()).digitSlots).toEqual(["p2"]);
+	});
+
+	it("removing an unpinned project leaves a missing spaces.json missing", async () => {
+		expect(await unpinRemovedProject("p1")).toBe(false);
+		expect(existsSync(SPACES_FILE)).toBe(false);
 	});
 
 	it("later space edits keep mixedOrder, which older builds never write", async () => {

@@ -473,9 +473,9 @@ describe("GlobalHeader — project switcher dropdown", () => {
 				rows.find((r) => r.textContent?.includes(name))?.querySelector("kbd")?.textContent;
 			// Dashboard: Other Space (Beta), Dev Space (Alpha, Beta again), Home (Delta).
 			// The switcher hoists Dev Space; the digits stay on the dashboard.
-			expect(badgeOf("Project Beta")).toBe("⌘1");
-			expect(badgeOf("Project Alpha")).toBe("⌘2");
-			expect(badgeOf("Project Delta")).toBe("⌘3");
+			expect(badgeOf("Project Beta")).toBe("G 1");
+			expect(badgeOf("Project Alpha")).toBe("G 2");
+			expect(badgeOf("Project Delta")).toBe("G 3");
 		});
 
 		it("with number keys following spaces, badges the space heading and standalone projects, not the members", async () => {
@@ -487,11 +487,11 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			await within(menu).findByText("Dev Space");
 			const kbdOf = (el: HTMLElement) => el.querySelector("kbd")?.textContent;
 			// Board order: sp_dev (slot of Alpha), then sp_other (slot of Beta), then Delta.
-			expect(kbdOf(screen.getByTestId("switcher-space-sp_dev"))).toBe("⌘1");
-			expect(kbdOf(screen.getByTestId("switcher-space-sp_other"))).toBe("⌘2");
+			expect(kbdOf(screen.getByTestId("switcher-space-sp_dev"))).toBe("G 1");
+			expect(kbdOf(screen.getByTestId("switcher-space-sp_other"))).toBe("G 2");
 			const rows = within(menu).getAllByTestId("switcher-row");
 			const rowOf = (name: string) => rows.find((r) => r.textContent?.includes(name))!;
-			expect(kbdOf(rowOf("Project Delta"))).toBe("⌘3");
+			expect(kbdOf(rowOf("Project Delta"))).toBe("G 3");
 			expect(kbdOf(rowOf("Project Alpha"))).toBeUndefined();
 			expect(kbdOf(rowOf("Project Beta"))).toBeUndefined();
 		});
@@ -1856,11 +1856,11 @@ describe("GlobalHeader — virtual (Operations) board git affordances", () => {
 		const rows = screen.getAllByRole("button").filter((b) => /Operations|Project Alpha|Project Beta/.test(b.textContent ?? ""));
 		// First dropdown row is the pinned Operations board.
 		expect(rows[0].textContent).toContain("[ Operations ]");
-		expect(rows[0].textContent).toContain("⌘0");
+		expect(rows[0].textContent).toContain("G 0");
 		expect(rows[0].textContent).toContain("System");
-		// Ordinary projects keep ⌘1, ⌘2.
-		expect(rows[1].textContent).toContain("⌘1");
-		expect(rows[2].textContent).toContain("⌘2");
+		// Ordinary projects keep 1, 2 (spelled G N on this remote test page).
+		expect(rows[1].textContent).toContain("G 1");
+		expect(rows[2].textContent).toContain("G 2");
 	});
 });
 
