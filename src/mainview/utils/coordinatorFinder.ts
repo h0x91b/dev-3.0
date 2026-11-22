@@ -1,5 +1,6 @@
 import type { Task } from "../../shared/types";
 import { ACTIVE_STATUSES, isCoordinatorTask, isTaskAgentless } from "../../shared/types";
+import { isTaskNotRunning } from "./taskFacets";
 
 /** What the user would find if they opened this coordinator right now. */
 export type CoordinatorState = "current" | "live" | "no-agent" | "hibernated";
@@ -49,4 +50,13 @@ export function coordinatorCandidates(tasks: Task[], currentTaskId: string | nul
 export function digitCoordinator(tasks: Task[], projectIds: string[], currentTaskId: string | null, mru: string[]): Task | null {
 	const targets = new Set(projectIds);
 	return coordinatorCandidates(tasks.filter((task) => targets.has(task.projectId)), currentTaskId, mru)[0]?.task ?? null;
+}
+
+/** True when any of these projects has a task the Active Tasks list shows by default:
+ *  active, not hidden, not hibernated, with an agent. */
+export function hasListedActiveTask(tasks: Task[], projectIds: string[]): boolean {
+	const targets = new Set(projectIds);
+	return tasks.some(
+		(task) => targets.has(task.projectId) && ACTIVE_STATUSES.includes(task.status) && task.hidden !== true && !isTaskNotRunning(task),
+	);
 }

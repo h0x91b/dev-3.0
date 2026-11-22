@@ -25,7 +25,7 @@ const keymap = {
 	"keymap.shortcut.forward": "Forward",
 	"keymap.shortcut.previousVariant": "Previous live variant",
 	"keymap.shortcut.nextVariant": "Next live variant",
-	"keymap.shortcut.switchProject": "Switch to project or space 1–9 (keep current view; from a task, open its coordinator)",
+	"keymap.shortcut.switchProject": "Switch to project or space 1–9 (keep current view; from a task, open its coordinator, or its board if it has no active task)",
 	"keymap.shortcut.switchProjectFlip": "Switch to project or space 1–9 (flip board/task view)",
 	"keymap.shortcut.jumpOperations": "Jump to the Operations board",
 	"keymap.shortcut.taskSwitcher": "Cycle active tasks (this project)",

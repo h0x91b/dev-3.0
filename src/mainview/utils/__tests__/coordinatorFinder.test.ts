@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Task } from "../../../shared/types";
-import { coordinatorCandidates, digitCoordinator } from "../coordinatorFinder";
+import { coordinatorCandidates, digitCoordinator, hasListedActiveTask } from "../coordinatorFinder";
 
 function task(id: string, over: Partial<Task> = {}): Task {
 	return {
@@ -81,5 +81,21 @@ describe("digitCoordinator", () => {
 	it("is null with no active coordinator", () => {
 		const tasks = [task("t1", { projectId: "p2", status: "completed" }), task("t2", { projectId: "p2", taskType: undefined })];
 		expect(digitCoordinator(tasks, ["p2"], null, [])).toBeNull();
+	});
+});
+
+describe("hasListedActiveTask", () => {
+	it("counts a running, visible active task on the target", () => {
+		expect(hasListedActiveTask([task("t1", { projectId: "p2", taskType: undefined })], ["p2"])).toBe(true);
+	});
+
+	it("ignores hidden and hibernated tasks, which Active Tasks does not list by default", () => {
+		const tasks = [task("t1", { projectId: "p2", hidden: true }), task("t2", { projectId: "p2", hibernated: true })];
+		expect(hasListedActiveTask(tasks, ["p2"])).toBe(false);
+	});
+
+	it("ignores other projects and finished or to-do tasks", () => {
+		const tasks = [task("t1", { projectId: "p1" }), task("t2", { projectId: "p2", status: "completed" }), task("t3", { projectId: "p2", status: "todo" })];
+		expect(hasListedActiveTask(tasks, ["p2"])).toBe(false);
 	});
 });
