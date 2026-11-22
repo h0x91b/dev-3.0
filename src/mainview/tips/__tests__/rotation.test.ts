@@ -1,7 +1,14 @@
 import { beforeEach, describe, it, expect } from "vitest";
-import { selectTip, getAvailableTipsCount, ALL_TIPS, SNOOZE_MS, type TipContext } from "../tips";
-import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
-import type { TipState } from "../../shared/types";
+import { selectTip as selectFrom, getAvailableTipsCount as countFrom, SNOOZE_MS } from "../rotation";
+import { tipStateKey, type TipContext } from "../registry";
+import { BUILTIN_TIPS } from "../builtins";
+import { setAgentTrafficEnabledForTests } from "../../agent-traffic-flag";
+import type { TipState } from "../../../shared/types";
+
+// Keyed the way TipState stores them, so `seen[t.id]` reads like the persisted map.
+const ALL_TIPS = BUILTIN_TIPS.map((t) => ({ ...t, id: tipStateKey(t) }));
+const selectTip = (state: TipState, context?: TipContext) => selectFrom(ALL_TIPS, state, context);
+const getAvailableTipsCount = (state: TipState) => countFrom(ALL_TIPS, state);
 
 function freshState(overrides: Partial<TipState> = {}): TipState {
 	return { snoozedUntil: 0, seen: {}, rotationIndex: 0, ...overrides };

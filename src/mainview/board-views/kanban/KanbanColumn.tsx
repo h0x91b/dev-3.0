@@ -7,7 +7,7 @@ import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import TipCard from "../../components/TipCard";
 import HelpSpot from "../../components/HelpSpot";
 import { statusHelpTopicId } from "../../help";
-import type { Tip } from "../../tips";
+import type { Tip } from "../../tips/registry";
 import type { BoardTaskCardProps } from "../board-service";
 
 const COLUMN_TASK_LIMIT = 15;

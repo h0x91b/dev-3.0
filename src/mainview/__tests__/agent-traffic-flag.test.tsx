@@ -16,7 +16,8 @@ import { BUILTIN_COMMANDS_PLUGIN } from "../commands/builtins";
 import { getCommandsRegistry, type CommandContext } from "../commands/registry";
 import { applyBuiltinPlugins } from "../plugins/runtime";
 import { appShortcutsForMode } from "../keymap";
-import { getAvailableTipsCount } from "../tips";
+import { getAvailableTipsCount } from "../tips/rotation";
+import { BUILTIN_TIPS } from "../tips/builtins";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
 
 /**
@@ -172,9 +173,9 @@ describe("agent-traffic feature flag", () => {
 
 	it("keeps the tip out of the pool while off", () => {
 		const state = { seen: {}, snoozedUntil: 0, rotationIndex: 0 };
-		const off = getAvailableTipsCount(state);
+		const off = getAvailableTipsCount(BUILTIN_TIPS, state);
 
 		setAgentTrafficEnabledForTests(true);
-		expect(getAvailableTipsCount(state)).toBe(off + 1);
+		expect(getAvailableTipsCount(BUILTIN_TIPS, state)).toBe(off + 1);
 	});
 });

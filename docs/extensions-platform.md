@@ -146,7 +146,9 @@ glyphs after a terminal window tab's name come from the internal `terminalTabDec
 (`src/mainview/terminal-tab-decorations/`, `decisions/2026/11/22/terminal-tab-decorations-slot.md`). The file
 explorer's row menu and a window tab's menu draw from the internal `fileMenu` and `terminalWindowMenu` contribution
 slots, which share `taskMenu`'s guarded row helper (`src/mainview/plugins/menu-rows.ts`,
-`decisions/2026/11/22/file-and-window-menu-slots.md`). The public
+`decisions/2026/11/22/file-and-window-menu-slots.md`). The "Did you know?"
+tips are data registered into the internal `tips` contribution slot (`src/mainview/tips/`, `decisions/2026/11/22/tips-slot.md`);
+rotation, cool-down and snooze stay in the host. The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:
@@ -161,6 +163,10 @@ slots, which share `taskMenu`'s guarded row helper (`src/mainview/plugins/menu-r
 - Before `terminalCompanion` opens, the terminal must survive a companion swap (load, unload or crash); for example the
   host owns the terminal node and portals it into the companion. Today any swap remounts it: the PTY survives, but
   client scroll, selection and focus are lost (`decisions/2026/11/21/terminal-companion-slot.md`).
+- Before `tips` opens, an extension's tip must not be able to take over the rotation with a self-assessed score
+  (rank extension tips after built-ins, or cap them per tier), and tip text needs an i18n contract: `titleKey` and
+  `bodyKey` are host `TranslationKey`s today. A non-built-in tip's id is also its persisted cool-down key, so
+  extension keys need a namespace or one can share a built-in's cool-down.
 
 ## Tech debt
 

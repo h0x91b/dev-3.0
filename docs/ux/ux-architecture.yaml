@@ -530,7 +530,7 @@ ux_architecture:
       narrow: "max-w-[calc(100vw-2rem)] + NARROW_MAX_VISIBLE_TOASTS=1 bound total height; the source line adds one truncated line, not a wrap."
       evidence: ["src/mainview/toast.tsx", "src/mainview/App.tsx (ToastHost mount, openTaskFromNotification)", "PRODUCT_UX_BIBLE §5.7"]
     inline_help:
-      purpose: "Explain what a section/zone/field is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay — the master surface. The UI is the product's only teaching channel (no tutorials): help coverage is owed, not earned."
+      purpose: "Explain what a section/zone/field is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips/builtins.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay — the master surface. The UI is the product's only teaching channel (no tutorials): help coverage is owed, not earned."
       status: "observed"
       doctrine:
         coverage_law: "every surface/section and every non-self-evident form field (smart default, contextual prefill, hidden fallback, side effect) MUST have a registry topic reachable in help mode; field.* namespace for form fields; new user-facing UI ships its topic + data-help-id zone in the same commit (keymap.ts-style lockstep)"
@@ -1045,7 +1045,7 @@ ux_architecture:
       capitalization: "Sentence case for settings/buttons/tabs/menus; Title Case only for frozen proper nouns (To Do, AI Review, Your Review, PR Review)"
       plurals: "(s) in a translation value is a defect — use t.plural"
       ellipsis: "... is a defect — use …"
-      settings_paths: "Never spell a settings path in prose — declare it as data. Tips: set Tip.settingsSection (SettingsRouteSectionId, tips.ts); TipCard renders the link via OPEN_SETTINGS_SECTION_EVENT. Same principle for help strings."
+      settings_paths: "Never spell a settings path in prose — declare it as data. Tips: set Tip.settingsSection (SettingsRouteSectionId, tips/registry.ts); TipCard renders the link via OPEN_SETTINGS_SECTION_EVENT. Same principle for help strings."
     motion:
       transition_all: "banned — name properties explicitly"
       hover_infinite: "allowed and deliberate for the icon families (tmx-/gtx-/hdr-/th-) — the loop is the surface's personality and runs only under a resting cursor on one icon"

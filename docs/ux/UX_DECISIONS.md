@@ -564,7 +564,7 @@ Folded into bible §12 (terminal windows row).
 
 - **Rule:** Tips carry a required `contexts` field used as a sort *boost, never a filter* (matching tips lead, then the full catalogue cycles); the `ActiveTasksSidebar` is the tip carrier for the task/terminal view via the shared `useTipRotation` hook.
 - **Why:** Tips previously reached only the Kanban board, so terminal-surface discovery facts never reached terminal dwellers; boost-not-filter keeps every surface cycling everything. Rejected: a ticker (annoying), a permanent terminal footer (chrome creep), an exclusive-context flag.
-- **Status:** Observed. Evidence: `tips.ts` (`TipContext`), `hooks/useTipRotation.ts`.
+- **Status:** Observed. Evidence: `tips/registry.ts` (`TipContext`), `hooks/useTipRotation.ts`.
 
 ## 2026-07-11 — Active Tasks sidebar: readiness tiers + visible priority (supersedes 2026-06-22)
 - **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; tiers sort by priority; NEEDS YOU: questions first. Non-hibernated coordinators form a headerless tier above all of them.

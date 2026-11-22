@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import TipCard from "../TipCard";
 import { I18nProvider } from "../../i18n";
-import { ALL_TIPS } from "../../tips";
+import { BUILTIN_TIPS } from "../../tips/builtins";
+import { tipStateKey } from "../../tips/registry";
+
+const ALL_TIPS = BUILTIN_TIPS.map((t) => ({ ...t, id: tipStateKey(t) }));
 import type { TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -50,6 +53,18 @@ describe("TipCard", () => {
 		expect(payload.rotationIndex).toBe(4);
 		expect(Object.keys(payload.seen ?? {})).toEqual([tip.id]);
 		await waitFor(() => expect(onChanged).toHaveBeenCalled());
+	});
+
+	// The on-disk promise: TipState.seen keeps the bare key every installed version reads.
+	it("marks a registered built-in seen under its persisted key, not its slot id", async () => {
+		const { api } = await import("../../rpc");
+		renderCard(vi.fn(), BUILTIN_TIPS[0]);
+
+		fireEvent.click(screen.getByText(/Next/));
+
+		await waitFor(() => expect(api.request.updateTipState).toHaveBeenCalledTimes(1));
+		expect(BUILTIN_TIPS[0].id).toBe("builtin:tip.diff-review-persists");
+		expect(Object.keys(vi.mocked(api.request.updateTipState).mock.calls[0][0].seen ?? {})).toEqual(["diff-review-persists"]);
 	});
 
 	it("ignores animationend events from other animations", async () => {

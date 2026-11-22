@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useCallback, type Dispatch, type SetStateAction } from "react";
+import { useState, useEffect, useMemo, useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import type { TipState } from "../../shared/types";
-import { selectTip, type Tip, type TipContext } from "../tips";
+import { selectTip } from "../tips/rotation";
+import { getTipRegistry, type Tip, type TipContext } from "../tips/registry";
 import { api } from "../rpc";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 
@@ -48,9 +49,11 @@ export function useTipRotation(context: TipContext, disabled?: boolean): UseTipR
 		if (!isDisabled) reloadTipState();
 	}, [isDisabled, reloadTipState]);
 
+	const registry = getTipRegistry();
+	const entries = useSyncExternalStore(registry.subscribe, registry.list);
 	const tip = useMemo(
-		() => (tipState && !isDisabled ? selectTip(tipState, context) : null),
-		[tipState, isDisabled, context],
+		() => (tipState && !isDisabled ? selectTip(entries.map((entry) => entry.def), tipState, context) : null),
+		[entries, tipState, isDisabled, context],
 	);
 
 	return { tip, tipState, applyTipState: setTipState };

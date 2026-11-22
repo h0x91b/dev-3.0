@@ -47,6 +47,10 @@ import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "../../terminal-tab-deco
 import { resetDecorationFailuresForTests } from "../../terminal-tab-decorations/registry";
 import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
 import type { TmuxWindowEntry } from "../../../shared/types";
+import { BUILTIN_TIPS_PLUGIN } from "../../tips/builtins";
+import type { Tip } from "../../tips/registry";
+import { resetTipFailuresForTests } from "../../tips/rotation";
+import { TipCarrier } from "../../tips/__tests__/TipCarrier";
 import { importAppSlots } from "./app-slots";
 import { BUILTIN_FILE_MENU_PLUGIN } from "../../file-menu/builtins";
 import { BUILTIN_TERMINAL_WINDOW_MENU_PLUGIN } from "../../terminal-window-menu/builtins";
@@ -67,6 +71,8 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
 			tmuxWindowNavigate: vi.fn(),
 			listExplorerDirectory: vi.fn(),
+			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			updateTipState: vi.fn(),
 		},
 	},
 }));
@@ -542,6 +548,22 @@ const CASES: CrashCase[] = [
 			run: '[terminalWindowMenu] "crash:item" failed',
 		}[callback],
 	})),
+	...(["when", "data"] as const).map((callback): CrashCase => ({
+		slot: "tips",
+		callback,
+		builtins: [BUILTIN_TIPS_PLUGIN],
+		contribute(ctx) {
+			const tip: Tip = { id: "crash:tip", titleKey: "tip.next", bodyKey: "tip.next", icon: "x", score: 5, contexts: ["board"] };
+			ctx.tips.register(callback === "when" ? { ...tip, when: boom } : { ...tip, icon: { glyph: "x" } as never });
+		},
+		render() {
+			mount(<TipCarrier />);
+		},
+		alive() {
+			expect(screen.getByTestId("tip-progress")).toBeInTheDocument();
+		},
+		logs: "crash:tip",
+	})),
 	{
 		slot: "terminalCompanion",
 		callback: "component",
@@ -584,6 +606,7 @@ beforeEach(() => {
 	resetBoardViewCommandsForTests();
 	resetPreviousBoardViewsForTests();
 	resetTaskDocksForTests();
+	resetTipFailuresForTests();
 	localStorage.clear();
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
 });
