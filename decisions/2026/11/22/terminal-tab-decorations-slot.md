@@ -22,19 +22,23 @@ The slot is internal: no manifest kind, no public service, no API version bump.
   - rename, close and `+`;
   - the narrow window switcher;
   - tmux pane borders.
-- **Budget.** Every built-in, then at most one extension decoration per tab, inside the tab's existing
-  `max-w-[14rem]`. The row never grows.
+- **Budget.** Every built-in, then at most one extension decoration per tab. The tab keeps its
+  `max-w-[14rem]`, so the row never grows. A non-built-in decoration sits in a `flex-shrink-0 max-w-4
+  overflow-hidden` wrapper (one glyph wide), so it can neither squeeze the name away nor spill over the close
+  button. Built-ins render unwrapped and keep their DOM.
 - **Isolation.**
   - A throwing `when` or `label` hides the decoration.
-  - A crashing component is dropped by its own boundary and then stops being placed. The block is keyed by the
-    registered object, so a reloaded extension retries.
-  - Each failure is logged once per id and callback, never per tab or per poll (the review-2394 W1/W2 trap).
+  - A crashing component is dropped by its own boundary and then stops being placed. The crash bumps a tiny store
+    the row subscribes to, so the decoration and its label leave every tab at once, not on the next poll.
+  - Each failure is logged once per registered decoration and callback, never per tab or per poll (the
+    review-2394 W1/W2 trap).
+  - Both the block and the log memory are keyed by the registered object, so a reloaded extension retries and
+    logs again if it fails again.
 - **Hot path.** WindowTabs subscribes to the registry once. When the row renders, each tab loops over a stable
   snapshot. The terminal's input and paint path never touches it.
 
 ## Risks
 - The scope hands an extension the raw `TmuxWindowEntry`. That is fine internally, but it is not yet a public contract.
-- A crashed decoration's label stays in the tab's name until the row next renders, which is the next window poll.
 
 ## Alternatives considered
 - **Decorating tmux pane borders.** tmux renders them, so this would mean changing the tmux layout, which stays host-owned.

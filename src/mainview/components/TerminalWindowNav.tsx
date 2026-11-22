@@ -8,7 +8,7 @@ import { closeTmuxWindow, openTmuxWindow, renameTmuxWindow } from "../terminal-w
 import { WINDOW_NAME_MAX } from "../../shared/window-name";
 import { toast } from "../toast";
 import Tooltip from "./Tooltip";
-import { getTerminalTabDecorationRegistry, placeTerminalTabDecorations } from "../terminal-tab-decorations/registry";
+import { getDecorationCrashVersion, getTerminalTabDecorationRegistry, placeTerminalTabDecorations, subscribeDecorationCrashes } from "../terminal-tab-decorations/registry";
 import { TerminalTabDecorations } from "../terminal-tab-decorations/TerminalTabDecorations";
 
 /**
@@ -121,6 +121,8 @@ function WindowTabs({
 	const listRef = useRef<HTMLDivElement>(null);
 	const decorationRegistry = getTerminalTabDecorationRegistry();
 	const decorationEntries = useSyncExternalStore(decorationRegistry.subscribe, decorationRegistry.list);
+	// A crashed decoration leaves every tab, and its label every tab's name, at once rather than on the next poll.
+	useSyncExternalStore(subscribeDecorationCrashes, getDecorationCrashVersion);
 	const [menu, setMenu] = useState<WindowMenuState | null>(null);
 	const [editing, setEditing] = useState<{ windowId: string; width: number } | null>(null);
 	// A lone window cannot be closed, so it gets no ×.
