@@ -343,8 +343,8 @@ describe("the name dialog", () => {
 		boot();
 		const { user, dialog, input } = await openSave();
 		await user.type(input, "  bETAS  {Enter}");
-		expect(within(dialog).getByRole("alert")).toBeInTheDocument();
-		expect(within(dialog).getByTestId("saved-view-name-submit")).toBeDisabled();
+		expect(input).toHaveAttribute("aria-invalid", "true");
+		expect(within(dialog).getByText(/already exists on this board/)).toBeInTheDocument();
 		expect(screen.getByTestId("saved-view-name-dialog")).toBeInTheDocument();
 		expect(writes()).toBe(0);
 	});
@@ -385,7 +385,7 @@ describe("session-memory ids", () => {
 		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Kanban"));
 		await pick("Two");
 		await waitFor(async () => expect((await switcherButton()).textContent).toBe("Two"));
-		await pick('Delete "Two"');
+		await pick('Delete “Two”');
 		await waitFor(() => expect(namedIn(lastSaved()).map((v) => v.id)).toEqual(["sv-named-1"]));
 		await pick("Save current view…");
 		await user.type(await screen.findByTestId("saved-view-name-input"), "Fresh{Enter}");

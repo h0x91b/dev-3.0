@@ -195,7 +195,7 @@ function SelectListbox({
 						<div
 							key={`section-${opt.section}`}
 							role="presentation"
-							className="px-3 pt-2.5 pb-1 text-micro uppercase tracking-wide text-fg-muted"
+							className="px-3 pt-2.5 pb-1 text-micro uppercase tracking-wide text-fg-3"
 						>
 							{opt.section}
 						</div>
@@ -271,7 +271,7 @@ function SelectListbox({
 
 	if (!search) {
 		return createPortal(
-			<div ref={panelRef} id={listboxId} role="listbox" style={maxHeight ? { ...panelStyle, maxHeight } : panelStyle} className={`${panelClass} overflow-y-auto max-h-72`}>
+			<div ref={panelRef} id={listboxId} role="listbox" style={maxHeight ? { ...panelStyle, maxHeight } : panelStyle} className={`${panelClass} overflow-y-auto overscroll-contain max-h-72`}>
 				{rows}
 			</div>,
 			document.body,
@@ -300,7 +300,7 @@ function SelectListbox({
 					className="w-full bg-elevated text-fg text-sm rounded-md px-2.5 py-1.5 border border-edge focus:border-accent outline-none placeholder:text-fg-muted"
 				/>
 			</div>
-			<div id={listboxId} role="listbox" className="overflow-y-auto max-h-64">
+			<div id={listboxId} role="listbox" className="overflow-y-auto overscroll-contain max-h-64">
 				{rows}
 			</div>
 		</div>,

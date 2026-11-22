@@ -148,10 +148,10 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 	const { namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed } = viewState;
 	const nameOf = (id: string) => namedViews.find((view) => view.id === id)?.name ?? "";
 
-	const unavailable = () => toast.info(t("boardView.unavailable"));
+	const unavailable = (id: string) => toast.info(t("boardView.saved.unavailable", { name: nameOf(id) }));
 	const apply = (id: string) => {
 		const viewType = namedViews.find((view) => view.id === id)?.viewType;
-		if (!viewType || !offered.some((view) => view.def.id === viewType)) return unavailable();
+		if (!viewType || !offered.some((view) => view.def.id === viewType)) return unavailable(id);
 		const savedQuery = applyNamed(id);
 		if (savedQuery !== null) setQuery(savedQuery);
 	};
@@ -162,17 +162,24 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 		onApply: apply,
 		onUnavailable: unavailable,
 		onSave: () => setNaming({ mode: "new" }),
-		onUpdate: (id) => updateNamed(id, query),
+		onUpdate: (id) => {
+			updateNamed(id, query);
+			toast.success(t("boardView.saved.savedToast", { name: nameOf(id) }));
+		},
 		onRevert: apply,
 		onRename: (id) => setNaming({ mode: "rename", id }),
 		onDelete: (id) => {
 			const name = nameOf(id);
 			void confirm({
-				title: t("boardView.saved.deleteTitle"),
+				title: t("boardView.saved.deleteTitle", { name }),
 				message: t("boardView.saved.deleteMessage", { name }),
 				confirmLabel: t("boardView.saved.deleteConfirm"),
 				danger: true,
-			}).then((ok) => { if (ok) deleteNamed(id); });
+			}).then((ok) => {
+				if (!ok) return;
+				deleteNamed(id);
+				toast.success(t("boardView.saved.deletedToast", { name }));
+			});
 		},
 	};
 	const renamingId = naming?.mode === "rename" ? naming.id : null;
@@ -181,7 +188,11 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 			mode={naming.mode}
 			initialName={renamingId ? nameOf(renamingId) : ""}
 			takenNames={namedViews.filter((view) => view.id !== renamingId).map((view) => view.name ?? "")}
-			onSubmit={(name) => (renamingId ? renameNamed(renamingId, name) : saveNamed(name, query))}
+			onSubmit={(name) => {
+				if (renamingId) return renameNamed(renamingId, name);
+				saveNamed(name, query);
+				toast.success(t("boardView.saved.savedToast", { name }));
+			}}
 			onClose={() => setNaming(null)}
 		/>
 	) : null;

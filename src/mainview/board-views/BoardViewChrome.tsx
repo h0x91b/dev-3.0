@@ -21,7 +21,7 @@ const DELETE_VIEW = "__delete-view__";
 const NAMED_PREFIX = "named:";
 
 /** Saved views add up to six action rows under the views; keep them on screen instead of behind the 18rem scroll. */
-const SWITCHER_LIST_MAX_HEIGHT = "min(36rem, calc(100vh - 1rem))";
+const SWITCHER_LIST_MAX_HEIGHT = "min(36rem, calc(100dvh - 1rem))";
 
 /** What the switcher needs to list named saved views and act on the applied one. */
 export interface SavedViewsSwitcherProps {
@@ -31,7 +31,7 @@ export interface SavedViewsSwitcherProps {
 	modified: boolean;
 	onApply: (id: string) => void;
 	/** A saved view whose view type this board cannot show here (narrow, disabled, uninstalled). */
-	onUnavailable: () => void;
+	onUnavailable: (id: string) => void;
 	onSave: () => void;
 	onUpdate: (id: string) => void;
 	onRevert: (id: string) => void;
@@ -104,7 +104,7 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: 
 					if (applied && saved.modified && option.value === `${NAMED_PREFIX}${applied.id}`) return <EditedName name={applied.name} />;
 					return option.label;
 				}}
-				onOptionDisabledClick={saved.onUnavailable}
+				onOptionDisabledClick={(value) => value.startsWith(NAMED_PREFIX) && saved.onUnavailable(value.slice(NAMED_PREFIX.length))}
 				growList
 				maxListHeight={SWITCHER_LIST_MAX_HEIGHT}
 			/>

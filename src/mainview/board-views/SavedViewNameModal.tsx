@@ -16,13 +16,18 @@ export function SavedViewNameModal({ mode, initialName, takenNames, onSubmit, on
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [name, setName] = useState(initialName);
+	const [attempted, setAttempted] = useState(false);
 	useEscapeKey(onClose);
 
 	const clean = cleanSavedViewName(name);
 	const taken = clean !== "" && takenNames.some((other) => other.toLowerCase() === clean.toLowerCase());
-	const canSubmit = clean !== "" && !taken;
+	const empty = clean === "";
+	const canSubmit = !empty && !taken;
+	// Validated on submit, so Save stays in the tab order and says why it did nothing.
+	const error = taken ? "boardView.saved.nameTaken" : attempted && empty ? "boardView.saved.nameEmpty" : null;
 
 	function submit() {
+		setAttempted(true);
 		if (!canSubmit) return;
 		onSubmit(clean);
 		onClose();
@@ -54,21 +59,24 @@ export function SavedViewNameModal({ mode, initialName, takenNames, onSubmit, on
 						submit();
 					}}
 				>
+					<label htmlFor="saved-view-name-input" className="block text-xs text-fg-3">
+						{t("boardView.saved.nameLabel")}
+					</label>
 					<input
 						type="text"
 						value={name}
 						onChange={(e) => setName(e.target.value)}
+						id="saved-view-name-input"
 						placeholder={t("boardView.saved.namePlaceholder")}
-						aria-label={t("boardView.saved.namePlaceholder")}
-						aria-invalid={taken}
+						aria-invalid={error !== null}
 						aria-describedby="saved-view-name-hint"
 						maxLength={SAVED_VIEW_NAME_MAX}
 						autoFocus
-						className="w-full bg-elevated border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
+						className="w-full bg-elevated border border-edge rounded-lg px-3 py-2 text-base sm:text-sm text-fg placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
 						data-testid="saved-view-name-input"
 					/>
-					<p id="saved-view-name-hint" className={`text-xs ${taken ? "text-danger" : "text-fg-3"}`} role={taken ? "alert" : undefined}>
-						{t(taken ? "boardView.saved.nameTaken" : "boardView.saved.nameHint")}
+					<p id="saved-view-name-hint" className={`text-xs ${error ? "text-danger" : "text-fg-3"}`}>
+						{t(error ?? "boardView.saved.nameHint")}
 					</p>
 				</form>
 				<div className="flex justify-end gap-2">
@@ -82,8 +90,7 @@ export function SavedViewNameModal({ mode, initialName, takenNames, onSubmit, on
 					<button
 						type="button"
 						onClick={submit}
-						disabled={!canSubmit}
-						className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+						className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 						data-testid="saved-view-name-submit"
 					>
 						{t(mode === "new" ? "boardView.saved.saveButton" : "boardView.saved.renameButton")}

@@ -200,7 +200,7 @@ describe("named saved views", () => {
 		await pick("Betas");
 		fireEvent.change(search(), { target: { value: "alpha" } });
 		expect((await switcherButton()).textContent).toBe("Betas • edited");
-		await pick('Update "Betas"');
+		await pick('Update “Betas”');
 		await waitFor(() => expect(namedIn(lastSaved())[0]).toMatchObject({ query: "alpha", viewType: "ext:list" }));
 		expect((await switcherButton()).textContent).toBe("Betas");
 
@@ -216,9 +216,9 @@ describe("named saved views", () => {
 		await screen.findByTestId("kanban");
 		await pick("Betas");
 		fireEvent.click(await switcherButton());
-		expect(screen.queryByRole("option", { name: 'Update "Betas"' })).not.toBeInTheDocument();
+		expect(screen.queryByRole("option", { name: 'Update “Betas”' })).not.toBeInTheDocument();
 		expect(screen.queryByRole("option", { name: "Revert changes" })).not.toBeInTheDocument();
-		expect(screen.getByRole("option", { name: 'Rename "Betas"…' })).toBeInTheDocument();
+		expect(screen.getByRole("option", { name: 'Rename “Betas”…' })).toBeInTheDocument();
 	});
 
 	it("Revert restores the saved query and layout", async () => {
@@ -248,7 +248,7 @@ describe("named saved views", () => {
 		expect((await switcherButton()).textContent).toBe("Kanban");
 		fireEvent.click(await switcherButton());
 		expect(screen.getByRole("option", { name: "Betas" })).toBeInTheDocument();
-		expect(screen.queryByRole("option", { name: 'Rename "Betas"…' })).not.toBeInTheDocument();
+		expect(screen.queryByRole("option", { name: 'Rename “Betas”…' })).not.toBeInTheDocument();
 	});
 
 	it("deletes only after the confirm dialog says yes", async () => {
@@ -260,13 +260,13 @@ describe("named saved views", () => {
 		await pick("Betas");
 
 		vi.mocked(confirm).mockResolvedValueOnce(false);
-		await pick('Delete "Betas"');
+		await pick('Delete “Betas”');
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
 		expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ danger: true, message: expect.stringContaining("Betas") });
 		expect((await switcherButton()).textContent).toBe("Betas");
 
 		vi.mocked(confirm).mockResolvedValueOnce(true);
-		await pick('Delete "Betas"');
+		await pick('Delete “Betas”');
 		await waitFor(() => expect(namedIn(lastSaved())).toEqual([]));
 		// The board keeps showing what it showed; only the preset is gone.
 		expect(screen.getByTestId("view-list")).toBeInTheDocument();
@@ -283,13 +283,15 @@ describe("named saved views", () => {
 		renderHost();
 		await screen.findByTestId("kanban");
 		await pick("Betas");
-		await pick('Rename "Betas"…');
+		await pick('Rename “Betas”…');
 		const dialog = await screen.findByTestId("saved-view-name-dialog");
 		const input = within(dialog).getByTestId("saved-view-name-input") as HTMLInputElement;
 		expect(input.value).toBe("Betas");
 		fireEvent.change(input, { target: { value: "alphas" } });
-		expect(within(dialog).getByRole("alert")).toHaveTextContent("already has a view with that name");
-		expect(within(dialog).getByTestId("saved-view-name-submit")).toBeDisabled();
+		expect(input).toHaveAttribute("aria-invalid", "true");
+		expect(input).toHaveAccessibleDescription(/already exists on this board\. Choose another name\./);
+		fireEvent.click(within(dialog).getByTestId("saved-view-name-submit"));
+		expect(screen.getByTestId("saved-view-name-dialog")).toBeInTheDocument();
 		fireEvent.change(input, { target: { value: "Bets" } });
 		fireEvent.submit(input.closest("form")!);
 		await waitFor(() => expect(namedIn(lastSaved()).map((view) => view.name)).toEqual(["Bets", "Alphas"]));
@@ -301,8 +303,12 @@ describe("named saved views", () => {
 		renderHost();
 		await pick("Save current view…");
 		const dialog = await screen.findByTestId("saved-view-name-dialog");
-		fireEvent.change(within(dialog).getByTestId("saved-view-name-input"), { target: { value: "   " } });
-		expect(within(dialog).getByTestId("saved-view-name-submit")).toBeDisabled();
+		const input = within(dialog).getByTestId("saved-view-name-input");
+		fireEvent.change(input, { target: { value: "   " } });
+		expect(input).toHaveAttribute("aria-invalid", "false");
+		fireEvent.click(within(dialog).getByTestId("saved-view-name-submit"));
+		expect(input).toHaveAttribute("aria-invalid", "true");
+		expect(input).toHaveAccessibleDescription("Enter a name for the view.");
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByTestId("saved-view-name-dialog")).not.toBeInTheDocument());
 		expect(api.request.changeNamedBoardView).not.toHaveBeenCalled();
@@ -362,7 +368,7 @@ describe("named saved views", () => {
 		const row = await screen.findByRole("option", { name: /Gone/ });
 		expect(row).toHaveAttribute("aria-disabled", "true");
 		fireEvent.click(row);
-		expect(info).toHaveBeenCalledWith("That board view is not available on this board.");
+		expect(info).toHaveBeenCalledWith("“Gone” uses a view this board can't show here. Widen the window, or turn the view on in Manage views.");
 		expect(search().value).toBe("");
 		expect(screen.getByTestId("kanban")).toBeInTheDocument();
 		info.mockRestore();
@@ -417,5 +423,21 @@ describe("named saved views", () => {
 		expect(within(trigger).getByText("edited", { exact: false })).toHaveClass("sr-only");
 		fireEvent.click(trigger);
 		expect(screen.getByRole("option", { name: /Betas.*edited/ })).toBeInTheDocument();
+	});
+
+	it("announces a saved and a deleted view through a success toast", async () => {
+		const success = vi.spyOn(toast, "success").mockImplementation(() => "");
+		vi.mocked(confirm).mockResolvedValue(true);
+		installIntoAppRoot([installKanbanView]);
+		registerListView();
+		renderHost();
+		await pick("Save current view…");
+		const dialog = await screen.findByTestId("saved-view-name-dialog");
+		fireEvent.change(within(dialog).getByTestId("saved-view-name-input"), { target: { value: "Mine" } });
+		fireEvent.click(within(dialog).getByTestId("saved-view-name-submit"));
+		expect(success).toHaveBeenCalledWith("Saved view “Mine” saved");
+		await pick("Delete “Mine”");
+		await waitFor(() => expect(success).toHaveBeenCalledWith("Saved view “Mine” deleted"));
+		success.mockRestore();
 	});
 });
