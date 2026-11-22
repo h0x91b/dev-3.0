@@ -12,10 +12,10 @@ beforeEach(() => {
 afterEach(() => errors.mockRestore());
 
 describe("menu-rows", () => {
-	it("reports a broken item once per slot, id and phase, however often an open menu re-resolves it", async () => {
+	it("reports a broken item once per slot and id however often an open menu re-resolves it, but every failing run", async () => {
 		const item: MenuSlotItem<null, "g"> = { id: "acme:x", region: "g", label: boom };
 		for (let render = 0; render < 25; render++) expect(resolveMenuRow("fileMenu", item, null)).toBeNull();
-		// The same id on another slot is its own report; a run failure is a phase of its own.
+		// The same id on another slot is its own report; every click on a failing run is reported.
 		resolveMenuRow("taskMenu", item, null);
 		for (let click = 0; click < 3; click++) runMenuItem("fileMenu", "acme:x", boom, null);
 		runMenuItem("fileMenu", "acme:async", () => Promise.reject(new Error("later")), null);
@@ -24,6 +24,8 @@ describe("menu-rows", () => {
 		expect(errors.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual([
 			'[fileMenu] "acme:x" failed to resolve',
 			'[taskMenu] "acme:x" failed to resolve',
+			'[fileMenu] "acme:x" failed',
+			'[fileMenu] "acme:x" failed',
 			'[fileMenu] "acme:x" failed',
 			'[fileMenu] "acme:async" failed',
 		]);

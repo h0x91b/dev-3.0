@@ -10,8 +10,8 @@ Both slots are internal: no manifest kind, no public service, no API version bum
 - **Shared helper.** `src/mainview/plugins/menu-rows.ts` holds what all three menus share: `MenuSlotItem`
   (region, guarded `label` / `when` / `disabled` / `checked`, `danger`), `resolveMenuRow`, `groupMenuRows`
   (built-ins by group, then one trailing group for anything else) and `runMenuItem` (sync and async throws
-  logged, never escaping). A failure is logged once per slot, id and phase (resolve / run), because an open menu
-  re-resolves on every host render. `useMenuSlotEntries` listens to the slot only while a menu is open, the
+  logged, never escaping). A broken `when` / `label` is logged once per slot and id, because an open menu
+  re-resolves on every host render; a failing run is one click and is logged every time. `useMenuSlotEntries` listens to the slot only while a menu is open, the
   rule <pr:2402> set for task menus, so the long-lived explorer does not re-render on slot changes.
   `TaskContextMenu` now uses all of it and keeps its `[taskMenu]` log lines.
 - **`fileMenu`** (`src/mainview/file-menu/`). Groups `open` / `path` / `host`. The scope is the row's entry, whether
