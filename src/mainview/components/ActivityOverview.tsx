@@ -152,7 +152,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// touch, so per-project actions + reorder collapse into a single kebab that
 	// opens this action sheet (the project whose id is set here).
 	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
-	const projectActionEntries = useProjectActionEntries(actionSheetProjectId !== null);
+	// One subscription per dashboard: every row's cluster and the sheet draw from these entries.
+	const projectActionEntries = useProjectActionEntries(true);
 	// The space whose block the sheet's row sat in, if any: its Move up / down steps there.
 	const [actionSheetSpaceId, setActionSheetSpaceId] = useState<string | null>(null);
 	// The order the sheet just sent for a space, while that request is out: taps
@@ -740,6 +741,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					<div className={compact ? "hidden" : "hidden md:flex"}>
 						<ProjectActionButtons
 							project={project}
+							entries={projectActionEntries}
 							navigate={navigate}
 							onRemove={onRemoveProject}
 							onOpenSpaces={allSpaceGroups !== null ? openSpacesPicker : undefined}

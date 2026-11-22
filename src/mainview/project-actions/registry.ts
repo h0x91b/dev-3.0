@@ -64,12 +64,15 @@ export interface ProjectActionRows {
 	danger: MenuRow<ProjectActionItem>[];
 }
 
+export type ProjectActionEntries = readonly Pick<SlotEntry<ProjectActionItem>, "def">[];
+
 /** Resolves the items drawn at one placement; a throwing or malformed item drops only itself, logged once. */
-export function resolveProjectActions(entries: readonly Pick<SlotEntry<ProjectActionItem>, "def">[], scope: ProjectActionScope): ProjectActionRows {
+export function resolveProjectActions(entries: ProjectActionEntries, scope: ProjectActionScope): ProjectActionRows {
 	const rows: ProjectActionRows = { actions: [], foreign: [], danger: [] };
 	for (const { def } of entries) {
 		try {
-			if (!Array.isArray(def.placements) || !def.placements.includes(scope.placement)) continue;
+			if (!Array.isArray(def.placements)) throw new TypeError("a project action needs a placements array");
+			if (!def.placements.includes(scope.placement)) continue;
 			const row = resolveMenuRow(SLOT, def, scope);
 			if (!row) continue;
 			if (typeof row.label !== "string" || typeof def.glyph !== "string") throw new TypeError("a project action needs a string label and glyph");

@@ -2,13 +2,13 @@ import type { MouseEvent } from "react";
 import type { Project } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
-import { runMenuItem } from "../plugins/menu-rows";
-import { useProjectActionEntries } from "../project-actions/useProjectActions";
-import { resolveProjectActions, type ProjectActionItem, type ProjectActionScope } from "../project-actions/registry";
-import type { MenuRow } from "../plugins/menu-rows";
+import { runMenuItem, type MenuRow } from "../plugins/menu-rows";
+import { resolveProjectActions, type ProjectActionEntries, type ProjectActionItem, type ProjectActionScope } from "../project-actions/registry";
 
 interface ProjectActionButtonsProps {
 	project: Project;
+	/** The slot's items, read once by the dashboard so a row adds no subscription of its own. */
+	entries: ProjectActionEntries;
 	navigate: (route: Route) => void;
 	onRemove?: (projectId: string) => void | Promise<void>;
 	/** Opens the space-membership picker anchored to the button. Omitted where
@@ -20,13 +20,13 @@ interface ProjectActionButtonsProps {
 /** The dashboard row's resting icon cluster: the `row` items of the `projectActions` slot. */
 function ProjectActionButtons({
 	project,
+	entries,
 	navigate,
 	onRemove,
 	onOpenSpaces,
 	className = "",
 }: ProjectActionButtonsProps) {
 	const t = useT();
-	const entries = useProjectActionEntries(true);
 	const scope: ProjectActionScope = {
 		project,
 		placement: "row",

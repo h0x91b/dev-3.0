@@ -2,6 +2,8 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Fiber } from "cordis";
 import ActivityOverview from "../../components/ActivityOverview";
+import ProjectActionButtons from "../../components/ProjectActionButtons";
+import { countSlotSubscriptions } from "../../plugins/__tests__/slot-subscriptions";
 import { I18nProvider } from "../../i18n";
 import { getAppRoot } from "../../plugins/root";
 import { resetPluginsForTests } from "../../plugins/runtime";
@@ -39,13 +41,13 @@ function setNarrow(narrow: boolean) {
 	});
 }
 
-async function renderDashboard(navigate: (route: Route) => void = vi.fn()) {
+async function renderDashboard(navigate: (route: Route) => void = vi.fn(), projects: Project[] = [PROJECT]) {
 	render(
 		<I18nProvider>
-			<ActivityOverview projects={[PROJECT]} navigate={navigate} dispatch={vi.fn()} bellCounts={new Map()} onRemoveProject={vi.fn()} onReorderProjects={vi.fn()} />
+			<ActivityOverview projects={projects} navigate={navigate} dispatch={vi.fn()} bellCounts={new Map()} onRemoveProject={vi.fn()} onReorderProjects={vi.fn()} />
 		</I18nProvider>,
 	);
-	await screen.findByText("Real project");
+	await screen.findByText(projects[0].name);
 	for (let tick = 0; tick < 5; tick++) await act(async () => {});
 }
 
@@ -136,6 +138,7 @@ describe("projectActions slot", () => {
 	it("drops a throwing or malformed item, keeps dev3's, and logs each once", async () => {
 		await contribute(acme({ id: "acme:when", when: () => { throw new Error("when boom"); } }), "when");
 		await contribute(acme({ id: "acme:glyph", glyph: { not: "a glyph" } as never }), "glyph");
+		await contribute(acme({ id: "acme:placements", placements: "sheet" as never }), "placements");
 		setNarrow(true);
 		await renderDashboard();
 		const user = userEvent.setup();
@@ -145,7 +148,11 @@ describe("projectActions slot", () => {
 			expect(sheetLabels(sheet)).not.toContain("Deploy");
 			await user.click(within(sheet).getByText("Open board"));
 		}
-		expect(slotLogs().sort()).toEqual(['[projectActions] "acme:glyph" failed to resolve', '[projectActions] "acme:when" failed to resolve']);
+		expect(slotLogs().sort()).toEqual([
+			'[projectActions] "acme:glyph" failed to resolve',
+			'[projectActions] "acme:placements" failed to resolve',
+			'[projectActions] "acme:when" failed to resolve',
+		]);
 	});
 
 	it("logs every failing run and keeps the dashboard", async () => {
@@ -164,6 +171,32 @@ describe("projectActions slot", () => {
 		await renderDashboard();
 		expect(screen.getByLabelText("Project settings")).toBeInTheDocument();
 		expect(screen.getByLabelText("Remove")).toBeInTheDocument();
+	});
+
+	it("holds one slot subscription for the whole dashboard, however many rows it draws", async () => {
+		const subscriptions = countSlotSubscriptions();
+		const projects = Array.from({ length: 12 }, (_, i) => ({ ...PROJECT, id: `p${i}`, name: `Project ${i}`, path: `/home/user/p${i}` }));
+		await renderDashboard(vi.fn(), projects);
+		expect(screen.getAllByLabelText("Project settings")).toHaveLength(12);
+		expect(subscriptions.get("projectActions")).toBe(1);
+	});
+
+	it("never lets a row action's click reach the row it sits in", async () => {
+		const navigate = vi.fn();
+		await renderDashboard(navigate);
+		await userEvent.setup().click(screen.getByLabelText("Open in Finder"));
+		expect(navigate).not.toHaveBeenCalledWith(expect.objectContaining({ screen: "project" }));
+
+		const rowClick = vi.fn();
+		render(
+			<I18nProvider>
+				<div onClick={rowClick}>
+					<ProjectActionButtons project={{ ...PROJECT, id: "p2" }} entries={getProjectActionRegistry().list()} navigate={vi.fn()} />
+				</div>
+			</I18nProvider>,
+		);
+		await userEvent.setup().click(screen.getAllByLabelText("Open in Finder")[1]);
+		expect(rowClick).not.toHaveBeenCalled();
 	});
 
 	it("[dispose] drops a plugin's action from the open sheet when the plugin unloads, keeping dev3's", async () => {
