@@ -222,6 +222,7 @@ describe("task lifecycle transition table", () => {
 			"judgeFailureWorkspace",
 			"runCleanupScript",
 			"reapWorktreeProcesses",
+			"reclaimOutOfTreeState",
 			"removeWorktree",
 			"persistPreparationFailure",
 			"push",
@@ -284,6 +285,23 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects.find((candidate) => candidate.type === "reapWorktreeProcesses")).not.toMatchObject({
 			onError: "abort",
 		});
+	});
+
+	it.each([
+		["completion", state("in-progress"), { type: "moveRequested", target: { status: "completed" }, runId: "run-x" }, "removeWorktree"],
+		["deletion", state("in-progress"), { type: "deleteRequested" }, "removeTaskWorkspace"],
+	] as const)("reclaims out-of-tree state after the reap and right before the folder goes on %s", (_label, from, event, removal) => {
+		const result = transition(from, event as LifecycleEvent);
+		const types = result.effects.map((candidate) => candidate.type);
+
+		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("reclaimOutOfTreeState"));
+		expect(types[types.indexOf("reclaimOutOfTreeState") + 1]).toBe(removal);
+		expect(result.effects.find((candidate) => candidate.type === "reclaimOutOfTreeState")).not.toMatchObject({ onError: "abort" });
+	});
+
+	it("keeps out-of-tree state when hibernating, since the worktree stays", () => {
+		const types = transition(state("in-progress"), { type: "hibernateRequested" }).effects.map((candidate) => candidate.type);
+		expect(types).not.toContain("reclaimOutOfTreeState");
 	});
 
 	it("archives the conversation once, on the way to a terminal status", () => {
@@ -625,6 +643,7 @@ describe("task lifecycle transition table", () => {
 			"captureCompletedDiffStats",
 			"dumpTaskConversations",
 			"reapWorktreeProcesses",
+			"reclaimOutOfTreeState",
 			"removeWorktree",
 			"persistTerminalTask",
 			"push",
@@ -801,6 +820,7 @@ describe("task lifecycle transition table", () => {
 			"killDevServer",
 			"runCleanupScript",
 			"reapWorktreeProcesses",
+			"reclaimOutOfTreeState",
 			"removeTaskWorkspace",
 			"deleteTaskRecord",
 			"push",

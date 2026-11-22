@@ -91,6 +91,8 @@ export type LifecycleEffect =
 	| ({ type: "captureCompletedDiffStats"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "dumpTaskConversations"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "reapWorktreeProcesses"; allowDerivedPath?: boolean } & EffectPolicy)
+	/** Deletes state tools keep outside the worktree, keyed by its path (e.g. a Bazel output base). */
+	| ({ type: "reclaimOutOfTreeState"; allowDerivedPath?: boolean } & EffectPolicy)
 	/**
 	 * `failureCleanup`: the preparation-failure path — a branch is deleted only when
 	 * no commit is reachable from it alone, and nothing runs when the preceding

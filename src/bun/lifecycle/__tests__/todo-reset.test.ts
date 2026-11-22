@@ -108,6 +108,7 @@ describe("resetRequested (T8–T10)", () => {
 			"runCleanupScript",
 			"dumpTaskConversations",
 			"reapWorktreeProcesses",
+			"reclaimOutOfTreeState",
 			"resetWorktree",
 			"persistResetTask",
 			"push",

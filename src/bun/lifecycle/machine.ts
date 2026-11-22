@@ -110,6 +110,7 @@ function preparationFailureEffects(
 		effects.push(effect({ type: "judgeFailureWorkspace" }));
 		effects.push(effect({ type: "runCleanupScript", toStatus: "todo", allowDerivedPath: true }));
 		effects.push(effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }));
+		effects.push(effect({ type: "reclaimOutOfTreeState", allowDerivedPath: true }));
 		effects.push(effect({ type: "removeWorktree", allowDerivedPath: true, failureCleanup: true }));
 	}
 	effects.push(
@@ -406,9 +407,15 @@ function moveTransition(
 				effect({ type: "reapWorktreeProcesses", allowDerivedPath }),
 			);
 			if (state.facts.usesWorktrees) {
-				effects.push(effect({ type: "removeWorktree", allowDerivedPath }, "abort", teardownFailed));
+				effects.push(
+					effect({ type: "reclaimOutOfTreeState", allowDerivedPath }),
+					effect({ type: "removeWorktree", allowDerivedPath }, "abort", teardownFailed),
+				);
 			} else if (state.facts.opsWorktree) {
-				effects.push(effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed));
+				effects.push(
+					effect({ type: "reclaimOutOfTreeState", allowDerivedPath: true }),
+					effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed),
+				);
 			} else if (state.facts.attachedRepoInFolder) {
 				effects.push(effect({ type: "removeAttachedWorktree", approvedAttachedRepo: event.approvedAttachedRepo ?? null }));
 			}
@@ -503,10 +510,10 @@ function resetTransition(
 			effect({ type: "dumpTaskConversations" }),
 			effect({ type: "reapWorktreeProcesses" }),
 			...(state.facts.usesWorktrees
-				? [effect({ type: "resetWorktree" }, "abort", failed)]
+				? [effect({ type: "reclaimOutOfTreeState" }), effect({ type: "resetWorktree" }, "abort", failed)]
 				// An owned Operations worktree goes like a git one; its branch is kept.
 				: state.facts.opsWorktree
-					? [effect({ type: "removeTaskWorkspace" }, "abort", failed)]
+					? [effect({ type: "reclaimOutOfTreeState" }), effect({ type: "removeTaskWorkspace" }, "abort", failed)]
 					: state.facts.attachedRepoInFolder
 						? [effect({ type: "removeAttachedWorktree", approvedAttachedRepo: event.consent.approvedAttachedRepo })]
 						: []),
@@ -595,9 +602,15 @@ function bootTransition(
 			effect({ type: "captureCompletedDiffStats", allowDerivedPath: true }),
 			effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }),
 			...(state.facts.usesWorktrees
-				? [effect({ type: "removeWorktree", allowDerivedPath: true }, "abort", teardownFailed)]
+				? [
+					effect({ type: "reclaimOutOfTreeState", allowDerivedPath: true }),
+					effect({ type: "removeWorktree", allowDerivedPath: true }, "abort", teardownFailed),
+				]
 				: state.facts.opsWorktree
-					? [effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed)]
+					? [
+						effect({ type: "reclaimOutOfTreeState", allowDerivedPath: true }),
+						effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed),
+					]
 					: state.facts.attachedRepoInFolder
 						// Boot recovery has no approval to show: only an already-removed worktree is settled.
 						? [effect({ type: "removeAttachedWorktree", approvedAttachedRepo: null })]
@@ -714,6 +727,10 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					}),
 					effect({
 						type: "reapWorktreeProcesses",
+						allowDerivedPath: state.runtime.phase === "preparing",
+					}),
+					effect({
+						type: "reclaimOutOfTreeState",
 						allowDerivedPath: state.runtime.phase === "preparing",
 					}),
 					effect({

@@ -57,6 +57,7 @@ import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { dev3TaskTempPath } from "../temp-paths";
 import { reapWorktreeProcesses } from "../worktree-reaper";
+import { reclaimOutOfTreeState } from "../out-of-tree-state";
 import { forgetWorktreeTrust } from "../worktree-trust";
 import {
 	activeTmuxConfigPath,
@@ -1206,6 +1207,13 @@ export async function executeLifecycleEffect(
 				ctx.sourceTask.id.slice(0, 8),
 			);
 			return {};
+		case "reclaimOutOfTreeState": {
+			if (ctx.failureWorkspaceKept) return {};
+			const worktreePath = ctx.sourceTask.worktreePath
+				?? (effect.allowDerivedPath ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null);
+			if (worktreePath) reclaimOutOfTreeState(worktreePath);
+			return {};
+		}
 		case "removeWorktree": {
 			if (ctx.failureWorkspaceKept) return {};
 			const worktreePath = effect.allowDerivedPath && !ctx.sourceTask.worktreePath
