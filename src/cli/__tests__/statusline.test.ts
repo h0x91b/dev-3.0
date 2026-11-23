@@ -1,9 +1,17 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENV_UNSET } from "../../shared/agent-accounts";
-import { claudeDumpFilePaths, claudeDumpOwner, configDirDumpName, resolveOriginalStatusLine, sessionDumpFilePath } from "../commands/statusline";
+import {
+	claudeDumpFilePaths,
+	claudeDumpOwner,
+	configDirDumpName,
+	resolveOriginalStatusLine,
+	sessionDumpFilePath,
+	STATUSLINE_NESTED_ENV,
+} from "../commands/statusline";
 
 let tmp: string;
 let projectDir: string;
@@ -56,6 +64,14 @@ describe("resolveOriginalStatusLine", () => {
 		"exec dev3 statusline agy",
 		'"C:\\Users\\x\\.dev3.0\\bin\\dev3" statusline',
 		"dev3.cmd statusline",
+		"(dev3 statusline)",
+		'dev3 "statusline"',
+		"DEV3.EXE statusline",
+		"Dev3.cmd statusline",
+		"$(which dev3) statusline",
+		"`which dev3` statusline",
+		"true; dev3 statusline",
+		"x=1 && dev3 statusline",
 	])("skips a statusLine that points back at dev3 statusline (recursion guard): %s", (command) => {
 		writeSettings(home, { type: "command", command });
 		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
@@ -104,6 +120,43 @@ describe("resolveOriginalStatusLine", () => {
 		writeSettings(home, { type: "command", command: "echo user" });
 		expect(resolveOriginalStatusLine(null, home, undefined)).toEqual({ command: "echo user" });
 	});
+});
+
+describe("handleStatusLine nesting guard (subprocess)", () => {
+	// vitest runs under node; the CLI is TS importing project source, so run it with bun.
+	const BUN = /(?:^|\/)bun$/.test(process.execPath) ? process.execPath : "bun";
+	const MAIN = resolve(import.meta.dirname, "../main.ts");
+
+	/** A user statusLine wrapper script — invisible to the command-string check — that logs each
+	 *  run and then calls `dev3 statusline` itself, so only the env guard can stop the recursion. */
+	function runWithWrapper(extraEnv: Record<string, string>): { stdout: string; runs: number } {
+		const calls = join(tmp, "calls.log");
+		const wrapper = join(tmp, "dev3-statusline.sh");
+		writeFileSync(wrapper, `echo run >> ${JSON.stringify(calls)}\necho wrapped\nexec ${JSON.stringify(BUN)} ${JSON.stringify(MAIN)} statusline\n`);
+		writeSettings(home, { type: "command", command: `bash ${JSON.stringify(wrapper)}` });
+		const env: Record<string, string | undefined> = { ...process.env, HOME: home, DEV3_HOME: join(tmp, ".dev3.0"), CLAUDE_CONFIG_DIR: "", DEV3_TASK_ID: "", ...extraEnv };
+		if (!(STATUSLINE_NESTED_ENV in extraEnv)) delete env[STATUSLINE_NESTED_ENV];
+		const result = spawnSync(BUN, [MAIN, "statusline"], {
+			input: JSON.stringify({ workspace: { current_dir: projectDir } }),
+			env,
+			encoding: "utf-8",
+			timeout: 15_000,
+		});
+		const runs = existsSync(calls) ? readFileSync(calls, "utf-8").trim().split("\n").length : 0;
+		return { stdout: result.stdout ?? "", runs };
+	}
+
+	it("runs the user's wrapper once; the dev3 statusline inside it does not delegate again", () => {
+		const { stdout, runs } = runWithWrapper({});
+		expect(stdout).toContain("wrapped");
+		expect(runs).toBe(1);
+	}, 20_000);
+
+	it("skips delegation entirely when the nesting variable is already set", () => {
+		const { stdout, runs } = runWithWrapper({ [STATUSLINE_NESTED_ENV]: "1" });
+		expect(stdout).not.toContain("wrapped");
+		expect(runs).toBe(0);
+	}, 20_000);
 });
 
 describe("claudeDumpFilePaths", () => {
