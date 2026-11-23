@@ -163,6 +163,7 @@ function BuiltinAgentRateLimitSection() {
 			t={s.t}
 			globalSettings={s.globalSettings}
 			onToggle={s.handleRateLimitTrackingToggle}
+			onShowAccountToggle={s.handleStatusLineShowAccountToggle}
 		/>
 	);
 }

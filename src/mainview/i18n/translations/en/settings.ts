@@ -422,6 +422,8 @@ const settings = {
 	"settings.logRetentionChangedElsewhere": "Retention changed elsewhere. Choose again.",
 	"settings.rateLimitTracking": "Agent rate-limit tracking",
 	"settings.rateLimitTrackingDesc": "Show live Claude/Codex rate-limit usage in the header. Claude data is captured by routing the session statusLine through dev3 — your own statusLine keeps working, dev3 only appends its usage segment.",
+	"settings.statusLineShowAccount": "Show account in statusline",
+	"settings.statusLineShowAccountDesc": "Start dev3's statusline segment with the Claude account the session runs on, e.g. work · 7d 30%. Uses the account's label, or its email when it has none. Needs rate-limit tracking.",
 	"settings.leanAgentProtocol": "Lean agent protocol",
 	"settings.leanAgentProtocolDesc": "Inject a short protocol at agent launch; the full text stays on disk for the agent to read.",
 	"settings.leanAgentProtocolEnvHint": "Forced on by DEV3_LEAN_PROTOCOL=1 in the environment.",

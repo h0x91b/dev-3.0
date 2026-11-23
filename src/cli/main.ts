@@ -322,7 +322,7 @@ async function main(): Promise<void> {
 		// Internal: Claude Code statusLine wrapper (see commands/statusline.ts).
 		// Reads stdin, dumps rate limits, delegates to the user's original
 		// statusLine. Must work without the app running.
-		return await handleStatusLine();
+		return await handleStatusLine({ account: args.flags.account === "true" });
 	}
 	if (command === "hook" && subcommand === "codex") {
 		// Internal lifecycle adapter. It intentionally remains successful when
