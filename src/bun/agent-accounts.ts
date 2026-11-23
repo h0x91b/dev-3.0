@@ -914,6 +914,7 @@ export async function getActiveClaudeSessionEnv(
 	const env: Record<string, string> = {};
 	if (selected) {
 		const { entry, dir } = selected;
+		scaffoldClaudeAccountDir(dir, paths); // foreign-code launches skip getActiveClaudeConfigDir, so converge here too
 		env.CLAUDE_CONFIG_DIR = dir;
 		if (entry.auth === "api") {
 			const profile = readApiProfile(entry.id, paths);
@@ -972,9 +973,9 @@ export async function getActiveAgentDirSessionEnv(
 /** Create the per-account config dir, symlinking every non-private entry of
  *  ~/.claude into it. Idempotent and re-run on every account resolution, so an
  *  entry that appeared in ~/.claude after the account was created gets picked up
- *  instead of staying silently absent. An entry that already exists in the
- *  account dir is left exactly as it is — never replaced, never deleted, so
- *  real per-account state written by older builds survives untouched. */
+ *  instead of staying silently absent. A real file or dir already in the account
+ *  dir is never replaced or deleted, so per-account state written by older builds
+ *  survives; only scaffolded links to now-private entries are dropped. */
 function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
 	if (isLinkedClaudeSlot(dir)) return; // the user's own folder: never fill it with links into ~/.claude
 	mkdirSync(dir, { recursive: true });
@@ -1020,7 +1021,7 @@ function removeStalePrivateLinks(dir: string, paths: AccountPaths): void {
 		try {
 			if (!lstatSync(linkPath).isSymbolicLink()) continue;
 			if (resolve(dir, readlinkSync(linkPath)) !== join(paths.claudeHome, entry)) continue;
-			unlinkSync(linkPath);
+			unlinkLinkedSlot(linkPath);
 			log.info("Removed stale shared link to now-private claude entry", { entry });
 		} catch (err) {
 			log.warn("Failed to remove stale shared link", { entry, error: String(err) });

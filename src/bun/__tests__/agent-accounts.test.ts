@@ -237,6 +237,20 @@ describe("claude account dir private runtime state", () => {
 		expect(readlinkSync(join(dir, "state"))).toBe(elsewhere);
 		expect(readlinkSync(join(dir, "projects"))).toBe(join(paths.claudeHome, "projects"));
 	});
+
+	it("removes stale links when only the session env is resolved (foreign-code launch)", async () => {
+		seedClaudeLogin();
+		mkdirSync(join(paths.claudeHome, "backups"), { recursive: true });
+		const account = await importCurrentClaudeAccount(paths);
+		const dir = claudeAccountDir(account.id, paths);
+		symlinkSync(join(paths.claudeHome, "backups"), join(dir, "backups"));
+
+		const env = await getActiveClaudeSessionEnv(account.id, paths);
+
+		expect(env.CLAUDE_CONFIG_DIR).toBe(dir);
+		expect(existsSync(join(dir, "backups"))).toBe(false);
+		expect(existsSync(join(paths.claudeHome, "backups"))).toBe(true);
+	});
 });
 
 describe("registeredOutputStyleName", () => {
