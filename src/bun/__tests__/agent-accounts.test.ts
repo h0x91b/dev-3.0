@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -86,6 +86,8 @@ function seedClaudeLogin(email = "main@example.com", accountUuid = "claude-acc-1
 		paths.claudeJson,
 		JSON.stringify({
 			hasCompletedOnboarding: true,
+			userID: "fake-user-id",
+			machineID: "fake-machine-id",
 			oauthAccount: { emailAddress: email, organizationName: "Org", userRateLimitTier: "default_claude_max_5x", accountUuid },
 			projects: {},
 		}),
@@ -169,10 +171,71 @@ describe("isPrivateClaudeEntry", () => {
 		}
 	});
 
+	it("keeps per-login runtime state private, including prefixed siblings", () => {
+		for (const entry of [
+			"backups", "telemetry", "state", ".config.json", "hfi-auth.json", "mcp-needs-auth-cache.json", "mcp-discovery-cache", "remote-control", "ccr",
+			"daemon", "daemon.log", "daemon.json", "daemon.status.json", "daemon.scheduled.status.json", "daemon-auth-cooldown", "daemon-auth-status.json",
+			"policy-limits.json.signature.json", "policy-limits.json.signature-iat.json", "policy-limits.json.stamp.json",
+			"remote-settings.json", "remote-settings.json.signature.json", "remote-settings.json.synced-at",
+		]) {
+			expect(isPrivateClaudeEntry(entry)).toBe(true);
+		}
+	});
+
 	it("shares user customization and ordinary runtime state", () => {
-		for (const entry of ["settings.json", "settings.local.json", "skills", "workflows", "routines", "hooks", "CLAUDE.md", "history.jsonl", "sessions", "cache"]) {
+		for (const entry of ["settings.json", "settings.local.json", "skills", "workflows", "routines", "hooks", "CLAUDE.md", "history.jsonl", "sessions", "cache", "projects", "file-history", "newthing"]) {
 			expect(isPrivateClaudeEntry(entry)).toBe(false);
 		}
+	});
+});
+
+describe("claude account dir private runtime state", () => {
+	it("does not link per-login runtime state but links shared transcripts and history", async () => {
+		seedClaudeLogin();
+		for (const dirName of ["backups", "telemetry", "daemon", "state", "projects"]) {
+			mkdirSync(join(paths.claudeHome, dirName), { recursive: true });
+		}
+		for (const file of ["daemon.log", "remote-settings.json.signature.json", "history.jsonl"]) {
+			writeFileSync(join(paths.claudeHome, file), "x");
+		}
+		const dir = claudeAccountDir((await importCurrentClaudeAccount(paths)).id, paths);
+
+		for (const entry of ["backups", "telemetry", "daemon", "daemon.log", "state", "remote-settings.json.signature.json"]) {
+			expect(existsSync(join(dir, entry))).toBe(false);
+		}
+		for (const entry of ["projects", "history.jsonl"]) {
+			expect(lstatSync(join(dir, entry)).isSymbolicLink()).toBe(true);
+		}
+	});
+
+	it("removes stale shared links to now-private entries and nothing else", async () => {
+		seedClaudeLogin();
+		mkdirSync(join(paths.claudeHome, "backups"), { recursive: true });
+		writeFileSync(join(paths.claudeHome, "backups", "identity.json"), "keep");
+		writeFileSync(join(paths.claudeHome, "daemon.log"), "log");
+		mkdirSync(join(paths.claudeHome, "projects"), { recursive: true });
+		const account = await importCurrentClaudeAccount(paths);
+		const dir = claudeAccountDir(account.id, paths);
+
+		symlinkSync(join(paths.claudeHome, "backups"), join(dir, "backups"));
+		symlinkSync(join(paths.claudeHome, "daemon.log"), join(dir, "daemon.log"));
+		mkdirSync(join(dir, "telemetry"));
+		writeFileSync(join(dir, "telemetry", "queued.json"), "own");
+		const elsewhere = join(root, "elsewhere");
+		mkdirSync(elsewhere);
+		symlinkSync(elsewhere, join(dir, "state"));
+		expect(lstatSync(join(dir, "projects")).isSymbolicLink()).toBe(true);
+
+		await getActiveClaudeConfigDir(account.id, paths);
+
+		expect(existsSync(join(dir, "backups"))).toBe(false);
+		expect(existsSync(join(dir, "daemon.log"))).toBe(false);
+		expect(readFileSync(join(paths.claudeHome, "backups", "identity.json"), "utf-8")).toBe("keep");
+		expect(readFileSync(join(paths.claudeHome, "daemon.log"), "utf-8")).toBe("log");
+		expect(readFileSync(join(dir, "telemetry", "queued.json"), "utf-8")).toBe("own");
+		expect(lstatSync(join(dir, "state")).isSymbolicLink()).toBe(true);
+		expect(readlinkSync(join(dir, "state"))).toBe(elsewhere);
+		expect(readlinkSync(join(dir, "projects"))).toBe(join(paths.claudeHome, "projects"));
 	});
 });
 
@@ -205,7 +268,11 @@ describe("importCurrentClaudeAccount", () => {
 		expect(account.identity?.planLabel).toBe("Max 5x");
 
 		const dir = claudeAccountDir(account.id, paths);
-		expect(JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8")).oauthAccount.emailAddress).toBe("main@example.com");
+		const imported = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
+		expect(imported.oauthAccount.emailAddress).toBe("main@example.com");
+		expect(imported.hasCompletedOnboarding).toBe(true);
+		expect(imported.userID).toBeUndefined();
+		expect(imported.machineID).toBeUndefined();
 		expect(existsSync(join(dir, ".credentials.json"))).toBe(true);
 		// Shared entries are symlinked into ~/.claude, not copied.
 		expect(lstatSync(join(dir, "settings.json")).isSymbolicLink()).toBe(true);
@@ -288,6 +355,8 @@ describe("claude login flow", () => {
 		const seeded = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
 		expect(seeded.oauthAccount).toBeUndefined();
 		expect(seeded.hasCompletedOnboarding).toBe(true);
+		expect(seeded.userID).toBeUndefined();
+		expect(seeded.machineID).toBeUndefined();
 	});
 
 	it("complete fails before the login happened", async () => {
@@ -814,6 +883,9 @@ describe("claude API profiles", () => {
 		// Seeded .claude.json has no identity but pre-approves the API key tail.
 		const seeded = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
 		expect(seeded.oauthAccount).toBeUndefined();
+		expect(seeded.userID).toBeUndefined();
+		expect(seeded.machineID).toBeUndefined();
+		expect(seeded.hasCompletedOnboarding).toBe(true);
 		expect(seeded.customApiKeyResponses.approved).toContain("sk-or-key-1234567890abcdef".slice(-20));
 	});
 

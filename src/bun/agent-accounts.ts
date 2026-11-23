@@ -40,6 +40,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	readlinkSync,
 	realpathSync,
 	renameSync,
 	rmdirSync,
@@ -123,14 +124,29 @@ export function defaultAccountPaths(): AccountPaths {
  *  race against Claude Code releases — it silently missed `output-styles`, and
  *  `workflows`/`routines` were next (cli.js resolves six resource types by name
  *  out of its config dir). Only what makes an account BE an account stays
- *  private: its login, its identity, its usage and its org policy. */
+ *  private: its login, identity (and identity backups), usage, org policy and
+ *  managed settings, telemetry queued with account ids, the per-login background
+ *  daemon with its locks, and per-login MCP connector auth. */
 export const CLAUDE_PRIVATE_ENTRIES = [
 	".credentials.json",
 	".claude.json",
 	"stats-cache.json",
 	"policy-limits.json",
 	"statsig",
+	"backups",
+	"telemetry",
+	"state",
+	".config.json",
+	"hfi-auth.json",
+	"mcp-needs-auth-cache.json",
+	"mcp-discovery-cache",
+	"remote-control",
+	"ccr",
 ];
+
+/** Families of per-login files: the daemon's logs/locks/status and the signature
+ *  and stamp siblings of the org policy files. */
+const CLAUDE_PRIVATE_PREFIXES = ["daemon", "policy-limits.json", "remote-settings.json"];
 
 /** Safety net for files Claude Code has not shipped yet: never share anything
  *  credential-shaped, even when CLAUDE_PRIVATE_ENTRIES forgets to name it. */
@@ -141,6 +157,7 @@ const CLAUDE_IGNORED_ENTRIES = [".DS_Store", ".localized"];
 
 export function isPrivateClaudeEntry(entry: string): boolean {
 	if (CLAUDE_PRIVATE_ENTRIES.includes(entry)) return true;
+	if (CLAUDE_PRIVATE_PREFIXES.some((prefix) => entry.startsWith(prefix))) return true;
 	return CLAUDE_PRIVATE_PATTERNS.some((pattern) => pattern.test(entry));
 }
 
@@ -982,7 +999,33 @@ function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
 			log.warn("Failed to symlink shared claude entry", { entry, error: String(err) });
 		}
 	}
+	removeStalePrivateLinks(dir, paths);
 	warnOnUnresolvableOutputStyle(dir);
+}
+
+/** Entries that became private after an account was created still hold the old
+ *  shared link scaffolding made (~/.claude/<entry>). Drop only exactly those links:
+ *  never real files/dirs, never links the user pointed somewhere else. */
+function removeStalePrivateLinks(dir: string, paths: AccountPaths): void {
+	let entries: string[] = [];
+	try {
+		entries = readdirSync(dir);
+	} catch (err) {
+		log.warn("Cannot read claude account dir for stale links", { error: String(err) });
+		return;
+	}
+	for (const entry of entries) {
+		if (!isPrivateClaudeEntry(entry)) continue;
+		const linkPath = join(dir, entry);
+		try {
+			if (!lstatSync(linkPath).isSymbolicLink()) continue;
+			if (resolve(dir, readlinkSync(linkPath)) !== join(paths.claudeHome, entry)) continue;
+			unlinkSync(linkPath);
+			log.info("Removed stale shared link to now-private claude entry", { entry });
+		} catch (err) {
+			log.warn("Failed to remove stale shared link", { entry, error: String(err) });
+		}
+	}
 }
 
 /** Output styles Claude Code ships in-binary — they need no config-dir file. */
@@ -1295,7 +1338,11 @@ export async function importCurrentClaudeAccount(paths: AccountPaths = defaultAc
 	const id = crypto.randomUUID();
 	const dir = claudeAccountDir(id, paths);
 	scaffoldClaudeAccountDir(dir, paths);
-	copyFileSync(paths.claudeJson, join(dir, ".claude.json"));
+	// Keep oauthAccount (the imported login); the analytics ids must be fresh per account.
+	const imported = { ...(claudeJson as Record<string, unknown>) };
+	delete imported.userID;
+	delete imported.machineID;
+	writeFileSync(join(dir, ".claude.json"), JSON.stringify(imported, null, 2), { mode: 0o600 });
 	if (!(await ensureClaudeCredentialsFile(dir, paths))) {
 		rmSync(dir, { recursive: true, force: true });
 		throw new Error("Could not read Claude Code credentials (no ~/.claude/.credentials.json and Keychain read failed).");
@@ -1315,12 +1362,14 @@ export interface ClaudeApiProfileInput {
 }
 
 /** Seed a fresh per-account .claude.json from the system one: keeps onboarding
- *  state, drops the identity. Shared by the login flow and API profiles. */
+ *  state, drops the identity: login and analytics ids. Shared by the login flow and API profiles. */
 function seedClaudeJson(paths: AccountPaths): Record<string, unknown> {
 	const seed = safeReadJson(paths.claudeJson);
 	const seeded: Record<string, unknown> =
 		seed && typeof seed === "object" && !Array.isArray(seed) ? { ...(seed as Record<string, unknown>) } : { hasCompletedOnboarding: true };
 	delete seeded.oauthAccount;
+	delete seeded.userID;
+	delete seeded.machineID;
 	return seeded;
 }
 
