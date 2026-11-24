@@ -23,7 +23,7 @@ const TASKS = [
 	{
 		id: "bbbbbbbb-0000-0000-0000-000000000000",
 		status: "completed",
-		sharedVideos: [{ storedPath: `${POOL}/shared-images/old-clip.mp4` }],
+		sharedVideos: [{ storedPath: `${POOL}/shared-images/old-clip.mp4` }, { storedPath: `${POOL}/shared-images/pinned-clip.mp4`, pinnedAt: NOW - 80 * DAY }],
 	},
 ];
 
@@ -36,16 +36,17 @@ const FILES: Record<string, MediaFileStat[]> = {
 		file(`${POOL}/shared-images/old-clip.mp4`, 40, 90),
 		file(`${POOL}/shared-images/held-clip.mp4`, 40, 90),
 		file(`${POOL}/shared-images/fresh-clip.mp4`, 40, 10),
-		file(`${POOL}/shared-images/small-shot.png`, 4, 90),
-		file(`${POOL}/shared-images/big-shot.png`, 6, 90),
+		file(`${POOL}/shared-images/pinned-clip.mp4`, 40, 90),
+		file(`${POOL}/shared-images/small-shot.png`, 14, 90),
+		file(`${POOL}/shared-images/big-shot.png`, 16, 90),
 	],
 	[`${POOL}/shared-artifacts`]: [
-		file(`${POOL}/shared-artifacts/old-art/demo.mp4`, 12, 70),
-		file(`${POOL}/shared-artifacts/old-art/report.zip`, 13, 70),
-		file(`${POOL}/shared-artifacts/old-art/app.js`, 9, 70),
-		file(`${OPEN_ARTIFACT}/demo.mp4`, 12, 70),
-		file(`${POOL}/shared-artifacts/month-art/demo.mp4`, 12, 40),
-		file(`${POOL}/shared-artifacts/month-art/report.zip`, 13, 40),
+		file(`${POOL}/shared-artifacts/old-art/demo.mp4`, 22, 70),
+		file(`${POOL}/shared-artifacts/old-art/report.zip`, 23, 70),
+		file(`${POOL}/shared-artifacts/old-art/app.js`, 19, 70),
+		file(`${OPEN_ARTIFACT}/demo.mp4`, 22, 70),
+		file(`${POOL}/shared-artifacts/month-art/demo.mp4`, 22, 40),
+		file(`${POOL}/shared-artifacts/month-art/report.zip`, 23, 40),
 	],
 	[`${POOL}/uploads`]: [file(`${POOL}/uploads/held-upload.mp4`, 20, 90), file(`${POOL}/uploads/stale-upload.mov`, 20, 90)],
 };
@@ -74,8 +75,8 @@ const name = (path: string) => path.slice(POOL.length + 1);
 describe("collectMediaReport", () => {
 	const report = collectMediaReport(deps());
 
-	it("lists only images, videos and artifact ZIPs at or over 5 MB", () => {
-		expect(MEDIA_PRUNE_MIN_BYTES).toBe(5 * MB);
+	it("lists only images, videos and artifact ZIPs at or over 15 MB", () => {
+		expect(MEDIA_PRUNE_MIN_BYTES).toBe(15 * MB);
 		const names = report.entries.map((e) => name(e.path));
 		expect(names).not.toContain("shared-images/small-shot.png");
 		expect(names).not.toContain("shared-artifacts/old-art/app.js");
@@ -83,9 +84,9 @@ describe("collectMediaReport", () => {
 		expect(report.entries.find((e) => e.path.endsWith("report.zip"))?.kind).toBe("bundle");
 	});
 
-	it("marks media an open task still shows — its clips, its artifact dirs, uploads its description names", () => {
+	it("marks media an open task still shows — its clips, its artifact dirs, uploads its description names — and pinned media of any task", () => {
 		const held = report.entries.filter((e) => e.heldByOpenTask).map((e) => name(e.path)).sort();
-		expect(held).toEqual(["shared-artifacts/open-art/demo.mp4", "shared-images/held-clip.mp4", "uploads/held-upload.mp4"]);
+		expect(held).toEqual(["shared-artifacts/open-art/demo.mp4", "shared-images/held-clip.mp4", "shared-images/pinned-clip.mp4", "uploads/held-upload.mp4"]);
 	});
 });
 

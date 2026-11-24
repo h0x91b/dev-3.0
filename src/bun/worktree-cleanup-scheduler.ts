@@ -7,6 +7,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import type { WorktreeCleanupResult } from "./worktree-cleanup-job";
+import { runSharedMediaRetention, tombstoneMissingClips, type SharedMediaRetentionDeps } from "./shared-media-retention";
 
 const log = createLogger("worktree-cleanup");
 
@@ -148,8 +149,39 @@ const realDeps: WorktreeCleanupDeps = {
 			}
 			return result;
 		}),
-	run: () => runInWorker(workerPath!),
+	run: async () => {
+		const retentionDeps = await realRetentionDeps();
+		const retention = await runSharedMediaRetention(retentionDeps).catch((err) => {
+			log.error("Shared media retention failed", { error: String(err) });
+			return null;
+		});
+		const result = await runInWorker(workerPath!);
+		const tombstoned = await tombstoneMissingClips(retentionDeps).catch((err) => {
+			log.error("Tombstoning pruned clips failed", { error: String(err) });
+			return 0;
+		});
+		log.info("Shared media retention finished", { removed: retention?.removed ?? 0, freed: formatBytes(retention?.freedBytes ?? 0), failed: retention?.failed ?? 0, tombstoned });
+		return {
+			...result,
+			freedBytes: result.freedBytes + (retention?.freedBytes ?? 0),
+			removedMediaFiles: result.removedMediaFiles + (retention?.removed ?? 0),
+			failed: result.failed + (retention?.failed ?? 0),
+		};
+	},
 };
+
+/** The host's own data layer: retention writes tombstones under the tasks lock, which the worker cannot. */
+async function realRetentionDeps(): Promise<SharedMediaRetentionDeps> {
+	const data = await import("./data");
+	const { getPushMessage } = await import("./rpc-handlers/shared");
+	return {
+		now: () => Date.now(),
+		loadProjects: async () => [...(await data.loadProjects()), ...(await data.loadVirtualProjects())],
+		loadTasks: data.loadTasks,
+		updateTaskWith: data.updateTaskWith,
+		onTaskUpdated: (project, task) => getPushMessage()?.("taskUpdated", { projectId: project.id, task }),
+	};
+}
 
 async function tick(deps: WorktreeCleanupDeps): Promise<void> {
 	if (checkInFlight) return;

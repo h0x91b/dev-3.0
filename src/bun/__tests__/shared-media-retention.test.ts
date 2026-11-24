@@ -1,0 +1,191 @@
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import type { Project, SharedImage, Task } from "../../shared/types";
+import { dueSharedMediaIds, LARGE_SHARED_MEDIA_BYTES, olderLargeSharedClips, sharedMediaRetention } from "../../shared/types";
+
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/shared-media-retention`);
+
+vi.mock("../paths", () => ({
+	DEV3_HOME: TEST_HOME,
+	OPS_DIR: `${TEST_HOME}/ops`,
+}));
+
+import { runSharedMediaRetention, tombstoneMissingClips } from "../shared-media-retention";
+
+const DAY = 24 * 60 * 60 * 1000;
+const CLOSED_AT = Date.parse("2026-11-01T00:00:00.000Z");
+const LARGE = LARGE_SHARED_MEDIA_BYTES;
+const STORE = `${TEST_HOME}/worktrees/my-project/shared-images`;
+
+/** `n` large clips shown just before the close; index 0 is the oldest, so the newest has the highest index. */
+function clips(n: number, overrides: (i: number) => Partial<SharedImage> = () => ({})): SharedImage[] {
+	return Array.from({ length: n }, (_, i) => ({
+		id: `c${i}`,
+		storedPath: `${STORE}/shared-${i}.mp4`,
+		originalPath: `/renders/${i}.mp4`,
+		name: `${i}.mp4`,
+		mime: "video/mp4",
+		bytes: LARGE,
+		createdAt: CLOSED_AT - DAY + i * 1000,
+		...overrides(i),
+	}));
+}
+
+function closedTask(media: SharedImage[], status: Task["status"] = "completed", id = "t1"): Task {
+	return { id, status, movedAt: new Date(CLOSED_AT).toISOString(), updatedAt: new Date(CLOSED_AT).toISOString(), sharedVideos: media } as Task;
+}
+
+const due = (task: Task, at: number) => dueSharedMediaIds(task, at).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+
+describe("sharedMediaRetention tiers", () => {
+	const task = closedTask(clips(20));
+
+	it("keeps the newest 15 large clips in the first week, removing the rest at the close", () => {
+		expect(due(task, CLOSED_AT - 1)).toEqual([]);
+		expect(due(task, CLOSED_AT)).toEqual(["c0", "c1", "c2", "c3", "c4"]);
+		expect(due(task, CLOSED_AT + 7 * DAY - 1)).toHaveLength(5);
+	});
+
+	it("keeps the newest 3 from day 7", () => {
+		expect(due(task, CLOSED_AT + 7 * DAY)).toEqual(Array.from({ length: 17 }, (_, i) => `c${i}`));
+		expect(due(task, CLOSED_AT + 30 * DAY - 1)).toHaveLength(17);
+	});
+
+	it("keeps only the newest one from day 30, until the 60-day age rule takes it too", () => {
+		expect(due(task, CLOSED_AT + 30 * DAY)).toHaveLength(19);
+		expect(due(task, CLOSED_AT + 30 * DAY)).not.toContain("c19");
+		const newest = sharedMediaRetention(task).find((v) => v.id === "c19");
+		expect(newest).toEqual({ id: "c19", removesAt: task.sharedVideos![19].createdAt + 60 * DAY, reason: "age" });
+		expect(due(task, newest!.removesAt!)).toHaveLength(20);
+	});
+
+	it("lets the 60-day age rule win when it comes before the tier", () => {
+		const old = closedTask(clips(2, (i) => ({ createdAt: CLOSED_AT - 50 * DAY + i })));
+		// c0 (rank 1) would go at day 30 by tier, but its 60 days since the show end at day 10.
+		expect(sharedMediaRetention(old)[0]).toEqual({ id: "c0", removesAt: CLOSED_AT + 10 * DAY, reason: "age" });
+	});
+
+	it("applies to cancelled tasks too", () => {
+		expect(due(closedTask(clips(16), "cancelled"), CLOSED_AT)).toEqual(["c0"]);
+	});
+});
+
+describe("sharedMediaRetention exemptions", () => {
+	it("never touches an open task, whatever its age", () => {
+		for (const status of ["in-progress", "review-by-user", "todo"] as Task["status"][]) {
+			const task = closedTask(clips(20), status);
+			expect(due(task, CLOSED_AT + 365 * DAY)).toEqual([]);
+			expect(sharedMediaRetention(task).every((v) => v.removesAt === null && v.reason === "open-task")).toBe(true);
+		}
+	});
+
+	it("counts nothing under 15 MB and never removes it", () => {
+		const task = closedTask(clips(17, (i) => (i < 2 ? { bytes: LARGE - 1 } : {})));
+		// 15 large clips remain, so the first week keeps all of them.
+		expect(due(task, CLOSED_AT)).toEqual([]);
+		expect(due(task, CLOSED_AT + 365 * DAY)).not.toContain("c0");
+		expect(sharedMediaRetention(task)[0]).toEqual({ id: "c0", removesAt: null, reason: "small" });
+		expect(due(closedTask(clips(16, (i) => (i === 0 ? { bytes: LARGE } : {}))), CLOSED_AT)).toEqual(["c0"]);
+	});
+
+	it("never removes a pinned item, and a pin does not take a keep slot", () => {
+		const task = closedTask(clips(5, (i) => (i === 4 || i === 0 ? { pinnedAt: 1 } : {})));
+		expect(due(task, CLOSED_AT + 365 * DAY)).toEqual(["c1", "c2", "c3"]);
+		// At day 30 the newest UNPINNED clip (c3) is the one kept.
+		expect(due(task, CLOSED_AT + 30 * DAY)).toEqual(["c1", "c2"]);
+		expect(sharedMediaRetention(task).find((v) => v.id === "c4")).toEqual({ id: "c4", removesAt: null, reason: "pinned" });
+	});
+
+	it("keeps pinned clips out of the manual older-clips sweep too", () => {
+		const media = clips(4, (i) => (i === 3 || i === 1 ? { pinnedAt: 1 } : {}));
+		// c3 is pinned, so c2 is the newest unpinned and stays; only c0 goes.
+		expect(olderLargeSharedClips(media).map((item) => item.id)).toEqual(["c0"]);
+	});
+
+	it("skips tombstones and images", () => {
+		const image = { ...clips(1)[0], id: "img", mime: "image/png", storedPath: `${STORE}/shot.png` };
+		const task = { ...closedTask(clips(17, (i) => (i === 0 ? { removedAt: 5 } : {}))), sharedImages: [image] } as Task;
+		const ids = dueSharedMediaIds(task, CLOSED_AT + 365 * DAY);
+		expect(ids).not.toContain("c0");
+		expect(ids).not.toContain("img");
+	});
+});
+
+describe("runSharedMediaRetention", () => {
+	const project = { id: "p1", path: "/my/project" } as Project;
+
+	beforeEach(() => {
+		rmSync(TEST_HOME, { recursive: true, force: true });
+		mkdirSync(STORE, { recursive: true });
+	});
+	afterAll(() => rmSync(TEST_HOME, { recursive: true, force: true }));
+
+	function board(tasks: Task[]) {
+		const updated: string[] = [];
+		return {
+			tasks,
+			updated,
+			loadProjects: async () => [project],
+			loadTasks: async () => tasks,
+			updateTaskWith: async <T>(_p: Project, taskId: string, mutator: (task: Task, all?: readonly Task[]) => { updates: Partial<Task>; result: T }) => {
+				const idx = tasks.findIndex((t) => t.id === taskId);
+				const { updates, result } = mutator(tasks[idx], tasks);
+				tasks[idx] = { ...tasks[idx], ...updates };
+				return { task: tasks[idx], result };
+			},
+			onTaskUpdated: (_p: Project, task: Task) => updated.push(task.id),
+		};
+	}
+
+	it("deletes what is due on closed tasks as tombstones and leaves open tasks alone", async () => {
+		const closed = closedTask(clips(17), "completed", "closed");
+		const open = closedTask(clips(17, (i) => ({ id: `o${i}`, storedPath: `${STORE}/open-${i}.mp4` })), "in-progress", "open");
+		for (const item of [...closed.sharedVideos!, ...open.sharedVideos!]) writeFileSync(item.storedPath, "x");
+		const b = board([closed, open]);
+
+		const result = await runSharedMediaRetention({ ...b, now: () => CLOSED_AT + DAY });
+
+		expect(result).toMatchObject({ removed: 2, failed: 0 });
+		expect(existsSync(closed.sharedVideos![0].storedPath)).toBe(false);
+		expect(existsSync(closed.sharedVideos![1].storedPath)).toBe(false);
+		expect(existsSync(closed.sharedVideos![2].storedPath)).toBe(true);
+		expect(open.sharedVideos!.every((item) => existsSync(item.storedPath))).toBe(true);
+		expect(b.tasks[0].sharedVideos!.slice(0, 2).every((item) => item.removedAt === CLOSED_AT + DAY)).toBe(true);
+		expect(b.tasks[1].sharedVideos!.every((item) => !item.removedAt)).toBe(true);
+		expect(b.updated).toEqual(["closed"]);
+	});
+
+	it("still removes the rest when one due record is refused", async () => {
+		const media = clips(17, (i) => (i === 0 ? { storedPath: `${TEST_HOME}/outside.mp4` } : {}));
+		for (const item of media) writeFileSync(item.storedPath, "x");
+		const b = board([closedTask(media)]);
+		const result = await runSharedMediaRetention({ ...b, now: () => CLOSED_AT + DAY });
+		expect(result).toMatchObject({ removed: 1, failed: 1 });
+		expect(existsSync(`${TEST_HOME}/outside.mp4`)).toBe(true);
+		expect(existsSync(media[1].storedPath)).toBe(false);
+	});
+});
+
+describe("tombstoneMissingClips", () => {
+	it("marks a closed task's clip whose file the prune removed, and nothing on open tasks", async () => {
+		const closed = closedTask(clips(2), "completed", "closed");
+		const open = closedTask(clips(2, (i) => ({ id: `o${i}` })), "in-progress", "open");
+		const tasks = [closed, open];
+		const project = { id: "p1" } as Project;
+		const count = await tombstoneMissingClips({
+			now: () => 77,
+			exists: (path) => path.endsWith("shared-1.mp4"),
+			loadProjects: async () => [project],
+			loadTasks: async () => tasks,
+			updateTaskWith: async <T>(_p: Project, taskId: string, mutator: (task: Task, all?: readonly Task[]) => { updates: Partial<Task>; result: T }) => {
+				const idx = tasks.findIndex((t) => t.id === taskId);
+				const { updates, result } = mutator(tasks[idx], tasks);
+				tasks[idx] = { ...tasks[idx], ...updates };
+				return { task: tasks[idx], result };
+			},
+		});
+		expect(count).toBe(1);
+		expect(tasks[0].sharedVideos!.map((item) => item.removedAt)).toEqual([77, undefined]);
+		expect(tasks[1].sharedVideos!.every((item) => !item.removedAt)).toBe(true);
+	});
+});

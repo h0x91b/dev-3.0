@@ -14,6 +14,7 @@ vi.mock("../../rpc", () => ({
 			openImageFile: vi.fn().mockResolvedValue(undefined),
 			deleteSharedMedia: vi.fn(),
 			previewSharedMediaDelete: vi.fn(),
+			setSharedMediaPinned: vi.fn(),
 		},
 	},
 }));
@@ -586,6 +587,41 @@ describe("TaskImageViewer with a shared video", () => {
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
 		await screen.findByTestId("viewer-main-video");
 		expect(screen.queryByTestId("image-viewer-delete-older")).toBeNull();
+	});
+
+	it("pins the clip from its right-click menu and shows it as kept, then unpins it", async () => {
+		const pinMock = mockedApi.request.setSharedMediaPinned as ReturnType<typeof vi.fn>;
+		pinMock.mockReset();
+		pinMock.mockImplementation(async ({ pinned }: { pinned: boolean }) => ({
+			id: "t1",
+			sharedVideos: [{ ...MIXED[1], ...(pinned ? { pinnedAt: 1_780_000_000_000 } : {}) }],
+		}));
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		expect(screen.queryByTestId("image-viewer-kept")).toBeNull();
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		const pin = screen.getByTestId("image-save-menu-pin");
+		expect(pin).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(pin);
+		expect(pinMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaId: "v", pinned: true });
+		expect(await screen.findByTestId("image-viewer-kept")).toBeInTheDocument();
+
+		fireEvent.contextMenu(screen.getByTestId("viewer-main-video"));
+		expect(screen.getByTestId("image-save-menu-pin")).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(screen.getByTestId("image-save-menu-pin"));
+		expect(pinMock).toHaveBeenLastCalledWith({ projectId: "p1", taskId: "t1", mediaId: "v", pinned: false });
+		await waitFor(() => expect(screen.queryByTestId("image-viewer-kept")).toBeNull());
+	});
+
+	it("offers no pin on a removed clip", async () => {
+		const removed = [MIXED[0], { ...MIXED[1], removedAt: 1, pinnedAt: 1 }, MIXED[2]];
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={removed} initialIndex={1} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		fireEvent.contextMenu(await screen.findByTestId("viewer-media-removed"));
+		expect(screen.queryByTestId("image-save-menu-pin")).toBeNull();
+		expect(screen.queryByTestId("image-viewer-kept")).toBeNull();
 	});
 
 	it("offers no delete item without a task to delete it from", async () => {

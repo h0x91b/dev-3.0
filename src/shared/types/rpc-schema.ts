@@ -1303,6 +1303,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; kind: "images" | "artifacts"; itemIds: string[] };
 				response: Task;
 			};
+			/** Pins (keeps) or unpins one shared item: a pinned item is never removed by automatic cleanup. */
+			setSharedMediaPinned: {
+				params: { taskId: string; projectId: string; mediaId: string; pinned: boolean };
+				response: Task;
+			};
 			/** Deletes stored show-media clip files (tombstoning the records); `dryRun` only reports what it would free. */
 			previewSharedMediaDelete: {
 				params: { taskId: string; projectId: string; mediaIds: string[] };

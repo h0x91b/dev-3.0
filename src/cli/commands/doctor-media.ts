@@ -10,10 +10,11 @@
 
 import { dirname, extname, join, sep } from "node:path";
 import { allProjectWorktreesRoots } from "../../shared/project-storage";
-import { SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS } from "../../shared/types/shared-media";
+import { LARGE_SHARED_MEDIA_BYTES, SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS } from "../../shared/types/shared-media";
 import { readProjects, readTasks, TERMINAL_STATUSES, type RawTask, type WorktreeScanDeps } from "./doctor-worktrees";
 
-export const MEDIA_PRUNE_MIN_BYTES = 5 * 1024 * 1024;
+/** One "large" threshold for every cleanup rule (was 5 MiB until 2026-11-24). */
+export const MEDIA_PRUNE_MIN_BYTES = LARGE_SHARED_MEDIA_BYTES;
 /** How long large media outlives its last write before the daily cleanup takes it. */
 export const MEDIA_RETENTION_DAYS = 60;
 /** Stored download ZIPs: only older app versions still read them. */
@@ -91,7 +92,7 @@ function poolDirs(deps: MediaScanDeps): Array<{ dir: string; pool: MediaPool }> 
 	return out;
 }
 
-/** Files and artifact dirs an open task still shows, plus its description for upload paths. */
+/** Files and artifact dirs an open task still shows (and pinned media of any task), plus its description for upload paths. */
 function openTaskHolds(deps: MediaScanDeps): { files: Set<string>; artifactDirs: Set<string>; descriptions: string[] } {
 	const files = new Set<string>();
 	const artifactDirs = new Set<string>();
@@ -101,6 +102,10 @@ function openTaskHolds(deps: MediaScanDeps): { files: Set<string>; artifactDirs:
 		for (const task of readTasks(deps, project) as RawTask[]) {
 			if (!task.id || seen.has(task.id)) continue;
 			seen.add(task.id);
+			// A pinned item is kept on any task, open or closed, until the user unpins it.
+			for (const media of [...(task.sharedImages ?? []), ...(task.sharedVideos ?? []), ...(task.sharedAudio ?? [])]) {
+				if (media?.pinnedAt && media.storedPath) files.add(media.storedPath);
+			}
 			if (TERMINAL_STATUSES.has(task.status ?? "")) continue;
 			for (const media of [...(task.sharedImages ?? []), ...(task.sharedVideos ?? []), ...(task.sharedAudio ?? [])]) {
 				if (media?.storedPath) files.add(media.storedPath);

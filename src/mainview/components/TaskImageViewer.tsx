@@ -145,7 +145,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const startedRef = useRef<Set<string>>(new Set());
 	const mountedRef = useRef(true);
 	useEffect(() => () => { mountedRef.current = false; }, []);
-	// Records this viewer changed, so a tombstone shows at once even when the host's list is a snapshot.
+	// Records this viewer changed (deleted, pinned), shown at once even when the host's list is a snapshot.
 	const [overrides, setOverrides] = useState<Record<string, SharedImage>>({});
 	const media = useMemo(() => images.map((item) => overrides[item.id] ?? item), [images, overrides]);
 	const cleanup = useOlderClipsCleanup({ projectId, taskId, media, t });
@@ -408,6 +408,18 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	};
 
 	const canDelete = Boolean(projectId && taskId) && isDeletableSharedMedia(current);
+	const canPin = Boolean(projectId && taskId) && !isRemoved;
+	const togglePin = async () => {
+		setMenu(null);
+		if (!projectId || !taskId) return;
+		try {
+			const updated = await api.request.setSharedMediaPinned({ projectId, taskId, mediaId: current.id, pinned: !current.pinnedAt });
+			const record = taskSharedMedia(updated).find((item) => item.id === current.id);
+			if (record && mountedRef.current) setOverrides((prev) => ({ ...prev, [record.id]: record }));
+		} catch {
+			toast.error(t("sharedMedia.pinFailed"), { taskId });
+		}
+	};
 	const deleteCurrent = async () => {
 		setMenu(null);
 		if (!projectId || !taskId) return;
@@ -427,7 +439,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	};
 
 	const openMenu = (e: React.MouseEvent) => {
-		if ((!currentUrl || isError) && !canDelete && !cleanup.available) return;
+		if ((!currentUrl || isError) && !canDelete && !canPin && !cleanup.available) return;
 		e.preventDefault();
 		setMenu({ x: e.clientX, y: e.clientY });
 	};
@@ -494,6 +506,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					<div className="min-w-0 flex-1">
 						<div className="truncate text-fg font-medium" title={current.originalPath}>{current.name}</div>
 					</div>
+					{current.pinnedAt && !isRemoved && (
+						<span data-testid="image-viewer-kept" title={t("sharedMedia.keptHint")} className="flex-shrink-0 rounded-full border border-edge px-2 py-0.5 text-micro font-semibold text-fg-2">
+							<span className="mr-1" style={{ fontFamily: ICON }}>{"\uf08d"}</span>{t("sharedMedia.kept")}
+						</span>
+					)}
 					{newCount > 0 && (
 						<span
 							data-testid="image-viewer-new-count"
@@ -813,6 +830,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						onCopyPath={() => { setMenu(null); void copyPath(); }}
 						onClose={() => setMenu(null)}
 						onDelete={canDelete ? () => void deleteCurrent() : undefined}
+						onTogglePin={canPin ? () => void togglePin() : undefined}
+						pinned={Boolean(current.pinnedAt)}
 						onDeleteOlder={cleanup.available ? { label: cleanup.label, run: () => void deleteOlder() } : undefined}
 						media={clip ?? "image"}
 					/>

@@ -214,6 +214,28 @@ async function previewSharedMediaDeletion(params: { taskId: string; projectId: s
 	return previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks);
 }
 
+/** Keep (pin) or release one shared item; automatic cleanup skips pinned items. */
+async function setSharedMediaPinned(params: { taskId: string; projectId: string; mediaId: string; pinned: boolean }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	const { task } = await data.updateTaskWith(project, params.taskId, (current) => {
+		const toggle = (list: SharedImage[] | undefined) =>
+			list?.map((item) => {
+				if (item.id !== params.mediaId || item.removedAt) return item;
+				if (params.pinned) return item.pinnedAt ? item : { ...item, pinnedAt: Date.now() };
+				const { pinnedAt: _pinnedAt, ...rest } = item;
+				return rest;
+			});
+		const updates: Partial<Task> = {};
+		if (current.sharedImages) updates.sharedImages = toggle(current.sharedImages);
+		if (current.sharedVideos) updates.sharedVideos = toggle(current.sharedVideos);
+		if (current.sharedAudio) updates.sharedAudio = toggle(current.sharedAudio);
+		return { updates, result: undefined };
+	});
+	log.info("setSharedMediaPinned", { taskId: params.taskId, pinned: params.pinned });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return task;
+}
+
 /** Frees disk by deleting stored show-media clips; records stay as tombstones. */
 async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[] }) {
 	const project = await data.getProject(params.projectId);
@@ -287,6 +309,7 @@ export const notesLabelsHandlers = {
 	markTaskSharedItemsRead,
 	deleteSharedMedia,
 	previewSharedMediaDelete: previewSharedMediaDeletion,
+	setSharedMediaPinned,
 	addTaskNote,
 	updateTaskNote,
 	deleteTaskNote,

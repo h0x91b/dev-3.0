@@ -57,11 +57,76 @@ export function isDeletableSharedMedia(item: SharedImage): boolean {
 	return isSharedClip(item) && !item.removedAt;
 }
 
-/** Every deletable large clip except the newest one — what "delete older large clips" removes. */
+/** Every deletable, unpinned large clip except the newest one — what "delete older large clips" removes. */
 export function olderLargeSharedClips(media: SharedImage[]): SharedImage[] {
-	const large = media.filter((item) => isDeletableSharedMedia(item) && item.bytes >= LARGE_SHARED_MEDIA_BYTES);
+	const large = media.filter((item) => isDeletableSharedMedia(item) && !item.pinnedAt && item.bytes >= LARGE_SHARED_MEDIA_BYTES);
 	const newest = large.reduce<SharedImage | null>((best, item) => (!best || item.createdAt > best.createdAt ? item : best), null);
 	return large.filter((item) => item !== newest);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Large media expires this long after it was shown, whatever the tiers say (the 60-day prune). */
+export const SHARED_MEDIA_MAX_AGE_DAYS = 60;
+
+/**
+ * After a task is completed or cancelled, how many of its newest large clips survive
+ * each window since the close: 15 for a week, 3 until day 30, then 1.
+ */
+export const SHARED_MEDIA_RETENTION_TIERS: ReadonlyArray<{ fromDays: number; keepNewest: number }> = [
+	{ fromDays: 0, keepNewest: 15 },
+	{ fromDays: 7, keepNewest: 3 },
+	{ fromDays: 30, keepNewest: 1 },
+];
+
+const RETENTION_STATUSES = new Set(["completed", "cancelled"]);
+
+export type SharedMediaRetentionReason = "open-task" | "removed" | "pinned" | "small" | "tier" | "age";
+
+/** When automatic cleanup will remove one shared item; `removesAt` null means never. */
+export interface SharedMediaRetention {
+	id: string;
+	removesAt: number | null;
+	reason: SharedMediaRetentionReason;
+}
+
+/**
+ * Retention verdict for every item of a task — pure, so a viewer or a library page can
+ * say "removes in N days" without asking the host. Open tasks are never touched;
+ * pinned and sub-15 MB items never; a closed task's large clips by rank and age.
+ * decisions/2026/11/24/shared-media-retention-tiers.md
+ */
+export function sharedMediaRetention(
+	task: Pick<Task, "status" | "movedAt" | "updatedAt" | "sharedImages" | "sharedVideos" | "sharedAudio">,
+): SharedMediaRetention[] {
+	const media = taskSharedMedia(task);
+	const closed = RETENTION_STATUSES.has(task.status);
+	const closedAt = Date.parse(task.movedAt ?? task.updatedAt ?? "");
+	const ranked = media
+		.filter((item) => isDeletableSharedMedia(item) && item.bytes >= LARGE_SHARED_MEDIA_BYTES && !item.pinnedAt)
+		.sort((a, b) => b.createdAt - a.createdAt);
+	const rank = new Map(ranked.map((item, i) => [item.id, i]));
+	return media.map((item): SharedMediaRetention => {
+		if (item.removedAt) return { id: item.id, removesAt: null, reason: "removed" };
+		if (!closed) return { id: item.id, removesAt: null, reason: "open-task" };
+		if (item.pinnedAt) return { id: item.id, removesAt: null, reason: "pinned" };
+		if (item.bytes < LARGE_SHARED_MEDIA_BYTES) return { id: item.id, removesAt: null, reason: "small" };
+		const byAge = item.createdAt + SHARED_MEDIA_MAX_AGE_DAYS * DAY_MS;
+		const r = rank.get(item.id);
+		if (r === undefined || !Number.isFinite(closedAt)) return { id: item.id, removesAt: byAge, reason: "age" };
+		// The first window whose keep-count no longer covers this rank removes it.
+		const tier = SHARED_MEDIA_RETENTION_TIERS.find((t) => r >= t.keepNewest);
+		const byTier = tier ? closedAt + tier.fromDays * DAY_MS : Number.POSITIVE_INFINITY;
+		return byTier < byAge ? { id: item.id, removesAt: byTier, reason: "tier" } : { id: item.id, removesAt: byAge, reason: "age" };
+	});
+}
+
+/** Clip ids automatic cleanup removes now: due by tier or age, and deletable as a clip. */
+export function dueSharedMediaIds(task: Parameters<typeof sharedMediaRetention>[0], now: number): string[] {
+	const byId = new Map(taskSharedMedia(task).map((item) => [item.id, item]));
+	return sharedMediaRetention(task)
+		.filter((v) => v.removesAt !== null && v.removesAt <= now && isDeletableSharedMedia(byId.get(v.id)!))
+		.map((v) => v.id);
 }
 
 /** What a clip deletion did (or, as a dry run, would do). `freeableBytes` is the honest disk gain. */
@@ -157,6 +222,8 @@ export interface SharedImage {
 	removedAt?: number;
 	/** Estimated bytes the deletion freed: 0 when the stored file looked like an APFS clone of a still-live original. */
 	removedBytes?: number;
+	/** ms epoch when the user pinned it ("keep"): no automatic cleanup removes a pinned item. */
+	pinnedAt?: number;
 }
 
 /** One local asset copied beside a task-bound HTML artifact. */
