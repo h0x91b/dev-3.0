@@ -28,6 +28,11 @@ import {
 	toggleTaskWatch,
 	type AppActionContext,
 } from "./app-actions";
+import { reloadPage } from "./tab-close-guard";
+import { toggleFullscreen } from "./fullscreen";
+
+/** The browser menu bar's stand-in for the native `toggleFullScreen` role. */
+export const BROWSER_TOGGLE_FULLSCREEN_ACTION = "toggle-fullscreen";
 
 /**
  * Dispatch for native menu actions: the bun side forwards `application-menu-clicked`
@@ -83,7 +88,12 @@ export async function handleMenuAction(action: string, ctx: AppActionContext): P
 			return;
 		}
 		case "hard-refresh":
-			window.location.reload();
+			reloadPage();
+			return;
+		// Browser menu bar only: element fullscreen, which is what lets Keyboard
+		// Lock hand ⌘W / Ctrl+W to the page. The native menu keeps its own role.
+		case BROWSER_TOGGLE_FULLSCREEN_ACTION:
+			void toggleFullscreen();
 			return;
 
 		// ── Debug screens (browser equivalents of the bun navigate-to-* pushes) ──
@@ -326,7 +336,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// App
 	"set-theme-light", "set-theme-dark", "set-theme-auto",
 	"set-locale-en", "set-locale-ru", "set-locale-es",
-	"about", "hard-refresh",
+	"about", "hard-refresh", BROWSER_TOGGLE_FULLSCREEN_ACTION,
 	// View / navigation
 	"view-dashboard", "view-board",
 	"view-board:builtin:kanban", "view-board:builtin:table", "view-board:builtin:tree", "view-board:builtin:attention",

@@ -269,6 +269,18 @@ export interface GlobalSettings {
 	 * the desktop app, which has its own updater.
 	 */
 	remoteSilentUpdate?: boolean;
+	/**
+	 * In a browser tab (remote mode), ask before the tab closes or navigates away
+	 * via the browser's own `beforeunload` prompt. Default ON; only an explicit
+	 * false is stored. No effect on the desktop app.
+	 */
+	remoteConfirmTabClose?: boolean;
+	/**
+	 * Desktop Chromium tab (remote mode): enter fullscreen on the first click so
+	 * Keyboard Lock hands ⌘W / Ctrl+W / Ctrl+T / digits to the page. Default ON;
+	 * only an explicit false is stored. Phones always auto-engage.
+	 */
+	remoteAutoFullscreen?: boolean;
 	preventSleepWhileRunning?: boolean; // keep a sleep inhibitor running while the app is open
 	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
 	/**

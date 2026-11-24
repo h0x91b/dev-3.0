@@ -6,6 +6,7 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useDiagnostics } from "../hooks/useDiagnostics";
 import { clearDiagnostics, formatDiagnosticsForCopy, type DiagnosticEntry, type DiagnosticKind } from "../diagnostics";
 import { copyTextToClipboard } from "../utils/clipboard";
+import { reloadPage } from "../tab-close-guard";
 
 const KIND_LABEL: Record<DiagnosticKind, TranslationKey> = {
 	error: "diagnostics.kind.error",
@@ -140,7 +141,7 @@ export default function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
 					</button>
 					<button
 						type="button"
-						onClick={() => window.location.reload()}
+						onClick={() => reloadPage()}
 						className="px-3 py-2 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors ml-auto"
 					>
 						{t("diagnostics.reload")}

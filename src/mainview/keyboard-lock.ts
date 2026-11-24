@@ -9,13 +9,16 @@
  * Firefox do not implement it). So this is an upgrade, never a requirement:
  * everything works without it, and more works with it.
  *
- * `Escape` is deliberately NOT locked. Locking it makes leaving fullscreen a
- * press-and-hold gesture, which reads as a frozen app to anyone who does not
- * know the trick — and Escape is our own "close this layer" key anyway.
+ * `Escape` is locked ONLY while a terminal has focus. Locking it makes leaving
+ * fullscreen a press-and-hold gesture, which reads as a frozen app to anyone who
+ * does not know the trick — and Escape is our own "close this layer" key. But a
+ * terminal needs every Esc (vim, readline), so there it wins; Chrome shows its
+ * own "press and hold Esc" hint while the lock covers it.
  */
 
 import { subscribeFullscreen, isFullscreenActive } from "./fullscreen";
 import { isRemote } from "./utils/platform";
+import { isTerminalFocus } from "./utils/typing-context";
 
 interface KeyboardLockApi {
 	lock?: (codes?: string[]) => Promise<void>;
@@ -48,8 +51,11 @@ const LOCKED_CODES = [
 ];
 
 let locked = false;
+/** Whether the current lock also holds `Escape` (terminal focus at lock time). */
+let escapeLocked = false;
 const listeners = new Set<() => void>();
 let installed = false;
+let focusListeners: { focusin: () => void; focusout: () => void } | null = null;
 
 /** True while the browser's own combos belong to the app. */
 export function isKeyboardLocked(): boolean {
@@ -80,8 +86,10 @@ async function syncToFullscreen(): Promise<void> {
 	const kb = keyboardApi();
 	if (!kb) return;
 	if (isFullscreenActive()) {
+		const withEscape = isTerminalFocus();
+		escapeLocked = withEscape;
 		try {
-			await kb.lock?.(LOCKED_CODES);
+			await kb.lock?.(withEscape ? [...LOCKED_CODES, "Escape"] : LOCKED_CODES);
 			setLocked(true);
 		} catch {
 			// Denied or unsupported for this document — stay on the normal keymap.
@@ -105,6 +113,13 @@ export function initKeyboardLock(): void {
 	if (installed || !isRemote() || !isKeyboardLockSupported()) return;
 	installed = true;
 	subscribeFullscreen(() => void syncToFullscreen());
+	// lock() replaces the held set, so a focus move re-locks with or without Escape.
+	const onFocusMove = () => {
+		if (isFullscreenActive() && isTerminalFocus() !== escapeLocked) void syncToFullscreen();
+	};
+	focusListeners = { focusin: onFocusMove, focusout: () => queueMicrotask(onFocusMove) };
+	document.addEventListener("focusin", focusListeners.focusin);
+	document.addEventListener("focusout", focusListeners.focusout);
 	void syncToFullscreen();
 }
 
@@ -112,5 +127,11 @@ export function initKeyboardLock(): void {
 export function __resetKeyboardLockForTests(): void {
 	installed = false;
 	locked = false;
+	escapeLocked = false;
+	if (focusListeners) {
+		document.removeEventListener("focusin", focusListeners.focusin);
+		document.removeEventListener("focusout", focusListeners.focusout);
+		focusListeners = null;
+	}
 	listeners.clear();
 }

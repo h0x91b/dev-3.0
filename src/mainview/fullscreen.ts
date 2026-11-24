@@ -16,14 +16,23 @@
  * fullscreen there. On iPhone `isFullscreenSupported()` is false, so both the
  * auto-engage and the menu toggle are absent. Platform limitation, not a bug —
  * see decision 134.
+ *
+ * Desktop browsers in remote mode get the same first-click engage while the
+ * `remoteAutoFullscreen` setting is on — but only where Keyboard Lock exists
+ * (Chromium), because fullscreen is what lets the page own ⌘W / Ctrl+W there.
+ * Elsewhere it would hide the browser chrome for nothing.
  */
 
 let autoEngageSpent = false;
+let mobileEngage = false;
+let desktopEngage = false;
+let desktopEngageEnabled = true;
+let armFirstTap: (() => void) | null = null;
 let initialized = false;
 const listeners = new Set<() => void>();
 // Kept for test teardown — production never uninstalls them.
 let installedFullscreenChange: (() => void) | null = null;
-let installedFirstTap: (() => void) | null = null;
+let installedFirstTap: ((e: Event) => void) | null = null;
 
 function notifyListeners(): void {
 	for (const listener of listeners) {
@@ -80,22 +89,54 @@ export async function toggleFullscreen(): Promise<void> {
 	}
 }
 
+function canAutoEngage(): boolean {
+	return isFullscreenSupported() && (mobileEngage || (desktopEngage && desktopEngageEnabled));
+}
+
+function disarmFirstTap(): void {
+	if (!installedFirstTap) return;
+	document.removeEventListener("click", installedFirstTap, true);
+	installedFirstTap = null;
+}
+
+/** Clicks inside this marker never auto-engage — e.g. the toggle that turns it off. */
+export const NO_AUTO_FULLSCREEN_ATTR = "data-no-auto-fullscreen";
+
+/**
+ * Follow the `remoteAutoFullscreen` setting (default on). Only matters when
+ * bootstrap armed the desktop engage; mobile always engages.
+ */
+export function setDesktopAutoFullscreen(enabled: boolean): void {
+	desktopEngageEnabled = enabled;
+	if (typeof document === "undefined") return;
+	if (canAutoEngage()) armFirstTap?.();
+	else if (!mobileEngage) disarmFirstTap();
+}
+
 /**
  * Install the fullscreen listeners. Call once at bootstrap (main.tsx).
- * `mobile: true` additionally arms the one-shot first-tap auto-engage.
+ * `mobile: true` arms the one-shot first-tap auto-engage; `desktop: true` arms
+ * it too while {@link setDesktopAutoFullscreen} allows.
  */
-export function initAutoFullscreen(opts: { mobile: boolean }): void {
+export function initAutoFullscreen(opts: { mobile: boolean; desktop?: boolean }): void {
 	if (initialized || typeof document === "undefined") return;
 	initialized = true;
+	mobileEngage = opts.mobile;
+	desktopEngage = !opts.mobile && opts.desktop === true;
 
-	const canAutoEngage = opts.mobile && isFullscreenSupported();
-	const armFirstTap = () => {
-		if (!canAutoEngage || autoEngageSpent || installedFirstTap) return;
-		const onFirstTap = () => {
+	armFirstTap = () => {
+		if (!canAutoEngage() || autoEngageSpent || installedFirstTap) return;
+		const onFirstTap = (e: Event) => {
+			if ((e.target as Element | null)?.closest?.(`[${NO_AUTO_FULLSCREEN_ATTR}]`)) return;
 			document.removeEventListener("click", onFirstTap, true);
 			installedFirstTap = null;
 			autoEngageSpent = true;
-			void enterFullscreen();
+			// A denied request fires no fullscreenchange, so re-arm here or the engage is dead for good.
+			void enterFullscreen().then(() => {
+				if (document.fullscreenElement) return;
+				autoEngageSpent = false;
+				armFirstTap?.();
+			});
 		};
 		document.addEventListener("click", onFirstTap, true);
 		installedFirstTap = onFirstTap;
@@ -107,19 +148,23 @@ export function initAutoFullscreen(opts: { mobile: boolean }): void {
 		// succeed, so restore the one-shot listener instead of re-entering here.
 		if (!document.fullscreenElement) {
 			autoEngageSpent = false;
-			armFirstTap();
+			armFirstTap?.();
 		}
 	};
 	document.addEventListener("fullscreenchange", onFullscreenChange);
 	installedFullscreenChange = onFullscreenChange;
 
-	armFirstTap();
+	armFirstTap?.();
 }
 
 /** Reset module state and uninstall document listeners. Tests only. */
 export function __resetFullscreenForTests(): void {
 	autoEngageSpent = false;
 	initialized = false;
+	mobileEngage = false;
+	desktopEngage = false;
+	desktopEngageEnabled = true;
+	armFirstTap = null;
 	listeners.clear();
 	if (installedFullscreenChange) {
 		document.removeEventListener("fullscreenchange", installedFullscreenChange);

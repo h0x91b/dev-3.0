@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApplicationMenuItemConfig } from "electrobun/bun";
 import { buildApplicationMenu, isComingSoonAction, type MenuContext } from "../../shared/application-menu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { BROWSER_HANDLED_ACTIONS } from "../menuRouter";
+import { BROWSER_HANDLED_ACTIONS, BROWSER_TOGGLE_FULLSCREEN_ACTION } from "../menuRouter";
+import { isFullscreenSupported } from "../fullscreen";
 import { isMac } from "../utils/platform";
 import { useT } from "../i18n";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -81,6 +82,11 @@ function normalize(items: ApplicationMenuItemConfig[]): MenuNode[] {
 			if (children.some((c) => c.kind !== "separator")) {
 				nodes.push({ kind: "submenu", label: item.label, children });
 			}
+			continue;
+		}
+		// The one role a page can perform itself: element fullscreen (absent on iPhone).
+		if (item.role === "toggleFullScreen" && isFullscreenSupported()) {
+			nodes.push({ kind: "item", label: "Toggle Full Screen", action: BROWSER_TOGGLE_FULLSCREEN_ACTION, enabled: true });
 			continue;
 		}
 		// role-only items (undo/copy/quit/minimize/…) and label-only nodes: drop.

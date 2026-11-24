@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import type { TranslationKey } from "../i18n";
 import { getDiagnostics } from "../diagnostics";
+import { reloadPage } from "../tab-close-guard";
 
 export type BootPhase = "connecting" | "authenticating" | "reconnecting" | "checking" | "loading";
 
@@ -94,7 +95,7 @@ export default function BootstrapScreen({
 				<div className="flex flex-wrap justify-end gap-2 pt-1">
 					<button
 						type="button"
-						onClick={() => window.location.reload()}
+						onClick={() => reloadPage()}
 						className="px-4 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-elevated transition-colors"
 					>
 						{t("boot.reload")}

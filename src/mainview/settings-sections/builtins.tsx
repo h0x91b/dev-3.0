@@ -232,6 +232,8 @@ function BuiltinSystemSection() {
 			onRemoteTunnelChange={s.handleRemoteTunnelChange}
 			onRemotePortChange={s.handleRemotePortChange}
 			onRemoteSilentUpdateToggle={s.handleRemoteSilentUpdateToggle}
+			onRemoteConfirmTabCloseToggle={s.handleRemoteConfirmTabCloseToggle}
+			onRemoteAutoFullscreenToggle={s.handleRemoteAutoFullscreenToggle}
 			onStaticAccessCodeChange={s.handleStaticAccessCodeChange}
 			onPreventSleepToggle={s.handlePreventSleepToggle}
 			onResourceLevelsChange={s.handleResourceLevelsChange}
