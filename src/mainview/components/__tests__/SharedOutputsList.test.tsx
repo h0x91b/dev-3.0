@@ -58,6 +58,12 @@ describe("SharedOutputsList", () => {
 		expect(screen.getByTestId("shared-artifact-link")).toHaveTextContent("Report a");
 	});
 
+	it("lists an artifact record written before assets existed instead of crashing", () => {
+		const legacy = { ...artifact("old"), assets: undefined, images: [] } as unknown as SharedArtifact;
+		renderList({ sharedArtifacts: [legacy] });
+		expect(screen.getByTestId("shared-artifact-link")).toHaveTextContent("Report old");
+	});
+
 	it("opens the image viewer at the clicked row, not at the newest image", async () => {
 		const spy = vi.fn();
 		window.addEventListener("dev3:openImageViewer", spy);

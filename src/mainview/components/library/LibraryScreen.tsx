@@ -4,13 +4,16 @@ import {
 	libraryDayBucket,
 	libraryDiskGroups,
 	libraryViewerSiblings,
+	replaceTaskLibraryItems,
 	sortLibraryItems,
 	summarizeLibrary,
+	taskLibraryItems,
 	type LibraryDayBucket,
 	type LibraryItem,
 	type LibraryKind,
 	type LibrarySort,
 } from "../../../shared/library";
+import type { Task } from "../../../shared/types";
 import { useAgents } from "../../hooks/useAgents";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { statusKey, useT, type TranslationKey } from "../../i18n";
@@ -61,18 +64,43 @@ function useLibrary(): { state: LoadState; reload: () => void; markSeen: (keys: 
 	useEffect(() => {
 		alive.current = true;
 		reload();
-		// New outputs and read-marks arrive as task updates; one refetch covers a burst of them.
-		let timer: ReturnType<typeof setTimeout> | null = null;
-		const onChange = () => {
-			if (timer) clearTimeout(timer);
-			timer = setTimeout(reload, 800);
+		// A push carries the whole task, so only that task's items are rebuilt here: the full
+		// archive is megabytes, and `taskUpdated` fires for every status and activity change.
+		const onTaskUpdated = (e: Event) => {
+			const { projectId, task } = (e as CustomEvent<{ projectId: string; task: Task }>).detail ?? {};
+			if (!projectId || !task) return;
+			let unknownProject = false;
+			setState((prev) => {
+				if (prev.phase !== "ready") return prev;
+				const projectName = prev.items.find((item) => item.projectId === projectId)?.projectName;
+				let fresh: LibraryItem[] = [];
+				try {
+					fresh = projectName == null ? [] : taskLibraryItems({ id: projectId, name: projectName }, task);
+				} catch {
+					return prev;
+				}
+				if (projectName == null) {
+					// Its first output in a project this list has never seen: the name comes from the host.
+					unknownProject = taskLibraryItems({ id: projectId, name: "" }, task).length > 0;
+					return prev;
+				}
+				const hadAny = prev.items.some((item) => item.taskId === task.id && item.projectId === projectId);
+				if (!hadAny && fresh.length === 0) return prev;
+				return { phase: "ready", items: replaceTaskLibraryItems(prev.items, projectId, task.id, fresh) };
+			});
+			if (unknownProject) reload();
 		};
-		const events = ["rpc:taskUpdated", "rpc:cliShowImage", "rpc:cliShowArtifact", "rpc:taskRemoved"];
-		for (const name of events) window.addEventListener(name, onChange);
+		const onTaskRemoved = (e: Event) => {
+			const { projectId, taskId } = (e as CustomEvent<{ projectId: string; taskId: string }>).detail ?? {};
+			if (!projectId || !taskId) return;
+			setState((prev) => (prev.phase === "ready" ? { phase: "ready", items: replaceTaskLibraryItems(prev.items, projectId, taskId, []) } : prev));
+		};
+		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
+		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
 		return () => {
 			alive.current = false;
-			if (timer) clearTimeout(timer);
-			for (const name of events) window.removeEventListener(name, onChange);
+			window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+			window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
 		};
 	}, [reload]);
 	const markSeen = useCallback((keys: string[]) => {
@@ -166,7 +194,6 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 		[scoped, query, kind, unseenOnly, privacy.isLocked, agentName, sort],
 	);
 	const summary = summarizeLibrary(scoped);
-	const missingCount = scoped.filter((item) => item.missing).length;
 	const projectCount = new Set(scoped.map((item) => item.projectId)).size;
 	const diskBy = projectScope ? "task" : "project";
 	const diskGroups = useMemo(() => libraryDiskGroups(scoped, diskBy).slice(0, DISK_GROUPS_SHOWN), [scoped, diskBy]);
@@ -244,9 +271,14 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 							<div className="min-w-0 rounded-2xl border border-edge bg-raised px-3 py-2.5 sm:px-4 sm:py-3">
 								<div className="text-xs text-fg-3">{t("library.kpi.size")}</div>
 								<div className="mt-1 text-2xl font-semibold leading-tight tabular-nums text-fg" data-testid="library-total-bytes">{formatBytes(summary.bytes)}</div>
-								<div className="mt-0.5 hidden truncate text-xs text-fg-muted sm:block">
-									{missingCount > 0 ? t.plural("library.kpi.missing", missingCount) : t("library.kpi.sizeHint")}
-								</div>
+								{/* What is already gone is not counted above, and the reader must learn that on a phone too. */}
+								{summary.missing > 0 ? (
+									<div className="mt-0.5 text-xs text-fg-muted text-pretty sm:truncate" data-testid="library-missing-note">
+										{t.plural("library.kpi.missing", summary.missing, { size: formatBytes(summary.goneBytes) })}
+									</div>
+								) : (
+									<div className="mt-0.5 hidden truncate text-xs text-fg-muted sm:block">{t("library.kpi.sizeHint")}</div>
+								)}
 							</div>
 							<button
 								type="button"
@@ -320,7 +352,9 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 
 						{taskScope && (
 							<div className="flex items-center gap-2 text-xs text-fg-3">
-								<span className={`truncate ${privacy.maskClass(projectScope)}`}>{t("library.taskScope", { title: taskScope.title })}</span>
+								<span className={`truncate ${privacy.maskClass(projectScope)}`}>
+									{t("library.taskScope", { title: privacy.isLocked(projectScope) ? t("streamer.privateTitle") : taskScope.title })}
+								</span>
 								<button type="button" onClick={() => setTaskScope(null)} className="rounded text-accent hover:text-accent-emphasis hover:underline">
 									{t("library.clearTask")}
 								</button>
@@ -396,7 +430,7 @@ function LibraryRow({ item, showProject, agentName, stamp, maskClass, locked, on
 	const finished = item.taskStatus === "completed" || item.taskStatus === "cancelled";
 	const meta: string[] = [];
 	if (item.versions > 1) meta.push(t("library.version", { version: item.versions }));
-	meta.push(formatBytes(item.bytes));
+	if (!item.missing) meta.push(formatBytes(item.bytes));
 	const title = locked ? t("streamer.privateTitle") : item.title;
 	return (
 		<li className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-edge bg-elevated px-3 py-2.5 transition-colors hover:border-edge-active hover:bg-elevated-hover" data-testid="library-row">

@@ -26,8 +26,13 @@ export interface LibraryItem {
 	caption?: string;
 	name: string;
 	createdAt: number;
-	/** Bytes the records claim: every retained artifact version with its assets, or the media file. */
+	/**
+	 * Bytes of the files that still exist: every retained artifact version with its assets, or the
+	 * media file. The pure projection counts the record's claim; the host's {@link applyLibraryPresence}
+	 * moves whatever is gone into `goneBytes`, so totals never count a file that is not there.
+	 */
 	bytes: number;
+	goneBytes: number;
 	versions: number;
 	unread: boolean;
 	/** The stored file is gone (pruned or deleted); the record outlived it. Set by the host. */
@@ -60,7 +65,8 @@ export function artifactRecordBytes(artifact: SharedArtifact): number {
 	let total = 0;
 	for (const version of artifactVersions(artifact)) {
 		total += version.bytes;
-		for (const asset of version.assets) total += asset.bytes;
+		// Records written before assets existed carry `images` instead; they read as asset-less.
+		for (const asset of version.assets ?? []) total += asset.bytes;
 	}
 	return total;
 }
@@ -75,6 +81,7 @@ function base(project: ProjectRef, task: Task) {
 		taskStatus: task.status,
 		agentId: task.agentId ?? null,
 		missing: false,
+		goneBytes: 0,
 	};
 }
 
@@ -136,9 +143,49 @@ export function taskLibraryItems(project: ProjectRef, task: Task): LibraryItem[]
 	return items;
 }
 
-/** Every stored path an item depends on; the item is `missing` when its primary file is gone. */
-export function libraryItemPrimaryPath(item: LibraryItem): string | null {
-	return item.image?.storedPath ?? item.artifact?.storedPath ?? null;
+/**
+ * Splits an item's bytes into files that exist and files that are gone, and flags it `missing`
+ * when its primary file (the media, or the newest artifact version) is gone. Older artifact
+ * versions and assets are checked one by one: the retention pruner removes them independently.
+ */
+export function applyLibraryPresence(item: LibraryItem, exists: (path: string) => boolean): LibraryItem {
+	if (item.image) {
+		if (exists(item.image.storedPath)) return item;
+		return { ...item, missing: true, bytes: 0, goneBytes: item.image.bytes };
+	}
+	if (!item.artifact) return item;
+	let present = 0;
+	let gone = 0;
+	const count = (path: string, bytes: number) => {
+		if (exists(path)) present += bytes;
+		else gone += bytes;
+	};
+	for (const version of artifactVersions(item.artifact)) {
+		count(version.storedPath, version.bytes);
+		for (const asset of version.assets ?? []) count(asset.storedPath, asset.bytes);
+	}
+	return { ...item, missing: !exists(item.artifact.storedPath), bytes: present, goneBytes: gone };
+}
+
+/**
+ * One task's items rebuilt from a pushed task record, keeping the host-checked presence of every
+ * item whose record did not change. A new record or version reads as present: it was just written.
+ */
+export function mergeTaskLibraryItems(previous: readonly LibraryItem[], fresh: readonly LibraryItem[]): LibraryItem[] {
+	const known = new Map(previous.map((item) => [item.key, item]));
+	return fresh.map((item) => {
+		const prior = known.get(item.key);
+		if (!prior || prior.versions !== item.versions || prior.createdAt !== item.createdAt) return item;
+		return { ...item, bytes: prior.bytes, goneBytes: prior.goneBytes, missing: prior.missing };
+	});
+}
+
+/** The whole list with one task's items swapped for `next` (an empty `next` drops the task). */
+export function replaceTaskLibraryItems(all: readonly LibraryItem[], projectId: string, taskId: string, next: readonly LibraryItem[]): LibraryItem[] {
+	const sameTask = (item: LibraryItem) => item.projectId === projectId && item.taskId === taskId;
+	const kept = all.filter((item) => !sameTask(item));
+	const merged = mergeTaskLibraryItems(all.filter(sameTask), next);
+	return [...kept, ...merged];
 }
 
 // ── Renderer-side helpers (pure) ────────────────────────────────────────────
@@ -226,16 +273,22 @@ export interface LibrarySummary {
 	count: number;
 	bytes: number;
 	unseen: number;
+	missing: number;
+	goneBytes: number;
 }
 
 export function summarizeLibrary(items: readonly LibraryItem[]): LibrarySummary {
 	let bytes = 0;
 	let unseen = 0;
+	let missing = 0;
+	let goneBytes = 0;
 	for (const item of items) {
 		bytes += item.bytes;
+		goneBytes += item.goneBytes;
 		if (item.unread) unseen += 1;
+		if (item.missing) missing += 1;
 	}
-	return { count: items.length, bytes, unseen };
+	return { count: items.length, bytes, unseen, missing, goneBytes };
 }
 
 /** The viewer's history for an item: its task's media (oldest → newest) or its task's artifacts. */

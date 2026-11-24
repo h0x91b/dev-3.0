@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
-import { libraryItemPrimaryPath, taskLibraryItems, type LibraryItem, type LibraryReport } from "../../shared/library";
+import { applyLibraryPresence, taskLibraryItems, type LibraryItem, type LibraryReport } from "../../shared/library";
 import type { Task } from "../../shared/types";
 import * as data from "../data";
 import { log } from "./shared";
 
 /**
  * Every artifact and shown media record across ALL projects and every task status,
- * projected into one list. Read-only: it never writes, moves or renames anything
- * under ~/.dev3.0 — it only checks whether each stored file still exists.
+ * projected into one list. The handler writes nothing: it reads the boards and checks
+ * whether each stored file still exists, so the sizes count only files that are there.
  */
 export async function getLibrary(): Promise<LibraryReport> {
 	const [gitProjects, virtualProjects] = await Promise.all([data.loadProjects(), data.loadVirtualProjects()]);
@@ -21,9 +21,11 @@ export async function getLibrary(): Promise<LibraryReport> {
 			continue;
 		}
 		for (const task of tasks) {
-			for (const item of taskLibraryItems(project, task)) {
-				const path = libraryItemPrimaryPath(item);
-				items.push(path && !existsSync(path) ? { ...item, missing: true } : item);
+			// One malformed record skips its task, never the whole library.
+			try {
+				for (const item of taskLibraryItems(project, task)) items.push(applyLibraryPresence(item, existsSync));
+			} catch (err) {
+				log.warn("getLibrary: skipped a task with an unreadable output record", { projectId: project.id, taskId: task.id.slice(0, 8), error: String(err) });
 			}
 		}
 	}
