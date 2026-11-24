@@ -12,6 +12,7 @@ import * as taskNotes from "../board-operations/task-notes";
 import * as labels from "../board-operations/labels";
 import { boardPorts } from "../board-operations/runtime";
 import { USER_ACTOR } from "../board-operations/types";
+import { deleteSharedMedia as deleteStoredSharedMedia, previewSharedMediaDelete } from "../shared-media-delete";
 
 async function createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
 	log.info("→ createLabel", { projectId: params.projectId, name: params.name });
@@ -207,6 +208,22 @@ async function markTaskSharedItemsRead(params: {
 	return task;
 }
 
+/** Frees disk by deleting stored show-media clips; records stay as tombstones. */
+async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[]; dryRun?: boolean }) {
+	const project = await data.getProject(params.projectId);
+	if (params.dryRun) {
+		return { task: null, summary: await previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks) };
+	}
+	log.info("→ deleteSharedMedia", { taskId: params.taskId, count: params.mediaIds.length });
+	const { task, summary } = await deleteStoredSharedMedia(project, params.taskId, params.mediaIds, {
+		loadTasks: data.loadTasks,
+		updateTaskWith: data.updateTaskWith,
+	});
+	log.info("← deleteSharedMedia done", { taskId: params.taskId, count: summary.count, freeableBytes: summary.freeableBytes, failed: summary.failed.length });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return { task, summary };
+}
+
 async function addTaskNote(params: { taskId: string; projectId: string; content: string; source?: NoteSource }): Promise<Task> {
 	log.info("→ addTaskNote", { taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
@@ -266,6 +283,7 @@ export const notesLabelsHandlers = {
 	reorderLabels,
 	setTaskLabels,
 	markTaskSharedItemsRead,
+	deleteSharedMedia,
 	addTaskNote,
 	updateTaskNote,
 	deleteTaskNote,

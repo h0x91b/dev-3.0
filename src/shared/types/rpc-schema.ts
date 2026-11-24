@@ -44,7 +44,7 @@ import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from
 import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
-import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage, SharedMediaDeleteSummary } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
 import type { NativeTaskAgent, TaskSessionState } from "./task-lifecycle";
 import type { Automation, AutomationDraft } from "./automations";
@@ -1302,6 +1302,11 @@ export type AppRPCSchema = {
 			markTaskSharedItemsRead: {
 				params: { taskId: string; projectId: string; kind: "images" | "artifacts"; itemIds: string[] };
 				response: Task;
+			};
+			/** Deletes stored show-media clip files (tombstoning the records); `dryRun` only reports what it would free. */
+			deleteSharedMedia: {
+				params: { taskId: string; projectId: string; mediaIds: string[]; dryRun?: boolean };
+				response: { task: Task | null; summary: SharedMediaDeleteSummary };
 			};
 			toggleTaskWatch: {
 				params: { taskId: string; projectId: string; watched: boolean };

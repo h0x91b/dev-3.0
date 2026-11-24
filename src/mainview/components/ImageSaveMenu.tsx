@@ -9,6 +9,8 @@ interface ImageSaveMenuProps {
 	onDownload: () => void;
 	onCopyPath?: () => void;
 	onClose: () => void;
+	/** Destructive last item that deletes the stored file; the host confirms first. */
+	onDelete?: () => void;
 	/** What the items save and copy — labels them for a clip instead of an image. */
 	media?: "image" | "video" | "audio";
 }
@@ -20,7 +22,7 @@ interface ImageSaveMenuProps {
  * brings its own. Escape belongs to the host overlay, which knows it must close the
  * menu before itself.
  */
-export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, media = "image" }: ImageSaveMenuProps) {
+export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, onDelete, media = "image" }: ImageSaveMenuProps) {
 	const t = useT();
 	const ref = useRef<HTMLDivElement>(null);
 
@@ -70,6 +72,15 @@ export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, med
 					<span className={glyph} style={{ fontFamily: ICON }}>{""}</span>
 					{t(media === "audio" ? "imageViewer.copyAudioPath" : media === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath")}
 				</button>
+			)}
+			{onDelete && (
+				<>
+					<div role="separator" className="my-1 border-t border-edge" />
+					<button type="button" role="menuitem" data-testid="image-save-menu-delete" onClick={onDelete} className="w-full text-left px-3 py-2 text-sm text-danger hover:bg-danger/10 flex items-center gap-2.5 transition-colors">
+						<span className={glyph} style={{ fontFamily: ICON }}>{"\uf1f8"}</span>
+						{t(media === "audio" ? "sharedMedia.deleteAudio" : "sharedMedia.deleteVideo")}
+					</button>
+				</>
 			)}
 		</div>
 	);

@@ -12,9 +12,13 @@ vi.mock("../../rpc", () => ({
 			readImageBase64: vi.fn(),
 			getSharedMediaUrl: vi.fn(),
 			openImageFile: vi.fn().mockResolvedValue(undefined),
+			deleteSharedMedia: vi.fn(),
 		},
 	},
 }));
+
+const confirmMock = vi.hoisted(() => ({ confirm: vi.fn(async (_options: { title: string; message: string; danger?: boolean }) => true) }));
+vi.mock("../../confirm", () => confirmMock);
 
 const platform = vi.hoisted(() => ({ remote: false }));
 vi.mock("../../utils/platform", async (importOriginal) => ({
@@ -464,6 +468,61 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(screen.getByTestId("image-viewer-comment")).toHaveAccessibleName("Comments on this video");
 		expect(screen.getByRole("dialog", { name: "Shared media" })).toBeInTheDocument();
 		expect(screen.getByText("2 / 3")).toBeInTheDocument();
+	});
+
+	it("deletes the clip's stored file from its right-click menu after a confirmation, then shows the tombstone", async () => {
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		deleteMock.mockReset();
+		deleteMock.mockImplementation(async ({ dryRun }: { dryRun?: boolean }) => ({
+			task: dryRun ? null : { id: "t1", sharedVideos: [{ ...MIXED[1], removedAt: 1_780_000_000_000, removedBytes: 0 }] },
+			summary: { count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] },
+		}));
+		confirmMock.confirm.mockClear();
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		await userEvent.click(screen.getByTestId("image-save-menu-delete"));
+
+		await screen.findByTestId("viewer-media-removed");
+		expect(screen.getByText("Removed to free space")).toBeInTheDocument();
+		expect(confirmMock.confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true, title: "Delete the stored file of demo.mp4?" }));
+		// The dialog states the honest gain: a clone of a live original frees ~0.
+		expect(confirmMock.confirm.mock.calls[0][0].message).toContain("still on disk");
+		expect(deleteMock).toHaveBeenNthCalledWith(1, { projectId: "p1", taskId: "t1", mediaIds: ["v"], dryRun: true });
+		expect(deleteMock).toHaveBeenNthCalledWith(2, { projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
+	});
+
+	it("deletes nothing when the confirmation is declined", async () => {
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		deleteMock.mockReset();
+		deleteMock.mockResolvedValue({ task: null, summary: { count: 1, bytes: 10, freeableBytes: 10, failed: [] } });
+		confirmMock.confirm.mockResolvedValueOnce(false);
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		await userEvent.click(screen.getByTestId("image-save-menu-delete"));
+		await waitFor(() => expect(confirmMock.confirm).toHaveBeenCalled());
+		expect(deleteMock).toHaveBeenCalledTimes(1);
+		expect(screen.getByTestId("viewer-main-video")).toBeInTheDocument();
+	});
+
+	it("shows a removed clip as a tombstone with no delete or download", async () => {
+		const removed = [MIXED[0], { ...MIXED[1], removedAt: 1_780_000_000_000 }, MIXED[2]];
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={removed} initialIndex={1} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		expect(await screen.findByTestId("viewer-media-removed")).toHaveTextContent("Removed to free space");
+		expect(screen.getByTestId("image-viewer-download")).toBeDisabled();
+		fireEvent.contextMenu(screen.getByTestId("viewer-media-removed"));
+		expect(screen.queryByTestId("image-save-menu-delete")).toBeNull();
+	});
+
+	it("offers no delete item without a task to delete it from", async () => {
+		renderMixed(1);
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		expect(screen.getByTestId("image-save-menu")).toBeInTheDocument();
+		expect(screen.queryByTestId("image-save-menu-delete")).toBeNull();
 	});
 
 	it("asks for a clip's stream URL only when it is on stage, never reading its bytes", async () => {
