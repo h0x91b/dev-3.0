@@ -36,6 +36,15 @@ export const CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude-c
 
 const SAFE_ACCOUNT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+/** Set in the env of the user's statusLine we delegate to. A `dev3 statusline` reached again
+ *  through any spelling, alias or wrapper script sees it and prints only its own segment. */
+export const STATUSLINE_NESTED_ENV = "DEV3_STATUSLINE_NESTED";
+
+/** Cheap first filter: a `dev3` binary token followed by the `statusline` subcommand, so
+ *  `~/.dev3.0/bin/my-statusline.sh` is kept. A wrapper script that calls dev3 is out of reach
+ *  of a string check; STATUSLINE_NESTED_ENV covers it. */
+const DEV3_STATUSLINE_INVOCATION = /(?:^|[\s/\\"'(`;&|=])dev3(?:\.exe|\.cmd)?["'`)]?\s+["']?statusline(?![\w.-])/i;
+
 /** Max time the user's original statusLine command may take before we drop it. */
 const ORIGINAL_STATUSLINE_TIMEOUT_MS = 2000;
 
@@ -79,7 +88,7 @@ export function resolveOriginalStatusLine(
 		if (!found) continue;
 		// Recursion guard: if someone pointed their own statusLine at us, do not
 		// spawn ourselves forever.
-		if (found.command.includes("dev3") && found.command.includes("statusline")) continue;
+		if (DEV3_STATUSLINE_INVOCATION.test(found.command)) continue;
 		return found;
 	}
 	return null;
@@ -90,6 +99,7 @@ function runOriginalStatusLine(original: OriginalStatusLine, input: string, cwd:
 		const result = spawnSync("bash", ["-c", original.command], {
 			input,
 			cwd: cwd && existsSync(cwd) ? cwd : undefined,
+			env: { ...process.env, [STATUSLINE_NESTED_ENV]: "1" },
 			timeout: ORIGINAL_STATUSLINE_TIMEOUT_MS,
 			encoding: "utf-8",
 			maxBuffer: 1024 * 1024,
@@ -200,7 +210,7 @@ export async function handleStatusLine(): Promise<void> {
 	const root = payload as { workspace?: { project_dir?: string; current_dir?: string } };
 	const projectDir = root?.workspace?.project_dir ?? root?.workspace?.current_dir ?? null;
 
-	const original = resolveOriginalStatusLine(projectDir);
+	const original = process.env[STATUSLINE_NESTED_ENV] ? null : resolveOriginalStatusLine(projectDir);
 	const originalOut = original ? runOriginalStatusLine(original, raw, root?.workspace?.current_dir ?? projectDir) : "";
 
 	const snapshot = parseClaudeStatusLinePayload(payload, Date.now());
