@@ -19,18 +19,24 @@ Two layers, both browser remote mode only:
    `beforeunload` after `reload()` returns. Setting `remoteConfirmTabClose`, default on.
 2. **Prevention** — on desktop Chromium, `fullscreen.ts` reuses the mobile first-click engage, so
    Keyboard Lock (`keyboard-lock.ts`) hands Ctrl+W to the page and the terminal receives ^W.
-   Re-arms after every exit and after a denied request (which fires no `fullscreenchange`). Setting `remoteAutoFullscreen`, default on. Not engaged on Safari or
+   Re-arms after a denied request (which fires no `fullscreenchange`); a user's own exit (Esc, the
+   menu toggle, F11) disarms it until reload or until the setting is switched back on, so a user
+   can stay windowed. Phones keep re-arming after every exit. Setting `remoteAutoFullscreen`, default on. Not engaged on Safari or
    Firefox: no Keyboard Lock, so fullscreen would only hide browser chrome. The browser menu bar
    maps the native `toggleFullScreen` role to a "Toggle Full Screen" item (desktop browsers had no
-   way in before). `Escape` is now locked only while a terminal has focus, so vim gets Esc; there
-   Chrome needs press-and-hold Esc to leave fullscreen and says so itself.
+   way in before). `Escape` is now locked only while a terminal has focus or an Esc-closable layer
+   is open (`escape-claims.ts`, fed by `useEscapeKey` and `registerOverlayLayer`), so vim and open
+   dialogs get Esc instead of the browser using it to leave fullscreen. In those states leaving
+   fullscreen is Chrome's press-and-hold Esc, which it announces itself.
 
 ## Risks
 
 Chrome shows the prompt only after a user interaction on the page, and its text cannot be changed.
 A first click anywhere throws the page into fullscreen, which some users will find abrupt; the
 setting row itself is exempt (`data-no-auto-fullscreen`) so turning it off does not trigger it.
-F11 browser fullscreen does not activate Keyboard Lock — only the element fullscreen dev3 requests.
+Auto-engage makes the whole `LOCKED_CODES` set (Ctrl+T/N/L/R, Ctrl+Tab, F5, F12, digits, zoom)
+the page's for every desktop Chromium remote user by default, not only for users who chose
+fullscreen; devtools stays on ⌥⌘I / Ctrl+Shift+I. F11 browser fullscreen does not activate Keyboard Lock — only the element fullscreen dev3 requests.
 
 ## Alternatives considered
 

@@ -6,6 +6,7 @@ import {
 	isKeyboardLocked,
 } from "../keyboard-lock";
 import { __resetFullscreenForTests, initAutoFullscreen } from "../fullscreen";
+import { __resetEscapeClaimsForTests, claimEscape } from "../escape-claims";
 
 /** Drive `document.fullscreenElement` and fire the event the app listens to. */
 function setFullscreen(active: boolean) {
@@ -25,6 +26,7 @@ beforeEach(() => {
 	Object.defineProperty(navigator, "keyboard", { configurable: true, value: { lock, unlock } });
 	__resetKeyboardLockForTests();
 	__resetFullscreenForTests();
+	__resetEscapeClaimsForTests();
 	initAutoFullscreen({ mobile: false });
 	setFullscreen(false);
 });
@@ -71,6 +73,37 @@ describe("keyboard lock", () => {
 		input.blur();
 		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(3));
 		expect(lock.mock.calls[2][0]).not.toContain("Escape");
+		terminal.remove();
+	});
+
+	it("locks Escape while an Esc-closable layer is open, so Esc closes it instead of leaving fullscreen", async () => {
+		initKeyboardLock();
+		setFullscreen(true);
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledOnce());
+
+		const release = claimEscape(); // a dialog / palette / menu opens
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(2));
+		expect(lock.mock.calls[1][0]).toContain("Escape");
+
+		release();
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(3));
+		expect(lock.mock.calls[2][0]).not.toContain("Escape");
+	});
+
+	it("does not re-lock when focus moves between two terminals", async () => {
+		const terminal = document.createElement("div");
+		terminal.setAttribute("data-terminal", "true");
+		const a = document.createElement("textarea");
+		const b = document.createElement("textarea");
+		terminal.append(a, b);
+		document.body.appendChild(terminal);
+		initKeyboardLock();
+		setFullscreen(true);
+		a.focus();
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(2));
+		b.focus();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(lock).toHaveBeenCalledTimes(2);
 		terminal.remove();
 	});
 

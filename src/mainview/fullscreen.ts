@@ -20,13 +20,16 @@
  * Desktop browsers in remote mode get the same first-click engage while the
  * `remoteAutoFullscreen` setting is on — but only where Keyboard Lock exists
  * (Chromium), because fullscreen is what lets the page own ⌘W / Ctrl+W there.
- * Elsewhere it would hide the browser chrome for nothing.
+ * Elsewhere it would hide the browser chrome for nothing. Leaving fullscreen on
+ * desktop disarms it until reload; the View menu toggle still enters it.
  */
 
 let autoEngageSpent = false;
 let mobileEngage = false;
 let desktopEngage = false;
 let desktopEngageEnabled = true;
+/** A desktop user left fullscreen themselves: stay windowed until reload. */
+let desktopEngageDisarmed = false;
 let armFirstTap: (() => void) | null = null;
 let initialized = false;
 const listeners = new Set<() => void>();
@@ -90,7 +93,7 @@ export async function toggleFullscreen(): Promise<void> {
 }
 
 function canAutoEngage(): boolean {
-	return isFullscreenSupported() && (mobileEngage || (desktopEngage && desktopEngageEnabled));
+	return isFullscreenSupported() && (mobileEngage || (desktopEngage && desktopEngageEnabled && !desktopEngageDisarmed));
 }
 
 function disarmFirstTap(): void {
@@ -107,6 +110,8 @@ export const NO_AUTO_FULLSCREEN_ATTR = "data-no-auto-fullscreen";
  * bootstrap armed the desktop engage; mobile always engages.
  */
 export function setDesktopAutoFullscreen(enabled: boolean): void {
+	// Switching the setting back on is a fresh opt-in, so it lifts an exit's disarm.
+	if (enabled && !desktopEngageEnabled) desktopEngageDisarmed = false;
 	desktopEngageEnabled = enabled;
 	if (typeof document === "undefined") return;
 	if (canAutoEngage()) armFirstTap?.();
@@ -146,8 +151,11 @@ export function initAutoFullscreen(opts: { mobile: boolean; desktop?: boolean })
 		notifyListeners();
 		// A browser exit needs a fresh user gesture before requestFullscreen can
 		// succeed, so restore the one-shot listener instead of re-entering here.
+		// On desktop an exit is the user's choice (Esc, menu toggle, F11): honour it
+		// until reload instead of re-entering on their next click. Phones re-arm.
 		if (!document.fullscreenElement) {
 			autoEngageSpent = false;
+			if (desktopEngage && !mobileEngage) desktopEngageDisarmed = true;
 			armFirstTap?.();
 		}
 	};
@@ -164,6 +172,7 @@ export function __resetFullscreenForTests(): void {
 	mobileEngage = false;
 	desktopEngage = false;
 	desktopEngageEnabled = true;
+	desktopEngageDisarmed = false;
 	armFirstTap = null;
 	listeners.clear();
 	if (installedFullscreenChange) {

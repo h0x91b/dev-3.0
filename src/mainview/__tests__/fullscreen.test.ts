@@ -134,6 +134,31 @@ describe("auto fullscreen on first click (desktop remote)", () => {
 		expect(requestFullscreen).toHaveBeenCalledTimes(2);
 	});
 
+	it("stays windowed after the user leaves fullscreen, until the setting is switched back on", async () => {
+		initAutoFullscreen({ mobile: false, desktop: true });
+		tap();
+		expect(isFullscreenActive()).toBe(true);
+		await toggleFullscreen(); // View → Toggle Full Screen, or Esc
+		expect(isFullscreenActive()).toBe(false);
+
+		tap();
+		tap();
+		expect(requestFullscreen).toHaveBeenCalledOnce();
+
+		setDesktopAutoFullscreen(false);
+		setDesktopAutoFullscreen(true);
+		tap();
+		expect(requestFullscreen).toHaveBeenCalledTimes(2);
+	});
+
+	it("still lets the menu toggle enter fullscreen after the user left it", async () => {
+		initAutoFullscreen({ mobile: false, desktop: true });
+		tap();
+		await toggleFullscreen();
+		await toggleFullscreen();
+		expect(isFullscreenActive()).toBe(true);
+	});
+
 	it("leaves the mobile engage alone when the desktop setting is off", () => {
 		initAutoFullscreen({ mobile: true, desktop: true });
 		setDesktopAutoFullscreen(false);
