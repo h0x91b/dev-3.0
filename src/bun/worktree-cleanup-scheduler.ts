@@ -7,7 +7,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import type { WorktreeCleanupResult } from "./worktree-cleanup-job";
-import { runSharedMediaRetention, tombstoneMissingClips, type SharedMediaRetentionDeps } from "./shared-media-retention";
+import { runSharedMediaRetention, tombstonePrunedClips, type SharedMediaRetentionDeps } from "./shared-media-retention";
 
 const log = createLogger("worktree-cleanup");
 
@@ -150,17 +150,24 @@ const realDeps: WorktreeCleanupDeps = {
 			return result;
 		}),
 	run: async () => {
-		const retentionDeps = await realRetentionDeps();
-		const retention = await runSharedMediaRetention(retentionDeps).catch((err) => {
-			log.error("Shared media retention failed", { error: String(err) });
+		const retentionDeps = await realRetentionDeps().catch((err) => {
+			log.error("Shared media retention unavailable", { error: String(err) });
 			return null;
 		});
-		const result = await runInWorker(workerPath!);
-		const tombstoned = await tombstoneMissingClips(retentionDeps).catch((err) => {
-			log.error("Tombstoning pruned clips failed", { error: String(err) });
-			return 0;
-		});
-		log.info("Shared media retention finished", { removed: retention?.removed ?? 0, freed: formatBytes(retention?.freedBytes ?? 0), failed: retention?.failed ?? 0, tombstoned });
+		const retention = retentionDeps
+			? await runSharedMediaRetention(retentionDeps).catch((err) => {
+				log.error("Shared media retention failed", { error: String(err) });
+				return null;
+			})
+			: null;
+		const { removedMediaPaths = [], ...result } = await runInWorker(workerPath!);
+		const tombstoned = retentionDeps
+			? await tombstonePrunedClips(retentionDeps, removedMediaPaths).catch((err) => {
+				log.error("Tombstoning pruned clips failed", { error: String(err) });
+				return 0;
+			})
+			: 0;
+		log.info("Shared media retention finished", { removed: retention?.removed ?? 0, freed: formatBytes(retention?.freedBytes ?? 0), skipped: retention?.skipped ?? 0, failed: retention?.failed ?? 0, tombstoned });
 		return {
 			...result,
 			freedBytes: result.freedBytes + (retention?.freedBytes ?? 0),

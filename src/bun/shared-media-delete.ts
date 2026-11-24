@@ -98,6 +98,8 @@ function revive(list: SharedImage[] | undefined, ids: Set<string>): SharedImage[
 export interface SharedMediaDeletePorts {
 	updateTaskWith<T>(project: Project, taskId: string, mutator: (task: Task, tasks?: readonly Task[]) => { updates: Partial<Task>; result: T }): Promise<{ task: Task; result: T }>;
 	unlink?: (path: string) => void;
+	/** Narrows the ids against the task as read under the lock; automatic cleanup re-checks status, pins and due-ness here. */
+	guard?: (current: Task, mediaIds: string[]) => string[];
 	stat?: StatFn;
 	now?: () => number;
 }
@@ -125,7 +127,9 @@ export async function deleteSharedMedia(
 	const now = (ports.now ?? Date.now)();
 	const { task: marked, result: plan } = await ports.updateTaskWith(project, taskId, (current, allTasks) => {
 		if (!allTasks) throw new SharedMediaDeleteError("The board was not read under the lock");
-		const items = planSharedMediaDelete(project, current, allTasks, mediaIds, ports.stat);
+		const ids = ports.guard ? ports.guard(current, mediaIds) : mediaIds;
+		if (ids.length === 0) return { updates: {}, result: [] as SharedMediaDeletePlanItem[] };
+		const items = planSharedMediaDelete(project, current, allTasks, ids, ports.stat);
 		const marks = new Map(items.map((item) => [item.id, { removedAt: now, removedBytes: item.freeableBytes }]));
 		const updates: Partial<Task> = {};
 		if (current.sharedVideos) updates.sharedVideos = tombstone(current.sharedVideos, marks);

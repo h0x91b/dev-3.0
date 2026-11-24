@@ -110,7 +110,8 @@ export function sharedMediaRetention(
 		if (item.removedAt) return { id: item.id, removesAt: null, reason: "removed" };
 		if (!closed) return { id: item.id, removesAt: null, reason: "open-task" };
 		if (item.pinnedAt) return { id: item.id, removesAt: null, reason: "pinned" };
-		if (item.bytes < LARGE_SHARED_MEDIA_BYTES) return { id: item.id, removesAt: null, reason: "small" };
+		// An unknown or broken size counts as small: never removed by tier or age.
+		if (!(item.bytes >= LARGE_SHARED_MEDIA_BYTES)) return { id: item.id, removesAt: null, reason: "small" };
 		const byAge = item.createdAt + SHARED_MEDIA_MAX_AGE_DAYS * DAY_MS;
 		const r = rank.get(item.id);
 		if (r === undefined || !Number.isFinite(closedAt)) return { id: item.id, removesAt: byAge, reason: "age" };

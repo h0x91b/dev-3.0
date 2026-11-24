@@ -10,7 +10,7 @@ import { deleteSharedMedia, SharedMediaDeleteError, type SharedMediaDeletePorts 
  * decisions/2026/11/24/shared-media-retention-tiers.md
  */
 
-export interface SharedMediaRetentionDeps extends Omit<SharedMediaDeletePorts, "now"> {
+export interface SharedMediaRetentionDeps extends Omit<SharedMediaDeletePorts, "now" | "guard"> {
 	loadProjects(): Promise<Project[]>;
 	loadTasks(project: Project): Promise<Task[]>;
 	now(): number;
@@ -21,45 +21,61 @@ export interface SharedMediaRetentionDeps extends Omit<SharedMediaDeletePorts, "
 export interface SharedMediaRetentionResult {
 	removed: number;
 	freedBytes: number;
-	tombstoned: number;
+	/** Refused by the delete's own checks (shared file, outside this project's pool): left alone, not an error. */
+	skipped: number;
+	/** The unlink itself failed. */
 	failed: number;
 }
 
 const CLOSED = new Set(["completed", "cancelled"]);
 
-/** One delete call per clip after a batch refusal, so one bad record cannot shield the rest. */
-async function deleteDue(project: Project, task: Task, ids: string[], deps: SharedMediaRetentionDeps): Promise<{ task: Task; removed: number; freedBytes: number; failed: number }> {
+/**
+ * The snapshot that picked the ids can be stale by the time the lock is held: the
+ * task may have been reopened, or a clip pinned. Re-decide on the locked task.
+ */
+function stillDue(now: number) {
+	return (current: Task, mediaIds: string[]): string[] => {
+		if (!CLOSED.has(current.status)) return [];
+		const due = new Set(dueSharedMediaIds(current, now));
+		return mediaIds.filter((id) => due.has(id));
+	};
+}
+
+type Outcome = { task: Task; removed: number; freedBytes: number; skipped: number; failed: number };
+
+/** One delete call per clip after a batch refusal, so one refused record cannot shield the rest. */
+async function deleteDue(project: Project, task: Task, ids: string[], deps: SharedMediaRetentionDeps, now: number): Promise<Outcome> {
 	try {
-		const { task: updated, summary } = await deleteSharedMedia(project, task.id, ids, deps);
-		return { task: updated, removed: summary.count, freedBytes: summary.freeableBytes, failed: summary.failed.length };
+		const { task: updated, summary } = await deleteSharedMedia(project, task.id, ids, { ...deps, now: () => now, guard: stillDue(now) });
+		return { task: updated, removed: summary.count, freedBytes: summary.freeableBytes, skipped: 0, failed: summary.failed.length };
 	} catch (err) {
-		if (!(err instanceof SharedMediaDeleteError) || ids.length === 1) return { task, removed: 0, freedBytes: 0, failed: ids.length };
+		if (!(err instanceof SharedMediaDeleteError)) return { task, removed: 0, freedBytes: 0, skipped: 0, failed: ids.length };
+		if (ids.length === 1) return { task, removed: 0, freedBytes: 0, skipped: 1, failed: 0 };
 	}
-	let current = task;
-	let removed = 0;
-	let freedBytes = 0;
-	let failed = 0;
+	const total: Outcome = { task, removed: 0, freedBytes: 0, skipped: 0, failed: 0 };
 	for (const id of ids) {
-		const one = await deleteDue(project, current, [id], deps);
-		current = one.task;
-		removed += one.removed;
-		freedBytes += one.freedBytes;
-		failed += one.failed;
+		const one = await deleteDue(project, total.task, [id], deps, now);
+		total.task = one.task;
+		total.removed += one.removed;
+		total.freedBytes += one.freedBytes;
+		total.skipped += one.skipped;
+		total.failed += one.failed;
 	}
-	return { task: current, removed, freedBytes, failed };
+	return total;
 }
 
 export async function runSharedMediaRetention(deps: SharedMediaRetentionDeps): Promise<SharedMediaRetentionResult> {
-	const result: SharedMediaRetentionResult = { removed: 0, freedBytes: 0, tombstoned: 0, failed: 0 };
+	const result: SharedMediaRetentionResult = { removed: 0, freedBytes: 0, skipped: 0, failed: 0 };
 	const now = deps.now();
 	for (const project of await deps.loadProjects()) {
 		for (const task of await deps.loadTasks(project)) {
 			if (!CLOSED.has(task.status)) continue;
 			const due = dueSharedMediaIds(task, now);
 			if (due.length === 0) continue;
-			const outcome = await deleteDue(project, task, due, deps);
+			const outcome = await deleteDue(project, task, due, deps, now);
 			result.removed += outcome.removed;
 			result.freedBytes += outcome.freedBytes;
+			result.skipped += outcome.skipped;
 			result.failed += outcome.failed;
 			if (outcome.removed > 0) deps.onTaskUpdated?.(project, outcome.task);
 		}
@@ -67,31 +83,36 @@ export async function runSharedMediaRetention(deps: SharedMediaRetentionDeps): P
 	return result;
 }
 
-function markMissing(list: SharedImage[] | undefined, missing: Set<string>, now: number): SharedImage[] | undefined {
-	return list?.map((item) => (missing.has(item.id) ? { ...item, removedAt: now, removedBytes: 0 } : item));
-}
-
 /**
- * After the file prune: a closed task's clip whose stored file is gone becomes a
- * tombstone, so the viewer says "Removed to free space" rather than "unavailable".
+ * After the file prune: a clip whose stored file the worker reports it unlinked
+ * becomes a tombstone, so the viewer says "Removed to free space". A file that is
+ * merely missing (unmounted volume, moved repo) is left alone.
  */
-export async function tombstoneMissingClips(deps: SharedMediaRetentionDeps): Promise<number> {
+export async function tombstonePrunedClips(deps: SharedMediaRetentionDeps, prunedPaths: readonly string[]): Promise<number> {
+	if (prunedPaths.length === 0) return 0;
+	const pruned = new Set(prunedPaths);
 	const exists = deps.exists ?? existsSync;
 	const now = deps.now();
+	const isPruned = (item: SharedImage) => isDeletableSharedMedia(item) && pruned.has(item.storedPath) && !exists(item.storedPath);
 	let count = 0;
 	for (const project of await deps.loadProjects()) {
 		for (const task of await deps.loadTasks(project)) {
-			if (!CLOSED.has(task.status)) continue;
-			const missing = new Set([...(task.sharedVideos ?? []), ...(task.sharedAudio ?? [])].filter((item) => isDeletableSharedMedia(item) && !exists(item.storedPath)).map((item) => item.id));
-			if (missing.size === 0) continue;
-			const { task: updated } = await deps.updateTaskWith(project, task.id, (current) => {
+			if (![...(task.sharedVideos ?? []), ...(task.sharedAudio ?? [])].some(isPruned)) continue;
+			const { task: updated, result: marked } = await deps.updateTaskWith(project, task.id, (current) => {
+				let n = 0;
+				const mark = (list: SharedImage[] | undefined) =>
+					list?.map((item) => {
+						if (!isPruned(item)) return item;
+						n += 1;
+						return { ...item, removedAt: now, removedBytes: item.bytes };
+					});
 				const updates: Partial<Task> = {};
-				if (current.sharedVideos) updates.sharedVideos = markMissing(current.sharedVideos, missing, now);
-				if (current.sharedAudio) updates.sharedAudio = markMissing(current.sharedAudio, missing, now);
-				return { updates, result: undefined };
+				if (current.sharedVideos) updates.sharedVideos = mark(current.sharedVideos);
+				if (current.sharedAudio) updates.sharedAudio = mark(current.sharedAudio);
+				return { updates, result: n };
 			});
-			count += missing.size;
-			deps.onTaskUpdated?.(project, updated);
+			count += marked;
+			if (marked > 0) deps.onTaskUpdated?.(project, updated);
 		}
 	}
 	return count;

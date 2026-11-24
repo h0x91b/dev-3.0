@@ -10,7 +10,7 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-import { runSharedMediaRetention, tombstoneMissingClips } from "../shared-media-retention";
+import { runSharedMediaRetention, tombstonePrunedClips } from "../shared-media-retention";
 
 const DAY = 24 * 60 * 60 * 1000;
 const CLOSED_AT = Date.parse("2026-11-01T00:00:00.000Z");
@@ -88,6 +88,12 @@ describe("sharedMediaRetention exemptions", () => {
 		expect(due(closedTask(clips(16, (i) => (i === 0 ? { bytes: LARGE } : {}))), CLOSED_AT)).toEqual(["c0"]);
 	});
 
+	it("treats an unknown size as small", () => {
+		const task = closedTask(clips(2, (i) => (i === 0 ? { bytes: undefined as unknown as number } : {})));
+		expect(sharedMediaRetention(task)[0]).toEqual({ id: "c0", removesAt: null, reason: "small" });
+		expect(due(task, CLOSED_AT + 365 * DAY)).toEqual(["c1"]);
+	});
+
 	it("never removes a pinned item, and a pin does not take a keep slot", () => {
 		const task = closedTask(clips(5, (i) => (i === 4 || i === 0 ? { pinnedAt: 1 } : {})));
 		expect(due(task, CLOSED_AT + 365 * DAY)).toEqual(["c1", "c2", "c3"]);
@@ -160,32 +166,65 @@ describe("runSharedMediaRetention", () => {
 		for (const item of media) writeFileSync(item.storedPath, "x");
 		const b = board([closedTask(media)]);
 		const result = await runSharedMediaRetention({ ...b, now: () => CLOSED_AT + DAY });
-		expect(result).toMatchObject({ removed: 1, failed: 1 });
+		// A refusal is a skip, not a failure: it would otherwise recount every day.
+		expect(result).toMatchObject({ removed: 1, skipped: 1, failed: 0 });
 		expect(existsSync(`${TEST_HOME}/outside.mp4`)).toBe(true);
 		expect(existsSync(media[1].storedPath)).toBe(false);
 	});
+
+	it("re-decides under the lock: a task reopened or a clip pinned after the snapshot loses nothing", async () => {
+		const snapshot = [closedTask(clips(17), "completed", "reopened"), closedTask(clips(17, (i) => ({ id: `p${i}`, storedPath: `${STORE}/pin-${i}.mp4` })), "completed", "pinned")];
+		for (const task of snapshot) for (const item of task.sharedVideos!) writeFileSync(item.storedPath, "x");
+		// What the lock sees: the first task was reopened, every clip of the second was pinned.
+		const locked = [
+			{ ...snapshot[0], status: "in-progress" },
+			{ ...snapshot[1], sharedVideos: snapshot[1].sharedVideos!.map((item) => ({ ...item, pinnedAt: 1 })) },
+		] as Task[];
+		const b = board(locked);
+		const result = await runSharedMediaRetention({ ...b, loadTasks: async () => snapshot, now: () => CLOSED_AT + DAY });
+		expect(result).toMatchObject({ removed: 0, failed: 0 });
+		for (const task of snapshot) expect(task.sharedVideos!.every((item) => existsSync(item.storedPath))).toBe(true);
+		expect(locked.flatMap((task) => task.sharedVideos!).every((item) => !item.removedAt)).toBe(true);
+	});
 });
 
-describe("tombstoneMissingClips", () => {
-	it("marks a closed task's clip whose file the prune removed, and nothing on open tasks", async () => {
-		const closed = closedTask(clips(2), "completed", "closed");
-		const open = closedTask(clips(2, (i) => ({ id: `o${i}` })), "in-progress", "open");
-		const tasks = [closed, open];
+describe("tombstonePrunedClips", () => {
+	it("tombstones only clips whose file the prune reported unlinking, never a merely missing one", async () => {
+		const tasks = [closedTask(clips(3), "completed", "closed")];
 		const project = { id: "p1" } as Project;
-		const count = await tombstoneMissingClips({
-			now: () => 77,
-			exists: (path) => path.endsWith("shared-1.mp4"),
-			loadProjects: async () => [project],
-			loadTasks: async () => tasks,
-			updateTaskWith: async <T>(_p: Project, taskId: string, mutator: (task: Task, all?: readonly Task[]) => { updates: Partial<Task>; result: T }) => {
-				const idx = tasks.findIndex((t) => t.id === taskId);
-				const { updates, result } = mutator(tasks[idx], tasks);
-				tasks[idx] = { ...tasks[idx], ...updates };
-				return { task: tasks[idx], result };
+		const media = tasks[0].sharedVideos!;
+		const count = await tombstonePrunedClips(
+			{
+				now: () => 77,
+				// Nothing exists: c1 and c2 look missing (say, an unmounted volume), but only c0 was pruned.
+				exists: (_path: string) => false,
+				loadProjects: async () => [project],
+				loadTasks: async () => tasks,
+				updateTaskWith: async <T>(_p: Project, taskId: string, mutator: (task: Task, all?: readonly Task[]) => { updates: Partial<Task>; result: T }) => {
+					const idx = tasks.findIndex((t) => t.id === taskId);
+					const { updates, result } = mutator(tasks[idx], tasks);
+					tasks[idx] = { ...tasks[idx], ...updates };
+					return { task: tasks[idx], result };
+				},
 			},
-		});
+			[media[0].storedPath],
+		);
 		expect(count).toBe(1);
-		expect(tasks[0].sharedVideos!.map((item) => item.removedAt)).toEqual([77, undefined]);
-		expect(tasks[1].sharedVideos!.every((item) => !item.removedAt)).toBe(true);
+		expect(tasks[0].sharedVideos!.map((item) => item.removedAt)).toEqual([77, undefined, undefined]);
+	});
+
+	it("leaves a reported path alone when the file is back on disk", async () => {
+		const tasks = [closedTask(clips(1))];
+		const count = await tombstonePrunedClips(
+			{
+				now: () => 1,
+				exists: () => true,
+				loadProjects: async () => [{ id: "p1" } as Project],
+				loadTasks: async () => tasks,
+				updateTaskWith: async () => { throw new Error("must not write"); },
+			},
+			[tasks[0].sharedVideos![0].storedPath],
+		);
+		expect(count).toBe(0);
 	});
 });

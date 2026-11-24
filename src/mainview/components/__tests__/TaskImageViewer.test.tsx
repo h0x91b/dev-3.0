@@ -601,12 +601,14 @@ describe("TaskImageViewer with a shared video", () => {
 		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
 		const pin = screen.getByTestId("image-save-menu-pin");
 		expect(pin).toHaveAttribute("aria-checked", "false");
+		expect(screen.queryByTestId("image-save-menu-pin-check")).toBeNull();
 		await userEvent.click(pin);
 		expect(pinMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaId: "v", pinned: true });
 		expect(await screen.findByTestId("image-viewer-kept")).toBeInTheDocument();
 
 		fireEvent.contextMenu(screen.getByTestId("viewer-main-video"));
 		expect(screen.getByTestId("image-save-menu-pin")).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByTestId("image-save-menu-pin-check")).toBeInTheDocument();
 		await userEvent.click(screen.getByTestId("image-save-menu-pin"));
 		expect(pinMock).toHaveBeenLastCalledWith({ projectId: "p1", taskId: "t1", mediaId: "v", pinned: false });
 		await waitFor(() => expect(screen.queryByTestId("image-viewer-kept")).toBeNull());

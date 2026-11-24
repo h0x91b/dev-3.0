@@ -83,6 +83,7 @@ export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, onD
 				<button type="button" role="menuitemcheckbox" aria-checked={pinned} data-testid="image-save-menu-pin" onClick={onTogglePin} className={item}>
 					<span className={glyph} style={{ fontFamily: ICON }}>{"\uf08d"}</span>
 					{t(pinned ? "sharedMedia.unpin" : "sharedMedia.pin")}
+					{pinned && <span data-testid="image-save-menu-pin-check" aria-hidden="true" className="ml-auto pl-3 text-sm leading-none text-accent" style={{ fontFamily: ICON }}>{"\uf00c"}</span>}
 				</button>
 			)}
 			{(onDelete || onDeleteOlder) && <div role="separator" className="my-1 border-t border-edge" />}
