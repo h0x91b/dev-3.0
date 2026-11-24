@@ -6,6 +6,10 @@ import { useRegisteredBoardViews } from "../board-views/react";
 import { useViewLabel } from "../board-views/BoardViewChrome";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import { paletteShortcutKeys } from "../keymap";
+import { spaceModifierGlyphs } from "../keymap-bindings";
+import { useKeymapVersion } from "../keymap-store";
+import { isMac, isRemote } from "../utils/platform";
 
 interface CommandPaletteModalProps {
 	/** Which scopes are runnable in the current route. */
@@ -31,6 +35,10 @@ function CommandPaletteModal({ context, onRun, onClose }: CommandPaletteModalPro
 	const boardViews = offered.length > 1 ? offered.map((view) => ({ id: view.def.id, name: labelOf(view) })) : [];
 	const registered = useRegisteredCommands();
 	const commands = availableCommands(registered, { ...context, boardViews });
+	// Rows show the RESOLVED combo, so a rebind in Settings repaints them.
+	useKeymapVersion();
+	const mac = isMac();
+	const remote = isRemote();
 
 	return (
 		<PaletteShell<CommandItem>
@@ -44,9 +52,22 @@ function CommandPaletteModal({ context, onRun, onClose }: CommandPaletteModalPro
 			hint={t("commandPalette.hint")}
 			noResults={t("commandPalette.noResults")}
 			testId="command-palette"
-			renderItemRight={(c) => (
-				<span className="text-fg-3 text-xs flex-shrink-0">{t(COMMAND_CATEGORY_KEY[c.category])}</span>
-			)}
+			renderItemRight={(c) => {
+				const keys = c.shortcutId ? paletteShortcutKeys(c.shortcutId, mac, remote) : "";
+				return (
+					<span className="flex items-center gap-2 flex-shrink-0">
+						{keys && (
+							<kbd
+								data-testid="command-shortcut"
+								className="font-mono text-xs text-fg-2 bg-elevated border border-edge rounded px-1.5 py-px leading-4 whitespace-nowrap"
+							>
+								{spaceModifierGlyphs(keys)}
+							</kbd>
+						)}
+						<span className="text-fg-3 text-xs">{t(COMMAND_CATEGORY_KEY[c.category])}</span>
+					</span>
+				);
+			}}
 		/>
 	);
 }

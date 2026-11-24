@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import type { Context } from "cordis";
 import { getAppRoot } from "../../plugins/root";
 import userEvent from "@testing-library/user-event";
@@ -54,6 +54,32 @@ describe("CommandPaletteModal", () => {
 		renderModal({ hasProject: true, hasTask: false });
 		await user.type(screen.getByRole("textbox"), "Toggle watch");
 		expect(screen.queryAllByRole("option")).toHaveLength(0);
+	});
+
+	it("shows the keymap combo right-aligned on a row that has a shortcut", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.type(screen.getByRole("textbox"), "Open settings");
+		const [row] = screen.getAllByRole("option");
+		// happy-dom is neither macOS nor the Electrobun shell: the Ctrl form, remote rules.
+		expect(within(row).getByTestId("command-shortcut").textContent).toBe("Ctrl+,");
+	});
+
+	it("leaves a row without a shortcut as it was", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.type(screen.getByRole("textbox"), "Theme: dark");
+		const [row] = screen.getAllByRole("option");
+		expect(within(row).queryByTestId("command-shortcut")).toBeNull();
+		expect(row.textContent).toContain("App");
+	});
+
+	it("shows the browser's way in when the desktop combo is browser-owned", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.type(screen.getByRole("textbox"), "Go to Task");
+		const row = screen.getAllByRole("option").find((o) => o.textContent?.includes("Go to Task"));
+		expect(within(row!).getByTestId("command-shortcut").textContent).toBe("Ctrl+Shift+K then Tab");
 	});
 
 	it("closes on Escape", async () => {

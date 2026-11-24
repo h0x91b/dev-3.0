@@ -10,6 +10,7 @@ import {
 	findConflict,
 	isRemappable,
 	matchesShortcut,
+	paletteShortcutKeys,
 	shortcutAppliesInMode,
 	shortcutKeysFor,
 	shortcutKeysForMode,
@@ -438,5 +439,29 @@ describe("user overrides", () => {
 		setShortcutOverrides({ "new-task": { primary: "Mod+KeyN" } });
 		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", { ...desktopMac, remote: true })).toBe(false);
 		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", desktopMac)).toBe(true);
+	});
+});
+
+describe("paletteShortcutKeys", () => {
+	it("shows one platform-correct combo, not the whole alternatives list", () => {
+		expect(paletteShortcutKeys("go-to-task", true, false)).toBe("⇧⌘J");
+		expect(paletteShortcutKeys("go-to-task", false, false)).toBe("Ctrl+Shift+J");
+		expect(paletteShortcutKeys("back", true, false)).toBe("⌘[");
+	});
+
+	it("follows the browser's rules in remote mode", () => {
+		expect(paletteShortcutKeys("go-to-task", true, true)).toBe("⇧⌘K then ⇥");
+		// ⌘N belongs to the browser there; the bare-key alias is what still works.
+		expect(paletteShortcutKeys("new-task", true, true)).toBe("C");
+	});
+
+	it("is empty when nothing pressable applies", () => {
+		expect(paletteShortcutKeys("no-such-shortcut", true, false)).toBe("");
+		expect(paletteShortcutKeys("zoom-in", true, true)).toBe("");
+	});
+
+	it("shows the user's rebind", () => {
+		setShortcutOverrides({ settings: { primary: "Mod+Shift+Comma" } });
+		expect(paletteShortcutKeys("settings", true, false)).toBe("⇧⌘,");
 	});
 });

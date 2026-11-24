@@ -37,14 +37,14 @@ type BuiltinCommand = Omit<CommandItem, "id" | "order"> & { name: string };
  */
 const BUILTIN_COMMANDS: readonly BuiltinCommand[] = [
 	// ── Create ──
-	{ name: "open-new-task", labelKey: "command.newTask", category: "create", scope: "always", run: () => emitAppEvent("menu:open-new-task") },
-	{ name: "open-add-project", labelKey: "command.addProject", category: "create", scope: "always", run: () => emitAppEvent("menu:open-add-project") },
+	{ name: "open-new-task", shortcutId: "new-task", labelKey: "command.newTask", category: "create", scope: "always", run: () => emitAppEvent("menu:open-new-task") },
+	{ name: "open-add-project", shortcutId: "add-project", labelKey: "command.addProject", category: "create", scope: "always", run: () => emitAppEvent("menu:open-add-project") },
 
 	// ── Import ──
 	{ name: "project-import-conversations", labelKey: "command.importConversations", category: "import", scope: "project", run: importConversations },
 
 	// ── App: help ──
-	{ name: "help-explain-screen", labelKey: "keymap.shortcut.helpMode", category: "app", scope: "always", run: () => emitAppEvent("menu:enter-help-mode") },
+	{ name: "help-explain-screen", shortcutId: "help-mode", labelKey: "keymap.shortcut.helpMode", category: "app", scope: "always", run: () => emitAppEvent("menu:enter-help-mode") },
 
 	// ── Navigation ──
 	{ name: "view-dashboard", labelKey: "command.viewDashboard", category: "nav", scope: "always", run: (ctx) => navigateTo(ctx, { screen: "dashboard" }) },
@@ -53,8 +53,8 @@ const BUILTIN_COMMANDS: readonly BuiltinCommand[] = [
 	// A cross-project picker, so it needs no current project.
 	{ name: "find-coordinator", labelKey: "command.findCoordinator", category: "nav", scope: "always", run: () => emitAppEvent("menu:open-coordinator-finder") },
 	// The "Go to" palette's task / combined modes; projects mode keeps its own ⇧⌘K.
-	{ name: "open-task-switch", labelKey: "command.goToTask", category: "nav", scope: "always", run: () => emitAppEvent("menu:open-task-switch") },
-	{ name: "open-combined-switch", labelKey: "command.goToCombined", category: "nav", scope: "always", run: () => emitAppEvent("menu:open-combined-switch") },
+	{ name: "open-task-switch", shortcutId: "go-to-task", labelKey: "command.goToTask", category: "nav", scope: "always", run: () => emitAppEvent("menu:open-task-switch") },
+	{ name: "open-combined-switch", shortcutId: "go-to-combined", labelKey: "command.goToCombined", category: "nav", scope: "always", run: () => emitAppEvent("menu:open-combined-switch") },
 	{ name: "view-changelog", labelKey: "command.viewChangelog", category: "nav", scope: "always", run: (ctx) => navigateTo(ctx, { screen: "changelog" }) },
 	{
 		name: "view-stats",
@@ -66,10 +66,10 @@ const BUILTIN_COMMANDS: readonly BuiltinCommand[] = [
 		run: (ctx) => navigateTo(ctx, { screen: "stats" }),
 	},
 	{ name: "view-sessions", labelKey: "command.openSessions", category: "nav", scope: "always", run: openSessions },
-	{ name: "open-settings", labelKey: "command.openSettings", category: "nav", scope: "always", run: (ctx) => navigateTo(ctx, { screen: "settings" }) },
+	{ name: "open-settings", shortcutId: "settings", labelKey: "command.openSettings", category: "nav", scope: "always", run: (ctx) => navigateTo(ctx, { screen: "settings" }) },
 	{ name: "project-settings", labelKey: "command.projectSettings", category: "nav", scope: "project", run: openProjectSettings },
-	{ name: "go-back", labelKey: "command.goBack", category: "nav", scope: "always", run: (ctx) => ctx.dispatch({ type: "goBack" }) },
-	{ name: "go-forward", labelKey: "command.goForward", category: "nav", scope: "always", run: (ctx) => ctx.dispatch({ type: "goForward" }) },
+	{ name: "go-back", shortcutId: "back", labelKey: "command.goBack", category: "nav", scope: "always", run: (ctx) => ctx.dispatch({ type: "goBack" }) },
+	{ name: "go-forward", shortcutId: "forward", labelKey: "command.goForward", category: "nav", scope: "always", run: (ctx) => ctx.dispatch({ type: "goForward" }) },
 
 	// ── App: theme / locale ──
 	{ name: "set-theme-light", labelKey: "command.themeLight", category: "app", scope: "always", run: () => applyTheme("light") },
@@ -105,6 +105,7 @@ const BUILTIN_COMMANDS: readonly BuiltinCommand[] = [
 	// ── Terminal ──
 	{
 		name: "term-toggle-project-terminal",
+		shortcutId: "toggle-project-terminal",
 		labelKey: "command.openProjectTerminal",
 		category: "terminal",
 		scope: "project",
@@ -112,11 +113,12 @@ const BUILTIN_COMMANDS: readonly BuiltinCommand[] = [
 		run: openProjectTerminal,
 	},
 	// Stays on an Operations board: it is the entry point INTO that board.
-	{ name: "term-open-quick-shell", labelKey: "command.openQuickShell", category: "terminal", scope: "always", run: () => emitAppEvent("menu:open-quick-shell") },
+	{ name: "term-open-quick-shell", shortcutId: "open-quick-shell", labelKey: "command.openQuickShell", category: "terminal", scope: "always", run: () => emitAppEvent("menu:open-quick-shell") },
 	{ name: "term-cheat-sheet", labelKey: "command.tmuxCheatSheet", category: "terminal", scope: "always", run: () => emitAppEvent("menu:show-tmux-cheat-sheet") },
-	{ name: "help-keyboard-shortcuts", labelKey: "command.keyboardShortcuts", category: "app", scope: "always", run: () => emitAppEvent("menu:show-keyboard-shortcuts") },
+	{ name: "help-keyboard-shortcuts", shortcutId: "keyboard-shortcuts", labelKey: "command.keyboardShortcuts", category: "app", scope: "always", run: () => emitAppEvent("menu:show-keyboard-shortcuts") },
 	{
 		name: "view-agent-traffic-log",
+		shortcutId: "agent-traffic-log",
 		labelKey: "command.agentTrafficLog",
 		category: "app",
 		scope: "project",
@@ -124,7 +126,7 @@ const BUILTIN_COMMANDS: readonly BuiltinCommand[] = [
 		when: () => getAgentTrafficEnabled() && !isControlHidden("agent-traffic"),
 		run: () => openAgentTrafficLog(),
 	},
-	{ name: "view-toggle-file-explorer", labelKey: "command.toggleFileExplorer", category: "app", scope: "project", run: toggleFileExplorerForRoute },
+	{ name: "view-toggle-file-explorer", shortcutId: "toggle-file-explorer", labelKey: "command.toggleFileExplorer", category: "app", scope: "project", run: toggleFileExplorerForRoute },
 ];
 
 export const BUILTIN_COMMANDS_PLUGIN: BuiltinPlugin = {

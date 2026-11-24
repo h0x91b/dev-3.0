@@ -4,6 +4,7 @@ import { BUILTIN_COMMANDS_PLUGIN } from "../builtins";
 import { getCommandsRegistry, type CommandContext } from "../registry";
 import { applyBuiltinPlugins } from "../../plugins/runtime";
 import { setAgentTrafficEnabledForTests } from "../../agent-traffic-flag";
+import { shortcutById } from "../../keymap";
 
 const registered = () => getCommandsRegistry().list().map((entry) => entry.def);
 const availableCommands = (ctx: CommandContext) => filterCommands(registered(), ctx);
@@ -113,5 +114,15 @@ describe("availableCommands", () => {
 		const ids = filterCommands([boom, ...registered()], ctx).map((c) => c.id);
 		expect(ids).not.toContain("x:boom");
 		expect(ids).toHaveLength(availableCommands(ctx).length);
+	});
+});
+
+describe("command shortcuts", () => {
+	beforeAll(() => applyBuiltinPlugins([], [BUILTIN_COMMANDS_PLUGIN]));
+
+	it("every shortcutId names a real keymap entry", () => {
+		const linked = registered().filter((c) => c.shortcutId);
+		expect(linked.length).toBeGreaterThan(0);
+		for (const command of linked) expect(shortcutById(command.shortcutId!), command.id).toBeDefined();
 	});
 });

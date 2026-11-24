@@ -4,6 +4,7 @@ import type { TranslationKey } from "./i18n";
 import type { ShortcutSlot } from "../shared/types";
 import {
 	bindingsEqual,
+	formatBinding,
 	formatBindings,
 	matchesBinding,
 	type Binding,
@@ -390,13 +391,28 @@ export function shortcutKeysFor(spec: ShortcutSpec, mac: boolean = isMac()): str
  * the browser owns are dropped from the rendered list.
  */
 export function shortcutKeysForMode(spec: ShortcutSpec, mac: boolean, remote: boolean): string {
+	return keysForMode(spec, mac, remote, (bindings) => formatBindings(bindings, mac));
+}
+
+/**
+ * The ONE combo a command-palette row shows for a shortcut (`⇧⌘J`, not the
+ * whole `F11 / ⇧⌘F` list), or "" when it does not apply here — unknown id,
+ * other transport, feature switched off, or nothing pressable.
+ */
+export function paletteShortcutKeys(id: string, mac: boolean, remote: boolean): string {
+	const spec = BY_ID.get(id);
+	if (!spec || !shortcutAppliesInMode(spec, remote) || !shortcutFeatureIsOn(spec)) return "";
+	return keysForMode(spec, mac, remote, (bindings) => formatBinding(bindings[0], mac));
+}
+
+function keysForMode(spec: ShortcutSpec, mac: boolean, remote: boolean, format: (bindings: Binding[]) => string): string {
 	const remoteText = remote && spec.remoteDisplay ? (mac ? spec.remoteDisplay.mac : spec.remoteDisplay.other) : null;
 	// The alternative describes the defaults; a user's own combo fires in the browser.
 	if (remoteText && !hasOverride(spec.id)) return remoteText;
 	const bindings = bindingsFor(spec).filter(
 		(b) => (!b.platform || (b.platform === "mac") === mac) && !(remote && b.desktopOnly),
 	);
-	if (bindings.length > 0) return formatBindings(bindings, mac);
+	if (bindings.length > 0) return format(bindings);
 	if (remoteText) return remoteText;
 	return spec.display ? (mac ? spec.display.mac : spec.display.other) : "";
 }

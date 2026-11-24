@@ -10,6 +10,7 @@ import {
 	shortcutKeysForMode,
 	type ShortcutSpec,
 } from "../keymap";
+import { spaceModifierGlyphs } from "../keymap-bindings";
 import { isMac, isRemote } from "../utils/platform";
 import { useKeymapVersion } from "../keymap-store";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
@@ -35,16 +36,6 @@ interface Section {
 }
 
 type T = (key: TranslationKey) => string;
-
-/**
- * Insert a thin space (U+2009) after each macOS modifier glyph (⌘⇧⌥⌃) so the
- * cluster doesn't visually merge — "⇧⌘P" reads as "⇧ ⌘ P". No-op for the
- * textual Linux form ("Ctrl+Shift+P") and for tmux bindings, which already
- * carry real spaces.
- */
-function spaceModifierGlyphs(keys: string): string {
-	return keys.replace(/([⌘⇧⌥⌃])(?=\S)/gu, "$1 ");
-}
 
 /**
  * App-level shortcuts grouped by category, rendered from the keymap registry.
