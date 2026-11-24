@@ -77,7 +77,8 @@ export function createFreezeMonitor(startedAt: number) {
 			if (!state.focused && !state.beat?.visible) continue;
 			if (at - (state.lastBeatAt ?? state.createdAt) >= RENDERER_SILENCE_MS) {
 				reasons.push(`window-${id}-heartbeat-missing`);
-			} else if (state.beat?.visible && (state.beat.animationFrameAgeMs ?? 0) >= RENDERER_SILENCE_MS) {
+			} else if (state.beat?.visible && !state.beat.hiddenSinceLastBeat && (state.beat.animationFrameAgeMs ?? 0) >= RENDERER_SILENCE_MS) {
+				// A hidden page paints no frames, so the first beat back carries the hidden gap, not a stall.
 				reasons.push(`window-${id}-animation-frame-missing`);
 			}
 		}
