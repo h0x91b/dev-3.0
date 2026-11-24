@@ -1,3 +1,5 @@
+> Amended on 2026-11-23 by `decisions/2026/11/23/claude-account-private-runtime-state.md`: the deny-list now also covers per-login runtime state; stale shared links to those entries are removed.
+
 # 180 — Per-account Claude config dirs share ~/.claude by default, deny-list only
 
 ## Context
