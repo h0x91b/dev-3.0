@@ -54,7 +54,7 @@ export type ShortcutScope = "both" | "desktop" | "remote";
  * a combo because only one of them can be focused at a time — ⌘F is the terminal
  * search inside a terminal and the artifact search inside an artifact.
  */
-export type ShortcutConflictGroup = "app" | "terminal" | "artifact" | "file-preview" | "review-composer";
+export type ShortcutConflictGroup = "app" | "terminal" | "artifact" | "file-preview" | "review-composer" | "media-viewer";
 
 export interface ShortcutSpec {
 	/** Stable, unique id. Also the persistence key for a user override. */
@@ -240,6 +240,14 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "file-preview-search", primary: [mod("KeyF")], descKey: "keymap.shortcut.filePreviewSearch", category: "view", conflictGroup: "file-preview" },
 	// Only the focused review composer listens, so it cannot shadow an app combo.
 	{ id: "review-comment-send", primary: [mod("Enter")], descKey: "keymap.shortcut.reviewCommentSend", category: "create", conflictGroup: "review-composer" },
+
+	// Bare keys of the open media viewer, the YouTube convention: only that overlay
+	// listens, and never while a field has focus.
+	{ id: "media-frame-back", primary: [{ code: "Comma", mods: [] }], descKey: "keymap.shortcut.mediaFrameBack", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-frame-forward", primary: [{ code: "Period", mods: [] }], descKey: "keymap.shortcut.mediaFrameForward", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-speed-down", primary: [{ code: "Comma", mods: ["Shift"] }], descKey: "keymap.shortcut.mediaSpeedDown", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-speed-up", primary: [{ code: "Period", mods: ["Shift"] }], descKey: "keymap.shortcut.mediaSpeedUp", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-comment-at-playhead", primary: [{ code: "KeyC", mods: [] }], descKey: "keymap.shortcut.mediaCommentAtPlayhead", category: "create", conflictGroup: "media-viewer" },
 
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", primary: [mod("Backquote")], descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },

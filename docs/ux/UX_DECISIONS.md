@@ -271,11 +271,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 - **Rule:** every shortcut carries two independently-editable slots (primary + optional alias) rather than a flat binding list, and a per-shortcut editor replaces any "compatibility preset" toggle — the iTerm2 preset and its three checkboxes (Settings, ⓘ popover, native Terminal ▸ Keyboard Mode) are deleted, it.
 - **Why:** `decisions/2026/08/03/shortcut-slots-and-no-iterm2-preset.md`.
 
-## 2026-08-02 — The keymap registry now dispatches, and rebinding lives in Settings, not the ⌘/ overlay
-
-- **Rule:** `keymap.ts` holds machine-readable bindings and drives dispatch (`matchesShortcut(e, id)`); rebinding is `configuration` and belongs to a new eighth Settings category **Keyboard** (which also absorbs the terminal keymap preset), while the ⌘/ overlay stays read-only reference showing the *resolved* combo plus one "Customize…" link. Structural bindings (g-chords, ⌘1–9 families, hold-modifier switcher, Esc) render read-only **with a stated reason**. Bible §5.2, yaml `surfaces.keyboard_shortcuts_editor`.
-- **Why:** the 2026-06-19 "registry documents, does not dispatch" split made user rebinding impossible without editing two places, so it is reversed; a per-shortcut matcher confines that entry's feared risk to one tested function, not a rewrite. Rejected: editing inside the ⌘/ overlay (durable configuration in a help surface), and hiding non-remappable rows (an editor that silently omits a third of the keymap reads as broken).
-- **Status:** Implemented. Evidence: `keymap.ts`, `keymap-bindings.ts`, `KeyboardSettingsSection.tsx`, `ShortcutRow.tsx`, `settings-registry.ts`, `App.tsx`. Supersedes the dispatch half of the 2026-06-19 entry.
+2026-08-02 — `keymap.ts` dispatches (`matchesShortcut`); rebinding lives in Settings → Keyboard, the ⌘/ overlay stays read-only. Bible §5.2, yaml `surfaces.keyboard_shortcuts_editor`. Supersedes the dispatch half of 2026-06-19.
 
 ## 2026-08-01 — Split resize lives on the boundary, never in a toolbar
 
@@ -774,3 +770,5 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 - **Why:** sections inside an edit form break focus, dirty state and the one-primary rule. `decisions/2026/11/22/task-detail-sections-slot.md`.
 
 2026-11-22 — ⌘1–9 keys are pinned from the row's own ⌘N chip (bible §10 slot pins). Why: decisions/2026/11/22/digit-slot-pins-over-default-order.md.
+
+2026-11-24 — Video in the image viewer gets its own transport (frame step, speed, marker scrubber); timeline comments are `video-time` review anchors. Why: native scrubbers cannot carry markers. Dropped on purpose: volume level (mute only), PiP, OS fullscreen (viewer `f` covers it). Yaml `task_image_viewer`.
