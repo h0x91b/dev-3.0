@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useT } from "../i18n";
+import { useEscapeClaim } from "../hooks/useEscapeClaim";
 import Tooltip from "./Tooltip";
 
 export interface FindBarHandle {
@@ -33,6 +34,7 @@ const FindBar = forwardRef<FindBarHandle, FindBarProps>(
 	function FindBar({ placeholder, query, onQueryChange, matches, activeIndex, onStep, onClose }, ref) {
 		const t = useT();
 		const inputRef = useRef<HTMLInputElement>(null);
+		useEscapeClaim();
 
 		useImperativeHandle(ref, () => ({
 			focusInput: () => {

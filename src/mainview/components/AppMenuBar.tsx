@@ -4,6 +4,7 @@ import { buildApplicationMenu, isComingSoonAction, type MenuContext } from "../.
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { BROWSER_HANDLED_ACTIONS, BROWSER_TOGGLE_FULLSCREEN_ACTION } from "../menuRouter";
 import { isFullscreenSupported } from "../fullscreen";
+import { useEscapeClaim } from "../hooks/useEscapeClaim";
 import { isMac } from "../utils/platform";
 import { useT } from "../i18n";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -182,6 +183,7 @@ export default function AppMenuBar({ context, onAction }: AppMenuBarProps) {
 	// GlobalHeader owns the single More action sheet and its touch command-palette
 	// entry, so rendering another row would only consume scarce vertical space.
 	const [openIndex, setOpenIndex] = useState<number | null>(null);
+	useEscapeClaim(openIndex !== null);
 	const rootRef = useRef<HTMLDivElement>(null);
 
 	const close = useCallback(() => setOpenIndex(null), []);

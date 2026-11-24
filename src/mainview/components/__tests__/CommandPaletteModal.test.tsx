@@ -8,6 +8,7 @@ import CommandPaletteModal from "../CommandPaletteModal";
 import { BUILTIN_COMMANDS_PLUGIN } from "../../commands/builtins";
 import type { CommandContext, CommandItem } from "../../commands/registry";
 import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { hasEscapeClaims } from "../../escape-claims";
 
 function renderModal(
 	context: CommandContext = { hasProject: true, hasTask: true },
@@ -80,6 +81,18 @@ describe("CommandPaletteModal", () => {
 		await user.type(screen.getByRole("textbox"), "Go to Task");
 		const row = screen.getAllByRole("option").find((o) => o.textContent?.includes("Go to Task"));
 		expect(within(row!).getByTestId("command-shortcut").textContent).toBe("Ctrl+Shift+K then Tab");
+	});
+
+	it("claims Escape while open, so a fullscreen browser hands Esc to the palette", () => {
+		expect(hasEscapeClaims()).toBe(false);
+		const { unmount } = render(
+			<I18nProvider>
+				<CommandPaletteModal context={{ hasProject: true, hasTask: true }} onRun={vi.fn()} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		expect(hasEscapeClaims()).toBe(true);
+		unmount();
+		expect(hasEscapeClaims()).toBe(false);
 	});
 
 	it("closes on Escape", async () => {

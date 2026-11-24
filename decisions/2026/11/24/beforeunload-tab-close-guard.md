@@ -25,12 +25,16 @@ Two layers, both browser remote mode only:
    Firefox: no Keyboard Lock, so fullscreen would only hide browser chrome. The browser menu bar
    maps the native `toggleFullScreen` role to a "Toggle Full Screen" item (desktop browsers had no
    way in before). `Escape` is now locked only while a terminal has focus or an Esc-closable layer
-   is open (`escape-claims.ts`, fed by `useEscapeKey` and `registerOverlayLayer`), so vim and open
+   is open (`escape-claims.ts`, fed by `useEscapeKey`, `registerOverlayLayer`, the dialog keyboard guard behind
+   `confirm()`, and `useEscapeClaim` in palettes, the browser menu bar, find bars and sheets; a new
+   Esc handler outside those must call `useEscapeClaim`), so vim and open
    dialogs get Esc instead of the browser using it to leave fullscreen. In those states leaving
    fullscreen is Chrome's press-and-hold Esc, which it announces itself.
 
 ## Risks
 
+Screens whose `useEscapeKey` means Back (Changelog) hold Esc the whole time they are open, so
+there leaving fullscreen is press-and-hold too; accepted, Esc does something on that screen.
 Chrome shows the prompt only after a user interaction on the page, and its text cannot be changed.
 A first click anywhere throws the page into fullscreen, which some users will find abrupt; the
 setting row itself is exempt (`data-no-auto-fullscreen`) so turning it off does not trigger it.

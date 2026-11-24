@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { fuzzyRank } from "../utils/fuzzyMatch";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useEscapeClaim } from "../hooks/useEscapeClaim";
 
 /** Render text with the fuzzy-matched characters emphasized. */
 export function HighlightedText({ text, indices }: { text: string; indices: number[] }) {
@@ -89,6 +90,7 @@ export function PaletteShell<T>({
 	const setQuery = onQueryChange ?? setInnerQuery;
 	const [index, setIndex] = useState(0);
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	useEscapeClaim();
 
 	const results = useMemo(
 		() =>
