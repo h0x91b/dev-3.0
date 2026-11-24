@@ -20,7 +20,7 @@ export function extractRepoName(url: string): string {
 // ---- Repo-local config (.dev3/config.json) ----
 
 export type CompareRefMode = "remote" | "local";
-export type SetupScriptLaunchMode = "parallel" | "blocking";
+export type SetupScriptLaunchMode = "parallel" | "blocking" | "single-pane";
 export type GitHubCliAuthStatus = "authenticated" | "not_authenticated" | "not_installed";
 
 export interface GitHubAccount {

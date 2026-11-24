@@ -103,6 +103,7 @@ describe.skipIf(SHELLS.length === 0).each(SHELLS)("setup tracing never prints st
 		{ name: "native", nativeBackend: true, launchMode: "parallel" as const },
 		{ name: "tmux parallel", nativeBackend: false, launchMode: "parallel" as const },
 		{ name: "tmux blocking", nativeBackend: false, launchMode: "blocking" as const },
+		{ name: "tmux single-pane", nativeBackend: false, launchMode: "single-pane" as const },
 	];
 
 	for (const mode of MODES) {
@@ -123,7 +124,7 @@ describe.skipIf(SHELLS.length === 0).each(SHELLS)("setup tracing never prints st
 			expect(res.output).toContain(`marker-length=${MARKER_VALUE.length}`);
 			expect(res.output).toContain("✓ Setup done");
 			expect(existsSync(join(dir, "setup-ran"))).toBe(true);
-			if (mode.nativeBackend) expect(res.output).toContain("AGENT-STARTED");
+			if (mode.nativeBackend || mode.launchMode === "single-pane") expect(res.output).toContain("AGENT-STARTED");
 			else expect(readFileSync(join(dir, "tmux-called"), "utf-8")).toContain("split-window");
 		});
 
