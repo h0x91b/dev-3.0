@@ -19,6 +19,7 @@ set -euo pipefail
 #   ./dev3                ← compiled CLI + headless server (one binary)
 #   ./dist/index.html     ← UI entry
 #   ./dist/assets/...     ← UI assets
+#   ./dist/sw.js, ...     ← Vite public assets (Web Push, manifest, icons)
 #   ./dist/workers/...    ← worker-thread bundles (daily cleanup, handoff, clonefile)
 #   ./artifact-template/  ← canonical dev3 HTML artifact starter
 #   ./tmux/tmux           ← bundled self-contained tmux (macOS only)
@@ -29,6 +30,7 @@ ARCH="${2:?Usage: $0 <os> <arch> (os: macos|linux, arch: arm64|x64)}"
 OUT_DIR="./artifacts-${OS}-${ARCH}"
 TARBALL="${OUT_DIR}/dev3-cli-${OS}-${ARCH}.tar.gz"
 STAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGE_DIR"' EXIT
 
 echo "=== Creating CLI tarball for ${OS}-${ARCH} ==="
 
@@ -59,6 +61,16 @@ chmod 0755 "$STAGE_DIR/dev3"
 
 cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"
+# Use the public directory as the inventory, but ship Vite's built copies.
+# Missing assets must fail packaging instead of becoming the SPA HTML at runtime.
+for asset in ./src/mainview/public/*; do
+  name="$(basename "$asset")"
+  if [ ! -e "./dist/$name" ]; then
+    echo "::error::dist/$name missing — run \`bunx vite build\` first"
+    exit 1
+  fi
+  cp -R "./dist/$name" "$STAGE_DIR/dist/$name"
+done
 cp -r ./dist/workers "$STAGE_DIR/dist/workers"
 cp -r ./src/assets/artifact-template "$STAGE_DIR/artifact-template"
 
