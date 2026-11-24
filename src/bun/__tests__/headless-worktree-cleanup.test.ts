@@ -33,6 +33,9 @@ describe.skipIf(process.platform === "win32")("create-cli-tarball.sh", () => {
 		root = mkdtempSync(join(tmpdir(), "dev3-cli-tarball-"));
 		mkdirSync(join(root, "dist", "assets"), { recursive: true });
 		mkdirSync(join(root, "src", "assets", "artifact-template"), { recursive: true });
+		mkdirSync(join(root, "src", "mainview", "public"), { recursive: true });
+		writeFileSync(join(root, "src", "mainview", "public", "sw.js"), "// worker");
+		writeFileSync(join(root, "dist", "sw.js"), "// worker");
 		writeFileSync(join(root, "dist", "dev3"), "#!/bin/sh\n");
 		writeFileSync(join(root, "dist", "index.html"), "<html></html>");
 		writeFileSync(join(root, "src", "assets", "artifact-template", "AUTHORING.md"), "x");
