@@ -1,1 +1,3 @@
 A project's extra folders list no longer shows a folder that is inside the project when the project is reached through a symlink and the folder does not exist yet. A missing path now resolves its symlinks through its closest existing parent, so it compares against the project's real path; this also made the project-folders suite fail on macOS, where the temp dir sits behind the /var symlink.
+
+Contributed by @fallenfuzz (h0x91b/dev-3.0#2449)
