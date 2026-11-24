@@ -39,7 +39,7 @@ describe("extractImagePaths", () => {
 	});
 
 	describe("long lines with many slashes", () => {
-		const words = "Проверить результат сборки и описать найденные проблемы в заметке для следующего агента";
+		const words = "Check the build result and describe the problems found in a note for the next agent";
 		const longLine = Array.from({ length: 30 }, (_, i) => `${words.slice(i % 20, 20 + (i % 20))}/`)
 			.join(" ")
 			.repeat(2)
