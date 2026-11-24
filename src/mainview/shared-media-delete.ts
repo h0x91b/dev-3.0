@@ -1,9 +1,14 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SharedImage, Task } from "../shared/types";
+import { olderLargeSharedClips } from "../shared/types";
 import { confirm } from "./confirm";
 import type { TFunction } from "./i18n";
 import { api } from "./rpc";
 import { toast } from "./toast";
 import { formatBytes } from "./utils/formatBytes";
+
+/** Below this a clip deletion frees "almost nothing" and the copy says so. */
+const MEANINGFUL_BYTES = 1024 * 1024;
 
 /**
  * Confirm, then delete stored clip files. The dialog states the honest disk gain
@@ -22,13 +27,14 @@ export async function confirmDeleteSharedMedia(opts: {
 	if (items.length === 0) return null;
 	const mediaIds = items.map((item) => item.id);
 	try {
-		const { summary: plan } = await api.request.deleteSharedMedia({ projectId, taskId, mediaIds, dryRun: true });
+		const plan = await api.request.previewSharedMediaDelete({ projectId, taskId, mediaIds });
 		const size = formatBytes(plan.bytes);
 		const freed = formatBytes(plan.freeableBytes);
-		const shared = plan.bytes - plan.freeableBytes > 1024 * 1024;
-		const message = [t("sharedMedia.confirmMessage", { size, freed }), shared ? t("sharedMedia.confirmSharedNote") : null, t("sharedMedia.confirmKeepsEntry")]
-			.filter(Boolean)
-			.join(" ");
+		const sharedBytes = plan.bytes - plan.freeableBytes;
+		const gain = plan.freeableBytes < MEANINGFUL_BYTES
+			? [t("sharedMedia.confirmFreesNothing", { size })]
+			: [t("sharedMedia.confirmMessage", { size, freed }), sharedBytes > MEANINGFUL_BYTES ? t("sharedMedia.confirmSharedNote") : null];
+		const message = [...gain, t("sharedMedia.confirmKeepsEntry")].filter(Boolean).join(" ");
 		const ok = await confirm({
 			title: scope === "one" ? t("sharedMedia.confirmOneTitle", { name: items[0].name }) : t.plural("sharedMedia.confirmOlderTitle", plan.count),
 			message,
@@ -46,4 +52,37 @@ export async function confirmDeleteSharedMedia(opts: {
 		toast.error(t("sharedMedia.deleteFailed", { error: err instanceof Error ? err.message : String(err) }), { taskId });
 		return null;
 	}
+}
+
+/**
+ * The "delete older clips" sweep for one task: which clips it covers, a label
+ * carrying the disk it really frees (server preview), and a run that ignores
+ * repeat clicks while a confirmation is already open.
+ */
+export function useOlderClipsCleanup(opts: { projectId?: string; taskId?: string; media: SharedImage[]; t: TFunction }) {
+	const { projectId, taskId, media, t } = opts;
+	const older = useMemo(() => olderLargeSharedClips(media), [media]);
+	const key = older.map((item) => item.id).join(",");
+	const [freeable, setFreeable] = useState<number | null>(null);
+	useEffect(() => {
+		setFreeable(null);
+		if (!projectId || !taskId || !key) return;
+		let live = true;
+		api.request.previewSharedMediaDelete({ projectId, taskId, mediaIds: key.split(",") })
+			.then((summary) => { if (live) setFreeable(summary.freeableBytes); })
+			.catch(() => {});
+		return () => { live = false; };
+	}, [projectId, taskId, key]);
+	const busy = useRef(false);
+	const run = async (): Promise<Task | null> => {
+		if (busy.current || !projectId || !taskId) return null;
+		busy.current = true;
+		try {
+			return await confirmDeleteSharedMedia({ projectId, taskId, items: older, t, scope: "older" });
+		} finally {
+			busy.current = false;
+		}
+	};
+	const label = freeable !== null && freeable >= MEANINGFUL_BYTES ? t("sharedMedia.freeOlder", { size: formatBytes(freeable) }) : t("sharedMedia.deleteOlder");
+	return { older, label, run, available: Boolean(projectId && taskId) && older.length > 0 };
 }

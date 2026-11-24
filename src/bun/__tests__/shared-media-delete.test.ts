@@ -9,7 +9,7 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-import { deleteSharedMedia, freeableBytes, planSharedMediaDelete, previewSharedMediaDelete, SharedMediaDeleteError } from "../shared-media-delete";
+import { deleteSharedMedia, freeableBytes, isInProjectSharedMediaPool, planSharedMediaDelete, previewSharedMediaDelete, SharedMediaDeleteError } from "../shared-media-delete";
 
 const STORE = `${TEST_HOME}/worktrees/my-project/shared-images`;
 const SOURCE = `${TEST_HOME}/renders`;
@@ -36,10 +36,9 @@ function taskWith(media: SharedImage[], id = "t1"): Task {
 function board(tasks: Task[]) {
 	return {
 		tasks,
-		loadTasks: async () => tasks,
-		updateTaskWith: async <T>(_project: Project, taskId: string, mutator: (task: Task) => { updates: Partial<Task>; result: T }) => {
+		updateTaskWith: async <T>(_project: Project, taskId: string, mutator: (task: Task, all?: readonly Task[]) => { updates: Partial<Task>; result: T }) => {
 			const idx = tasks.findIndex((t) => t.id === taskId);
-			const { updates, result } = mutator(tasks[idx]);
+			const { updates, result } = mutator(tasks[idx], tasks);
 			tasks[idx] = { ...tasks[idx], ...updates };
 			return { task: tasks[idx], result };
 		},
@@ -57,25 +56,41 @@ afterAll(() => rmSync(TEST_HOME, { recursive: true, force: true }));
 describe("planSharedMediaDelete", () => {
 	it("refuses a record whose stored path lies outside the shared-images pool", () => {
 		const outside = clip("a", { storedPath: `${TEST_HOME}/worktrees/my-project/uploads/a.mp4` });
-		expect(() => planSharedMediaDelete(taskWith([outside]), [], ["a"])).toThrow(/outside the shared media pool/);
+		expect(() => planSharedMediaDelete(project, taskWith([outside]), [], ["a"])).toThrow(/outside the shared media pool/);
 		const etc = clip("b", { storedPath: "/etc/hosts.mp4" });
-		expect(() => planSharedMediaDelete(taskWith([etc]), [], ["b"])).toThrow(SharedMediaDeleteError);
+		expect(() => planSharedMediaDelete(project, taskWith([etc]), [], ["b"])).toThrow(SharedMediaDeleteError);
+	});
+
+	it("accepts only a file directly in THIS project's pool: no traversal, no other project's pool", () => {
+		expect(isInProjectSharedMediaPool(project, `${STORE}/shared-a.mp4`)).toBe(true);
+		for (const path of [
+			`${TEST_HOME}/worktrees/other-project/shared-images/shared-a.mp4`,
+			`${TEST_HOME}/worktrees/../shared-images/shared-a.mp4`,
+			`${STORE}/../../other-project/shared-images/shared-a.mp4`,
+			`${STORE}/./shared-a.mp4`,
+			`${STORE}/nested/shared-a.mp4`,
+			"/repo/.dev3/worktrees/shared-images/shared-a.mp4",
+		]) {
+			expect(isInProjectSharedMediaPool(project, path), path).toBe(false);
+		}
+		const foreign = clip("f", { storedPath: `${TEST_HOME}/worktrees/other-project/shared-images/shared-f.mp4` });
+		expect(() => planSharedMediaDelete(project, taskWith([foreign]), [], ["f"])).toThrow(/outside the shared media pool/);
 	});
 
 	it("refuses unknown ids, images, already-removed clips and an empty request", () => {
 		const image = { ...clip("img"), mime: "image/png", storedPath: `${STORE}/shared-img.png` };
 		const gone = clip("gone", { removedAt: 5 });
 		const task = { id: "t1", sharedImages: [image], sharedVideos: [gone] } as Task;
-		expect(() => planSharedMediaDelete(task, [], ["nope"])).toThrow(/not found/);
-		expect(() => planSharedMediaDelete(task, [], ["img"])).toThrow(/Not a deletable clip/);
-		expect(() => planSharedMediaDelete(task, [], ["gone"])).toThrow(/Not a deletable clip/);
-		expect(() => planSharedMediaDelete(task, [], [])).toThrow(/No media ids/);
+		expect(() => planSharedMediaDelete(project, task, [], ["nope"])).toThrow(/not found/);
+		expect(() => planSharedMediaDelete(project, task, [], ["img"])).toThrow(/Not a deletable clip/);
+		expect(() => planSharedMediaDelete(project, task, [], ["gone"])).toThrow(/Not a deletable clip/);
+		expect(() => planSharedMediaDelete(project, task, [], [])).toThrow(/No media ids/);
 	});
 
 	it("refuses a stored file another live record still points at", () => {
 		const a = clip("a");
 		const other = taskWith([{ ...clip("z"), storedPath: a.storedPath }], "t2");
-		expect(() => planSharedMediaDelete(taskWith([a]), [other], ["a"])).toThrow(/shared with another record/);
+		expect(() => planSharedMediaDelete(project, taskWith([a]), [other], ["a"])).toThrow(/shared with another record/);
 	});
 });
 
@@ -153,6 +168,19 @@ describe("deleteSharedMedia", () => {
 		expect(existsSync(a.storedPath)).toBe(true);
 		expect(existsSync(outside.storedPath)).toBe(true);
 		expect(b.tasks[0].sharedVideos?.every((item) => !item.removedAt)).toBe(true);
+	});
+});
+
+describe("deleteSharedMedia sharer check", () => {
+	it("plans from the board the lock hands it, so a sharer it holds blocks the delete", async () => {
+		const a = clip("a");
+		writeFileSync(a.storedPath, "x");
+		const tasks = [taskWith([a])];
+		const b = board(tasks);
+		// Another task starts pointing at the same file after any earlier read, before the lock.
+		tasks.push(taskWith([{ ...clip("z"), storedPath: a.storedPath }], "t2"));
+		await expect(deleteSharedMedia(project, "t1", ["a"], b)).rejects.toThrow(/shared with another record/);
+		expect(existsSync(a.storedPath)).toBe(true);
 	});
 });
 

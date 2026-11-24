@@ -208,15 +208,17 @@ async function markTaskSharedItemsRead(params: {
 	return task;
 }
 
-/** Frees disk by deleting stored show-media clips; records stay as tombstones. */
-async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[]; dryRun?: boolean }) {
+/** What deleting these clips would remove and free; nothing is touched. */
+async function previewSharedMediaDeletion(params: { taskId: string; projectId: string; mediaIds: string[] }) {
 	const project = await data.getProject(params.projectId);
-	if (params.dryRun) {
-		return { task: null, summary: await previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks) };
-	}
+	return previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks);
+}
+
+/** Frees disk by deleting stored show-media clips; records stay as tombstones. */
+async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[] }) {
+	const project = await data.getProject(params.projectId);
 	log.info("→ deleteSharedMedia", { taskId: params.taskId, count: params.mediaIds.length });
 	const { task, summary } = await deleteStoredSharedMedia(project, params.taskId, params.mediaIds, {
-		loadTasks: data.loadTasks,
 		updateTaskWith: data.updateTaskWith,
 	});
 	log.info("← deleteSharedMedia done", { taskId: params.taskId, count: summary.count, freeableBytes: summary.freeableBytes, failed: summary.failed.length });
@@ -284,6 +286,7 @@ export const notesLabelsHandlers = {
 	setTaskLabels,
 	markTaskSharedItemsRead,
 	deleteSharedMedia,
+	previewSharedMediaDelete: previewSharedMediaDeletion,
 	addTaskNote,
 	updateTaskNote,
 	deleteTaskNote,

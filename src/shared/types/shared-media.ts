@@ -155,7 +155,7 @@ export interface SharedImage {
 	createdAt: number;
 	/** ms epoch when the user deleted the stored file to free disk; the record stays as a tombstone. */
 	removedAt?: number;
-	/** Bytes that deletion actually freed — ~0 when the file was an APFS clone of a still-live original. */
+	/** Estimated bytes the deletion freed: 0 when the stored file looked like an APFS clone of a still-live original. */
 	removedBytes?: number;
 }
 

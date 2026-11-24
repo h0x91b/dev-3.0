@@ -21,7 +21,7 @@ import { primeFirstFrame } from "../utils/video-first-frame";
 import VideoReviewBar, { SEEK_STEP_SECONDS, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
 import { frameAt, frameSeekTime } from "../utils/video-playback";
 import { matchesShortcut } from "../keymap";
-import { confirmDeleteSharedMedia } from "../shared-media-delete";
+import { confirmDeleteSharedMedia, useOlderClipsCleanup } from "../shared-media-delete";
 import { formatBytes } from "../utils/formatBytes";
 
 interface TaskImageViewerProps {
@@ -144,15 +144,17 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const startedRef = useRef<Set<string>>(new Set());
 	const mountedRef = useRef(true);
 	useEffect(() => () => { mountedRef.current = false; }, []);
-	// Records this viewer deleted, so the tombstone shows at once even when the host's list is a snapshot.
-	const [removed, setRemoved] = useState<Record<string, SharedImage>>({});
+	// Records this viewer changed, so a tombstone shows at once even when the host's list is a snapshot.
+	const [overrides, setOverrides] = useState<Record<string, SharedImage>>({});
+	const media = useMemo(() => images.map((item) => overrides[item.id] ?? item), [images, overrides]);
+	const cleanup = useOlderClipsCleanup({ projectId, taskId, media, t });
 
 	// Keep the active index valid when the image list changes (new arrivals).
 	useEffect(() => {
 		setIndex((i) => Math.max(0, Math.min(images.length - 1, i)));
 	}, [images.length]);
 
-	const current = images[index] && (removed[images[index].id] ?? images[index]);
+	const current = media[index];
 	const isRemoved = Boolean(current?.removedAt);
 	const clip = current && isSharedClip(current) ? (isSharedAudio(current) ? "audio" : "video") : null;
 	const isClip = clip !== null;
@@ -409,11 +411,20 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		playerRef.current?.pause();
 		const updated = await confirmDeleteSharedMedia({ projectId, taskId, items: [current], t, scope: "one" });
 		const record = updated && taskSharedMedia(updated).find((item) => item.id === current.id);
-		if (record?.removedAt && mountedRef.current) setRemoved((prev) => ({ ...prev, [record.id]: record }));
+		if (record?.removedAt && mountedRef.current) setOverrides((prev) => ({ ...prev, [record.id]: record }));
+	};
+	const deleteOlder = async () => {
+		setMenu(null);
+		const ids = new Set(cleanup.older.map((item) => item.id));
+		if (ids.has(current.id)) playerRef.current?.pause();
+		const updated = await cleanup.run();
+		if (!updated || !mountedRef.current) return;
+		const records = taskSharedMedia(updated).filter((item) => ids.has(item.id) && item.removedAt);
+		setOverrides((prev) => ({ ...prev, ...Object.fromEntries(records.map((item) => [item.id, item])) }));
 	};
 
 	const openMenu = (e: React.MouseEvent) => {
-		if ((!currentUrl || isError) && !canDelete) return;
+		if ((!currentUrl || isError) && !canDelete && !cleanup.available) return;
 		e.preventDefault();
 		setMenu({ x: e.clientX, y: e.clientY });
 	};
@@ -529,9 +540,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					<button
 						type="button"
 						onClick={copyPath}
+						disabled={isRemoved}
 						title={copyLabel}
 						aria-label={copyLabel}
-						className={iconBtn}
+						data-testid="image-viewer-copy-path"
+						className={`${iconBtn} disabled:opacity-40 disabled:cursor-default`}
 					>
 						<span className={`text-base leading-none ${copied ? "text-success" : ""}`} style={{ fontFamily: ICON }}>{copied ? "" : ""}</span>
 					</button>
@@ -550,9 +563,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						type="button"
 						onClick={() => (isRemote() ? openFileInBrowser(current.storedPath) : api.request.openImageFile({ path: current.storedPath }))
 							.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "imageViewer.openFailed"), { taskId }))}
+						disabled={isRemoved}
 						title={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
 						aria-label={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
-						className={iconBtn}
+						data-testid="image-viewer-open"
+						className={`${iconBtn} disabled:opacity-40 disabled:cursor-default`}
 					>
 						<span className="text-base leading-none" style={{ fontFamily: ICON }}>{""}</span>
 					</button>
@@ -736,7 +751,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						data-wheel-x
 						className="flex-shrink-0 flex justify-center gap-2 overflow-x-auto px-4 py-3 border-t border-edge bg-raised"
 					>
-						{images.map((img, i) => {
+						{media.map((img, i) => {
 							const thumbUrl = urls[img.id];
 							const isNew = newSet.has(img.id);
 							const thumbClip = isSharedClip(img) ? (isSharedAudio(img) ? "audio" : "video") : null;
@@ -753,7 +768,9 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 										i === index ? "border-accent" : isNew ? "border-success" : "border-edge/50 hover:border-edge-active"
 									} ${isNew ? "ring-2 ring-success/60 ring-offset-1 ring-offset-raised" : ""}`}
 								>
-									{thumbClip === "video" ? (
+									{img.removedAt ? (
+										<span data-testid="viewer-thumb-removed" title={t("sharedMedia.removedBadge")} className="flex h-full w-full items-center justify-center bg-elevated text-fg-muted text-sm" style={{ fontFamily: ICON }}>{"\uf1f8"}</span>
+									) : thumbClip === "video" ? (
 										<VideoFrameThumb
 											path={img.storedPath}
 											fallback={<ClipThumbGlyph clip="video" title={t("imageViewer.video")} />}
@@ -779,6 +796,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						onCopyPath={() => { setMenu(null); void copyPath(); }}
 						onClose={() => setMenu(null)}
 						onDelete={canDelete ? () => void deleteCurrent() : undefined}
+						onDeleteOlder={cleanup.available ? { label: cleanup.label, run: () => void deleteOlder() } : undefined}
 						media={clip ?? "image"}
 					/>
 				)}

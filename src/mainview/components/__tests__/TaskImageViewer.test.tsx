@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			getSharedMediaUrl: vi.fn(),
 			openImageFile: vi.fn().mockResolvedValue(undefined),
 			deleteSharedMedia: vi.fn(),
+			previewSharedMediaDelete: vi.fn(),
 		},
 	},
 }));
@@ -472,11 +473,14 @@ describe("TaskImageViewer with a shared video", () => {
 
 	it("deletes the clip's stored file from its right-click menu after a confirmation, then shows the tombstone", async () => {
 		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
 		deleteMock.mockReset();
-		deleteMock.mockImplementation(async ({ dryRun }: { dryRun?: boolean }) => ({
-			task: dryRun ? null : { id: "t1", sharedVideos: [{ ...MIXED[1], removedAt: 1_780_000_000_000, removedBytes: 0 }] },
+		previewMock.mockReset();
+		previewMock.mockResolvedValue({ count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] });
+		deleteMock.mockResolvedValue({
+			task: { id: "t1", sharedVideos: [{ ...MIXED[1], removedAt: 1_780_000_000_000, removedBytes: 0 }] },
 			summary: { count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] },
-		}));
+		});
 		confirmMock.confirm.mockClear();
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
 		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
@@ -486,22 +490,23 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(screen.getByText("Removed to free space")).toBeInTheDocument();
 		expect(confirmMock.confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true, title: "Delete the stored file of demo.mp4?" }));
 		// The dialog states the honest gain: a clone of a live original frees ~0.
-		expect(confirmMock.confirm.mock.calls[0][0].message).toContain("still on disk");
-		expect(deleteMock).toHaveBeenNthCalledWith(1, { projectId: "p1", taskId: "t1", mediaIds: ["v"], dryRun: true });
-		expect(deleteMock).toHaveBeenNthCalledWith(2, { projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(confirmMock.confirm.mock.calls[0][0].message).toContain("frees almost no space");
+		expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(deleteMock).toHaveBeenCalledTimes(1);
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"] });
 		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
 	});
 
 	it("deletes nothing when the confirmation is declined", async () => {
 		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
 		deleteMock.mockReset();
-		deleteMock.mockResolvedValue({ task: null, summary: { count: 1, bytes: 10, freeableBytes: 10, failed: [] } });
+		(mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, bytes: 10, freeableBytes: 10, failed: [] });
 		confirmMock.confirm.mockResolvedValueOnce(false);
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
 		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
 		await userEvent.click(screen.getByTestId("image-save-menu-delete"));
 		await waitFor(() => expect(confirmMock.confirm).toHaveBeenCalled());
-		expect(deleteMock).toHaveBeenCalledTimes(1);
+		expect(deleteMock).not.toHaveBeenCalled();
 		expect(screen.getByTestId("viewer-main-video")).toBeInTheDocument();
 	});
 
@@ -514,8 +519,40 @@ describe("TaskImageViewer with a shared video", () => {
 		);
 		expect(await screen.findByTestId("viewer-media-removed")).toHaveTextContent("Removed to free space");
 		expect(screen.getByTestId("image-viewer-download")).toBeDisabled();
+		expect(screen.getByTestId("image-viewer-copy-path")).toBeDisabled();
+		expect(screen.getByTestId("image-viewer-open")).toBeDisabled();
+		expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(1);
 		fireEvent.contextMenu(screen.getByTestId("viewer-media-removed"));
 		expect(screen.queryByTestId("image-save-menu-delete")).toBeNull();
+	});
+
+	it("offers the older-clips sweep in the menu of an open task's viewer and tombstones what it deleted", async () => {
+		const MB = 1024 * 1024;
+		const big = [vid("old", "old.mp4"), vid("mid", "mid.mp4"), vid("new", "new.mp4")].map((item, i) => ({ ...item, bytes: 20 * MB, createdAt: i + 1 }));
+		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		previewMock.mockReset();
+		deleteMock.mockReset();
+		confirmMock.confirm.mockClear();
+		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] });
+		deleteMock.mockResolvedValue({
+			task: { id: "t1", sharedVideos: big.map((item) => (item.id === "new" ? item : { ...item, removedAt: 9 })) },
+			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] },
+		});
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={big} initialIndex={2} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] }));
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		const sweep = await screen.findByTestId("image-save-menu-delete-older");
+		expect(sweep).toHaveTextContent("Free 20 MB · delete older clips");
+		await userEvent.click(sweep);
+		await waitFor(() => expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(2));
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] });
+		fireEvent.contextMenu(screen.getByTestId("viewer-main-video"));
+		expect(screen.queryByTestId("image-save-menu-delete-older")).toBeNull();
 	});
 
 	it("offers no delete item without a task to delete it from", async () => {

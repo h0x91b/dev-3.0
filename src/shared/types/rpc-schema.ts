@@ -1304,9 +1304,13 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			/** Deletes stored show-media clip files (tombstoning the records); `dryRun` only reports what it would free. */
+			previewSharedMediaDelete: {
+				params: { taskId: string; projectId: string; mediaIds: string[] };
+				response: SharedMediaDeleteSummary;
+			};
 			deleteSharedMedia: {
-				params: { taskId: string; projectId: string; mediaIds: string[]; dryRun?: boolean };
-				response: { task: Task | null; summary: SharedMediaDeleteSummary };
+				params: { taskId: string; projectId: string; mediaIds: string[] };
+				response: { task: Task; summary: SharedMediaDeleteSummary };
 			};
 			toggleTaskWatch: {
 				params: { taskId: string; projectId: string; watched: boolean };
