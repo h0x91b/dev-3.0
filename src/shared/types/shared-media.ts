@@ -68,6 +68,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Large media expires this long after it was shown, whatever the tiers say (the 60-day prune). */
 export const SHARED_MEDIA_MAX_AGE_DAYS = 60;
+/** After the first retention run, tasks closed before it lose nothing for this long. */
+export const SHARED_MEDIA_ROLLOUT_GRACE_DAYS = 7;
 
 /**
  * After a task is completed or cancelled, how many of its newest large clips survive
@@ -94,14 +96,20 @@ export interface SharedMediaRetention {
  * Retention verdict for every item of a task — pure, so a viewer or a library page can
  * say "removes in N days" without asking the host. Open tasks are never touched;
  * pinned and sub-15 MB items never; a closed task's large clips by rank and age.
+ * `retentionStartedAt` (the machine's first retention run) restarts the clock for
+ * tasks closed before it and holds every removal for a rollout grace week.
  * decisions/2026/11/24/shared-media-retention-tiers.md
  */
 export function sharedMediaRetention(
 	task: Pick<Task, "status" | "movedAt" | "updatedAt" | "sharedImages" | "sharedVideos" | "sharedAudio">,
+	retentionStartedAt?: number,
 ): SharedMediaRetention[] {
 	const media = taskSharedMedia(task);
 	const closed = RETENTION_STATUSES.has(task.status);
-	const closedAt = Date.parse(task.movedAt ?? task.updatedAt ?? "");
+	const movedAt = Date.parse(task.movedAt ?? task.updatedAt ?? "");
+	const graced = retentionStartedAt !== undefined && !(movedAt >= retentionStartedAt);
+	const closedAt = graced ? retentionStartedAt : movedAt;
+	const notBefore = graced ? retentionStartedAt + SHARED_MEDIA_ROLLOUT_GRACE_DAYS * DAY_MS : Number.NEGATIVE_INFINITY;
 	const ranked = media
 		.filter((item) => isDeletableSharedMedia(item) && item.bytes >= LARGE_SHARED_MEDIA_BYTES && !item.pinnedAt)
 		.sort((a, b) => b.createdAt - a.createdAt);
@@ -112,20 +120,20 @@ export function sharedMediaRetention(
 		if (item.pinnedAt) return { id: item.id, removesAt: null, reason: "pinned" };
 		// An unknown or broken size counts as small: never removed by tier or age.
 		if (!(item.bytes >= LARGE_SHARED_MEDIA_BYTES)) return { id: item.id, removesAt: null, reason: "small" };
-		const byAge = item.createdAt + SHARED_MEDIA_MAX_AGE_DAYS * DAY_MS;
+		const byAge = Math.max(item.createdAt + SHARED_MEDIA_MAX_AGE_DAYS * DAY_MS, notBefore);
 		const r = rank.get(item.id);
 		if (r === undefined || !Number.isFinite(closedAt)) return { id: item.id, removesAt: byAge, reason: "age" };
 		// The first window whose keep-count no longer covers this rank removes it.
 		const tier = SHARED_MEDIA_RETENTION_TIERS.find((t) => r >= t.keepNewest);
-		const byTier = tier ? closedAt + tier.fromDays * DAY_MS : Number.POSITIVE_INFINITY;
+		const byTier = tier ? Math.max(closedAt + tier.fromDays * DAY_MS, notBefore) : Number.POSITIVE_INFINITY;
 		return byTier < byAge ? { id: item.id, removesAt: byTier, reason: "tier" } : { id: item.id, removesAt: byAge, reason: "age" };
 	});
 }
 
 /** Clip ids automatic cleanup removes now: due by tier or age, and deletable as a clip. */
-export function dueSharedMediaIds(task: Parameters<typeof sharedMediaRetention>[0], now: number): string[] {
+export function dueSharedMediaIds(task: Parameters<typeof sharedMediaRetention>[0], now: number, retentionStartedAt?: number): string[] {
 	const byId = new Map(taskSharedMedia(task).map((item) => [item.id, item]));
-	return sharedMediaRetention(task)
+	return sharedMediaRetention(task, retentionStartedAt)
 		.filter((v) => v.removesAt !== null && v.removesAt <= now && isDeletableSharedMedia(byId.get(v.id)!))
 		.map((v) => v.id);
 }

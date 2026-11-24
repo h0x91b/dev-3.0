@@ -14,6 +14,8 @@ export interface SharedMediaRetentionDeps extends Omit<SharedMediaDeletePorts, "
 	loadProjects(): Promise<Project[]>;
 	loadTasks(project: Project): Promise<Task[]>;
 	now(): number;
+	/** The machine's first retention run (rollout grace); absent in tests that do not care. */
+	retentionStartedAt?: number;
 	onTaskUpdated?: (project: Project, task: Task) => void;
 	exists?: (path: string) => boolean;
 }
@@ -33,10 +35,10 @@ const CLOSED = new Set(["completed", "cancelled"]);
  * The snapshot that picked the ids can be stale by the time the lock is held: the
  * task may have been reopened, or a clip pinned. Re-decide on the locked task.
  */
-function stillDue(now: number) {
+function stillDue(now: number, retentionStartedAt: number | undefined) {
 	return (current: Task, mediaIds: string[]): string[] => {
 		if (!CLOSED.has(current.status)) return [];
-		const due = new Set(dueSharedMediaIds(current, now));
+		const due = new Set(dueSharedMediaIds(current, now, retentionStartedAt));
 		return mediaIds.filter((id) => due.has(id));
 	};
 }
@@ -46,7 +48,7 @@ type Outcome = { task: Task; removed: number; freedBytes: number; skipped: numbe
 /** One delete call per clip after a batch refusal, so one refused record cannot shield the rest. */
 async function deleteDue(project: Project, task: Task, ids: string[], deps: SharedMediaRetentionDeps, now: number): Promise<Outcome> {
 	try {
-		const { task: updated, summary } = await deleteSharedMedia(project, task.id, ids, { ...deps, now: () => now, guard: stillDue(now) });
+		const { task: updated, summary } = await deleteSharedMedia(project, task.id, ids, { ...deps, now: () => now, guard: stillDue(now, deps.retentionStartedAt) });
 		return { task: updated, removed: summary.count, freedBytes: summary.freeableBytes, skipped: 0, failed: summary.failed.length };
 	} catch (err) {
 		if (!(err instanceof SharedMediaDeleteError)) return { task, removed: 0, freedBytes: 0, skipped: 0, failed: ids.length };
@@ -70,7 +72,7 @@ export async function runSharedMediaRetention(deps: SharedMediaRetentionDeps): P
 	for (const project of await deps.loadProjects()) {
 		for (const task of await deps.loadTasks(project)) {
 			if (!CLOSED.has(task.status)) continue;
-			const due = dueSharedMediaIds(task, now);
+			const due = dueSharedMediaIds(task, now, deps.retentionStartedAt);
 			if (due.length === 0) continue;
 			const outcome = await deleteDue(project, task, due, deps, now);
 			result.removed += outcome.removed;

@@ -70,6 +70,37 @@ describe("sharedMediaRetention tiers", () => {
 	});
 });
 
+describe("sharedMediaRetention rollout grace", () => {
+	// The machine's first retention run happens 10 days after this task closed.
+	const START = CLOSED_AT + 10 * DAY;
+	const task = closedTask(clips(20));
+
+	it("removes nothing for a week after the first run from a task closed before it", () => {
+		// Without the grace, the first run would cut this task straight to 3.
+		expect(dueSharedMediaIds(task, START)).toHaveLength(17);
+		expect(due(task, START)).toEqual([]);
+		expect(due(task, START + 7 * DAY - 1)).toEqual([]);
+	});
+
+	it("then runs the tiers from the first run, not from the old close", () => {
+		// Day 7 of the restarted clock keeps 3 (the old close would already be past day 7 at START).
+		expect(due(task, START + 7 * DAY)).toHaveLength(17);
+		expect(due(task, START + 30 * DAY - 1)).toHaveLength(17);
+		expect(due(task, START + 30 * DAY)).toHaveLength(19);
+		expect(dueSharedMediaIds(task, START + 7 * DAY, START)).not.toContain("c19");
+		expect(dueSharedMediaIds(task, START + 7 * DAY, START)).not.toContain("c17");
+	});
+
+	it("leaves tasks closed after the first run on their own clock", () => {
+		const later = { ...task, movedAt: new Date(START + DAY).toISOString() } as Task;
+		expect(dueSharedMediaIds(later, START + DAY, START)).toHaveLength(5);
+	});
+
+	function due(t: Task, at: number) {
+		return dueSharedMediaIds(t, at, START);
+	}
+});
+
 describe("sharedMediaRetention exemptions", () => {
 	it("never touches an open task, whatever its age", () => {
 		for (const status of ["in-progress", "review-by-user", "todo"] as Task["status"][]) {
