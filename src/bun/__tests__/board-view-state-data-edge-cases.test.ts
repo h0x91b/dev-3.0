@@ -21,11 +21,14 @@ import {
 	withLayout,
 	withViewType,
 	type BoardViewState,
+	type SavedBoardView,
 } from "../../shared/board-view-state";
 
 const board = { kind: "space", id: "sp_qa" } as const;
 const file = `${DEV3_HOME}/space-board-views/sp_qa.json`;
+const namedFile = `${DEV3_HOME}/space-board-saved-views/sp_qa.json`;
 const onDisk = (): BoardViewState => JSON.parse(readFileSync(file, "utf8"));
+const namedOnDisk = (): SavedBoardView[] => JSON.parse(readFileSync(namedFile, "utf8")).views;
 
 function expectSlotsOnWorkingViews(state: BoardViewState) {
 	for (const ff of ["wide", "narrow"] as const) expect(activeSavedView(state, ff).name).toBeNull();
@@ -37,6 +40,16 @@ beforeEach(() => {
 });
 
 describe("concurrent writers on one board file", () => {
+	it("refuses the second of two windows saving one name at once", async () => {
+		const stale = defaultBoardViewState();
+		const results = await Promise.all([
+			changeNamedBoardView(board, namedViewAddChange(stale, "wide", "Bugs", "a")),
+			changeNamedBoardView(board, namedViewAddChange(stale, "wide", "bugs", "b")),
+		]);
+		expect(results.filter((r) => r.rejected === "name-taken")).toHaveLength(1);
+		expect(namedOnDisk()).toHaveLength(1);
+	});
+
 	it("keeps all 20 named views added at once from two windows, interleaved with stale plain saves", async () => {
 		const stale = withViewType(defaultBoardViewState(), "wide", "ext:list");
 		const ops: Promise<unknown>[] = [];
@@ -45,23 +58,23 @@ describe("concurrent writers on one board file", () => {
 			ops.push(saveBoardViewState(board, withLayout(stale, "wide", "ext:list", { sort: String(i) })));
 		}
 		await Promise.all(ops);
-		const names = namedSavedViews(onDisk()).map((v) => v.name).sort();
+		const names = namedOnDisk().map((v) => v.name).sort();
 		expect(names).toEqual(Array.from({ length: 20 }, (_, i) => `View ${i}`).sort());
 		expectSlotsOnWorkingViews(onDisk());
 	});
 
 	it("a delete racing a stale plain save that still carries the view stays deleted", async () => {
 		const add = namedViewAddChange(defaultBoardViewState(), "wide", "Gone", "");
-		const withIt = await changeNamedBoardView(board, add);
+		const { state: withIt } = await changeNamedBoardView(board, add);
 		await Promise.all([
 			changeNamedBoardView(board, { kind: "delete", id: add.view.id }),
 			saveBoardViewState(board, withLayout(withIt, "wide", "builtin:kanban", { collapsed: true })),
 			saveBoardViewState(board, withIt),
 		]);
-		expect(namedSavedViews(onDisk())).toEqual([]);
+		expect(namedOnDisk()).toEqual([]);
 	});
 
-	it("a plain save that carries a named view as a working view (same id) cannot hijack it", async () => {
+	it("a plain save that carries a named view as a working view (same id) cannot rewrite or delete it", async () => {
 		const add = namedViewAddChange(defaultBoardViewState(), "wide", "Keep", "q");
 		await changeNamedBoardView(board, add);
 		const hostile: BoardViewState = {
@@ -70,9 +83,10 @@ describe("concurrent writers on one board file", () => {
 			savedViews: [{ id: add.view.id, name: null, viewType: "builtin:kanban", query: "", layouts: {} }],
 		};
 		const saved = await saveBoardViewState(board, hostile);
-		// The file must still list "Keep", and the slots must still show a working view.
-		expect(namedSavedViews(saved).map((v) => v.name)).toEqual(["Keep"]);
+		// The presets file must still list "Keep", and the slots must still show a working view.
+		expect(namedOnDisk()).toEqual([add.view]);
 		expectSlotsOnWorkingViews(saved);
+		expect(namedSavedViews(saved)).toEqual([]);
 	});
 
 });

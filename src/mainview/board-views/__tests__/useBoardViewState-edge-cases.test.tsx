@@ -17,7 +17,8 @@ vi.mock("../../rpc", () => ({
 
 import { api } from "../../rpc";
 import { resetBoardViewStateCacheForTests, useBoardViewState } from "../useBoardViewState";
-import { applyNamedViewChange, defaultBoardViewState, normalizeBoardViewState, withNamedViewsFrom, type BoardViewState } from "../../../shared/board-view-state";
+import { defaultBoardViewState, type BoardViewState } from "../../../shared/board-view-state";
+import { hostNamedChange, hostSave } from "./saved-views-host";
 
 const getState = vi.mocked(api.request.getBoardViewState);
 const setState = vi.mocked(api.request.setBoardViewState);
@@ -45,8 +46,12 @@ beforeEach(() => {
 	resetBoardViewStateCacheForTests();
 	getState.mockReset();
 	disk = defaultBoardViewState();
-	setState.mockReset().mockImplementation(async ({ state }) => clone(disk = withNamedViewsFrom(normalizeBoardViewState(clone(state)), disk)));
-	changeNamed.mockReset().mockImplementation(async ({ change }) => clone(disk = normalizeBoardViewState(applyNamedViewChange(disk, clone(change)))));
+	setState.mockReset().mockImplementation(async ({ state }) => clone(disk = hostSave(disk, state)));
+	changeNamed.mockReset().mockImplementation(async ({ change }) => {
+		const result = hostNamedChange(disk, change);
+		disk = result.state;
+		return clone(result);
+	});
 });
 
 describe("a read that lands after the user saved a named view", () => {
@@ -54,7 +59,7 @@ describe("a read that lands after the user saved a named view", () => {
 		const read = deferred<BoardViewState>();
 		getState.mockReturnValue(read.promise);
 		const { result } = renderHook(() => useBoardViewState(board, "wide"));
-		act(() => result.current.saveNamed("Mine", "q"));
+		act(() => { void result.current.saveNamed("Mine", "q"); });
 		expect(result.current.namedViews.map((v) => v.name)).toEqual(["Mine"]);
 		await act(async () => { read.resolve(defaultBoardViewState()); await read.promise; });
 		expect(result.current.namedViews.map((v) => v.name)).toEqual(["Mine"]);
@@ -69,7 +74,7 @@ describe("a read that lands after the user saved a named view", () => {
 		const read = deferred<BoardViewState>();
 		getState.mockReturnValue(read.promise);
 		const { result } = renderHook(() => useBoardViewState(board, "wide"));
-		act(() => result.current.saveNamed("Mine", "q"));
+		act(() => { void result.current.saveNamed("Mine", "q"); });
 		await waitFor(() => expect(changeNamed).toHaveBeenCalled());
 		await act(async () => { read.resolve(clone(disk)); await read.promise; });
 		expect(namesIn(lastSaved()).sort()).toEqual(["Mine", "Old"]);
@@ -88,14 +93,14 @@ describe("optimistic changes and the host's answer", () => {
 		await waitFor(() => expect(getState).toHaveBeenCalled());
 		await act(async () => { await Promise.resolve(); });
 		changeNamed.mockImplementationOnce(async ({ change }) => {
-			disk = normalizeBoardViewState(applyNamedViewChange(disk, clone(change)));
-			const answer = clone(disk);
+			const answer = hostNamedChange(disk, change);
+			disk = answer.state;
 			await first.promise;
 			return answer;
 		});
-		act(() => result.current.saveNamed("Draft", ""));
+		act(() => { void result.current.saveNamed("Draft", ""); });
 		const id = result.current.namedViews[0].id;
-		act(() => result.current.renameNamed(id, "Final"));
+		act(() => { void result.current.renameNamed(id, "Final"); });
 		expect(result.current.namedViews.map((v) => v.name)).toEqual(["Final"]);
 		await act(async () => { first.resolve(defaultBoardViewState()); await first.promise; await Promise.resolve(); await Promise.resolve(); });
 		await waitFor(() => expect(changeNamed).toHaveBeenCalledTimes(2));
@@ -110,7 +115,7 @@ describe("optimistic changes and the host's answer", () => {
 		const onNamedChangeFailed = vi.fn();
 		const { result } = renderHook(() => useBoardViewState(board, "wide", { onNamedChangeFailed }));
 		await waitFor(() => expect(getState).toHaveBeenCalled());
-		act(() => result.current.saveNamed("Kept", ""));
+		act(() => { void result.current.saveNamed("Kept", ""); });
 		expect(result.current.namedViews.map((v) => v.name)).toEqual(["Kept"]);
 		await waitFor(() => expect(onNamedChangeFailed).toHaveBeenCalledTimes(1));
 		await waitFor(() => expect(result.current.namedViews).toEqual([]));
@@ -125,7 +130,7 @@ describe("optimistic changes and the host's answer", () => {
 		await waitFor(() => expect(wide.result.current.namedViews).toHaveLength(1));
 		act(() => { wide.result.current.applyNamed("sv-named-1"); });
 		act(() => { narrow.result.current.applyNamed("sv-named-1"); });
-		act(() => narrow.result.current.deleteNamed("sv-named-1"));
+		act(() => { void narrow.result.current.deleteNamed("sv-named-1"); });
 		expect(wide.result.current.appliedNamedId).toBeNull();
 		expect(narrow.result.current.appliedNamedId).toBeNull();
 	});

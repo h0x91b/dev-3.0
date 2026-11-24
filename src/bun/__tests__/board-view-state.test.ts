@@ -6,15 +6,17 @@ import {
 	isSafeBoardId,
 	KANBAN_VIEW_ID,
 	namedSavedViews,
+	namedViewChangeTakesName,
 	namedViewModified,
 	normalizeBoardViewState,
+	normalizeNamedViews,
 	SAVED_VIEW_NAME_MAX,
 	withLayout,
 	withNamedViewAdded,
 	withNamedViewApplied,
 	withNamedViewRenamed,
 	withNamedViewUpdated,
-	withNamedViewsFrom,
+	withNamedViews,
 	withoutNamedView,
 	withViewType,
 } from "../../shared/board-view-state";
@@ -183,11 +185,34 @@ describe("named saved views", () => {
 		expect(second.id).toMatch(/^sv-named-[0-9a-f]{16}$/);
 	});
 
-	it("withNamedViewsFrom takes working views from one state and named views from the other", () => {
+	it("withNamedViews takes the working views from the state and the named views from the list", () => {
 		const disk = withNamedViewAdded(defaultBoardViewState(), "wide", "Disk", "").state;
 		const client = withNamedViewAdded(tableState(), "wide", "Client", "").state;
-		const merged = withNamedViewsFrom(client, disk);
+		const merged = withNamedViews(client, namedSavedViews(disk));
 		expect(namedSavedViews(merged).map((view) => view.name)).toEqual(["Disk"]);
 		expect(activeSavedView(merged, "wide").viewType).toBe("builtin:table");
+	});
+
+	it("withNamedViews drops a named view that reuses a working view's id", () => {
+		const hidden = { id: "sv-default", name: "Hand edit", viewType: "builtin:table", query: "", layouts: {} };
+		const merged = withNamedViews(defaultBoardViewState(), [hidden]);
+		expect(merged).toEqual(defaultBoardViewState());
+	});
+
+	it("normalizeNamedViews keeps named views only, first wins a repeated id or name", () => {
+		const view = (id: string, name: unknown) => ({ id, name, viewType: "builtin:table", query: "", layouts: {} });
+		expect(normalizeNamedViews(null)).toEqual([]);
+		expect(normalizeNamedViews({ version: 2, views: [view("a", "A")] })).toEqual([]);
+		const named = normalizeNamedViews({ version: 1, views: [view("a", " A "), view("a", "B"), view("b", "a"), view("c", null), view("d", "  "), view("e", "E"), 7] });
+		expect(named.map((entry) => [entry.id, entry.name])).toEqual([["a", "A"], ["e", "E"]]);
+	});
+
+	it("refuses an add or rename that takes another named view's name, ignoring case", () => {
+		const first = withNamedViewAdded(tableState(), "wide", "Bugs", "");
+		const second = withNamedViewAdded(first.state, "wide", "Other", "");
+		expect(namedSavedViews(withNamedViewAdded(second.state, "wide", " BUGS ", "").state)).toHaveLength(2);
+		expect(withNamedViewRenamed(second.state, second.id, "bugs")).toBe(second.state);
+		expect(namedViewChangeTakesName(second.state, { kind: "rename", id: first.id, name: "BUGS" })).toBe(false);
+		expect(namedSavedViews(withNamedViewRenamed(second.state, first.id, "BUGS"))[0]?.name).toBe("BUGS");
 	});
 });

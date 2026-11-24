@@ -15,7 +15,8 @@ import { installKanbanView } from "../kanban";
 import { useBoard } from "../react";
 import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
 import { resetTaskVisibilityForTests } from "../useTaskVisibility";
-import { applyNamedViewChange, defaultBoardViewState, KANBAN_VIEW_ID, normalizeBoardViewState, withNamedViewsFrom, type BoardViewState } from "../../../shared/board-view-state";
+import { defaultBoardViewState, KANBAN_VIEW_ID, type BoardViewState } from "../../../shared/board-view-state";
+import { hostNamedChange, hostSave } from "./saved-views-host";
 import { toast } from "../../toast";
 import { resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPluginsForTests } from "../../plugins/runtime";
@@ -202,15 +203,15 @@ beforeEach(() => {
 	// Emulates src/bun/board-view-state-data.ts: a plain save keeps the named views on disk;
 	// a named change is applied to the file as it is now.
 	vi.mocked(api.request.setBoardViewState).mockImplementation(async ({ board, state }) => {
-		const next = withNamedViewsFrom(normalizeBoardViewState(JSON.parse(JSON.stringify(state))), disk.get(board.id) ?? defaultBoardViewState());
+		const next = hostSave(disk.get(board.id) ?? defaultBoardViewState(), state);
 		disk.set(board.id, next);
 		return JSON.parse(JSON.stringify(next));
 	});
 	vi.mocked(api.request.changeNamedBoardView).mockReset();
 	vi.mocked(api.request.changeNamedBoardView).mockImplementation(async ({ board, change }) => {
-		const next = normalizeBoardViewState(applyNamedViewChange(disk.get(board.id) ?? defaultBoardViewState(), JSON.parse(JSON.stringify(change))));
-		disk.set(board.id, next);
-		return JSON.parse(JSON.stringify(next));
+		const result = hostNamedChange(disk.get(board.id) ?? defaultBoardViewState(), change);
+		disk.set(board.id, result.state);
+		return JSON.parse(JSON.stringify(result));
 	});
 	localStorage.clear();
 });

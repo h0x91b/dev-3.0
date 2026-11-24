@@ -15,10 +15,9 @@ import {
 	applyNamedViewChange,
 	defaultBoardViewState,
 	KANBAN_VIEW_ID,
-	normalizeBoardViewState,
-	withNamedViewsFrom,
 	type BoardViewState,
 } from "../../../shared/board-view-state";
+import { hostNamedChange, hostSave } from "./saved-views-host";
 import { toast } from "../../toast";
 import { resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPluginsForTests } from "../../plugins/runtime";
@@ -150,8 +149,12 @@ beforeEach(() => {
 	resetPluginsForTests();
 	setHiddenControlsForTests([]);
 	serveFrom(defaultBoardViewState());
-	vi.mocked(api.request.setBoardViewState).mockReset().mockImplementation(async ({ state }) => (disk = withNamedViewsFrom(normalizeBoardViewState(state), disk)));
-	vi.mocked(api.request.changeNamedBoardView).mockReset().mockImplementation(async ({ change }) => (disk = applyNamedViewChange(disk, change)));
+	vi.mocked(api.request.setBoardViewState).mockReset().mockImplementation(async ({ state }) => (disk = hostSave(disk, state)));
+	vi.mocked(api.request.changeNamedBoardView).mockReset().mockImplementation(async ({ change }) => {
+		const result = hostNamedChange(disk, change);
+		disk = result.state;
+		return result;
+	});
 	vi.mocked(confirm).mockReset();
 	localStorage.clear();
 });
@@ -399,15 +402,53 @@ describe("named saved views", () => {
 		expect(api.request.setBoardViewState).toHaveBeenCalledTimes(1);
 	});
 
-	it("picks up a saved view another window added once this window saves anything", async () => {
+	it("picks up a saved view another window added when the switcher opens, and keeps this window's view", async () => {
+		installIntoAppRoot([installKanbanView]);
+		registerListView();
+		renderHost();
+		await pick("List");
+		await screen.findByTestId("view-list");
+		await waitFor(() => expect(api.request.setBoardViewState).toHaveBeenCalledTimes(1));
+		// Another window switches its own view back to Kanban and saves a named view.
+		disk = applyNamedViewChange(defaultBoardViewState(), { kind: "add", view: { id: "sv-named-other", name: "From elsewhere", viewType: KANBAN_VIEW_ID, query: "", layouts: {} } });
+		fireEvent.click(await switcherButton());
+		expect(await screen.findByRole("option", { name: "From elsewhere" })).toBeInTheDocument();
+		expect(screen.getByTestId("view-list")).toBeInTheDocument();
+	});
+
+	it("says so when another window took the name while the dialog was open, and lists that window's view", async () => {
+		const error = vi.spyOn(toast, "error").mockImplementation(() => "");
+		const success = vi.spyOn(toast, "success").mockImplementation(() => "");
 		installIntoAppRoot([installKanbanView]);
 		registerListView();
 		renderHost();
 		await screen.findByTestId("kanban");
-		disk = applyNamedViewChange(disk, { kind: "add", view: { id: "sv-named-other", name: "From elsewhere", viewType: KANBAN_VIEW_ID, query: "", layouts: {} } });
-		await pick("List");
+		await pick("Save current view…");
+		const dialog = await screen.findByTestId("saved-view-name-dialog");
+		disk = applyNamedViewChange(disk, { kind: "add", view: { id: "sv-named-other", name: "Mine", viewType: KANBAN_VIEW_ID, query: "", layouts: {} } });
+		fireEvent.change(within(dialog).getByTestId("saved-view-name-input"), { target: { value: "mine" } });
+		fireEvent.click(within(dialog).getByTestId("saved-view-name-submit"));
+		await waitFor(() => expect(error).toHaveBeenCalledWith("Another window already saved a view with this name. Choose another name."));
+		expect(success).not.toHaveBeenCalled();
+		await waitFor(() => expect(namedIn(lastSaved()).map((view) => view.name)).toEqual(["Mine"]));
 		fireEvent.click(await switcherButton());
-		expect(await screen.findByRole("option", { name: "From elsewhere" })).toBeInTheDocument();
+		expect(await screen.findAllByRole("option", { name: /^mine$/i })).toHaveLength(1);
+		error.mockRestore();
+		success.mockRestore();
+	});
+
+	it("announces an update with its own toast", async () => {
+		const success = vi.spyOn(toast, "success").mockImplementation(() => "");
+		serveFrom(stateWithNamed([{ id: "sv-named-1", name: "Betas", query: "beta" }]));
+		installIntoAppRoot([installKanbanView]);
+		registerListView();
+		renderHost();
+		await screen.findByTestId("kanban");
+		await pick("Betas");
+		fireEvent.change(search(), { target: { value: "alpha" } });
+		await pick('Update “Betas”');
+		await waitFor(() => expect(success).toHaveBeenCalledWith("Updated “Betas”"));
+		success.mockRestore();
 	});
 
 	it("shows the edited mark as a dot to the eye and as a word to a screen reader", async () => {
@@ -435,7 +476,7 @@ describe("named saved views", () => {
 		const dialog = await screen.findByTestId("saved-view-name-dialog");
 		fireEvent.change(within(dialog).getByTestId("saved-view-name-input"), { target: { value: "Mine" } });
 		fireEvent.click(within(dialog).getByTestId("saved-view-name-submit"));
-		expect(success).toHaveBeenCalledWith("Saved view “Mine” saved");
+		await waitFor(() => expect(success).toHaveBeenCalledWith("Saved “Mine”"));
 		await pick("Delete “Mine”");
 		await waitFor(() => expect(success).toHaveBeenCalledWith("Saved view “Mine” deleted"));
 		success.mockRestore();

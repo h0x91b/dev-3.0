@@ -33,7 +33,7 @@ import { getAppRoot } from "../plugins/root";
 import { SlotComponent, SlotHost } from "../plugins/SlotHost";
 import { useRegisteredBoardViews } from "./react";
 import { useBoardFilter } from "./useBoardFilter";
-import { useBoardViewState, type BoardViewStateHandle } from "./useBoardViewState";
+import { useBoardViewState, type BoardViewStateHandle, type NamedChangeFailure } from "./useBoardViewState";
 import { SavedViewNameModal } from "./SavedViewNameModal";
 import { confirm } from "../confirm";
 import { useBoardActions } from "./useBoardActions";
@@ -113,8 +113,8 @@ function useBoardViewCommands(boardKey: string, offered: readonly RegisteredBoar
 		lastActive.current = { boardKey, id: activeId };
 	}, [boardKey, activeId]);
 
-	const latest = useRef({ boardKey, offered, activeId, pick, t });
-	latest.current = { boardKey, offered, activeId, pick, t };
+	const latest = useRef({ boardKey, offered, pick, t });
+	latest.current = { boardKey, offered, pick, t };
 	useEffect(() => registerBoardViewCommandHandler((command: BoardViewCommand, queued: boolean) => {
 		const { boardKey: key, offered: views, pick: choose, t: translate } = latest.current;
 		const isOffered = (id: string | undefined) => !!id && views.some((view) => view.def.id === id);
@@ -145,7 +145,7 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 } {
 	const t = useT();
 	const [naming, setNaming] = useState<{ mode: "new" } | { mode: "rename"; id: string } | null>(null);
-	const { namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed } = viewState;
+	const { namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed, refresh } = viewState;
 	const nameOf = (id: string) => namedViews.find((view) => view.id === id)?.name ?? "";
 
 	const unavailable = (id: string) => toast.info(t("boardView.saved.unavailable", { name: nameOf(id) }));
@@ -163,8 +163,8 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 		onUnavailable: unavailable,
 		onSave: () => setNaming({ mode: "new" }),
 		onUpdate: (id) => {
-			updateNamed(id, query);
-			toast.success(t("boardView.saved.savedToast", { name: nameOf(id) }));
+			const name = nameOf(id);
+			void updateNamed(id, query).then((ok) => ok && toast.success(t("boardView.saved.updatedToast", { name })));
 		},
 		onRevert: apply,
 		onRename: (id) => setNaming({ mode: "rename", id }),
@@ -177,10 +177,10 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 				danger: true,
 			}).then((ok) => {
 				if (!ok) return;
-				deleteNamed(id);
-				toast.success(t("boardView.saved.deletedToast", { name }));
+				void deleteNamed(id).then((deleted) => deleted && toast.success(t("boardView.saved.deletedToast", { name })));
 			});
 		},
+		onOpen: refresh,
 	};
 	const renamingId = naming?.mode === "rename" ? naming.id : null;
 	const dialog = naming ? (
@@ -189,9 +189,8 @@ function useSavedViewActions(viewState: BoardViewStateHandle, query: string, set
 			initialName={renamingId ? nameOf(renamingId) : ""}
 			takenNames={namedViews.filter((view) => view.id !== renamingId).map((view) => view.name ?? "")}
 			onSubmit={(name) => {
-				if (renamingId) return renameNamed(renamingId, name);
-				saveNamed(name, query);
-				toast.success(t("boardView.saved.savedToast", { name }));
+				if (renamingId) return void renameNamed(renamingId, name);
+				void saveNamed(name, query).then((ok) => ok && toast.success(t("boardView.saved.savedToast", { name })));
 			}}
 			onClose={() => setNaming(null)}
 		/>
@@ -222,7 +221,10 @@ function BoardHost(props: BoardHostProps) {
 		() => (space ? { kind: "space", id: space.id } : { kind: "project", id: project.id }),
 		[space, project.id],
 	);
-	const onNamedChangeFailed = useCallback(() => toast.error(t("boardView.saved.saveFailed")), [t]);
+	const onNamedChangeFailed = useCallback(
+		(reason: NamedChangeFailure) => toast.error(t(reason === "name-taken" ? "boardView.saved.nameTakenElsewhere" : "boardView.saved.saveFailed")),
+		[t],
+	);
 	const viewState = useBoardViewState(boardRef, formFactor, { onNamedChangeFailed });
 
 	const preferences = useBoardPreferences();

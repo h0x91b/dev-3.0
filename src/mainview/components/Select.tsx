@@ -317,6 +317,7 @@ function Select({
 	growList,
 	maxListHeight,
 	onOptionDisabledClick,
+	onOpen,
 	searchable,
 	allowCustom,
 	placeholder,
@@ -340,6 +341,8 @@ function Select({
 	maxListHeight?: string;
 	/** Called when a `disabled` option is clicked (instead of `onChange`). */
 	onOptionDisabledClick?: (value: string) => void;
+	/** Called each time the list opens. */
+	onOpen?: () => void;
 	/** Show a filter field inside the panel. Implied by `allowCustom`. */
 	searchable?: boolean;
 	/** Let the typed text commit as the value, so a list the app shipped never
@@ -392,6 +395,7 @@ function Select({
 		setQuery("");
 		setActiveIndex(index);
 		setOpen(true);
+		onOpen?.();
 	}
 
 	function commitOption(index: number) {

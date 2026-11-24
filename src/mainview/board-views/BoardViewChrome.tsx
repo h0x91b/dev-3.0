@@ -37,6 +37,8 @@ export interface SavedViewsSwitcherProps {
 	onRevert: (id: string) => void;
 	onRename: (id: string) => void;
 	onDelete: (id: string) => void;
+	/** The list opened: a chance to pick up views other windows saved. */
+	onOpen?: () => void;
 }
 
 /**
@@ -107,6 +109,7 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: 
 				onOptionDisabledClick={(value) => value.startsWith(NAMED_PREFIX) && saved.onUnavailable(value.slice(NAMED_PREFIX.length))}
 				growList
 				maxListHeight={SWITCHER_LIST_MAX_HEIGHT}
+				onOpen={saved.onOpen}
 			/>
 		</div>
 	);

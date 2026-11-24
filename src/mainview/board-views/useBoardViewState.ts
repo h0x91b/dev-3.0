@@ -10,6 +10,7 @@ import {
 	namedViewUpdateChange,
 	withLayout,
 	withNamedViewApplied,
+	withNamedViews,
 	withViewType,
 	type BoardFormFactor,
 	type BoardRef,
@@ -29,15 +30,23 @@ export interface BoardViewStateHandle {
 	appliedNamedId: string | null;
 	/** True when the board no longer shows what the applied named view holds. */
 	appliedNamedModified: (query: string) => boolean;
-	saveNamed: (name: string, query: string) => void;
+	/** The named view edits resolve to true once the host has stored them. */
+	saveNamed: (name: string, query: string) => Promise<boolean>;
 	/** Loads the view type and layouts and returns the query the caller must set. */
 	applyNamed: (id: string) => string | null;
-	updateNamed: (id: string, query: string) => void;
-	renameNamed: (id: string, name: string) => void;
-	deleteNamed: (id: string) => void;
+	updateNamed: (id: string, query: string) => Promise<boolean>;
+	renameNamed: (id: string, name: string) => Promise<boolean>;
+	deleteNamed: (id: string) => Promise<boolean>;
 	/** Leaves the applied named view; the board keeps what it shows. */
 	clearApplied: () => void;
+	/** Picks up named views other windows saved; this window's working view stays as it is. */
+	refresh: () => void;
 }
+
+/** Why a named view edit did not save: another view has the name, or the request failed. */
+export type NamedChangeFailure = "name-taken" | "error";
+
+class NameTakenError extends Error {}
 
 // Survives remounts within a session, so returning to a board shows its view at
 // once instead of flashing the default while the file is read again.
@@ -131,6 +140,27 @@ function readViewState(board: BoardRef): Promise<void> {
 	return read;
 }
 
+/**
+ * Picks up named views other windows saved, without touching this window's working view.
+ * Dropped if the user changed anything while it was in flight.
+ */
+function refreshNamedViews(board: BoardRef): void {
+	const key = boardKey(board);
+	const editsAtStart = editCounts.get(key) ?? 0;
+	if ((savesInFlight.get(key) ?? 0) > 0 || !cache.has(key)) return;
+	Promise.resolve()
+		.then(() => api.request.getBoardViewState({ board: { kind: board.kind, id: board.id } }))
+		.then((onDisk) => {
+			const current = cache.get(key);
+			if (!current || (editCounts.get(key) ?? 0) !== editsAtStart || (savesInFlight.get(key) ?? 0) > 0) return;
+			const next = withNamedViews(current, namedSavedViews(onDisk));
+			if (JSON.stringify(next) === JSON.stringify(current)) return;
+			cache.set(key, next);
+			notify();
+		})
+		.catch((err) => console.warn("[board-views] failed to refresh saved views:", err));
+}
+
 /** Starts reading a board's saved view state so a later mount finds it settled. */
 export function prefetchBoardViewState(board: BoardRef): void {
 	if (!cache.has(boardKey(board))) void readViewState(board);
@@ -153,7 +183,7 @@ export function useBoardViewStateReady(board: BoardRef): boolean {
 export function useBoardViewState(
 	board: BoardRef,
 	formFactor: BoardFormFactor,
-	options?: { onNamedChangeFailed?: () => void },
+	options?: { onNamedChangeFailed?: (reason: NamedChangeFailure) => void },
 ): BoardViewStateHandle {
 	const key = boardKey(board);
 	const state = useSyncExternalStore(subscribe, () => cache.get(key)) ?? DEFAULT_STATE;
@@ -169,15 +199,15 @@ export function useBoardViewState(
 	// if nothing changed meanwhile: it carries named views other windows saved.
 	const onNamedFailedRef = useRef(options?.onNamedChangeFailed);
 	onNamedFailedRef.current = options?.onNamedChangeFailed;
-	const commit = useCallback((next: BoardViewState, send: () => Promise<BoardViewState>, named = false) => {
-		let failed = false;
+	const commit = useCallback((next: BoardViewState, send: () => Promise<BoardViewState>, named = false): Promise<boolean> => {
+		let failure: NamedChangeFailure | null = null;
 		stateRef.current = next;
 		cache.set(key, next);
 		const editsAtSend = (editCounts.get(key) ?? 0) + 1;
 		editCounts.set(key, editsAtSend);
 		notify();
 		savesInFlight.set(key, (savesInFlight.get(key) ?? 0) + 1);
-		Promise.resolve()
+		return Promise.resolve()
 			.then(send)
 			.then((saved) => {
 				const settledHere = (savesInFlight.get(key) ?? 1) === 1 && editCounts.get(key) === editsAtSend;
@@ -187,30 +217,36 @@ export function useBoardViewState(
 				}
 			})
 			.catch((err) => {
-				failed = true;
+				failure = err instanceof NameTakenError ? "name-taken" : "error";
 				console.warn("[board-views] failed to save view state:", err);
 			})
 			.finally(() => {
 				savesInFlight.set(key, (savesInFlight.get(key) ?? 1) - 1);
 				// A named view is the user's content: say it did not save, and show the file as it is.
-				if (failed && named) {
-					onNamedFailedRef.current?.();
+				if (failure && named) {
+					onNamedFailedRef.current?.(failure);
 					void readViewState({ kind: boardKind, id: boardId });
 				}
-			});
+			})
+			.then(() => failure === null);
 	}, [key, boardKind, boardId]);
 	const update = useCallback((change: (state: BoardViewState) => BoardViewState) => {
 		const base = stateRef.current;
 		const next = change(base);
 		if (next === base) return;
-		commit(next, () => api.request.setBoardViewState({ board: { kind: boardKind, id: boardId }, state: next }));
+		void commit(next, () => api.request.setBoardViewState({ board: { kind: boardKind, id: boardId }, state: next }));
 	}, [commit, boardKind, boardId]);
-	const changeNamed = useCallback((change: NamedViewChange) => {
+	const changeNamed = useCallback((change: NamedViewChange): Promise<boolean> => {
 		const base = stateRef.current;
 		const next = applyNamedViewChange(base, change);
-		if (next === base) return;
-		commit(next, () => api.request.changeNamedBoardView({ board: { kind: boardKind, id: boardId }, change }), true);
+		if (next === base) return Promise.resolve(false);
+		return commit(next, async () => {
+			const result = await api.request.changeNamedBoardView({ board: { kind: boardKind, id: boardId }, change });
+			if (result.rejected === "name-taken") throw new NameTakenError("name taken");
+			return result.state;
+		}, true);
 	}, [commit, boardKind, boardId]);
+	const refresh = useCallback(() => refreshNamedViews({ kind: boardKind, id: boardId }), [boardKind, boardId]);
 
 	const view = activeSavedView(state, formFactor);
 	const layout = useCallback((viewId: string) => view.layouts[viewId], [view]);
@@ -242,8 +278,9 @@ export function useBoardViewState(
 	);
 	const saveNamed = useCallback((name: string, query: string) => {
 		const change = namedViewAddChange(stateRef.current, formFactor, name, query);
-		changeNamed(change);
+		const saved = changeNamed(change);
 		setApplied(change.view.id);
+		return saved;
 	}, [changeNamed, formFactor, setApplied]);
 	const applyNamed = useCallback((id: string) => {
 		const named = namedSavedViews(stateRef.current).find((candidate) => candidate.id === id);
@@ -258,17 +295,18 @@ export function useBoardViewState(
 	);
 	const renameNamed = useCallback((id: string, name: string) => changeNamed({ kind: "rename", id, name }), [changeNamed]);
 	const deleteNamed = useCallback((id: string) => {
-		changeNamed({ kind: "delete", id });
+		const deleted = changeNamed({ kind: "delete", id });
 		// Both form factors: a stale entry must not survive to claim a view saved later.
 		for (const [appliedKeyOf, appliedIdOf] of appliedNamed) {
 			if (appliedIdOf === id && appliedKeyOf.startsWith(`${key}:`)) appliedNamed.delete(appliedKeyOf);
 		}
 		notify();
+		return deleted;
 	}, [changeNamed, key]);
 
 	return {
 		viewType: view.viewType, layout, setLayout, setViewType,
 		namedViews, appliedNamedId, appliedNamedModified, saveNamed, applyNamed, updateNamed, renameNamed, deleteNamed,
-		clearApplied,
+		clearApplied, refresh,
 	};
 }

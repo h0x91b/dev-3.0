@@ -680,6 +680,8 @@ const kanban = {
 	"boardView.saved.saveFailed": "No se pudo guardar el cambio en la vista guardada. Inténtalo de nuevo.",
 	"boardView.saved.deletedToast": "Vista «{name}» eliminada",
 	"boardView.saved.savedToast": "Vista «{name}» guardada",
+	"boardView.saved.updatedToast": "Vista «{name}» actualizada",
+	"boardView.saved.nameTakenElsewhere": "Otra ventana ya guardó una vista con ese nombre. Elige otro.",
 	"boardView.saved.unavailable": "«{name}» usa una vista que este tablero no puede mostrar aquí. Amplía la ventana o activa la vista en Gestionar vistas.",
 	"boardView.saved.nameLabel": "Nombre",
 	"boardView.saved.nameEmpty": "Escribe un nombre para la vista.",

@@ -1,6 +1,6 @@
 /**
  * Edge cases for named saved views beyond board-view-state.test.ts: fuzzed input, a shared id,
- * a round trip through the older build, and names that end in an emoji.
+ * the older build rewriting board-views.json, and names that end in an emoji.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -13,7 +13,9 @@ import {
 	SAVED_VIEW_NAME_MAX,
 	withLayout,
 	withNamedViewAdded,
+	withNamedViews,
 	withViewType,
+	workingViewState,
 	type BoardFormFactor,
 	type BoardViewState,
 	type SavedBoardView,
@@ -148,11 +150,6 @@ describe("odd files on disk", () => {
 
 
 // ---------------------------------------------------------------------------
-// Revert / apply when the named view has no layout for its own view type
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
 // older-version simulation
 // ---------------------------------------------------------------------------
 
@@ -213,43 +210,38 @@ function richNewState(): BoardViewState {
 	return b.state;
 }
 
-describe("a state with named views survives a trip through the older build", () => {
-	it("old normalize plus old edits on both form factors lose no named view, and new normalize keeps slots on working views", () => {
+/** What this build loads: board-views.json read as working views, plus the presets file. */
+const load = (boardViews: unknown, presets: SavedBoardView[]) => withNamedViews(workingViewState(normalizeBoardViewState(boardViews)), presets);
+
+describe("the older build and this build's two files", () => {
+	it("an old build rewriting board-views.json from a stale copy loses no named view", () => {
 		const start = richNewState();
-		const namedBefore = namedSavedViews(start);
-		let s = old.normalize(JSON.parse(JSON.stringify(start)));
+		const presets = namedSavedViews(start);
+		const boardViews = JSON.parse(JSON.stringify(workingViewState(start)));
+		expect(old.normalize(boardViews)).toEqual(boardViews);
+		// The old build edits both form factors and writes the whole file back.
+		let s = old.normalize(boardViews);
 		s = old.withViewType(s, "wide", KANBAN_VIEW_ID);
 		s = old.withLayout(s, "narrow", "ext:list", { sort: "title" });
 		s = old.withLayout(s, "wide", "ext:list", { sort: "x" });
-		const back = normalizeBoardViewState(JSON.parse(JSON.stringify(s)));
-		expect(namedSavedViews(back)).toEqual(namedBefore);
+		const back = load(JSON.parse(JSON.stringify(s)), presets);
+		expect(namedSavedViews(back)).toEqual(presets);
 		expectSlotsOnWorkingViews(back, "after old round trip");
 	});
 
-	// Accepted (decisions/2026/11/21/named-saved-views-are-presets.md, Risks): only a hand-edited file puts a
-	// named view first, since this build always keeps a working view ahead of the presets. The old build then
-	// forks the preset with its name, so a second "Preset" appears. Pinned so a change in it is noticed.
-	it("an old build whose slot fell back to a named view forks the preset into a same-named copy (accepted)", () => {
-		// A file where a slot names a missing view and the first entry is a named view:
-		// the old normalize re-points to savedViews[0], which is the preset.
+	it("a named entry in board-views.json (a hand edit) is neither a saved view nor a slot target", () => {
 		const raw = {
 			version: 1,
-			slots: { wide: "gone", narrow: "gone" },
+			slots: { wide: "sv-named-1", narrow: "gone" },
 			savedViews: [
-				{ id: "sv-named-1", name: "Preset", viewType: "ext:list", query: "beta", layouts: { "ext:list": { sort: "seq" } } },
+				{ id: "sv-named-1", name: "Preset", viewType: "ext:list", query: "beta", layouts: {} },
 				{ id: "sv-default", name: null, viewType: KANBAN_VIEW_ID, query: "", layouts: {} },
 			],
 		};
-		let s = old.normalize(raw);
-		s = old.withLayout(s, "wide", "ext:list", { sort: "title" });
-		const back = normalizeBoardViewState(JSON.parse(JSON.stringify(s)));
-		expectSlotsOnWorkingViews(back, "old fallback");
-		// The old build cannot know names, so it forks the preset for "wide". The fork keeps
-		// the preset's name, which makes a second named view called "Preset".
-		const names = namedSavedViews(back).map((v) => v.name);
-		expect(names.filter((n) => n === "Preset").length, `named views after old edit: ${JSON.stringify(namedSavedViews(back))}`).toBe(2);
+		const back = load(raw, []);
+		expect(namedSavedViews(back)).toEqual([]);
+		expectSlotsOnWorkingViews(back, "hand edit");
 	});
-
 });
 
 // ---------------------------------------------------------------------------

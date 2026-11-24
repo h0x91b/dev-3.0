@@ -720,6 +720,8 @@ const kanban = {
 	"boardView.saved.saveFailed": "Не удалось сохранить изменение сохранённого вида. Попробуйте ещё раз.",
 	"boardView.saved.deletedToast": "Вид «{name}» удалён",
 	"boardView.saved.savedToast": "Вид «{name}» сохранён",
+	"boardView.saved.updatedToast": "Вид «{name}» обновлён",
+	"boardView.saved.nameTakenElsewhere": "В другом окне уже сохранён вид с таким названием. Выберите другое.",
 	"boardView.saved.unavailable": "«{name}» использует вид, который эта доска не может показать здесь. Расширьте окно или включите вид в «Управлении видами».",
 	"boardView.saved.nameLabel": "Название",
 	"boardView.saved.nameEmpty": "Введите название вида.",
