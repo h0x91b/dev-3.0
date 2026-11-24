@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSharedAudio, isSharedClip, type SharedImage, type Task } from "../../shared/types";
-import { clipReviewExcerpt, type ReviewComment, type ReviewImageRegionAnchor } from "../../shared/review";
+import { clipReviewExcerpt, formatReviewTimestamp, type ReviewComment, type ReviewImageRegionAnchor, type ReviewVideoTimeAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from "../review/ImageRegionOverlay";
 import { useReviewSend } from "../review/useReviewSend";
@@ -18,6 +18,9 @@ import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 import VideoFrameThumb from "./VideoFrameThumb";
 import { primeFirstFrame } from "../utils/video-first-frame";
+import VideoReviewBar, { stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
+import { frameAt, frameSeekTime } from "../utils/video-playback";
+import { matchesShortcut } from "../keymap";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -38,6 +41,11 @@ interface TaskImageViewerProps {
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
 const AUDIO_GLYPH = "\uf001";
+
+function momentLabel(anchor: Pick<ReviewVideoTimeAnchor, "time" | "frame">): string {
+	const at = formatReviewTimestamp(anchor.time);
+	return anchor.frame === null ? at : `${at} · #${anchor.frame}`;
+}
 
 function clipErrorKey(clip: "video" | "audio" | null, loadFailed: boolean) {
 	if (clip === "audio") return loadFailed ? "imageViewer.audioLoadError" : "imageViewer.audioUnsupported";
@@ -124,6 +132,15 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const [pictureBox, setPictureBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 	const thumbStripRef = useRef<HTMLDivElement>(null);
 	const playerRef = useRef<HTMLMediaElement | null>(null);
+	// The video element as state: the transport bar and the frame-rate meter
+	// subscribe to it, so they must re-run when the clip on stage changes.
+	const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+	const attachVideo = useCallback((node: HTMLVideoElement | null) => {
+		playerRef.current = node;
+		setVideoEl(node);
+	}, []);
+	// A moment picked for a video comment, waiting for its text.
+	const [pendingMoment, setPendingMoment] = useState<Pick<ReviewVideoTimeAnchor, "time" | "frame" | "fps"> | null>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
 	// Ids whose fetch has already been kicked off — dedupes the priority effect
 	// against the background loader so each image is read at most once.
@@ -149,6 +166,42 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		() => (current ? review.comments.filter((comment) => comment.anchor.kind === "image-region" && comment.anchor.imageId === current.id) : []),
 		[current, review.comments],
 	);
+	const videoComments = useMemo(
+		() => (current && clip === "video"
+			? review.comments
+				.filter((comment) => comment.anchor.kind === "video-time" && comment.anchor.imageId === current.id)
+				.sort((a, b) => (a.anchor as ReviewVideoTimeAnchor).time - (b.anchor as ReviewVideoTimeAnchor).time)
+			: []),
+		[current, clip, review.comments],
+	);
+	const fps = useVideoFrameRate(clip === "video" ? videoEl : null);
+	const commentAtPlayhead = useCallback(() => {
+		const video = playerRef.current;
+		if (!canComment || clip !== "video" || !(video instanceof HTMLVideoElement)) return;
+		video.pause();
+		const time = video.currentTime;
+		setPendingMoment({ time, frame: fps === null ? null : frameAt(time, fps), fps });
+		setActiveCommentId(null);
+		setCommentMode(true);
+	}, [canComment, clip, fps]);
+	const seekToComment = useCallback((id: string) => {
+		setActiveCommentId(id);
+		const comment = videoComments.find((item) => item.id === id);
+		const video = playerRef.current;
+		if (!comment || !(video instanceof HTMLVideoElement)) return;
+		const anchor = comment.anchor as ReviewVideoTimeAnchor;
+		video.pause();
+		video.currentTime = anchor.frame !== null && anchor.fps ? frameSeekTime(anchor.frame, anchor.fps, video.duration) : anchor.time;
+	}, [videoComments]);
+	const markers = useMemo<VideoMarker[]>(() => videoComments.map((comment, i) => {
+		const anchor = comment.anchor as ReviewVideoTimeAnchor;
+		return {
+			id: comment.id,
+			time: anchor.time,
+			label: t("imageViewer.videoMarker", { n: String(i + 1), time: momentLabel(anchor), body: clipReviewExcerpt(comment.body, 80) }),
+			done: Boolean(comment.sentAt || comment.resolvedAt),
+		};
+	}), [videoComments, t]);
 	const measurePicture = useCallback(() => {
 		const img = imgRef.current;
 		const stage = stageRef.current;
@@ -244,7 +297,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const dismissRef = useRef<() => void>(() => {});
 	dismissRef.current = () => {
 		if (menu) setMenu(null);
-		else if (commentMode) { setCommentMode(false); setPendingRegion(null); }
+		else if (commentMode) { setCommentMode(false); setPendingRegion(null); setPendingMoment(null); }
 		else if (fullscreen) setFullscreen(false);
 		else onClose();
 	};
@@ -266,7 +319,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			const target = e.target instanceof HTMLElement ? e.target : null;
 			// A focused player owns its arrows (seek) and Space (play/pause).
 			if ((target?.tagName === "VIDEO" || target?.tagName === "AUDIO") && (e.key.startsWith("Arrow") || e.key === " " || e.key === "Home" || e.key === "End")) return;
-			if (e.key === " " && playerRef.current && !target?.closest("button, input, textarea, [contenteditable='true']")) {
+			if (e.key === " " && playerRef.current && !target?.closest("button, input, textarea, select, [contenteditable='true']")) {
 				consume();
 				const player = playerRef.current;
 				if (player.paused) void player.play().catch(() => {});
@@ -276,6 +329,19 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			// A focused comment field owns its own text (typing "f" or using arrow
 			// keys to move the cursor must not fall through to lightbox navigation).
 			if (target?.closest("input, textarea, [contenteditable='true']")) return;
+			// The scrubber and the speed menu own their arrows and Home/End.
+			if (target?.closest("[role='slider'], select") && (e.key.startsWith("Arrow") || e.key === "Home" || e.key === "End")) return;
+			const video = playerRef.current instanceof HTMLVideoElement ? playerRef.current : null;
+			if (video) {
+				// The viewer is itself a dialog, which the matcher reads as "typing"; text
+				// fields already returned above, and the speed menu has no use for , . < > c.
+				const ctx = { typing: false };
+				if (matchesShortcut(e, "media-frame-back", ctx)) { consume(); stepVideoFrame(video, -1, fps); return; }
+				if (matchesShortcut(e, "media-frame-forward", ctx)) { consume(); stepVideoFrame(video, 1, fps); return; }
+				if (matchesShortcut(e, "media-speed-down", ctx)) { consume(); stepVideoRate(video, -1); return; }
+				if (matchesShortcut(e, "media-speed-up", ctx)) { consume(); stepVideoRate(video, 1); return; }
+				if (canComment && matchesShortcut(e, "media-comment-at-playhead", ctx)) { consume(); commentAtPlayhead(); return; }
+			}
 			if (e.key === "ArrowRight") { consume(); go(1); }
 			else if (e.key === "ArrowLeft") { consume(); go(-1); }
 			else if (e.key === "Home") { consume(); setIndex(0); }
@@ -284,7 +350,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		}
 		window.addEventListener("keydown", onKey, { capture: true });
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
-	}, [go, onClose, images.length, fullscreen]);
+	}, [go, onClose, images.length, fullscreen, fps, canComment, commentAtPlayhead]);
 
 	// Reset per-image derived state and scroll the active thumbnail into view.
 	useEffect(() => {
@@ -296,6 +362,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setNatural(null);
 		setFitOverride(null);
 		setPendingRegion(null);
+		setPendingMoment(null);
 		setActiveCommentId(null);
 		setClipError(false);
 		zoom.reset();
@@ -355,6 +422,22 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setActiveCommentId(comment.id);
 		if (andSend) send.sendOne(comment);
 	};
+	const addMomentComment = (body: string, andSend: boolean) => {
+		if (!pendingMoment || !current) return;
+		const anchor: ReviewVideoTimeAnchor = {
+			kind: "video-time",
+			imageId: current.id,
+			name: current.name,
+			path: current.storedPath,
+			caption: current.caption ? clipReviewExcerpt(current.caption) : null,
+			...pendingMoment,
+		};
+		const comment: ReviewComment = { id: crypto.randomUUID(), body, createdAt: new Date().toISOString(), anchor };
+		review.add(comment);
+		setPendingMoment(null);
+		setActiveCommentId(comment.id);
+		if (andSend) send.sendOne(comment);
+	};
 	const showOverlay = !isClip && canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
 	const copyLabel = t(clip === "audio" ? "imageViewer.copyAudioPath" : clip === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath");
 	const downloadLabel = t(clip === "audio" ? "imageViewer.downloadAudio" : clip === "video" ? "imageViewer.downloadVideo" : "imageViewer.download");
@@ -405,12 +488,12 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 							<span className="text-base leading-none" style={{ fontFamily: ICON }}>{fit === "width" ? "" : ""}</span>
 						</button>
 					)}
-					{canComment && !isClip && (
+					{canComment && clip !== "audio" && (
 						<button
 							type="button"
-							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); }}
-							title={t("imageViewer.commentMode")}
-							aria-label={t("imageViewer.commentMode")}
+							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); setPendingMoment(null); }}
+							title={t(clip === "video" ? "imageViewer.videoCommentMode" : "imageViewer.commentMode")}
+							aria-label={t(clip === "video" ? "imageViewer.videoCommentMode" : "imageViewer.commentMode")}
 							aria-pressed={commentMode}
 							data-testid="image-viewer-comment"
 							className={`${iconBtn} ${commentMode ? "bg-accent/10 text-accent" : ""}`}
@@ -472,7 +555,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 
 				{/* Stage (+ the review aside in comment mode) */}
 				<div className="flex flex-1 min-h-0">
-				<div className="relative flex-1 min-w-0 min-h-0 bg-base">
+				<div className="flex flex-1 min-w-0 min-h-0 flex-col bg-base">
+				<div className="relative flex-1 min-h-0">
 					<div
 						ref={setStage}
 						onContextMenu={openMenu}
@@ -487,10 +571,10 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						) : clip === "video" && currentUrl ? (
 							<video
 								key={current.id}
-								ref={(node) => { playerRef.current = node; }}
+								ref={attachVideo}
 								src={currentUrl}
-								controls
 								playsInline
+								onClick={(e) => (e.currentTarget.paused ? void e.currentTarget.play().catch(() => {}) : e.currentTarget.pause())}
 								preload="metadata"
 								onLoadedMetadata={(e) => primeFirstFrame(e.currentTarget)}
 								aria-label={current.name}
@@ -568,7 +652,34 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						</>
 					)}
 				</div>
-				{canComment && commentMode && current && (
+				{clip === "video" && videoEl && currentUrl && !isError && !clipError && (
+					<VideoReviewBar
+						video={videoEl}
+						fps={fps}
+						markers={markers}
+						activeMarkerId={activeCommentId}
+						onMarker={(id) => { seekToComment(id); setCommentMode(true); }}
+						onComment={canComment ? commentAtPlayhead : undefined}
+					/>
+				)}
+				</div>
+				{canComment && commentMode && current && clip === "video" && (
+					<ReviewAside
+						testId="video-review"
+						comments={videoComments}
+						review={review}
+						send={send}
+						activeCommentId={activeCommentId}
+						onActivate={seekToComment}
+						labelFor={(comment, i) => `${i + 1} · ${momentLabel(comment.anchor as ReviewVideoTimeAnchor)}`}
+						pendingLabel={pendingMoment ? `${current.name} · ${momentLabel(pendingMoment)}` : null}
+						onSubmitPick={addMomentComment}
+						onCancelPick={() => setPendingMoment(null)}
+						hint={t("imageViewer.videoCommentModeHint")}
+						empty={t("imageViewer.videoReviewEmpty")}
+					/>
+				)}
+				{canComment && commentMode && current && !isClip && (
 					<ReviewAside
 						testId="image-review"
 						comments={imageComments}

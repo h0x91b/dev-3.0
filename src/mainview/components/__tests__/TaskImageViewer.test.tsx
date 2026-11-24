@@ -446,7 +446,7 @@ describe("TaskImageViewer with a shared video", () => {
 		);
 	}
 
-	it("plays the clip in the same stage with controls and no autoplay", async () => {
+	it("plays the clip in the same stage with its own transport and no autoplay", async () => {
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
 		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
 		// Streamed by URL: no base64 read and no blob copy of the clip.
@@ -454,12 +454,14 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(mockedApi.request.getSharedMediaUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 		expect(createObjectURL).not.toHaveBeenCalled();
-		expect(video.controls).toBe(true);
+		// The viewer's own transport replaces the native controls: only it can draw comment markers.
+		expect(video.controls).toBe(false);
+		expect(screen.getByTestId("video-review-bar")).toBeInTheDocument();
 		expect(video.autoplay).toBe(false);
 		expect(video).toHaveAttribute("preload", "metadata");
 		expect(screen.queryByTestId("viewer-main-image")).toBeNull();
-		// A region on a moving picture means nothing: the comment toggle is gone for a clip.
-		expect(screen.queryByTestId("image-viewer-comment")).toBeNull();
+		// A video takes comments pinned to a moment instead of a region.
+		expect(screen.getByTestId("image-viewer-comment")).toHaveAccessibleName("Comments on this video");
 		expect(screen.getByRole("dialog", { name: "Shared media" })).toBeInTheDocument();
 		expect(screen.getByText("2 / 3")).toBeInTheDocument();
 	});
@@ -542,6 +544,122 @@ describe("TaskImageViewer with a shared video", () => {
 		await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:clip"));
 		fetchSpy.mockRestore();
 		click.mockRestore();
+	});
+});
+
+describe("TaskImageViewer video review", () => {
+	const reviewApi = () => mockedApi.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
+	const clip: SharedImage = { ...img("v", "demo.mp4"), storedPath: "/wt/shared-media/v.mp4", mime: "video/mp4" };
+	const moment = (id: string, time: number, body: string, extra: Record<string, unknown> = {}) => ({
+		id, body, createdAt: "2026-11-24T00:00:00.000Z",
+		anchor: { kind: "video-time", imageId: "v", name: "demo.mp4", path: "/wt/shared-media/v.mp4", caption: null, time, frame: null, fps: null },
+		...extra,
+	});
+
+	beforeEach(() => {
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: "http://127.0.0.1:4242/shared-media/tok", path: "/shared-media/tok" });
+		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
+		}
+	});
+
+	async function renderClip(review: unknown[] = []) {
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={[clip]} initialIndex={0} onClose={vi.fn()} taskId="t1" projectId="p1" task={{ id: "t1", review } as never} />
+			</I18nProvider>,
+		);
+		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
+		let time = 0;
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; } });
+		Object.defineProperty(video, "duration", { configurable: true, get: () => 120 });
+		const pause = vi.spyOn(video, "pause").mockImplementation(() => {});
+		return { video, pause, at: (v: number) => { time = v; } };
+	}
+
+	it("changes speed from the menu and the shortcuts", async () => {
+		const { video } = await renderClip();
+		await userEvent.selectOptions(screen.getByTestId("video-speed"), "0.5");
+		expect(video.playbackRate).toBe(0.5);
+		fireEvent.keyDown(window, { key: ">", code: "Period", shiftKey: true });
+		expect(video.playbackRate).toBe(0.75);
+		fireEvent.keyDown(window, { key: "<", code: "Comma", shiftKey: true });
+		fireEvent.keyDown(window, { key: "<", code: "Comma", shiftKey: true });
+		expect(video.playbackRate).toBe(0.25);
+		fireEvent.keyDown(window, { key: "<", code: "Comma", shiftKey: true });
+		expect(video.playbackRate).toBe(0.25);
+	});
+
+	it("steps one frame at a time, paused, with the buttons and , .", async () => {
+		const { video, pause, at } = await renderClip();
+		at(1);
+		fireEvent.keyDown(window, { key: ".", code: "Period" });
+		expect(pause).toHaveBeenCalled();
+		// No measured frame rate in happy-dom, so the 30 fps fallback: frame 31's middle.
+		expect(video.currentTime).toBeCloseTo(31.5 / 30);
+		fireEvent.keyDown(window, { key: ",", code: "Comma" });
+		fireEvent.keyDown(window, { key: ",", code: "Comma" });
+		expect(video.currentTime).toBeCloseTo(29.5 / 30);
+		await userEvent.click(screen.getByTestId("video-frame-forward"));
+		expect(video.currentTime).toBeCloseTo(30.5 / 30);
+		// Still the same item: , and . never fall through to the rail.
+		expect(screen.getByText("1 / 1")).toBeInTheDocument();
+	});
+
+	it("pins a comment to the paused moment and stores it on the task review", async () => {
+		const user = userEvent.setup();
+		const { pause, at } = await renderClip();
+		at(70.25);
+		fireEvent.keyDown(window, { key: "c", code: "KeyC" });
+		expect(pause).toHaveBeenCalled();
+		const composer = await screen.findByTestId("video-review-composer");
+		expect(composer).toHaveTextContent("demo.mp4 · 1:10.250");
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Button flickers");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+		expect(reviewApi().addReviewComment).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: "t1",
+			projectId: "p1",
+			comment: expect.objectContaining({
+				body: "Button flickers",
+				anchor: { kind: "video-time", imageId: "v", name: "demo.mp4", path: "/wt/shared-media/v.mp4", caption: null, time: 70.25, frame: null, fps: null },
+			}),
+		}));
+		expect(await screen.findByTestId("video-marker")).toHaveAccessibleName("Comment 1 at 1:10.250: Button flickers");
+	});
+
+	it("draws stored comments as markers in time order and seeks to one on click", async () => {
+		const { video } = await renderClip([moment("m2", 90, "Late"), moment("m1", 12.5, "Early", { sentAt: "2026-11-24T01:00:00.000Z" })]);
+		const markers = await screen.findAllByTestId("video-marker");
+		expect(markers.map((m) => m.getAttribute("aria-label"))).toEqual(["Comment 1 at 0:12.500: Early", "Comment 2 at 1:30.000: Late"]);
+		await userEvent.click(markers[1]);
+		expect(video.currentTime).toBe(90);
+		expect(markers[1]).toHaveAttribute("data-active", "true");
+		expect(screen.getByTestId("video-review")).toBeInTheDocument();
+	});
+
+	it("sends every unsent moment to the agent as one message with timestamps", async () => {
+		await renderClip([moment("m1", 12.5, "Early"), moment("m2", 90, "Late"), moment("m0", 1, "Done", { sentAt: "2026-11-24T01:00:00.000Z" })]);
+		await userEvent.click(screen.getByTestId("image-viewer-comment"));
+		await userEvent.click(screen.getByTestId("video-review-send-all"));
+		await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
+		const { taskId, text } = reviewApi().sendAgentMessageNow.mock.calls[0][0] as { taskId: string; text: string };
+		expect(taskId).toBe("t1");
+		expect(text).toContain('<video src="/wt/shared-media/v.mp4" time="0:12.500" seconds="12.5"/>');
+		expect(text).toContain('<video src="/wt/shared-media/v.mp4" time="1:30.000" seconds="90"/>');
+		expect(text).not.toContain("Done");
+		await waitFor(() => expect(reviewApi().markReviewCommentsSent).toHaveBeenCalledWith(expect.objectContaining({ commentIds: ["m1", "m2"] })));
+	});
+
+	it("offers no comment action without a project to store it in", async () => {
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={[clip]} initialIndex={0} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		await screen.findByTestId("video-review-bar");
+		expect(screen.queryByTestId("video-comment")).toBeNull();
+		fireEvent.keyDown(window, { key: "c", code: "KeyC" });
+		expect(screen.queryByTestId("video-review")).toBeNull();
 	});
 });
 

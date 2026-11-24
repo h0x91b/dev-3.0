@@ -31,6 +31,9 @@ this page and the website all read from it.
 | Find in an HTML artifact | ⌘F | Ctrl+F |
 | Find in an open file preview | ⌘F | Ctrl+F |
 | Send a review comment to the agent (in the comment box) | ⌘Enter | Ctrl+Enter |
+| Media viewer, video: previous / next frame | , / . | , / . |
+| Media viewer, video: slower / faster playback | ⇧, / ⇧. | Shift+, / Shift+. |
+| Media viewer, video: comment on the current moment | C | C |
 | Split pane vertically / horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |
 | Zoom the focused pane (toggle) | ⇧⌘Enter | Ctrl+Shift+Enter |
 | Swap pane with previous / next | ⇧⌘, / ⇧⌘. | Ctrl+Shift+, / Ctrl+Shift+. |

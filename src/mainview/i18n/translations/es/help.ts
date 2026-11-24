@@ -207,7 +207,7 @@ const help = {
 	// ── Viewers & workspace ──
 	"help.viewer.images.title": "Imágenes compartidas",
 	"help.viewer.images.body":
-		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, descarga una imagen (también con clic derecho), copia su ruta o revela el archivo original en disco. El vídeo y el audio compartidos con `dev3 show-media` se reproducen aquí mismo: reproducir, pausar, buscar y volumen están en el reproductor, y nada empieza por sí solo.",
+		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, descarga una imagen (también con clic derecho), copia su ruta o revela el archivo original en disco. El vídeo y el audio compartidos con `dev3 show-media` se reproducen aquí mismo: nada empieza por sí solo. Un vídeo tiene su propia barra: paso por fotograma (, y .), velocidad de 0.25× a 2× (< y >) y Comentar (C), que fija una nota al momento en pausa; las marcas de la línea de tiempo vuelven a él, y Enviar entrega todas al agente con sus marcas de tiempo.",
 	"help.viewer.artifact.title": "Artefacto",
 	"help.viewer.artifact.body":
 		"Un informe HTML interactivo que un agente construyó con `dev3 show-artifact`, aislado y abierto como una ventana emergente sobre la tarea, igual que las imágenes. Ponlo a pantalla completa, recorre artefactos pasados o descárgalo como HTML (o un ZIP cuando incluye imágenes). Escape lo cierra.",
