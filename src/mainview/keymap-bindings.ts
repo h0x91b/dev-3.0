@@ -266,3 +266,13 @@ export function rejectBinding(binding: Binding): BindingRejection | null {
 	if (RESERVED_CODES.has(binding.code) && binding.mods.length === 0) return "reserved";
 	return null;
 }
+
+/**
+ * Insert a thin space (U+2009) after each macOS modifier glyph (⌘⇧⌥⌃) so the
+ * cluster doesn't visually merge — "⇧⌘P" reads as "⇧ ⌘ P". No-op for the
+ * textual Linux form ("Ctrl+Shift+P") and for tmux bindings, which already
+ * carry real spaces.
+ */
+export function spaceModifierGlyphs(keys: string): string {
+	return keys.replace(/([⌘⇧⌥⌃])(?=\S)/gu, "$1 ");
+}

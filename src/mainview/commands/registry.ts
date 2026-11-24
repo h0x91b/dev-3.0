@@ -51,6 +51,8 @@ export interface CommandItem {
 	labelVars?: Record<string, string>;
 	category: CommandCategory;
 	scope: CommandScope;
+	/** The `keymap.ts` shortcut that does the same thing; the palette shows its combo. */
+	shortcutId?: string;
 	/** An extra visibility rule, on top of scope and the project kind. */
 	when?: (ctx: CommandContext) => boolean;
 	run: (ctx: AppActionContext) => void | Promise<void>;
