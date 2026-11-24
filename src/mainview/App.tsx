@@ -3395,6 +3395,7 @@ function App() {
 			case "changelog": return t("changelog.screenTitle");
 			case "stats": return t("stats.title");
 			case "sessions": return t("sessions.title");
+			case "library": return t("library.title");
 			case "agent-traffic": return t("traffic.label");
 			default: return "";
 		}
@@ -4277,6 +4278,14 @@ function App() {
 							projectName: state.projects.find((p) => p.id === route.scopeProjectId)?.name ?? null,
 							onOpenTask: openTaskFromNotification,
 						}}
+					/>
+				);
+			case "library":
+				return (
+					<DestinationBody
+						key={route.scopeProjectId ?? "all"}
+						destination="library"
+						props={{ projectId: route.scopeProjectId ?? null, onOpenTask: openTaskFromNotification }}
 					/>
 				);
 			case "agent-traffic":

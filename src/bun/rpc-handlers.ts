@@ -81,6 +81,7 @@ import { portTunnelHandlers } from "./rpc-handlers/port-tunnels";
 import { conversationSearchHandlers } from "./rpc-handlers/conversation-search-handlers";
 import { conversationImportHandlers } from "./rpc-handlers/conversation-import-handlers";
 import { productivityStatsHandlers } from "./rpc-handlers/productivity-stats";
+import { libraryHandlers } from "./rpc-handlers/library";
 import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
 import { automationsHandlers } from "./rpc-handlers/automations";
 import { modelCatalogHandlers } from "./rpc-handlers/model-catalog";
@@ -115,6 +116,7 @@ export const handlers = {
 	...conversationSearchHandlers,
 	...conversationImportHandlers,
 	...productivityStatsHandlers,
+	...libraryHandlers,
 	...agentUsageHandlers,
 	...automationsHandlers,
 	...modelCatalogHandlers,

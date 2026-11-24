@@ -169,6 +169,7 @@ ux_architecture:
         - "changelog"        # what's new
         - "stats"            # productivity stats dashboard (Velocity Cockpit)
         - "agent-traffic"    # agent-to-agent traffic (flagged; ninth-destination exception)
+        - "library"          # menu-only
         - "gauge-demo"       # debug/dev surface
         - "viewport-lab"     # debug/dev surface
       mechanism: "GlobalHeader breadcrumbs + back/forward history (HISTORY_LIMIT=15) + native application menu 'View'"

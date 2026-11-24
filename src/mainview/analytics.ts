@@ -438,6 +438,9 @@ export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
 		case "sessions":
 			// The scope project stays out of the path, same rule as agent-traffic.
 			return { screen: "sessions", title: "Sessions", path: "/app/sessions" };
+		case "library":
+			// Same rule: the scope project is a filter, never part of the path.
+			return { screen: "library", title: "Library", path: "/app/library" };
 		case "agent-traffic":
 			// The route carries the project the user came from as a scope seed. It
 			// stays out of the path: one row per project is exactly what the rule

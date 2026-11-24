@@ -90,7 +90,7 @@ The app uses a **screen router** (`Route` union + `useReducer` with a 15-entry b
 
 ### Global navigation
 
-Destinations: `dashboard`, `project` (Kanban — the daily home), `task`, `project-terminal`, `settings`, `project-settings`, `changelog`, `stats` (Productivity Stats / Velocity Cockpit), `agent-traffic` (§5.9). Debug: `gauge-demo`, `viewport-lab`.
+Destinations: `dashboard`, `project` (Kanban — the daily home), `task`, `project-terminal`, `settings`, `project-settings`, `changelog`, `stats` (Productivity Stats / Velocity Cockpit), `agent-traffic` (§5.9). Menu-only routes (no nav item; kebab, View menu, palette): `sessions`, `library` (§5). Debug: `gauge-demo`, `viewport-lab`.
 
 Mechanism: `GlobalHeader` breadcrumbs (`Dashboard > Project > Task`) + back/forward + native application-menu `View`.
 
@@ -129,6 +129,7 @@ Keyboard-only, one `PaletteShell`; modes, hotkeys and rules: the palette note un
 | Task artifact viewer | Interactive HTML plus local CSS/JS/raster assets via `dev3 show-artifact`; docked resizable panel by default, the image lightbox when opted in or slotless | sandboxed display, history nav, theme sync, floating ⌘F find over the content (§10), network integrations, HTML/ZIP download, open in the OS web browser (§10), live page | global destination, task lifecycle/git mutation, parent DOM/RPC access, native dialog (trusted scripts can self-navigate their iframe), a second viewer instance | `TaskArtifactViewer.tsx`, `artifact-panel.tsx`, `shared-artifacts.ts` |
 
 **Archived tasks reach their agent outputs through enumerated rows, not the Runtime bar (`Observed`, 2026-08-08).** A completed/cancelled task has no Runtime bar, so `TaskDetailModal`'s archived view lists every image and artifact as its own clickable row (`SharedOutputsList.tsx`), above Notes: the deliverable outranks the commentary. Rows open the App-hosted viewers at their own index.
+| Library (destination) | Every artifact and shown media, all projects and task statuses | search, type/project/sort, unseen filter, disk-by-project/task strip, open in the task viewers, open task (archived too); later row `⋯` + bulk keep/delete via the shared-media APIs | own viewer, own delete logic, index file, header button | `library/LibraryScreen.tsx`, `shared/library.ts` |
 | File explorer | Read-only tree beside a terminal (task, Repo) | browse, preview, copy/insert path | mutation, git colour, board mount | `FileExplorerFrame.tsx` |
 | Modal | Focused create/confirm | create flow, confirm, focused config | navigation, persistent dashboard | `*Modal.tsx` |
 | Popover | Contextual preview/hint | preview, hint, quick action, remediation | multi-step flow, primary destination | `*Popover.tsx` |

@@ -92,6 +92,11 @@ export function openSessions(ctx: AppActionContext): void {
 	navigateTo(ctx, projectId ? { screen: "sessions", scopeProjectId: projectId } : { screen: "sessions" });
 }
 
+export function openLibrary(ctx: AppActionContext): void {
+	const projectId = currentProjectId(ctx.state);
+	navigateTo(ctx, projectId ? { screen: "library", scopeProjectId: projectId } : { screen: "library" });
+}
+
 export function openProjectSettings(ctx: AppActionContext): void {
 	const projectId = currentProjectId(ctx.state);
 	if (projectId) navigateTo(ctx, { screen: "project-settings", projectId });

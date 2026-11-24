@@ -37,6 +37,7 @@ function standIn(testId: string) {
 	};
 }
 vi.mock("../../components/SessionsScreen", () => standIn("body-sessions"));
+vi.mock("../../components/library/LibraryScreen", () => standIn("body-library"));
 vi.mock("../../components/ProductivityStatsView", () => standIn("body-stats"));
 vi.mock("../../components/Changelog", () => standIn("body-changelog"));
 vi.mock("../../components/agent-traffic/AgentTrafficScreen", () => standIn("body-agent-traffic"));
@@ -50,6 +51,10 @@ const CASES: { [D in DestinationId]: Case<D> } = {
 	sessions: {
 		data: { projectId: "p1", projectName: "dev-3.0" },
 		props: (spy) => ({ projectId: "p1", projectName: "dev-3.0", onOpenTask: spy("onOpenTask") }),
+	},
+	library: {
+		data: { projectId: "p1" },
+		props: (spy) => ({ projectId: "p1", onOpenTask: spy("onOpenTask") }),
 	},
 	stats: { data: { canGoBack: true }, props: (spy) => ({ navigate: spy("navigate"), goBack: spy("goBack"), canGoBack: true }) },
 	changelog: { data: { canGoBack: false }, props: (spy) => ({ navigate: spy("navigate"), goBack: spy("goBack"), canGoBack: false }) },

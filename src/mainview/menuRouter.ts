@@ -20,6 +20,7 @@ import {
 	openProjectSettings,
 	openProjectTerminal,
 	openSessions,
+	openLibrary,
 	openTaskInFinder,
 	pullProjectMain,
 	runDevServerOp,
@@ -159,6 +160,9 @@ export async function handleMenuAction(action: string, ctx: AppActionContext): P
 			return;
 		case "view-sessions":
 			openSessions(ctx);
+			return;
+		case "view-library":
+			openLibrary(ctx);
 			return;
 		case "open-settings":
 			navigateTo(ctx, { screen: "settings" });
