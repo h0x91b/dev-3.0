@@ -9,12 +9,18 @@ import {
 	PLAYBACK_RATES,
 	frameAt,
 	frameSeekTime,
+	knownFrameRate,
+	rememberFrameRate,
 	stepPlaybackRate,
 	timelinePercent,
 } from "../utils/video-playback";
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
-const SEEK_STEP_SECONDS = 5;
+/** Arrow-key seek on a video, on the scrubber and on the stage alike. */
+export const SEEK_STEP_SECONDS = 5;
+const PAGE_SEEK_SECONDS = 60;
+/** How long the hidden probe may play before it gives up on a steady rate. */
+const PROBE_TIMEOUT_MS = 4000;
 
 export interface VideoMarker {
 	id: string;
@@ -36,35 +42,92 @@ export function stepVideoRate(video: HTMLVideoElement, direction: 1 | -1): void 
 	video.playbackRate = stepPlaybackRate(video.playbackRate, direction);
 }
 
+export function seekVideoBy(video: HTMLVideoElement, seconds: number): void {
+	const end = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
+	video.currentTime = Math.min(end, Math.max(0, video.currentTime + seconds));
+}
+
 /**
- * Measured frame rate of the playing clip. The engine exposes none, so it is
- * read from `requestVideoFrameCallback`; null until enough frames were seen, and
- * always null where the callback does not exist.
+ * Plays a muted, invisible copy of the clip at 1x just long enough to read its
+ * frame rate, so a paused clip steps by real frames before anyone presses play.
+ * Returns a cancel function; the copy is torn down either way.
  */
-export function useVideoFrameRate(video: HTMLVideoElement | null): number | null {
-	const [fps, setFps] = useState<number | null>(null);
+function probeFrameRate(src: string, onRate: (fps: number) => void): () => void {
+	if (typeof document === "undefined") return () => {};
+	const probe = document.createElement("video");
+	if (typeof probe.requestVideoFrameCallback !== "function") return () => {};
+	probe.muted = true;
+	probe.playsInline = true;
+	probe.preload = "auto";
+	probe.setAttribute("aria-hidden", "true");
+	probe.style.cssText = "position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none";
+	const meter = new FrameRateMeter();
+	let done = false;
+	const finish = (fps: number | null) => {
+		if (done) return;
+		done = true;
+		clearTimeout(timer);
+		probe.pause();
+		probe.removeAttribute("src");
+		probe.load();
+		probe.remove();
+		if (fps !== null) onRate(fps);
+	};
+	const onFrame: VideoFrameRequestCallback = (_now, meta) => {
+		if (done) return;
+		meter.feed(meta.mediaTime, meta.presentedFrames, probe.playbackRate);
+		if (meter.stable) finish(meter.fps);
+		else probe.requestVideoFrameCallback(onFrame);
+	};
+	const timer = setTimeout(() => finish(meter.fps), PROBE_TIMEOUT_MS);
+	probe.requestVideoFrameCallback(onFrame);
+	probe.src = src;
+	document.body.appendChild(probe);
+	void probe.play().catch(() => finish(null));
+	return () => finish(null);
+}
+
+/**
+ * Frame rate of the clip on stage. The engine exposes none, so it is read from
+ * `requestVideoFrameCallback`: a hidden probe measures it as soon as the clip
+ * opens, playback at 1x refines it, and once steady it is frozen and kept per
+ * clip id for the session. Null where the callback does not exist.
+ */
+export function useVideoFrameRate(video: HTMLVideoElement | null, clipId: string | null): number | null {
+	const [fps, setFps] = useState<number | null>(() => (clipId ? knownFrameRate(clipId) : null));
 	useEffect(() => {
-		setFps(null);
-		if (!video || typeof video.requestVideoFrameCallback !== "function") return;
+		const known = clipId ? knownFrameRate(clipId) : null;
+		setFps(known);
+		if (known !== null || !video || !clipId || typeof video.requestVideoFrameCallback !== "function") return;
+		let settled = false;
+		const settle = (value: number) => {
+			if (settled) return;
+			settled = true;
+			rememberFrameRate(clipId, value);
+			setFps(value);
+		};
 		const meter = new FrameRateMeter();
 		let handle = 0;
-		let stopped = false;
 		const onFrame: VideoFrameRequestCallback = (_now, meta) => {
-			if (stopped) return;
-			meter.feed(meta.mediaTime, meta.presentedFrames);
+			if (settled) return;
+			meter.feed(meta.mediaTime, meta.presentedFrames, video.playbackRate);
 			const next = meter.fps;
+			if (meter.stable && next !== null) { settle(next); return; }
 			if (next !== null) setFps((prev) => (prev === next ? prev : next));
 			handle = video.requestVideoFrameCallback(onFrame);
 		};
 		const onSeeking = () => meter.reset();
 		handle = video.requestVideoFrameCallback(onFrame);
 		video.addEventListener("seeking", onSeeking);
+		const src = video.currentSrc || video.getAttribute("src") || "";
+		const cancelProbe = src ? probeFrameRate(src, settle) : () => {};
 		return () => {
-			stopped = true;
+			settled = true;
+			cancelProbe();
 			video.cancelVideoFrameCallback?.(handle);
 			video.removeEventListener("seeking", onSeeking);
 		};
-	}, [video]);
+	}, [video, clipId]);
 	return fps;
 }
 
@@ -134,24 +197,32 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 		return combo ? `${label} (${combo})` : label;
 	};
 
-	const seekToPointer = useCallback((clientX: number) => {
+	/**
+	 * While dragging, `fastSeek` jumps to the nearest keyframe — a precise seek per
+	 * pointer move would decode a whole GOP each time on a long file. The release
+	 * lands precisely.
+	 */
+	const seekToPointer = useCallback((clientX: number, precise: boolean) => {
 		const track = trackRef.current;
 		if (!track || !Number.isFinite(video.duration)) return;
 		const rect = track.getBoundingClientRect();
 		const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0;
-		video.currentTime = ratio * video.duration;
+		const target = ratio * video.duration;
+		if (!precise && typeof video.fastSeek === "function") video.fastSeek(target);
+		else video.currentTime = target;
 	}, [video]);
 
 	const onSliderKey = (e: React.KeyboardEvent) => {
-		const duration = Number.isFinite(video.duration) ? video.duration : 0;
-		let next: number | null = null;
-		if (e.key === "ArrowRight" || e.key === "ArrowUp") next = video.currentTime + SEEK_STEP_SECONDS;
-		else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = video.currentTime - SEEK_STEP_SECONDS;
-		else if (e.key === "Home") next = 0;
-		else if (e.key === "End") next = duration;
-		if (next === null) return;
+		const steps: Record<string, number> = {
+			ArrowRight: SEEK_STEP_SECONDS, ArrowUp: SEEK_STEP_SECONDS,
+			ArrowLeft: -SEEK_STEP_SECONDS, ArrowDown: -SEEK_STEP_SECONDS,
+			PageUp: PAGE_SEEK_SECONDS, PageDown: -PAGE_SEEK_SECONDS,
+		};
+		if (e.key in steps) seekVideoBy(video, steps[e.key]);
+		else if (e.key === "Home") video.currentTime = 0;
+		else if (e.key === "End" && Number.isFinite(video.duration)) video.currentTime = video.duration;
+		else return;
 		e.preventDefault();
-		video.currentTime = Math.min(duration, Math.max(0, next));
 	};
 
 	const played = timelinePercent(state.time, state.duration);
@@ -178,6 +249,7 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 				onClick={() => stepVideoFrame(video, -1, fps)}
 				title={withKeys(t("imageViewer.frameBack"), "media-frame-back")}
 				aria-label={t("imageViewer.frameBack")}
+				aria-keyshortcuts=","
 				data-testid="video-frame-back"
 				className={iconBtn}
 			>
@@ -188,6 +260,7 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 				onClick={() => stepVideoFrame(video, 1, fps)}
 				title={withKeys(t("imageViewer.frameForward"), "media-frame-forward")}
 				aria-label={t("imageViewer.frameForward")}
+				aria-keyshortcuts="."
 				data-testid="video-frame-forward"
 				className={iconBtn}
 			>
@@ -198,58 +271,66 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 				{frame !== null && <span className="ml-2 text-fg-3">{t("imageViewer.frameNumber", { frame: String(frame) })}</span>}
 			</span>
 
-			<div
-				ref={trackRef}
-				role="slider"
-				tabIndex={0}
-				aria-label={t("imageViewer.videoSeek")}
-				aria-valuemin={0}
-				aria-valuemax={Number.isFinite(state.duration) ? Math.round(state.duration) : 0}
-				aria-valuenow={Math.round(state.time)}
-				aria-valuetext={`${now} / ${total}`}
-				data-testid="video-scrubber"
-				onKeyDown={onSliderKey}
-				onPointerDown={(e) => {
-					scrubbing.current = true;
-					e.currentTarget.setPointerCapture?.(e.pointerId);
-					seekToPointer(e.clientX);
-				}}
-				onPointerMove={(e) => { if (scrubbing.current) seekToPointer(e.clientX); }}
-				onPointerUp={() => { scrubbing.current = false; }}
-				onPointerCancel={() => { scrubbing.current = false; }}
-				className="group relative mx-2 h-8 min-w-[8rem] flex-1 cursor-pointer touch-none rounded outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-			>
-				<div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-fg-muted/25">
-					<div className="h-full bg-accent" style={{ width: `${played}%` }} />
-				</div>
+			{/* Markers are a sibling layer, not children of the slider: ARIA makes a
+			    slider's children presentational, which would hide them from screen readers. */}
+			<div className="relative mx-2 h-10 min-w-[8rem] flex-1">
 				<div
-					aria-hidden="true"
-					className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_0_2px_rgb(var(--surface-raised)),0_1px_3px_rgb(0_0_0/0.35)] transition-transform group-hover:scale-110"
-					style={{ left: `${played}%` }}
-				/>
-				{markers.map((marker) => {
-					const active = marker.id === activeMarkerId;
-					return (
-						<button
-							key={marker.id}
-							type="button"
-							title={marker.label}
-							aria-label={marker.label}
-							data-testid="video-marker"
-							data-active={active ? "true" : undefined}
-							onPointerDown={(e) => e.stopPropagation()}
-							onClick={(e) => { e.stopPropagation(); onMarker(marker.id); }}
-							className="absolute top-0 flex h-full w-5 -translate-x-1/2 items-start justify-center pt-0.5 outline-none focus-visible:[&>span]:ring-2 focus-visible:[&>span]:ring-accent/60"
-							style={{ left: `${timelinePercent(marker.time, state.duration)}%` }}
-						>
-							<span
-								className={`block h-2.5 w-2.5 rotate-45 rounded-[2px] shadow-[0_0_0_1.5px_rgb(var(--surface-raised))] transition-transform ${
-									marker.done ? "bg-fg-muted" : "bg-warning"
-								} ${active ? "scale-125 ring-2 ring-accent" : ""}`}
-							/>
-						</button>
-					);
-				})}
+					ref={trackRef}
+					role="slider"
+					tabIndex={0}
+					aria-label={t("imageViewer.videoSeek")}
+					aria-valuemin={0}
+					aria-valuemax={Number.isFinite(state.duration) ? Math.round(state.duration) : 0}
+					aria-valuenow={Math.round(state.time)}
+					aria-valuetext={`${now} / ${total}`}
+					data-testid="video-scrubber"
+					onKeyDown={onSliderKey}
+					onPointerDown={(e) => {
+						scrubbing.current = true;
+						e.currentTarget.setPointerCapture?.(e.pointerId);
+						seekToPointer(e.clientX, true);
+					}}
+					onPointerMove={(e) => { if (scrubbing.current) seekToPointer(e.clientX, false); }}
+					onPointerUp={(e) => {
+						if (scrubbing.current) seekToPointer(e.clientX, true);
+						scrubbing.current = false;
+					}}
+					onPointerCancel={() => { scrubbing.current = false; }}
+					className="group absolute inset-x-0 bottom-0 h-7 cursor-pointer touch-none rounded outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+				>
+					<div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-fg-muted/25">
+						<div className="h-full bg-accent" style={{ width: `${played}%` }} />
+					</div>
+					<div
+						aria-hidden="true"
+						className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_0_2px_rgb(var(--surface-raised)),0_1px_3px_rgb(0_0_0/0.35)] transition-transform group-hover:scale-110"
+						style={{ left: `${played}%` }}
+					/>
+				</div>
+				<div className="pointer-events-none absolute inset-x-0 top-0 h-3.5">
+					{markers.map((marker) => {
+						const active = marker.id === activeMarkerId;
+						return (
+							<button
+								key={marker.id}
+								type="button"
+								title={marker.label}
+								aria-label={marker.label}
+								data-testid="video-marker"
+								data-active={active ? "true" : undefined}
+								onClick={() => onMarker(marker.id)}
+								className="pointer-events-auto absolute top-0 flex h-full w-5 -translate-x-1/2 items-center justify-center outline-none focus-visible:[&>span]:ring-2 focus-visible:[&>span]:ring-accent/60"
+								style={{ left: `${timelinePercent(marker.time, state.duration)}%` }}
+							>
+								<span
+									className={`block h-2 w-2 rotate-45 rounded-[2px] shadow-[0_0_0_1.5px_rgb(var(--surface-raised))] transition-transform ${
+										marker.done ? "bg-fg-muted" : "bg-warning"
+									} ${active ? "scale-125 ring-2 ring-accent" : ""}`}
+								/>
+							</button>
+						);
+					})}
+				</div>
 			</div>
 
 			<label className="flex flex-shrink-0 items-center" title={`${t("imageViewer.playbackSpeed")} (${keys("media-speed-down")} / ${keys("media-speed-up")})`}>

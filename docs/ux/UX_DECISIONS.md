@@ -771,4 +771,4 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 
 2026-11-22 — ⌘1–9 keys are pinned from the row's own ⌘N chip (bible §10 slot pins). Why: decisions/2026/11/22/digit-slot-pins-over-default-order.md.
 
-2026-11-24 — Video in the image viewer gets its own transport (frame step, speed, marker scrubber); timeline comments are `video-time` review anchors. Why: native scrubbers cannot carry markers. Yaml `task_image_viewer`.
+2026-11-24 — Video in the image viewer gets its own transport (frame step, speed, marker scrubber); timeline comments are `video-time` review anchors. Why: native scrubbers cannot carry markers. Dropped on purpose: volume level (mute only), PiP, OS fullscreen (viewer `f` covers it). Yaml `task_image_viewer`.

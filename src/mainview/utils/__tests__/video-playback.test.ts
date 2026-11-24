@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FrameRateMeter, PLAYBACK_RATES, estimateFps, frameAt, frameSeekTime, stepPlaybackRate, timelinePercent } from "../video-playback";
+import { FrameRateMeter, PLAYBACK_RATES, estimateFps, knownFrameRate, rememberFrameRate, frameAt, frameSeekTime, stepPlaybackRate, timelinePercent } from "../video-playback";
 
 describe("playback rate stepping", () => {
 	it("walks the offered speeds and stops at both ends", () => {
@@ -41,6 +41,36 @@ describe("frame rate estimate", () => {
 		meter.feed(5, 8); // after a seek
 		meter.feed(5.04, 9);
 		expect(meter.fps).toBe(25);
+	});
+});
+
+describe("frame rate meter stability", () => {
+	function play(meter: FrameRateMeter, fps: number, frames: number, rate = 1, start = 0) {
+		for (let i = 0; i < frames; i++) meter.feed(start + i / fps, start * fps + i + 1, rate);
+	}
+
+	it("ignores anything but 1x, where dropped frames would read as a lower rate", () => {
+		const meter = new FrameRateMeter();
+		// 2x on a 60 fps clip with every other frame dropped: gaps of 1/30 between consecutive presentations.
+		for (let i = 0; i < 40; i++) meter.feed(i / 30, i + 1, 2);
+		expect(meter.fps).toBeNull();
+		play(meter, 60, 10);
+		expect(meter.fps).toBe(60);
+	});
+
+	it("is stable only after enough agreeing samples", () => {
+		const meter = new FrameRateMeter();
+		play(meter, 25, 8);
+		expect(meter.stable).toBe(false);
+		play(meter, 25, 20, 1, 1);
+		expect(meter.stable).toBe(true);
+		expect(meter.fps).toBe(25);
+	});
+
+	it("remembers a settled rate per clip", () => {
+		expect(knownFrameRate("clip-x")).toBeNull();
+		rememberFrameRate("clip-x", 59.94);
+		expect(knownFrameRate("clip-x")).toBe(59.94);
 	});
 });
 

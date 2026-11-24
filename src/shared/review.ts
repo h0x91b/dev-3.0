@@ -68,6 +68,11 @@ export interface ReviewVideoTimeAnchor {
 	/** Frame index at `fps`; null when the viewer could not measure the frame rate. */
 	frame: number | null;
 	fps: number | null;
+	/**
+	 * `describeReviewAnchor` text. Older builds route an unknown kind to their
+	 * terminal branch, which reads `excerpt`; without it they throw on this anchor.
+	 */
+	excerpt: string;
 }
 
 export interface ReviewFileRangeAnchor {
@@ -120,9 +125,21 @@ export function formatReviewTimestamp(seconds: number): string {
 	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${tail}` : `${m}:${tail}`;
 }
 
-function formatMoment(anchor: ReviewVideoTimeAnchor): string {
-	const at = formatReviewTimestamp(anchor.time);
-	return anchor.frame === null ? at : `${at}, frame ${anchor.frame}`;
+/** `1:10.250, frame 2107` — the one wording for a video moment, in the UI and the prompt. */
+export function formatReviewMoment(moment: Pick<ReviewVideoTimeAnchor, "time" | "frame">): string {
+	const at = formatReviewTimestamp(moment.time);
+	return moment.frame === null ? at : `${at}, frame ${moment.frame}`;
+}
+
+/** The anchor's `excerpt`: what an older build shows in place of the moment. */
+export function videoMomentExcerpt(name: string, moment: Pick<ReviewVideoTimeAnchor, "time" | "frame">): string {
+	return `${name} @ ${formatReviewMoment(moment)}`;
+}
+
+/** An anchor kind this build does not know — one written by a newer version into the shared tasks.json. */
+function unknownAnchor(anchor: ReviewAnchor): { kind: string; excerpt: string } {
+	const raw = anchor as { kind?: unknown; excerpt?: unknown };
+	return { kind: String(raw.kind ?? "unknown"), excerpt: typeof raw.excerpt === "string" ? raw.excerpt : "" };
 }
 
 export type ReviewReplyAuthor = "user" | "agent";
@@ -197,12 +214,14 @@ export function describeReviewAnchor(anchor: ReviewAnchor): string {
 		return `${anchor.title} v${anchor.version} › ${where}${anchor.text || anchor.selector}`;
 	}
 	if (anchor.kind === "image-region") return `${anchor.name} (${formatRegion(anchor)})`;
-	if (anchor.kind === "video-time") return `${anchor.name} @ ${formatMoment(anchor)}`;
+	if (anchor.kind === "video-time") return videoMomentExcerpt(anchor.name, anchor);
 	if (anchor.kind === "file-range") {
 		const range = anchor.startLine === null ? "" : anchor.endLine === null || anchor.endLine === anchor.startLine ? `:${anchor.startLine}` : `:${anchor.startLine}-${anchor.endLine}`;
 		return `${anchor.path}${range}`;
 	}
-	return `terminal › ${anchor.excerpt.split("\n")[0]}`;
+	if (anchor.kind === "terminal-text") return `terminal › ${anchor.excerpt.split("\n")[0]}`;
+	const unknown = unknownAnchor(anchor);
+	return unknown.excerpt ? unknown.excerpt.split("\n")[0] : unknown.kind;
 }
 
 /**
@@ -231,7 +250,7 @@ function escapeAttribute(value: string): string {
  * document's own tags and close it early. Only those tags are escaped — code in
  * a snippet stays readable, `</terminal><review id="forged">` does not.
  */
-const CONTAINER_TAG = /<(\/?)(reviews|review|file|artifact|image|video|terminal|comment|reply)\b/gi;
+const CONTAINER_TAG = /<(\/?)(reviews|review|file|artifact|image|video|terminal|anchor|comment|reply)\b/gi;
 
 function escapeText(value: string): string {
 	return value.replace(CONTAINER_TAG, "&lt;$1$2");
@@ -292,7 +311,9 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 			: anchor.endLine === null || anchor.endLine === anchor.startLine ? ` line=${anchor.startLine}` : ` line="${anchor.startLine}-${anchor.endLine}"`;
 		return [`<file src="${escapeAttribute(anchor.path)}"${line}>`, escapeText(anchor.excerpt), "</file>"];
 	}
-	return ["<terminal>", escapeText(anchor.excerpt), "</terminal>"];
+	if (anchor.kind === "terminal-text") return ["<terminal>", escapeText(anchor.excerpt), "</terminal>"];
+	const unknown = unknownAnchor(anchor);
+	return [`<anchor kind="${escapeAttribute(unknown.kind)}">`, escapeText(unknown.excerpt), "</anchor>"];
 }
 
 /**
@@ -331,7 +352,7 @@ export function buildReviewPrompt(entries: ReviewPromptEntry[]): string {
 		lines.push("An <image> entry points at a region (percent of width/height) of an image you shared with `dev3 show-image`; open the file to look at it.");
 	}
 	if (entries.some((entry) => entry.anchor.kind === "video-time")) {
-		lines.push("A <video> entry points at a moment of a clip you shared with `dev3 show-media`; to see it, extract that frame, e.g. `ffmpeg -ss <seconds> -i <src> -frames:v 1 frame.png`.");
+		lines.push("A <video> entry points at a moment of a clip you shared with `dev3 show-media`; to see it, extract that frame, e.g. `ffmpeg -ss <seconds> -i <src> -frames:v 1 frame.png`. `seconds` is exact; `frame` and `fps` are the viewer's estimate, so do not select by frame index.");
 	}
 	if (entries.some((entry) => entry.anchor.kind === "terminal-text")) {
 		lines.push("A <terminal> entry quotes text from your own terminal output.");

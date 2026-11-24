@@ -26,16 +26,27 @@ export function estimateFps(intervals: readonly number[]): number | null {
 	return Math.abs(nearest - raw) / nearest <= 0.015 ? nearest : Math.round(raw * 100) / 100;
 }
 
+/** Gaps needed, and how many feeds in a row must agree, before the rate is final. */
+const STABLE_MIN_SAMPLES = 12;
+const STABLE_AGREEING_FEEDS = 8;
+
 /**
  * Collects frame gaps from `requestVideoFrameCallback`. Only a gap between two
- * frames presented back to back counts: a dropped frame or a seek would read as
- * a lower rate.
+ * consecutive presented frames counts, and only at 1x: at higher speeds the
+ * engine drops frames, and the gap around a dropped one reads as a lower rate.
+ * Once the estimate holds steady it is `stable` and should be frozen.
  */
 export class FrameRateMeter {
 	private last: { mediaTime: number; presentedFrames: number } | null = null;
 	private readonly intervals: number[] = [];
+	private previous: number | null = null;
+	private agreeing = 0;
 
-	feed(mediaTime: number, presentedFrames: number): void {
+	feed(mediaTime: number, presentedFrames: number, playbackRate = 1): void {
+		if (playbackRate !== 1) {
+			this.last = null;
+			return;
+		}
 		const prev = this.last;
 		this.last = { mediaTime, presentedFrames };
 		if (!prev || presentedFrames - prev.presentedFrames !== 1) return;
@@ -43,6 +54,9 @@ export class FrameRateMeter {
 		if (gap <= 0) return;
 		this.intervals.push(gap);
 		if (this.intervals.length > 60) this.intervals.shift();
+		const now = estimateFps(this.intervals);
+		this.agreeing = now !== null && now === this.previous ? this.agreeing + 1 : 0;
+		this.previous = now;
 	}
 
 	/** A seek breaks the chain of consecutive frames. */
@@ -53,6 +67,21 @@ export class FrameRateMeter {
 	get fps(): number | null {
 		return estimateFps(this.intervals);
 	}
+
+	get stable(): boolean {
+		return this.intervals.length >= STABLE_MIN_SAMPLES && this.agreeing >= STABLE_AGREEING_FEEDS;
+	}
+}
+
+const frameRateByClip = new Map<string, number>();
+
+/** A clip's settled frame rate, kept for the session so a remount does not lose it. */
+export function knownFrameRate(clipId: string): number | null {
+	return frameRateByClip.get(clipId) ?? null;
+}
+
+export function rememberFrameRate(clipId: string, fps: number): void {
+	frameRateByClip.set(clipId, fps);
 }
 
 /** Index of the frame shown at `time`. */

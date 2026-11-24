@@ -494,7 +494,7 @@ describe("TaskImageViewer with a shared video", () => {
 	it("switches back to a picture when stepping off the clip", async () => {
 		renderMixed(1);
 		await screen.findByTestId("viewer-main-video");
-		fireEvent.keyDown(window, { key: "ArrowRight" });
+		await userEvent.click(screen.getByRole("button", { name: "Next image" }));
 		await waitFor(() => expect(screen.getByTestId("viewer-main-image")).toHaveAttribute("alt", "three.png"));
 		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
 	});
@@ -552,7 +552,7 @@ describe("TaskImageViewer video review", () => {
 	const clip: SharedImage = { ...img("v", "demo.mp4"), storedPath: "/wt/shared-media/v.mp4", mime: "video/mp4" };
 	const moment = (id: string, time: number, body: string, extra: Record<string, unknown> = {}) => ({
 		id, body, createdAt: "2026-11-24T00:00:00.000Z",
-		anchor: { kind: "video-time", imageId: "v", name: "demo.mp4", path: "/wt/shared-media/v.mp4", caption: null, time, frame: null, fps: null },
+		anchor: { kind: "video-time", imageId: "v", name: "demo.mp4", path: "/wt/shared-media/v.mp4", caption: null, time, frame: null, fps: null, excerpt: `demo.mp4 @ ${time}` },
 		...extra,
 	});
 
@@ -621,7 +621,7 @@ describe("TaskImageViewer video review", () => {
 			projectId: "p1",
 			comment: expect.objectContaining({
 				body: "Button flickers",
-				anchor: { kind: "video-time", imageId: "v", name: "demo.mp4", path: "/wt/shared-media/v.mp4", caption: null, time: 70.25, frame: null, fps: null },
+				anchor: { kind: "video-time", imageId: "v", name: "demo.mp4", path: "/wt/shared-media/v.mp4", caption: null, time: 70.25, frame: null, fps: null, excerpt: "demo.mp4 @ 1:10.250" },
 			}),
 		}));
 		expect(await screen.findByTestId("video-marker")).toHaveAccessibleName("Comment 1 at 1:10.250: Button flickers");
@@ -648,6 +648,41 @@ describe("TaskImageViewer video review", () => {
 		expect(text).toContain('<video src="/wt/shared-media/v.mp4" time="1:30.000" seconds="90"/>');
 		expect(text).not.toContain("Done");
 		await waitFor(() => expect(reviewApi().markReviewCommentsSent).toHaveBeenCalledWith(expect.objectContaining({ commentIds: ["m1", "m2"] })));
+	});
+
+	it("seeks with the arrows instead of leaving the clip and losing the position", async () => {
+		const { video, at } = await renderClip();
+		at(100);
+		fireEvent.keyDown(window, { key: "ArrowRight" });
+		expect(video.currentTime).toBe(105);
+		fireEvent.keyDown(window, { key: "ArrowLeft" });
+		fireEvent.keyDown(window, { key: "ArrowLeft" });
+		expect(video.currentTime).toBe(95);
+		expect(screen.getByTestId("viewer-main-video")).toBe(video);
+	});
+
+	it("keeps markers out of the slider so screen readers can reach them", async () => {
+		await renderClip([moment("m1", 12.5, "Early")]);
+		const marker = await screen.findByTestId("video-marker");
+		expect(screen.getByTestId("video-scrubber").contains(marker)).toBe(false);
+		expect(screen.getByRole("button", { name: "Comment 1 at 0:12.500: Early" })).toBe(marker);
+	});
+
+	it("drags with keyframe seeks and lands precisely on release", async () => {
+		const { video } = await renderClip();
+		const fastSeek = vi.fn();
+		Object.defineProperty(video, "fastSeek", { configurable: true, value: fastSeek });
+		const scrubber = screen.getByTestId("video-scrubber");
+		scrubber.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 28, right: 400, bottom: 28, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		scrubber.setPointerCapture = () => {};
+		fireEvent.pointerDown(scrubber, { clientX: 100, pointerId: 1 });
+		expect(video.currentTime).toBe(30);
+		fireEvent.pointerMove(scrubber, { clientX: 200, pointerId: 1 });
+		expect(fastSeek).toHaveBeenCalledWith(60);
+		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
+		expect(video.currentTime).toBe(90);
+		fireEvent.keyDown(scrubber, { key: "PageDown" });
+		expect(video.currentTime).toBe(30);
 	});
 
 	it("offers no comment action without a project to store it in", async () => {

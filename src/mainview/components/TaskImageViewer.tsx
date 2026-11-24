@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSharedAudio, isSharedClip, type SharedImage, type Task } from "../../shared/types";
-import { clipReviewExcerpt, formatReviewTimestamp, type ReviewComment, type ReviewImageRegionAnchor, type ReviewVideoTimeAnchor } from "../../shared/review";
+import { clipReviewExcerpt, formatReviewMoment, videoMomentExcerpt, type ReviewComment, type ReviewImageRegionAnchor, type ReviewVideoTimeAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from "../review/ImageRegionOverlay";
 import { useReviewSend } from "../review/useReviewSend";
@@ -18,7 +18,7 @@ import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 import VideoFrameThumb from "./VideoFrameThumb";
 import { primeFirstFrame } from "../utils/video-first-frame";
-import VideoReviewBar, { stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
+import VideoReviewBar, { SEEK_STEP_SECONDS, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
 import { frameAt, frameSeekTime } from "../utils/video-playback";
 import { matchesShortcut } from "../keymap";
 
@@ -41,11 +41,6 @@ interface TaskImageViewerProps {
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
 const AUDIO_GLYPH = "\uf001";
-
-function momentLabel(anchor: Pick<ReviewVideoTimeAnchor, "time" | "frame">): string {
-	const at = formatReviewTimestamp(anchor.time);
-	return anchor.frame === null ? at : `${at} · #${anchor.frame}`;
-}
 
 function clipErrorKey(clip: "video" | "audio" | null, loadFailed: boolean) {
 	if (clip === "audio") return loadFailed ? "imageViewer.audioLoadError" : "imageViewer.audioUnsupported";
@@ -174,7 +169,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			: []),
 		[current, clip, review.comments],
 	);
-	const fps = useVideoFrameRate(clip === "video" ? videoEl : null);
+	const fps = useVideoFrameRate(clip === "video" ? videoEl : null, current?.id ?? null);
 	const commentAtPlayhead = useCallback(() => {
 		const video = playerRef.current;
 		if (!canComment || clip !== "video" || !(video instanceof HTMLVideoElement)) return;
@@ -198,7 +193,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		return {
 			id: comment.id,
 			time: anchor.time,
-			label: t("imageViewer.videoMarker", { n: String(i + 1), time: momentLabel(anchor), body: clipReviewExcerpt(comment.body, 80) }),
+			label: t("imageViewer.videoMarker", { n: String(i + 1), time: formatReviewMoment(anchor), body: clipReviewExcerpt(comment.body, 80) }),
 			done: Boolean(comment.sentAt || comment.resolvedAt),
 		};
 	}), [videoComments, t]);
@@ -341,6 +336,10 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 				if (matchesShortcut(e, "media-speed-down", ctx)) { consume(); stepVideoRate(video, -1); return; }
 				if (matchesShortcut(e, "media-speed-up", ctx)) { consume(); stepVideoRate(video, 1); return; }
 				if (canComment && matchesShortcut(e, "media-comment-at-playhead", ctx)) { consume(); commentAtPlayhead(); return; }
+				// Arrows seek a video instead of leaving it: moving to another item would
+				// remount the clip at 0:00. The chevrons and the rail still change items.
+				if (e.key === "ArrowRight") { consume(); seekVideoBy(video, SEEK_STEP_SECONDS); return; }
+				if (e.key === "ArrowLeft") { consume(); seekVideoBy(video, -SEEK_STEP_SECONDS); return; }
 			}
 			if (e.key === "ArrowRight") { consume(); go(1); }
 			else if (e.key === "ArrowLeft") { consume(); go(-1); }
@@ -431,6 +430,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			path: current.storedPath,
 			caption: current.caption ? clipReviewExcerpt(current.caption) : null,
 			...pendingMoment,
+			excerpt: videoMomentExcerpt(current.name, pendingMoment),
 		};
 		const comment: ReviewComment = { id: crypto.randomUUID(), body, createdAt: new Date().toISOString(), anchor };
 		review.add(comment);
@@ -671,8 +671,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						send={send}
 						activeCommentId={activeCommentId}
 						onActivate={seekToComment}
-						labelFor={(comment, i) => `${i + 1} · ${momentLabel(comment.anchor as ReviewVideoTimeAnchor)}`}
-						pendingLabel={pendingMoment ? `${current.name} · ${momentLabel(pendingMoment)}` : null}
+						labelFor={(comment, i) => `${i + 1} · ${formatReviewMoment(comment.anchor as ReviewVideoTimeAnchor)}`}
+						pendingLabel={pendingMoment ? `${current.name} · ${formatReviewMoment(pendingMoment)}` : null}
 						onSubmitPick={addMomentComment}
 						onCancelPick={() => setPendingMoment(null)}
 						hint={t("imageViewer.videoCommentModeHint")}
