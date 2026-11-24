@@ -7,7 +7,7 @@
  *       .claude.json                               — per-account identity/trust/onboarding
  *       .credentials.json                          — per-account OAuth token (0600)
  *       everything else                            — symlinks into ~/.claude,
- *                                                    minus CLAUDE_PRIVATE_ENTRIES
+ *                                                    minus private entries (isPrivateClaudeEntry)
  *       a symlink instead of a dir                 — a slot the user's own tool linked to its
  *                                                    folder: never scaffolded into, never removed
  *                                                    through (see isLinkedClaudeSlot)
@@ -1341,8 +1341,7 @@ export async function importCurrentClaudeAccount(paths: AccountPaths = defaultAc
 	scaffoldClaudeAccountDir(dir, paths);
 	// Keep oauthAccount (the imported login); the analytics ids must be fresh per account.
 	const imported = { ...(claudeJson as Record<string, unknown>) };
-	delete imported.userID;
-	delete imported.machineID;
+	for (const key of CLAUDE_PER_INSTALL_IDS) delete imported[key];
 	writeFileSync(join(dir, ".claude.json"), JSON.stringify(imported, null, 2), { mode: 0o600 });
 	if (!(await ensureClaudeCredentialsFile(dir, paths))) {
 		rmSync(dir, { recursive: true, force: true });
@@ -1362,15 +1361,25 @@ export interface ClaudeApiProfileInput {
 	env?: Record<string, string>;
 }
 
+/** Per-install analytics ids in .claude.json: never copied into another account. */
+const CLAUDE_PER_INSTALL_IDS = ["userID", "machineID", "anonymousId"];
+
+/** Server caches and flags bound to the login's org/account: Claude Code refetches
+ *  them for a new login, so a seed must not carry the system login's. */
+const CLAUDE_LOGIN_CACHE_KEY = /^cached|Cache$|CacheSlots$/;
+const CLAUDE_ORG_BOUND_FLAGS = ["hasAvailableSubscription", "penguinModeOrgEnabled", "managedSettingsNoticeSeenOrg"];
+
 /** Seed a fresh per-account .claude.json from the system one: keeps onboarding
- *  state, drops the identity: login and analytics ids. Shared by the login flow and API profiles. */
+ *  state, drops the identity: login, analytics ids and org-bound caches. Shared by the login flow and API profiles. */
 function seedClaudeJson(paths: AccountPaths): Record<string, unknown> {
 	const seed = safeReadJson(paths.claudeJson);
 	const seeded: Record<string, unknown> =
 		seed && typeof seed === "object" && !Array.isArray(seed) ? { ...(seed as Record<string, unknown>) } : { hasCompletedOnboarding: true };
 	delete seeded.oauthAccount;
-	delete seeded.userID;
-	delete seeded.machineID;
+	for (const key of CLAUDE_PER_INSTALL_IDS) delete seeded[key];
+	for (const key of Object.keys(seeded)) {
+		if (CLAUDE_LOGIN_CACHE_KEY.test(key) || CLAUDE_ORG_BOUND_FLAGS.includes(key)) delete seeded[key];
+	}
 	return seeded;
 }
 

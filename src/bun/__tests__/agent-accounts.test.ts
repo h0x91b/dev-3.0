@@ -88,6 +88,12 @@ function seedClaudeLogin(email = "main@example.com", accountUuid = "claude-acc-1
 			hasCompletedOnboarding: true,
 			userID: "fake-user-id",
 			machineID: "fake-machine-id",
+			anonymousId: "fake-anonymous-id",
+			cachedGrowthBookFeatures: { fakeFlag: true },
+			s1mAccessCache: { fakeOrg: true },
+			clientDataCacheSlots: { fakeSlot: 1 },
+			penguinModeOrgEnabled: true,
+			numStartups: 7,
 			oauthAccount: { emailAddress: email, organizationName: "Org", userRateLimitTier: "default_claude_max_5x", accountUuid },
 			projects: {},
 		}),
@@ -287,6 +293,11 @@ describe("importCurrentClaudeAccount", () => {
 		expect(imported.hasCompletedOnboarding).toBe(true);
 		expect(imported.userID).toBeUndefined();
 		expect(imported.machineID).toBeUndefined();
+		expect(imported.anonymousId).toBeUndefined();
+		// The import IS the system login: its server caches stay valid.
+		for (const key of ["cachedGrowthBookFeatures", "s1mAccessCache", "clientDataCacheSlots", "penguinModeOrgEnabled"]) {
+			expect(imported).toHaveProperty(key);
+		}
 		expect(existsSync(join(dir, ".credentials.json"))).toBe(true);
 		// Shared entries are symlinked into ~/.claude, not copied.
 		expect(lstatSync(join(dir, "settings.json")).isSymbolicLink()).toBe(true);
@@ -371,6 +382,11 @@ describe("claude login flow", () => {
 		expect(seeded.hasCompletedOnboarding).toBe(true);
 		expect(seeded.userID).toBeUndefined();
 		expect(seeded.machineID).toBeUndefined();
+		expect(seeded.anonymousId).toBeUndefined();
+		for (const key of ["cachedGrowthBookFeatures", "s1mAccessCache", "clientDataCacheSlots", "penguinModeOrgEnabled"]) {
+			expect(seeded).not.toHaveProperty(key);
+		}
+		expect(seeded.numStartups).toBe(7);
 	});
 
 	it("complete fails before the login happened", async () => {
@@ -899,6 +915,11 @@ describe("claude API profiles", () => {
 		expect(seeded.oauthAccount).toBeUndefined();
 		expect(seeded.userID).toBeUndefined();
 		expect(seeded.machineID).toBeUndefined();
+		expect(seeded.anonymousId).toBeUndefined();
+		for (const key of ["cachedGrowthBookFeatures", "s1mAccessCache", "clientDataCacheSlots", "penguinModeOrgEnabled"]) {
+			expect(seeded).not.toHaveProperty(key);
+		}
+		expect(seeded.numStartups).toBe(7);
 		expect(seeded.hasCompletedOnboarding).toBe(true);
 		expect(seeded.customApiKeyResponses.approved).toContain("sk-or-key-1234567890abcdef".slice(-20));
 	});

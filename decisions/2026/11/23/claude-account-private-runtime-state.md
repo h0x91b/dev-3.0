@@ -21,11 +21,15 @@ fetched and issued per login.
 `.config.json`, `hfi-auth.json`, the MCP auth/discovery caches, `remote-control` and `ccr`.
 A prefix list adds `daemon*`, `policy-limits.json*` and `remote-settings.json*`.
 `scaffoldClaudeAccountDir` removes an existing symlink to such an entry only when it points exactly
-at `~/.claude/<entry>`, the link scaffolding made; real files, links elsewhere and `~/.claude` itself are never touched. Transcripts,
-memory and history stay shared: the same projects run under different accounts and resume crosses
-accounts. The per-install analytics ids `userID` and `machineID` are no longer copied into a new
+at `~/.claude/<entry>`, the link scaffolding made; real files, links elsewhere and `~/.claude`
+itself are never touched. Transcripts, memory and history stay shared: the same projects run under
+different accounts and resume crosses accounts. The per-install analytics ids `userID`, `machineID`
+and `anonymousId` are no longer copied into a new
 account's `.claude.json` (seeding and import both drop them; import keeps `oauthAccount`), so Claude
-Code generates fresh ones and the account reports its own user and device.
+Code generates fresh ones and the account reports its own user and device. Seeding (new login and
+API profile, not import) also drops the system login's org-bound server caches (top-level keys
+matching `^cached`, `Cache$`, `CacheSlots$`, and three org flags) so Claude Code refetches them for
+the new login.
 
 ## Risks
 
@@ -33,7 +37,9 @@ A newly private entry starts empty per account and is recreated by Claude Code o
 per-login file is shared until it is added to the list; the credential-shaped patterns remain the
 safety net. A prefix such as `daemon` also hides an unrelated future entry that happens to start
 with it. Existing accounts keep the ids they already copied: user state is not rewritten
-automatically, and a one-off local cleanup is the user's call.
+automatically, and a one-off local cleanup is the user's call. On the first launch after upgrading,
+a session already running on an account may keep its daemon under `~/.claude` while the new session
+starts its own, so a second daemon can run once until the old session ends.
 
 ## Alternatives considered
 
