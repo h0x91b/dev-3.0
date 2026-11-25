@@ -4490,11 +4490,20 @@ describe("cross-board note and overview refs", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([makeProject(), writerBoard]);
 		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/boards/other/todo/brief.md");
 		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...target, ...change }) as Task);
-		const note = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "Read todo/brief.md, not todo/none.md", sourceTaskId: writer.id }));
-		const overview = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Drafting todo/brief.md", sourceTaskId: writer.id }));
-		vi.mocked(existsSync).mockImplementation(() => false);
-		expect((note.data as Task).notes?.[0]?.content).toBe("Read path:proj-2/todo/brief.md, not todo/none.md");
-		expect((overview.data as Task).overview).toBe("Drafting path:proj-2/todo/brief.md");
+		try {
+			const note = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "Read todo/brief.md, not todo/none.md", sourceTaskId: writer.id }));
+			const overview = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Drafting todo/brief.md", sourceTaskId: writer.id }));
+			expect((note.data as Task).notes?.[0]?.content).toBe("Read path:proj-2/todo/brief.md, not todo/none.md");
+			expect((overview.data as Task).overview).toBe("Drafting path:proj-2/todo/brief.md");
+			// A line already in the old overview stays plain; only the new one is tokenized.
+			const edited = { ...target, overview: "Old todo/brief.md" };
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [edited]));
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...edited, ...change }) as Task);
+			const mixed = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Old todo/brief.md\nNew todo/brief.md", sourceTaskId: writer.id }));
+			expect((mixed.data as Task).overview).toBe("Old todo/brief.md\nNew path:proj-2/todo/brief.md");
+		} finally {
+			vi.mocked(existsSync).mockImplementation(() => false);
+		}
 	});
 });
 

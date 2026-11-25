@@ -1292,9 +1292,17 @@ export async function moveTaskToProject(
 			const retargetTitle = (text: string) => renumberSelfRefs(qualifyRefsFor(text, sourceProject.id, targetProject.id), sourceProject.id, source.seq, seq);
 			const sourceRoot = sourceProject.kind !== "virtual" ? sourceProject.path : "";
 			const targetRoot = targetProject.kind !== "virtual" && targetProject.path ? targetProject.path : null;
+			// One memo per move: the disk checks run under both locks, so their cap is per move.
+			const sourceOnly = sourceRoot ? writerOnly(sourceRoot, targetRoot) : null;
 			const retarget = (text: string) => {
 				const refs = retargetTitle(text);
-				return sourceRoot ? qualifyPathsFor(refs, sourceProject.id, targetProject.id, writerOnly(sourceRoot, targetRoot)) : refs;
+				if (!sourceOnly) return refs;
+				try {
+					return qualifyPathsFor(refs, sourceProject.id, targetProject.id, sourceOnly);
+				} catch (err) {
+					log.warn("Move: path qualification skipped", { taskId, error: String(err) });
+					return refs;
+				}
 			};
 			const optional = (fn: (text: string) => string) => (text: string | null | undefined) => (text ? fn(text) : text);
 			const moved: Task = {

@@ -12,7 +12,8 @@
 
 ## 3. Risks
 
-- The move checks the disk while it holds both task-file locks. At most 64 distinct paths per text are checked, so the lock is held a few milliseconds longer.
+- The move checks the disk while it holds both task-file locks. One memo serves the whole move, so at most 64 distinct paths are checked per move; later ones stay plain. On a slow mount (9p under WSL) each check still costs a stat.
+- Path qualification in a move is best effort: if it throws, the move logs a warning and keeps the plain paths rather than failing.
 - A file created in the source after the move is not picked up; the text was rewritten once, at move time.
 - A task moved from a virtual (Operations) board has no project root, so its paths stay as written.
 
