@@ -17,6 +17,8 @@ import {
 	libraryDayBucket,
 	libraryDiskGroups,
 	libraryViewerSiblings,
+	isLibraryItemDeletable,
+	libraryDeleteGroups,
 	sortLibraryItems,
 	summarizeLibrary,
 	taskLibraryItems,
@@ -210,6 +212,30 @@ describe("library renderer helpers", () => {
 		const next = replaceTaskLibraryItems([checked, other], "p1", "t1", fresh);
 		expect(next.map((i) => i.key)).toEqual(["p2:t9:x", "p1:t1:i1", "p1:t1:new"]);
 		expect(replaceTaskLibraryItems(next, "p1", "t1", []).map((i) => i.key)).toEqual(["p2:t9:x"]);
+	});
+
+	it("lists a clip the user deleted as a tombstone: no bytes, not missing, never deletable again", () => {
+		const clip = media({ id: "v1", mime: "video/mp4", name: "cut.mp4", bytes: 50, removedAt: 5000, removedBytes: 50 });
+		const [item] = taskLibraryItems(project, task({ sharedVideos: [clip] }));
+		mockExists.mockReturnValue(false);
+		const checked = applyLibraryPresence(item, existsSync);
+		expect(checked).toMatchObject({ removedAt: 5000, bytes: 0, goneBytes: 0, missing: false });
+		expect(isLibraryItemDeletable(checked)).toBe(false);
+		mockExists.mockReturnValue(true);
+	});
+
+	it("groups only deletable clips per task for the delete call", () => {
+		const items = [
+			...taskLibraryItems(project, task({ id: "t1", sharedVideos: [media({ id: "v1", mime: "video/mp4" })], sharedImages: [media({ id: "i1" })] })),
+			...taskLibraryItems(project, task({ id: "t2", sharedAudio: [media({ id: "a1", mime: "audio/mpeg" }), media({ id: "a2", mime: "audio/mpeg", removedAt: 1 })] })),
+		];
+		expect(libraryDeleteGroups(items).map((g) => [g.taskId, g.items.map((i) => i.id)])).toEqual([["t1", ["v1"]], ["t2", ["a1"]]]);
+	});
+
+	it("takes a pushed tombstone over the presence it remembered", () => {
+		const before = taskLibraryItems(project, task({ sharedVideos: [media({ id: "v1", mime: "video/mp4", bytes: 50 })] }));
+		const after = taskLibraryItems(project, task({ sharedVideos: [media({ id: "v1", mime: "video/mp4", bytes: 50, removedAt: 9 })] }));
+		expect(mergeTaskLibraryItems(before, after)[0]).toMatchObject({ removedAt: 9, bytes: 0 });
 	});
 
 	it("gives the viewer the task's own reports in artifact order", () => {

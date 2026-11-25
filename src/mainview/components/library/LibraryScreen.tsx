@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	filterLibraryItems,
+	isLibraryItemDeletable,
+	libraryDeleteGroups,
 	libraryDayBucket,
 	libraryDiskGroups,
 	libraryViewerSiblings,
@@ -17,7 +19,10 @@ import type { Task } from "../../../shared/types";
 import { useAgents } from "../../hooks/useAgents";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { statusKey, useT, type TranslationKey } from "../../i18n";
-import { api } from "../../rpc";
+import { api, isElectrobun } from "../../rpc";
+import { confirmDeleteSharedMediaGroups } from "../../shared-media-delete";
+import { toast } from "../../toast";
+import ControlMenu, { type ControlMenuEntry } from "../ControlMenu";
 import { useProjectPrivacy } from "../../sensitive-projects";
 import { formatBytes } from "../../utils/formatBytes";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
@@ -52,7 +57,15 @@ export interface LibraryScreenProps {
 
 type LoadState = { phase: "loading" } | { phase: "error" } | { phase: "ready"; items: LibraryItem[] };
 
-function useLibrary(): { state: LoadState; reload: () => void; markSeen: (keys: string[]) => void } {
+interface LibraryHandle {
+	state: LoadState;
+	reload: () => void;
+	markSeen: (keys: string[]) => void;
+	/** Rebuild one task's items from a task record (a push, or a mutation's own reply). */
+	patchTask: (projectId: string, task: Task) => void;
+}
+
+function useLibrary(): LibraryHandle {
 	const [state, setState] = useState<LoadState>({ phase: "loading" });
 	const alive = useRef(true);
 	const reload = useCallback(() => {
@@ -61,34 +74,38 @@ function useLibrary(): { state: LoadState; reload: () => void; markSeen: (keys: 
 			.then((report) => { if (alive.current) setState({ phase: "ready", items: report.items }); })
 			.catch(() => { if (alive.current) setState((prev) => (prev.phase === "ready" ? prev : { phase: "error" })); });
 	}, []);
+	// A push carries the whole task, so only that task's items are rebuilt here: the full
+	// archive is megabytes, and `taskUpdated` fires for every status and activity change.
+	const patchTask = useCallback((projectId: string, task: Task) => {
+		let unknownProject = false;
+		setState((prev) => {
+			if (prev.phase !== "ready") return prev;
+			const projectName = prev.items.find((item) => item.projectId === projectId)?.projectName;
+			let fresh: LibraryItem[] = [];
+			try {
+				fresh = projectName == null ? [] : taskLibraryItems({ id: projectId, name: projectName }, task);
+			} catch {
+				return prev;
+			}
+			if (projectName == null) {
+				// Its first output in a project this list has never seen: the name comes from the host.
+				unknownProject = taskLibraryItems({ id: projectId, name: "" }, task).length > 0;
+				return prev;
+			}
+			const hadAny = prev.items.some((item) => item.taskId === task.id && item.projectId === projectId);
+			if (!hadAny && fresh.length === 0) return prev;
+			return { phase: "ready", items: replaceTaskLibraryItems(prev.items, projectId, task.id, fresh) };
+		});
+		if (unknownProject) reload();
+	}, [reload]);
+	const patchTaskRef = useRef(patchTask);
+	patchTaskRef.current = patchTask;
 	useEffect(() => {
 		alive.current = true;
 		reload();
-		// A push carries the whole task, so only that task's items are rebuilt here: the full
-		// archive is megabytes, and `taskUpdated` fires for every status and activity change.
 		const onTaskUpdated = (e: Event) => {
 			const { projectId, task } = (e as CustomEvent<{ projectId: string; task: Task }>).detail ?? {};
-			if (!projectId || !task) return;
-			let unknownProject = false;
-			setState((prev) => {
-				if (prev.phase !== "ready") return prev;
-				const projectName = prev.items.find((item) => item.projectId === projectId)?.projectName;
-				let fresh: LibraryItem[] = [];
-				try {
-					fresh = projectName == null ? [] : taskLibraryItems({ id: projectId, name: projectName }, task);
-				} catch {
-					return prev;
-				}
-				if (projectName == null) {
-					// Its first output in a project this list has never seen: the name comes from the host.
-					unknownProject = taskLibraryItems({ id: projectId, name: "" }, task).length > 0;
-					return prev;
-				}
-				const hadAny = prev.items.some((item) => item.taskId === task.id && item.projectId === projectId);
-				if (!hadAny && fresh.length === 0) return prev;
-				return { phase: "ready", items: replaceTaskLibraryItems(prev.items, projectId, task.id, fresh) };
-			});
-			if (unknownProject) reload();
+			if (projectId && task) patchTaskRef.current(projectId, task);
 		};
 		const onTaskRemoved = (e: Event) => {
 			const { projectId, taskId } = (e as CustomEvent<{ projectId: string; taskId: string }>).detail ?? {};
@@ -109,7 +126,7 @@ function useLibrary(): { state: LoadState; reload: () => void; markSeen: (keys: 
 			prev.phase === "ready" ? { phase: "ready", items: prev.items.map((item) => (seen.has(item.key) && item.unread ? { ...item, unread: false } : item)) } : prev,
 		);
 	}, []);
-	return { state, reload, markSeen };
+	return { state, reload, markSeen, patchTask };
 }
 
 function formatStamp(ms: number, withDate: boolean): string {
@@ -172,7 +189,9 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const agents = useAgents();
 	const privacy = useProjectPrivacy();
-	const { state, reload, markSeen } = useLibrary();
+	const { state, reload, markSeen, patchTask } = useLibrary();
+	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+	const [menu, setMenu] = useState<{ item: LibraryItem; pos: { top: number; left: number }; opener: HTMLElement } | null>(null);
 	const [scope, setScope] = useState<string>(projectId ?? ALL_PROJECTS);
 	const [taskScope, setTaskScope] = useState<{ id: string; title: string } | null>(null);
 	const [kind, setKind] = useState<LibraryKind | "all">("all");
@@ -228,6 +247,59 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 		// The viewer marks the records read on the host; reflect it now, the refetch confirms it.
 		if (item.kind === "report") markSeen(libraryViewerSiblings(items, item).map((s) => s.key));
 		else markSeen([item.key]);
+	};
+
+	// A selection only ever holds clips that can still be deleted: a push that tombstones one drops it.
+	const selectedItems = useMemo(() => items.filter((item) => selected.has(item.key) && isLibraryItemDeletable(item)), [items, selected]);
+	const selectedBytes = selectedItems.reduce((sum, item) => sum + item.bytes, 0);
+	const deletableShown = useMemo(() => rows.filter(isLibraryItemDeletable), [rows]);
+	const selecting = selectedItems.length > 0;
+	const toggleSelected = (key: string) => setSelected((prev) => {
+		const next = new Set(prev);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		return next;
+	});
+	const deleting = useRef(false);
+	const deleteItems = async (targets: LibraryItem[], scope: "one" | "many") => {
+		if (deleting.current) return;
+		deleting.current = true;
+		try {
+			const updated = await confirmDeleteSharedMediaGroups({ groups: libraryDeleteGroups(targets), t, scope });
+			for (const { projectId: pid, task } of updated) patchTask(pid, task);
+			if (updated.length > 0) setSelected((prev) => {
+				const next = new Set(prev);
+				for (const item of targets) next.delete(item.key);
+				return next;
+			});
+		} finally {
+			deleting.current = false;
+		}
+	};
+	const copyPath = async (item: LibraryItem) => {
+		const path = item.image?.storedPath ?? item.artifact?.storedPath;
+		if (!path) return;
+		try {
+			await navigator.clipboard.writeText(path);
+			toast.success(t("library.copied"));
+		} catch {
+			toast.error(t("imageViewer.copyFailed"));
+		}
+	};
+	const menuEntries = (item: LibraryItem): ControlMenuEntry[] => {
+		const path = item.image?.storedPath ?? item.artifact?.storedPath;
+		const present = !item.missing && !item.removedAt && !item.live && path != null;
+		const entries: ControlMenuEntry[] = [];
+		if (present) entries.push({ key: "copy", label: t("library.copyPath"), onSelect: () => void copyPath(item) });
+		if (present && isElectrobun) {
+			entries.push({
+				key: "reveal",
+				label: t(navigator.userAgent.includes("Mac") ? "library.revealMac" : "library.revealOther"),
+				onSelect: () => { api.request.openTerminalPath({ path: path!, mode: "reveal" }).catch(() => toast.error(t("library.missing"))); },
+			});
+		}
+		if (isLibraryItemDeletable(item)) entries.push({ key: "delete", label: t("library.deleteFile"), danger: true, separated: entries.length > 0, onSelect: () => void deleteItems([item], "one") });
+		return entries;
 	};
 
 	const grouped = sort !== "largest";
@@ -361,6 +433,35 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 							</div>
 						)}
 
+						{selecting && (
+							<div
+								role="toolbar"
+								aria-label={t.plural("library.selected", selectedItems.length)}
+								data-testid="library-selection-bar"
+								className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-accent/40 bg-raised px-3 py-2 shadow-lg shadow-black/20"
+							>
+								<span className="text-sm font-medium text-fg" aria-live="polite">{t.plural("library.selected", selectedItems.length)}</span>
+								<span className="text-xs tabular-nums text-fg-muted">{formatBytes(selectedBytes)}</span>
+								{deletableShown.some((item) => !selected.has(item.key)) && (
+									<button type="button" onClick={() => setSelected(new Set([...selected, ...deletableShown.map((item) => item.key)]))} className="rounded text-xs text-accent hover:text-accent-emphasis hover:underline">
+										{t.plural("library.selectAll", deletableShown.length)}
+									</button>
+								)}
+								<span className="flex-1" />
+								<button type="button" onClick={() => setSelected(new Set())} className="rounded-lg px-2.5 py-1.5 text-xs text-fg-2 hover:bg-raised-hover hover:text-fg">
+									{t("library.clearSelection")}
+								</button>
+								<button
+									type="button"
+									data-testid="library-delete-selected"
+									onClick={() => void deleteItems(selectedItems, "many")}
+									className="rounded-lg bg-danger/15 px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger/25 active:scale-[0.96] transition-[background-color,transform]"
+								>
+									{t("library.deleteSelected")}
+								</button>
+							</div>
+						)}
+
 						{rows.length === 0 ? (
 							<div className="rounded-2xl border border-edge border-dashed bg-raised px-4 py-8 text-center">
 								<p className="text-fg-2 text-sm font-semibold">{t("library.noMatch")}</p>
@@ -390,6 +491,16 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 												maskClass={privacy.maskClass(item.projectId)}
 												locked={privacy.isLocked(item.projectId)}
 												onOpen={() => open(item)}
+												selectable={deletableShown.length > 0}
+												deletable={isLibraryItemDeletable(item)}
+												selected={selected.has(item.key)}
+												alwaysShowCheckbox={narrow || selecting}
+												onToggleSelected={() => toggleSelected(item.key)}
+												hasMenu={menuEntries(item).length > 0}
+												onMenu={(opener) => {
+													const rect = opener.getBoundingClientRect();
+													setMenu({ item, opener, pos: { top: rect.bottom + 4, left: rect.right - 176 } });
+												}}
 												onOpenTask={() => onOpenTask(item.taskId, item.projectId, { archived: item.taskStatus === "completed" || item.taskStatus === "cancelled" })}
 											/>
 										</Fragment>
@@ -410,6 +521,14 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 					</>
 				)}
 			</div>
+			{menu && (
+				<ControlMenu
+					pos={menu.pos}
+					label={t("library.rowMenu", { title: privacy.isLocked(menu.item.projectId) ? t("streamer.privateTitle") : menu.item.title })}
+					entries={menuEntries(menu.item)}
+					onClose={() => { menu.opener.focus(); setMenu(null); }}
+				/>
+			)}
 		</div>
 	);
 }
@@ -423,17 +542,40 @@ interface LibraryRowProps {
 	locked: boolean;
 	onOpen: () => void;
 	onOpenTask: () => void;
+	/** Some visible row can be selected, so every row keeps the checkbox column aligned. */
+	selectable: boolean;
+	deletable: boolean;
+	selected: boolean;
+	alwaysShowCheckbox: boolean;
+	onToggleSelected: () => void;
+	hasMenu: boolean;
+	onMenu: (opener: HTMLElement) => void;
 }
 
-function LibraryRow({ item, showProject, agentName, stamp, maskClass, locked, onOpen, onOpenTask }: LibraryRowProps) {
+function LibraryRow({ item, showProject, agentName, stamp, maskClass, locked, onOpen, onOpenTask, selectable, deletable, selected, alwaysShowCheckbox, onToggleSelected, hasMenu, onMenu }: LibraryRowProps) {
 	const t = useT();
 	const finished = item.taskStatus === "completed" || item.taskStatus === "cancelled";
 	const meta: string[] = [];
 	if (item.versions > 1) meta.push(t("library.version", { version: item.versions }));
-	if (!item.missing) meta.push(formatBytes(item.bytes));
+	if (!item.missing && !item.removedAt) meta.push(formatBytes(item.bytes));
 	const title = locked ? t("streamer.privateTitle") : item.title;
 	return (
-		<li className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-edge bg-elevated px-3 py-2.5 transition-colors hover:border-edge-active hover:bg-elevated-hover" data-testid="library-row">
+		<li className={`group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2.5 transition-colors ${selected ? "border-accent/50 bg-accent/10" : "border-edge bg-elevated hover:border-edge-active hover:bg-elevated-hover"}`} data-testid="library-row">
+			{selectable && (
+				<span className="flex w-4 flex-shrink-0 items-center justify-center">
+					{deletable && (
+						<input
+							type="checkbox"
+							checked={selected}
+							onChange={onToggleSelected}
+							aria-label={t("library.select", { title })}
+							title={t("library.selectHint")}
+							data-testid="library-row-select"
+							className={`h-4 w-4 cursor-pointer accent-accent transition-opacity ${alwaysShowCheckbox || selected ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+						/>
+					)}
+				</span>
+			)}
 			<button
 				type="button"
 				onClick={onOpen}
@@ -448,8 +590,9 @@ function LibraryRow({ item, showProject, agentName, stamp, maskClass, locked, on
 						<span className={`truncate text-sm font-medium text-fg-2 group-hover:text-fg ${maskClass}`}>{title}</span>
 					</span>
 					<span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-micro text-fg-muted">
-						<span className="flex-shrink-0 tabular-nums">{meta.join(" · ")}</span>
+						{meta.length > 0 && <span className="flex-shrink-0 tabular-nums">{meta.join(" · ")}</span>}
 						{item.missing && <span className="flex-shrink-0 text-warning-strong">· {t("library.missing")}</span>}
+						{item.removedAt && <span className="flex-shrink-0">{meta.length > 0 ? "· " : ""}{t("sharedMedia.removed")}</span>}
 					</span>
 				</span>
 			</button>
@@ -467,6 +610,20 @@ function LibraryRow({ item, showProject, agentName, stamp, maskClass, locked, on
 				{agentName && <span className="flex-shrink-0">· {agentName}</span>}
 			</button>
 			<span className="w-24 flex-shrink-0 text-right text-micro tabular-nums text-fg-muted">{stamp}</span>
+			{hasMenu ? (
+				<button
+					type="button"
+					onClick={(event) => onMenu(event.currentTarget)}
+					aria-label={t("library.rowMenu", { title })}
+					aria-haspopup="menu"
+					data-testid="library-row-menu"
+					className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-fg-muted hover:bg-elevated-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+				>
+					<span aria-hidden="true" className="text-base leading-none">⋯</span>
+				</button>
+			) : (
+				<span className="w-7 flex-shrink-0" aria-hidden="true" />
+			)}
 		</li>
 	);
 }

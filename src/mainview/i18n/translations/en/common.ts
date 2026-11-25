@@ -686,6 +686,8 @@ const common = {
 	"sharedMedia.confirmOneTitle": "Delete the stored file of {name}?",
 	"sharedMedia.confirmOlderTitle_one": "Delete {count} older clip?",
 	"sharedMedia.confirmOlderTitle_other": "Delete {count} older clips?",
+	"sharedMedia.confirmManyTitle_one": "Delete {count} clip file?",
+	"sharedMedia.confirmManyTitle_other": "Delete {count} clip files?",
 	"sharedMedia.confirmMessage": "{size} stored; about {freed} of disk will be freed.",
 	"sharedMedia.confirmSharedNote": "The rest is shared with originals still on disk, so deleting dev3's copy frees nothing there.",
 	"sharedMedia.confirmFreesNothing": "{size} stored, but the originals are still on disk and share these files, so this frees almost no space.",

@@ -13,10 +13,14 @@ export interface ControlMenuEntry {
 	disabled?: boolean;
 	/** Draws a divider above the row. */
 	separated?: boolean;
+	/** Destructive row (delete, revoke): danger colour; the caller still confirms. */
+	danger?: boolean;
 	submenu?: readonly ControlMenuEntry[];
 }
 
-const ROW_CLASS = "w-full text-left px-3 py-1.5 [@media(pointer:coarse)]:min-h-[44px] text-xs text-fg-2 hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg focus-visible:outline-none transition-colors disabled:opacity-40 disabled:pointer-events-none";
+const ROW_BASE = "w-full text-left px-3 py-1.5 [@media(pointer:coarse)]:min-h-[44px] text-xs focus-visible:outline-none transition-colors disabled:opacity-40 disabled:pointer-events-none";
+const ROW_CLASS = `${ROW_BASE} text-fg-2 hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg`;
+const DANGER_ROW_CLASS = `${ROW_BASE} text-danger hover:bg-danger/10 focus-visible:bg-danger/10`;
 
 function enabledRows(menu: HTMLElement | null): HTMLElement[] {
 	return Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? []);
@@ -111,7 +115,7 @@ export default function ControlMenu({
 								entry.onSelect?.();
 								if (entry.key !== "back") onClose();
 							}}
-							className={`${ROW_CLASS} flex items-center gap-2`}
+							className={`${entry.danger ? DANGER_ROW_CLASS : ROW_CLASS} flex items-center gap-2`}
 						>
 							{entry.key === "back" && <span aria-hidden="true">‹</span>}
 							<span className="flex-1 truncate">{entry.label}</span>

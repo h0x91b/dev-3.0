@@ -686,6 +686,8 @@ const common = {
 	"sharedMedia.confirmOneTitle": "¿Eliminar el archivo guardado de {name}?",
 	"sharedMedia.confirmOlderTitle_one": "¿Eliminar {count} clip antiguo?",
 	"sharedMedia.confirmOlderTitle_other": "¿Eliminar {count} clips antiguos?",
+	"sharedMedia.confirmManyTitle_one": "¿Eliminar el archivo de {count} clip?",
+	"sharedMedia.confirmManyTitle_other": "¿Eliminar los archivos de {count} clips?",
 	"sharedMedia.confirmMessage": "{size} guardados; se liberarán unos {freed} de disco.",
 	"sharedMedia.confirmSharedNote": "El resto se comparte con originales que siguen en disco, así que borrar la copia de dev3 no libera nada ahí.",
 	"sharedMedia.confirmFreesNothing": "{size} almacenados, pero los originales siguen en disco y comparten estos archivos, así que esto casi no libera espacio.",
