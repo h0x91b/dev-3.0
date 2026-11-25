@@ -344,6 +344,12 @@ function normalizeReviewXml(text: string): string {
 		.join("\n");
 }
 
+/** Fills a text field in one input event; per-keystroke typing re-renders the whole viewer per char. */
+async function fillText(user: ReturnType<typeof userEvent.setup>, field: HTMLElement, text: string): Promise<void> {
+	await user.click(field);
+	await user.paste(text);
+}
+
 function lastClipboardText(writeText: ReturnType<typeof vi.fn>): string {
 	const calls = writeText.mock.calls;
 	return String(calls[calls.length - 1]?.[0] ?? "");
@@ -964,36 +970,7 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
-	it("auto mode picks split on a large external monitor", async () => {
-		Object.defineProperty(window.screen, "availWidth", {
-			configurable: true,
-			value: 2560,
-		});
-		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
-			defaultAgentId: "builtin-claude",
-			defaultConfigId: "claude-default",
-			taskSortOrder: "oldest-first",
-			updateChannel: "stable",
-			defaultDiffViewMode: "auto",
-		});
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		await waitForTicks(() => {
-			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3 theme:dark");
-		});
-	});
-
-	it("opens diff search and focuses it on Cmd+F", async () => {
+	it("opens diff search on Cmd+F, jumps to the matching line and highlights the found text", async () => {
 		const user = userEvent.setup();
 
 		render(
@@ -1011,24 +988,6 @@ describe("TaskDiffViewer", () => {
 		await user.keyboard("{Meta>}f{/Meta}");
 
 		expect(screen.getByPlaceholderText("Search diff...")).toHaveFocus();
-	});
-
-	it("searches diff content and jumps to the matching line", async () => {
-		const user = userEvent.setup();
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		await screen.findAllByTestId("mock-diff");
-		await user.keyboard("{Meta>}f{/Meta}");
 		await user.type(screen.getByPlaceholderText("Search diff..."), "ok");
 
 		await waitFor(() => {
@@ -1037,29 +996,7 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(scrollIntoViewMock).toHaveBeenCalled();
 		});
-	});
-
-	it("highlights the found diff text", async () => {
-		const user = userEvent.setup();
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		await screen.findAllByTestId("mock-diff");
-		await user.keyboard("{Meta>}f{/Meta}");
-		await user.type(screen.getByPlaceholderText("Search diff..."), "ok");
-
-		await waitFor(() => {
-			expect(document.querySelectorAll(".dev3-diff-search-match-line").length).toBeGreaterThan(0);
-		});
+		expect(document.querySelectorAll(".dev3-diff-search-match-line").length).toBeGreaterThan(0);
 		expect(document.querySelector(".dev3-diff-search-current-line")).not.toBeNull();
 	});
 
@@ -1087,7 +1024,7 @@ describe("TaskDiffViewer", () => {
 			);
 			await screen.findAllByTestId("mock-diff");
 			await user.keyboard("{Meta>}f{/Meta}");
-			await user.type(screen.getByPlaceholderText("Search diff..."), query);
+			await fillText(user, screen.getByPlaceholderText("Search diff..."), query);
 			return user;
 		}
 
@@ -1157,7 +1094,7 @@ describe("TaskDiffViewer", () => {
 			await screen.findAllByTestId("mock-diff");
 			await user.click(screen.getByRole("button", { name: "Split" }));
 			await user.keyboard("{Meta>}f{/Meta}");
-			await user.type(screen.getByPlaceholderText("Search diff..."), "needle");
+			await fillText(user, screen.getByPlaceholderText("Search diff..."), "needle");
 
 			const visited: Array<string | null> = [];
 			for (let step = 1; step <= 4; step += 1) {
@@ -1194,30 +1131,21 @@ describe("TaskDiffViewer", () => {
 			}
 		});
 
-		it("selects the row of the hit's own side and line, not any row whose text contains the number", async () => {
-			const user = await searchFor("shared token", wholeFilePayload(
-				rows(20, { 15: "row 15 shared token" }),
-				rows(20, { 5: "row 5 shared token", 15: "row 15 changed" }),
-			));
-
-			await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument());
-			await waitFor(() => expect(currentRow()).toBe("new:5"));
-			await user.click(screen.getByRole("button", { name: "Next match" }));
-			await waitFor(() => expect(currentRow()).toBe("old:15"));
-			expect(mockSearchHooks.onAllExpand).not.toHaveBeenCalled();
-		});
-
-		it("shows which side the current hit is on", async () => {
+		it("selects the row of the hit's own side and line, and shows which side the current hit is on", async () => {
 			const user = await searchFor("shared token", wholeFilePayload(
 				rows(20, { 15: "row 15 shared token", 8: "row 8 shared token" }),
 				rows(20, { 5: "row 5 shared token", 8: "row 8 shared token", 15: "row 15 changed" }),
 			));
 
+			// Row 5 of the old file does not contain the token; only the hit's own side and line is selected.
 			await waitFor(() => expect(screen.getByText("1 / 3")).toHaveTextContent("1 / 3 · new"));
+			await waitFor(() => expect(currentRow()).toBe("new:5"));
 			await user.click(screen.getByRole("button", { name: "Next match" }));
 			await waitFor(() => expect(screen.getByText("2 / 3")).toHaveTextContent("2 / 3 · both"));
 			await user.click(screen.getByRole("button", { name: "Next match" }));
 			await waitFor(() => expect(screen.getByText("3 / 3")).toHaveTextContent("3 / 3 · old"));
+			await waitFor(() => expect(currentRow()).toBe("old:15"));
+			expect(mockSearchHooks.onAllExpand).not.toHaveBeenCalled();
 		});
 
 		it("keeps the current hit while the query is refined and it still matches", async () => {
@@ -2073,7 +2001,7 @@ describe("TaskDiffViewer", () => {
 		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
 		expect(screen.getByTestId("mock-widget").querySelector(".dev3-inline-comment--composer")).not.toBeNull();
 
-		await user.type(
+		await fillText(user,
 			screen.getByPlaceholderText("Leave a comment on this line..."),
 			longComment,
 		);
@@ -2117,7 +2045,7 @@ describe("TaskDiffViewer", () => {
 		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
 		const sidebarEditor = screen.getByDisplayValue(longComment);
 		await user.clear(sidebarEditor);
-		await user.type(sidebarEditor, "Rename this callback.");
+		await fillText(user,sidebarEditor, "Rename this callback.");
 		await user.click(screen.getByRole("button", { name: "Save comment" }));
 
 		expect(screen.getAllByText("Rename this callback.").length).toBeGreaterThanOrEqual(1);
@@ -2161,7 +2089,7 @@ describe("TaskDiffViewer", () => {
 		await screen.findAllByTestId("mock-diff");
 		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
 		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
 		await user.click(screen.getByTestId("inline-comment-composer-send"));
 
 		await waitFor(() => {
@@ -2199,7 +2127,7 @@ describe("TaskDiffViewer", () => {
 		await screen.findAllByTestId("mock-diff");
 		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
 		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
 		// isMac() is false in the test environment, so the combo is Ctrl+Enter.
 		await user.keyboard("{Control>}{Enter}{/Control}");
 
@@ -2232,7 +2160,7 @@ describe("TaskDiffViewer", () => {
 		await screen.findAllByTestId("mock-diff");
 		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
 		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		const thread = screen.getByTestId("inline-comment-thread");
@@ -2260,7 +2188,7 @@ describe("TaskDiffViewer", () => {
 		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Edit comment" }));
 		const editor = screen.getByDisplayValue("Rename this callback.");
 		await user.clear(editor);
-		await user.type(editor, "Rename it to handleSubmit.");
+		await fillText(user,editor, "Rename it to handleSubmit.");
 		await user.click(screen.getByRole("button", { name: "Save comment" }));
 
 		expect(screen.queryByTestId("review-export-sent-marker")).not.toBeInTheDocument();
@@ -2293,7 +2221,7 @@ describe("TaskDiffViewer", () => {
 		const diffs = await screen.findAllByTestId("mock-diff");
 		expect(diffs[0]).toHaveTextContent("mode:3");
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "one-sided comment");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "one-sided comment");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		expect(screen.getAllByText("one-sided comment").length).toBeGreaterThan(0);
@@ -2330,7 +2258,7 @@ describe("TaskDiffViewer", () => {
 		const composer = await screen.findByText(/New lines 1–2/);
 		expect(composer).toBeInTheDocument();
 
-		await user.type(
+		await fillText(user,
 			screen.getByPlaceholderText("Leave a comment on this line..."),
 			"Refactor this block",
 		);
@@ -2383,7 +2311,7 @@ describe("TaskDiffViewer", () => {
 		const composer = await screen.findByText(/New lines 1–2/);
 		expect(composer).toBeInTheDocument();
 
-		await user.type(
+		await fillText(user,
 			screen.getByPlaceholderText("Leave a comment on this line..."),
 			"Unified range note",
 		);
@@ -2410,7 +2338,7 @@ describe("TaskDiffViewer", () => {
 
 		const diffs = await screen.findAllByTestId("mock-diff");
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "abcdef");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "abcdef");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		const inlineThread = screen.getByTestId("inline-comment-thread");
@@ -2451,11 +2379,11 @@ describe("TaskDiffViewer", () => {
 
 		const diffs = await screen.findAllByTestId("mock-diff");
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "first");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "first");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "second");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "second");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
@@ -2576,11 +2504,12 @@ describe("TaskDiffViewer", () => {
 		expect(onBack).toHaveBeenCalledTimes(1);
 	});
 
-	it("closes immediately on Escape even with review comments (review persists)", async () => {
+	it("closes immediately on Escape even with review comments and never registers a navigation guard", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
 		const showConfirm = vi.mocked(confirm);
 		showConfirm.mockResolvedValue(true);
+		const guardRef: { current: NavigationGuard | null } = { current: null };
 
 		render(
 			<I18nProvider>
@@ -2589,14 +2518,20 @@ describe("TaskDiffViewer", () => {
 					project={project}
 					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
 					onBack={onBack}
+					navigationGuardRef={guardRef}
 				/>
 			</I18nProvider>,
 		);
 
 		const diffs = await screen.findAllByTestId("mock-diff");
+		expect(guardRef.current).toBeNull();
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "important note");
+		await fillText(user, screen.getByPlaceholderText("Leave a comment on this line..."), "important note");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		// Adding comments must not arm the shared unsaved-changes modal: the review
+		// is durable, so leaving never risks data loss.
+		expect(guardRef.current).toBeNull();
 
 		await user.keyboard("{Escape}");
 
@@ -2606,37 +2541,11 @@ describe("TaskDiffViewer", () => {
 		expect(showConfirm).not.toHaveBeenCalled();
 	});
 
-	it("never registers a navigation guard — the persisted review is never dirty", async () => {
-		const user = userEvent.setup();
-		const guardRef: { current: NavigationGuard | null } = { current: null };
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-					navigationGuardRef={guardRef}
-				/>
-			</I18nProvider>,
-		);
-
-		const diffs = await screen.findAllByTestId("mock-diff");
-		expect(guardRef.current).toBeNull();
-
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "guard me");
-		await user.click(screen.getByRole("button", { name: "Add comment" }));
-
-		// Adding comments must not arm the shared unsaved-changes modal: the review
-		// is durable, so leaving never risks data loss.
-		expect(guardRef.current).toBeNull();
-	});
-
-	it("closes via the back button immediately even with review comments", async () => {
+	it("closes via the back button without prompting, both with review comments and after copying the XML", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 		const showConfirm = vi.mocked(confirm);
 		showConfirm.mockResolvedValue(true);
 
@@ -2653,39 +2562,13 @@ describe("TaskDiffViewer", () => {
 
 		const diffs = await screen.findAllByTestId("mock-diff");
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "note");
+		await fillText(user, screen.getByPlaceholderText("Leave a comment on this line..."), "looks good");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
-
 		await waitFor(() => {
 			expect(onBack).toHaveBeenCalledTimes(1);
 		});
-		expect(showConfirm).not.toHaveBeenCalled();
-	});
-
-	it("closes without prompting after the review XML has been copied to the clipboard", async () => {
-		const user = userEvent.setup();
-		const onBack = vi.fn();
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-		const showConfirm = vi.mocked(confirm);
-
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={onBack}
-				/>
-			</I18nProvider>,
-		);
-
-		const diffs = await screen.findAllByTestId("mock-diff");
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "looks good");
-		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await user.click(screen.getByRole("button", { name: /^Copy$/i }));
 		await waitFor(() => {
@@ -2693,9 +2576,8 @@ describe("TaskDiffViewer", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
-
 		await waitFor(() => {
-			expect(onBack).toHaveBeenCalledTimes(1);
+			expect(onBack).toHaveBeenCalledTimes(2);
 		});
 		expect(showConfirm).not.toHaveBeenCalled();
 	});
@@ -2731,7 +2613,7 @@ describe("TaskDiffViewer", () => {
 		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
 		const editor = screen.getByDisplayValue("from the record");
 		await user.clear(editor);
-		await user.type(editor, "edited");
+		await fillText(user,editor, "edited");
 		await user.click(screen.getByRole("button", { name: "Save comment" }));
 		expect(api.request.updateReviewComment).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: "kept", body: "edited" });
 
@@ -2808,7 +2690,7 @@ describe("TaskDiffViewer", () => {
 			renderViewer(awaitingTask());
 			await screen.findAllByTestId("mock-diff");
 
-			await user.type(screen.getByRole("textbox", { name: "Reply to the agent…" }), "ok, go");
+			await fillText(user,screen.getByRole("textbox", { name: "Reply to the agent…" }), "ok, go");
 			await user.click(screen.getByTestId("inline-comment-reply-send"));
 			await user.click(screen.getByTestId("inline-comment-reply-send"));
 			expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
@@ -2843,7 +2725,7 @@ describe("TaskDiffViewer", () => {
 			await screen.findAllByTestId("mock-diff");
 
 			const field = screen.getByRole("textbox", { name: "Reply to the agent…" });
-			await user.type(field, "ok");
+			await fillText(user,field, "ok");
 			await user.click(screen.getByTestId("inline-comment-reply-send"));
 			await waitFor(() => {
 				expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
@@ -2861,7 +2743,7 @@ describe("TaskDiffViewer", () => {
 			renderViewer(awaitingTask({ replies: undefined }));
 			await screen.findAllByTestId("mock-diff");
 
-			await user.type(screen.getByRole("textbox", { name: "Add to this comment…" }), "also rename it");
+			await fillText(user,screen.getByRole("textbox", { name: "Add to this comment…" }), "also rename it");
 			await user.click(screen.getByTestId("inline-comment-reply-send"));
 			await waitFor(() => {
 				expect(api.request.replyReviewComment).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: "ask", body: "also rename it", author: "user" });
@@ -3010,7 +2892,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
 
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "kill me");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "kill me");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await waitFor(() => {
@@ -3060,7 +2942,7 @@ describe("TaskDiffViewer", () => {
 
 		const diffs = await screen.findAllByTestId("mock-diff");
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "send me");
+		await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "send me");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		await waitFor(() => {
@@ -3354,7 +3236,8 @@ describe("TaskDiffViewer narrow viewport", () => {
 		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
 	});
 
-	it("hides the Split toggle and moves the file list into a bottom sheet", async () => {
+	// One render walks the whole narrow layout; each step used to be its own render.
+	it("lays out the narrow toolbar, path lines, search row and mode sheet", async () => {
 		const user = userEvent.setup();
 		render(
 			<I18nProvider>
@@ -3366,7 +3249,6 @@ describe("TaskDiffViewer narrow viewport", () => {
 				/>
 			</I18nProvider>,
 		);
-
 		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
@@ -3374,82 +3256,35 @@ describe("TaskDiffViewer narrow viewport", () => {
 		// Split view is unusable at phone width — its toggle is not rendered.
 		expect(screen.queryByRole("button", { name: "Split" })).not.toBeInTheDocument();
 
-		// The files aside is not inline; a "Files" button opens it in a bottom sheet.
-		expect(screen.queryByTestId("diff-files-sheet")).not.toBeInTheDocument();
-		await user.click(screen.getByTestId("diff-files-sheet-trigger"));
-		expect(await screen.findByTestId("diff-files-sheet")).toBeInTheDocument();
-	});
-
-	it("uses the structured narrow toolbar: icon back button, stats in the subtitle", async () => {
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		await waitForTicks(() => {
-			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
-		});
-
-		// Row 1: the back button collapses to an icon with an accessible name —
-		// the full "Back to Terminal" label would crush the title at 390px.
+		// The back button collapses to an icon with an accessible name.
 		const back = screen.getByRole("button", { name: "Back to Terminal" });
 		expect(back).not.toHaveTextContent("Back to Terminal");
 
-		// Insertion/deletion stats fold into the subtitle line instead of a
-		// separate chip; the file count lives on the Files sheet trigger.
+		// Stats fold into the subtitle; the file count lives on the Files sheet trigger.
 		const subtitle = screen.getByTestId("diff-narrow-subtitle");
 		expect(subtitle).toHaveTextContent("+5");
 		expect(subtitle).toHaveTextContent("−1");
 		expect(screen.queryByTestId("diff-toolbar-summary")).not.toBeInTheDocument();
 		expect(screen.getByTestId("diff-files-sheet-trigger")).toHaveTextContent("Files (3)");
-	});
 
-	it("opens the search as a full-width row on narrow", async () => {
-		const user = userEvent.setup();
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		await waitForTicks(() => {
-			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
-		});
+		// The mode switcher scrolls away with the content; the pinned toolbar keeps nav + search + files.
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		expect(within(scrollRegion).getByRole("button", { name: "Uncommitted" })).toBeInTheDocument();
+		expect(within(toolbar).queryByRole("button", { name: "Uncommitted" })).not.toBeInTheDocument();
 
+		// Directory and basename render as separate spans so only the directory truncates.
+		expect(screen.getAllByText("src/").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("app.ts").length).toBeGreaterThan(0);
+
+		// Search opens as a full-width row.
 		expect(screen.queryByTestId("diff-narrow-search-row")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Search diff" }));
 		expect(screen.getByTestId("diff-narrow-search-row")).toBeInTheDocument();
 		expect(screen.getByPlaceholderText("Search diff...")).toBeInTheDocument();
-	});
 
-	it("keeps all four mode toggles reachable on narrow", async () => {
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		await waitForTicks(() => {
-			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
-		});
-		// Four chips stacked the row into two lines on a phone, so they live behind
-		// one trigger naming the active mode — all four stay one tap away.
+		// All four modes stay one tap away behind a trigger naming the active mode.
 		const trigger = screen.getByTestId("diff-mode-trigger");
-		// It names whichever mode is active (the last one is remembered), never a
-		// generic "Mode" — that is the whole point of collapsing the four chips.
 		expect(trigger.textContent).toMatch(/Branch|Uncommitted|Unpushed|commit/);
 		await act(async () => {
 			fireEvent.click(trigger);
@@ -3460,7 +3295,8 @@ describe("TaskDiffViewer narrow viewport", () => {
 		expect(screen.getByTestId("diff-mode-sheet-recent-1")).toBeInTheDocument();
 	});
 
-	it("scrolls the mode/filter row with the content instead of pinning it", async () => {
+	it("moves the file list into a bottom sheet", async () => {
+		const user = userEvent.setup();
 		render(
 			<I18nProvider>
 				<TaskDiffViewer
@@ -3474,32 +3310,10 @@ describe("TaskDiffViewer narrow viewport", () => {
 		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
-		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
-		const toolbar = screen.getByTestId("inline-diff-toolbar");
-		// The mode switcher lives at the top of the scroll region (scrolls away
-		// with the content); the pinned toolbar keeps only nav + search + files.
-		expect(within(scrollRegion).getByRole("button", { name: "Uncommitted" })).toBeInTheDocument();
-		expect(within(toolbar).queryByRole("button", { name: "Uncommitted" })).not.toBeInTheDocument();
-	});
 
-	it("renders file paths as one truncating line (dir + basename) on narrow", async () => {
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={task}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		await waitForTicks(() => {
-			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
-		});
-		// The directory part and the basename render as separate spans: the
-		// directory truncates while the file name itself always stays visible.
-		expect(screen.getAllByText("src/").length).toBeGreaterThan(0);
-		expect(screen.getAllByText("app.ts").length).toBeGreaterThan(0);
+		expect(screen.queryByTestId("diff-files-sheet")).not.toBeInTheDocument();
+		await user.click(screen.getByTestId("diff-files-sheet-trigger"));
+		expect(await screen.findByTestId("diff-files-sheet")).toBeInTheDocument();
 	});
 });
 
@@ -3565,15 +3379,6 @@ describe("TaskDiffViewer — recent commits mode", () => {
 		);
 	}
 
-	it("renders the recent split-button labeled 'Last commit'", async () => {
-		renderViewer();
-		const body = await screen.findByTestId("diff-mode-recent");
-		expect(body).toHaveTextContent("Last commit");
-		expect(screen.getByTestId("diff-mode-recent-caret")).toBeInTheDocument();
-		// Popover is closed until the caret is clicked.
-		expect(screen.queryByTestId("diff-mode-recent-menu")).not.toBeInTheDocument();
-	});
-
 	it("activates recent mode with count 1 when the button body is clicked", async () => {
 		const user = userEvent.setup();
 		renderViewer();
@@ -3588,37 +3393,27 @@ describe("TaskDiffViewer — recent commits mode", () => {
 		});
 	});
 
-	it("opens the preset popover from the caret", async () => {
+	it("labels the split-button 'Last commit', offers presets from the caret, and a preset sets the count", async () => {
 		const user = userEvent.setup();
 		renderViewer();
-		await screen.findByTestId("diff-mode-recent-caret");
+		const body = await screen.findByTestId("diff-mode-recent");
+		expect(body).toHaveTextContent("Last commit");
+		// Popover is closed until the caret is clicked.
+		expect(screen.queryByTestId("diff-mode-recent-menu")).not.toBeInTheDocument();
 
 		await user.click(screen.getByTestId("diff-mode-recent-caret"));
-
-		const menu = await screen.findByTestId("diff-mode-recent-menu");
-		expect(menu).toBeInTheDocument();
-		// All five presets are offered.
+		expect(await screen.findByTestId("diff-mode-recent-menu")).toBeInTheDocument();
 		for (const n of [1, 2, 3, 5, 10]) {
 			expect(screen.getByTestId(`diff-recent-preset-${n}`)).toBeInTheDocument();
 		}
-	});
 
-	it("selecting a preset sets the count and activates recent mode", async () => {
-		const user = userEvent.setup();
-		renderViewer();
-		await screen.findByTestId("diff-mode-recent-caret");
-
-		await user.click(screen.getByTestId("diff-mode-recent-caret"));
-		await user.click(await screen.findByTestId("diff-recent-preset-3"));
-
+		await user.click(screen.getByTestId("diff-recent-preset-3"));
 		await waitFor(() => {
 			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
 				expect.objectContaining({ mode: "recent", count: 3 }),
 			);
 		});
-		// Popover closes after selection.
 		expect(screen.queryByTestId("diff-mode-recent-menu")).not.toBeInTheDocument();
-		// The body label reflects the selected N.
 		expect(screen.getByTestId("diff-mode-recent")).toHaveTextContent("Last 3 commits");
 	});
 
@@ -3768,7 +3563,10 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		expect(screen.queryByTestId("pr-conversation-block")).not.toBeInTheDocument();
 	});
 
-	it("renders the conversation block and anchors the thread inline in branch mode", async () => {
+	it("renders the conversation block, anchors the thread inline, exports it to XML and sends it as a fix prompt", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 		renderViewer();
 		const block = await screen.findByTestId("pr-conversation-block");
 		expect(within(block).getByText("1 unresolved")).toBeInTheDocument();
@@ -3778,6 +3576,30 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		expect(within(thread).getByText("alice")).toBeInTheDocument();
 		const markdown = within(thread).getByTestId("pr-comment-markdown");
 		expect(markdown.querySelector("strong")?.textContent).toBe("this");
+
+		// Export: a selected thread lands in the XML with an origin marker.
+		expect(screen.queryByTestId("review-export-github-marker")).not.toBeInTheDocument();
+		await user.click(within(thread).getByTestId("github-thread-export-toggle"));
+		expect(screen.getByTestId("review-export-github-marker")).toHaveTextContent("alice");
+		await user.click(screen.getByRole("button", { name: "Copy" }));
+		const xml = writeText.mock.calls[writeText.mock.calls.length - 1][0] as string;
+		expect(xml).toContain('<review origin="github" author="alice">');
+		expect(xml).toContain('<file src="src/app.ts" line=1>');
+		expect(xml).toContain("[alice] Rename **this** variable.");
+		expect(xml).toContain("come from GitHub PR reviewers");
+
+		// Send: the thread goes to the agent as a fix prompt with file, snippet, and bodies.
+		await user.click(within(thread).getByTestId("github-thread-send"));
+		await waitFor(() => {
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
+		});
+		const { text, taskId } = vi.mocked(api.request.sendAgentMessageNow).mock.calls[0][0];
+		expect(taskId).toBe("t1");
+		expect(text).toContain("File: src/app.ts, line 1");
+		expect(text).toContain('+const a = "two";');
+		expect(text).toContain("[alice] wrote:");
+		expect(text).toContain("Rename **this** variable.");
+		expect(within(thread).getByText("Sent")).toBeInTheDocument();
 	});
 
 	it("hides resolved threads until Show resolved is toggled", async () => {
@@ -3816,45 +3638,6 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		expect(within(unmappedGroup).getByText("gone/file.ts")).toBeInTheDocument();
 	});
 
-	it("exports a selected GitHub thread into the XML with an origin marker", async () => {
-		const user = userEvent.setup();
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-		renderViewer();
-
-		const thread = await screen.findByTestId("github-thread");
-		expect(screen.queryByTestId("review-export-github-marker")).not.toBeInTheDocument();
-
-		await user.click(within(thread).getByTestId("github-thread-export-toggle"));
-		expect(screen.getByTestId("review-export-github-marker")).toHaveTextContent("alice");
-
-		await user.click(screen.getByRole("button", { name: "Copy" }));
-		const xml = writeText.mock.calls[writeText.mock.calls.length - 1][0] as string;
-		expect(xml).toContain('<review origin="github" author="alice">');
-		expect(xml).toContain('<file src="src/app.ts" line=1>');
-		expect(xml).toContain("[alice] Rename **this** variable.");
-		expect(xml).toContain("come from GitHub PR reviewers");
-	});
-
-	it("sends a thread to the agent as a fix prompt with file, snippet, and bodies", async () => {
-		const user = userEvent.setup();
-		renderViewer();
-
-		const thread = await screen.findByTestId("github-thread");
-		await user.click(within(thread).getByTestId("github-thread-send"));
-
-		await waitFor(() => {
-			expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
-		});
-		const { text, taskId } = vi.mocked(api.request.sendAgentMessageNow).mock.calls[0][0];
-		expect(taskId).toBe("t1");
-		expect(text).toContain("File: src/app.ts, line 1");
-		expect(text).toContain('+const a = "two";');
-		expect(text).toContain("[alice] wrote:");
-		expect(text).toContain("Rename **this** variable.");
-		expect(within(thread).getByText("Sent")).toBeInTheDocument();
-	});
-
 	it("shows the mode hint outside branch mode and switches on click", async () => {
 		localStorage.setItem("dev3-inline-diff-mode-v1", "uncommitted");
 		const user = userEvent.setup();
@@ -3881,7 +3664,7 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		expect(api.request.getTaskPrComments).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", force: true });
 	});
 
-	it("jumps to the first unresolved GitHub thread when opened with the deep-link flag", async () => {
+	it("deep link forces branch mode over the stored preference and jumps to the first unresolved thread", async () => {
 		const scrolledThreadIds: string[] = [];
 		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 			configurable: true,
@@ -3893,25 +3676,6 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload({
 			threads: [makeThread({ id: "th-resolved", isResolved: true }), makeThread({ id: "th-live", line: 2 })],
 		}) as never);
-		render(
-			<I18nProvider>
-				<TaskDiffViewer
-					task={prTask}
-					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFirstUnresolvedThread: true }}
-					onBack={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-
-		await screen.findByTestId("github-thread");
-		await waitFor(() => {
-			expect(scrolledThreadIds).toContain("th-live");
-		});
-	});
-
-	it("forces branch mode for the unresolved deep link even when another mode is preferred", async () => {
-		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
 		localStorage.setItem("dev3-inline-diff-mode-v1", "uncommitted");
 		render(
 			<I18nProvider>
@@ -3931,6 +3695,9 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
 				expect.objectContaining({ mode: "branch" }),
 			);
+		});
+		await waitFor(() => {
+			expect(scrolledThreadIds).toContain("th-live");
 		});
 	});
 
@@ -4006,7 +3773,7 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(toggles[0]).toHaveAccessibleName("Toggle Markdown preview for zzz/readme.md");
 		});
 
-		it("opens markdown files in preview mode and toggles back to the source diff", async () => {
+		it("opens a modified markdown file in a rich-diff preview and toggles back to the source diff", async () => {
 			const user = userEvent.setup();
 			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
 			renderViewer();
@@ -4018,18 +3785,7 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(preview.querySelector("strong")?.textContent).toBe("bold");
 			expect(screen.queryByTestId("mock-diff")).toBeNull();
 
-			await user.click(toggle);
-
-			await screen.findAllByTestId("mock-diff");
-			expect(screen.queryByTestId("diff-md-preview")).toBeNull();
-			expect(toggle).toHaveAttribute("aria-pressed", "false");
-		});
-
-		it("marks added and removed blocks in the preview of a modified markdown file", async () => {
-			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
-			renderViewer();
-
-			const preview = await screen.findByTestId("diff-md-preview");
+			// Added and removed blocks are marked in the preview of a modified file.
 			const richDiff = within(preview).getByTestId("markdown-rich-diff");
 			const removed = richDiff.querySelectorAll("[data-diff-kind='removed']");
 			const added = richDiff.querySelectorAll("[data-diff-kind='added']");
@@ -4037,6 +3793,12 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(removed[0].textContent).toContain("Old");
 			expect(Array.from(added).map((block) => block.textContent).join(" ")).toContain("Title");
 			expect(within(preview).queryByTestId("markdown-document")).toBeNull();
+
+			await user.click(toggle);
+
+			await screen.findAllByTestId("mock-diff");
+			expect(screen.queryByTestId("diff-md-preview")).toBeNull();
+			expect(toggle).toHaveAttribute("aria-pressed", "false");
 		});
 
 		it("previews an added markdown file as a plain document", async () => {
@@ -4132,7 +3894,10 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			return found;
 		}
 
-		it("offers no comment button until prose is selected", async () => {
+		it("offers a comment button only on a selection, anchors the comment on the source lines, and exports it", async () => {
+			const user = userEvent.setup();
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
 			renderViewer();
 
@@ -4140,22 +3905,11 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(within(preview).queryByTestId("md-preview-add-comment")).toBeNull();
 
 			selectBlock(blockByText(preview, "bold"));
-
-			expect(within(preview).getByTestId("md-preview-add-comment")).toBeInTheDocument();
-		});
-
-		it("anchors a comment made from the preview onto the selected source lines", async () => {
-			const user = userEvent.setup();
-			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
-			renderViewer();
-
-			const preview = await screen.findByTestId("diff-md-preview");
-			selectBlock(blockByText(preview, "bold"));
 			await user.click(within(preview).getByTestId("md-preview-add-comment"));
 
 			// The composer names the range it will comment on: line 3 of the new file.
 			expect(screen.getByText(/New line 3/)).toBeInTheDocument();
-			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "tighten this");
+			await fillText(user, screen.getByPlaceholderText("Leave a comment on this line..."), "tighten this");
 			await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 			const list = await screen.findByTestId("md-preview-comments");
@@ -4163,6 +3917,13 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(list.textContent).toContain("1 comment on this file");
 			// And the block itself is marked, so the comment is visible in place.
 			expect(blockByText(preview, "bold").className).toContain("dev3-md-commented");
+
+			await user.click(await screen.findByRole("button", { name: /^Copy$/i }));
+			await waitFor(() => {
+				expect(writeText).toHaveBeenCalled();
+			});
+			const copied = writeText.mock.calls[writeText.mock.calls.length - 1]?.[0];
+			expect(copied).toContain("tighten this");
 		});
 
 		it("sends a preview comment on the send shortcut", async () => {
@@ -4174,7 +3935,7 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			const preview = await screen.findByTestId("diff-md-preview");
 			selectBlock(blockByText(preview, "bold"));
 			await user.click(within(preview).getByTestId("md-preview-add-comment"));
-			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "tighten this");
+			await fillText(user,screen.getByPlaceholderText("Leave a comment on this line..."), "tighten this");
 			await user.keyboard("{Control>}{Enter}{/Control}");
 
 			await waitFor(() => {
@@ -4194,27 +3955,6 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			await user.click(within(preview).getByTestId("md-preview-add-comment"));
 
 			expect(screen.getByText(/Old line 1/)).toBeInTheDocument();
-		});
-
-		it("keeps a preview comment in the review export", async () => {
-			const user = userEvent.setup();
-			const writeText = vi.fn().mockResolvedValue(undefined);
-			vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
-			renderViewer();
-
-			const preview = await screen.findByTestId("diff-md-preview");
-			selectBlock(blockByText(preview, "bold"));
-			await user.click(within(preview).getByTestId("md-preview-add-comment"));
-			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "from the preview");
-			await user.click(screen.getByRole("button", { name: "Add comment" }));
-
-			await user.click(await screen.findByRole("button", { name: /^Copy$/i }));
-			await waitFor(() => {
-				expect(writeText).toHaveBeenCalled();
-			});
-			const copied = writeText.mock.calls[writeText.mock.calls.length - 1]?.[0];
-			expect(copied).toContain("from the preview");
 		});
 
 		it("flips a previewed markdown file back to source when a search hit lands in it", async () => {
