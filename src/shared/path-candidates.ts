@@ -36,21 +36,42 @@ const LINE_COL_SUFFIX = /^:(\d+)(?::\d+)?/;
 const TRAILING_PUNCTUATION = /[.,;:!?'"`)\]}>]+$/;
 const MIN_CANDIDATE_LEN = 3;
 
-/** Lines longer than this are not scanned: no path sits alone in a minified blob. */
-const MAX_LINE_LEN = 4096;
+/** A longer line is scanned in overlapping windows of this size, so one scan stays short. */
+const WINDOW = 4096;
+const WINDOW_OVERLAP = 512;
 
 /** Find file-path-looking tokens in text, line by line; offsets are into `text`. */
 export function findPathCandidates(text: string): PathCandidate[] {
 	const candidates: PathCandidate[] = [];
 	let offset = 0;
 	for (const line of text.split("\n")) {
-		if (line.length <= MAX_LINE_LEN) scanLine(line, offset, candidates);
+		if (line.length <= WINDOW) {
+			scanLine(line, offset, candidates);
+		} else {
+			// A candidate a window cut short reappears whole in the next window; keep the longest per start.
+			const found = new Map<number, PathCandidate>();
+			for (let at = 0; at < line.length; at += WINDOW - WINDOW_OVERLAP) {
+				const part: PathCandidate[] = [];
+				scanLine(line.slice(at, at + WINDOW), offset + at, part);
+				for (const c of part) if (!found.has(c.start) || found.get(c.start)!.end < c.end) found.set(c.start, c);
+				if (at + WINDOW >= line.length) break;
+			}
+			const sorted = [...found.values()].sort((a, b) => a.start - b.start);
+			let lastEnd = -1;
+			for (const c of sorted) {
+				if (c.start <= lastEnd) continue;
+				candidates.push(c);
+				lastEnd = c.end;
+			}
+		}
 		offset += line.length + 1;
 	}
 	return candidates;
 }
 
 function scanLine(text: string, offset: number, candidates: PathCandidate[]): void {
+	// Every candidate holds a separator or a dot; text with neither costs no regex pass.
+	if (!/[./\\]/.test(text)) return;
 	PATH_REGEX.lastIndex = 0;
 	let match: RegExpExecArray | null;
 	while ((match = PATH_REGEX.exec(text)) !== null) {

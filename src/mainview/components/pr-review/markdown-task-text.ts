@@ -133,23 +133,24 @@ export function remarkHtmlAsText() {
 }
 
 /**
- * Markdown source with `_` escaped inside path candidates in prose, so
- * `src/__init__.py` stays one path instead of `src/` + bold `init` + `.py`.
- * Code, fenced blocks and `<...>` autolinks keep their text as written.
+ * Markdown source where prose paths survive parsing: `_` is escaped so
+ * `src/__init__.py` is not bold `init`, and a `\` before punctuation is doubled so
+ * `C:\me\.claude` keeps its backslash. Code and `<...>` autolinks stay as written.
  */
 export function escapePathEmphasis(body: string): string {
-	if (!body.includes("_")) return body;
+	if (!body.includes("_") && !body.includes("\\")) return body;
 	return linesOutsideFences(body).map(({ line, code }) => {
-		if (code || !line.includes("_")) return line;
+		if (code) return line;
 		const spans = codeSpans(line);
 		let out = "";
 		let cursor = 0;
 		for (const candidate of findPathCandidates(line)) {
-			if (!candidate.raw.includes("_") || candidate.raw.includes("\\")) continue;
+			if (!/[_\\]/.test(candidate.raw)) continue;
 			if (spans.some((span) => candidate.start >= span.start && candidate.start < span.end)) continue;
 			const before = line.lastIndexOf("<", candidate.start);
 			if (before >= 0 && line.indexOf(">", before) > candidate.end) continue;
-			out += line.slice(cursor, candidate.start) + candidate.raw.replaceAll("_", "\\_");
+			const escaped = candidate.raw.replace(/\\(?=[!-/:-@[-`{-~])/g, "\\\\").replaceAll("_", "\\_");
+			out += line.slice(cursor, candidate.start) + escaped;
 			cursor = candidate.end + 1;
 		}
 		return cursor === 0 ? line : out + line.slice(cursor);

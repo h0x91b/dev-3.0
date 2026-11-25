@@ -23,10 +23,17 @@ describe("findPathCandidates on every platform's spelling", () => {
 		expect(paths("share \\\\server\\docs\\a.md").some((p) => p.startsWith("\\server"))).toBe(false);
 	});
 
-	it("stays fast on a long blob with no separator", () => {
+	it("stays fast on blobs with no separator, under and over the window size", () => {
 		const started = performance.now();
-		findPathCandidates(`${"a".repeat(200_000)}\n${"b/".repeat(3000)}`);
-		expect(performance.now() - started).toBeLessThan(200);
+		findPathCandidates(`${"a".repeat(4000)}\n${"a".repeat(200_000)}\n${"b/".repeat(3000)}`);
+		expect(performance.now() - started).toBeLessThan(300);
+	});
+
+	it("still finds a path far into a very long line, once", () => {
+		const line = `${"word ".repeat(2000)}see src/deep/file.ts:7 ${"word ".repeat(2000)}`;
+		const found = findPathCandidates(line);
+		expect(found.map((c) => c.cleanPath)).toEqual(["src/deep/file.ts"]);
+		expect(line.slice(found[0]!.start, found[0]!.end + 1)).toBe("src/deep/file.ts:7");
 	});
 
 	it("keeps finding POSIX paths", () => {

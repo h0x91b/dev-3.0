@@ -1,6 +1,6 @@
 import * as nodePath from "node:path";
 import { existsSync } from "node:fs";
-import { annotatePathRefs, type PathRef } from "../shared/path-refs";
+import { annotatePathRefs, stripPathAnnotations, type PathRef } from "../shared/path-refs";
 import { projectMatchesQualifier } from "../shared/task-refs";
 
 interface ProjectRoot {
@@ -38,4 +38,9 @@ export function annotateWithProjects(text: string, projects: readonly ProjectRoo
 		const absolute = resolvePathRefIn(projects, ref);
 		return absolute && existsSync(absolute) ? absolute : null;
 	}, maxAdded);
+}
+
+/** `text` without the annotations {@link annotateWithProjects} adds, matched exactly. */
+export function stripWithProjects(text: string, projects: readonly ProjectRoot[]): string {
+	return stripPathAnnotations(text, (ref) => resolvePathRefIn(projects, ref));
 }

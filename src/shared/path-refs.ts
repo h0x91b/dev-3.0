@@ -79,13 +79,20 @@ export function formatPathRef(ref: PathRef): string {
 }
 
 /** Fenced code stays as written: a command in one must still run. Indented fences count too. */
-const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
+const FENCE_OPEN = /^\s*(`{3,}|~{3,})(.*)$/;
+
+/** A fence opener per CommonMark: a backtick fence's info string has no backtick. */
+function fenceOpener(line: string): string | null {
+	const match = FENCE_OPEN.exec(line);
+	if (!match) return null;
+	return match[1]![0] === "`" && match[2]!.includes("`") ? null : match[1]!;
+}
 
 /** Each line of `text` with whether it sits inside (or is) a fence line. */
 export function linesOutsideFences(text: string): Array<{ line: string; code: boolean }> {
 	let fence: string | null = null;
 	return text.split("\n").map((line) => {
-		const opener = FENCE_OPEN.exec(line)?.[1];
+		const opener = fenceOpener(line);
 		if (fence) {
 			if (opener && opener[0] === fence[0] && opener.length >= fence.length && line.trim() === opener) fence = null;
 			return { line, code: true };
@@ -98,12 +105,31 @@ export function linesOutsideFences(text: string): Array<{ line: string; code: bo
 	});
 }
 
-/** Inline code spans in one line, as [start, end) ranges. */
+/** Inline code spans in one line, as [start, end) ranges: a backtick run closes on the next run of equal length. Linear. */
 export function codeSpans(line: string): Array<{ start: number; end: number; inner: string }> {
+	const runs: Array<{ start: number; length: number }> = [];
+	for (let i = 0; i < line.length; i++) {
+		if (line[i] !== "`") continue;
+		let j = i;
+		while (j < line.length && line[j] === "`") j++;
+		runs.push({ start: i, length: j - i });
+		i = j - 1;
+	}
+	const byLength = new Map<number, number[]>();
+	runs.forEach((run, index) => byLength.set(run.length, [...(byLength.get(run.length) ?? []), index]));
+	const next = new Map<number, number>();
 	const spans: Array<{ start: number; end: number; inner: string }> = [];
-	const re = /(`+)([\s\S]*?[^`])\1(?!`)/g;
-	let match: RegExpExecArray | null;
-	while ((match = re.exec(line)) !== null) spans.push({ start: match.index, end: match.index + match[0].length, inner: match[2] });
+	for (let i = 0; i < runs.length; i++) {
+		const run = runs[i]!;
+		const same = byLength.get(run.length)!;
+		let k = next.get(run.length) ?? 0;
+		while (k < same.length && same[k]! <= i) k++;
+		next.set(run.length, k);
+		if (k >= same.length) continue;
+		const close = runs[same[k]!]!;
+		spans.push({ start: run.start, end: close.start + close.length, inner: line.slice(run.start + run.length, close.start) });
+		i = same[k]!;
+	}
 	return spans;
 }
 
@@ -129,11 +155,11 @@ function rewriteLine(line: string, rewrite: (relativePath: string, line: number 
 		const relative = projectRelative(candidate.cleanPath);
 		const replacement = relative ? rewrite(relative, candidate.line) : null;
 		if (replacement === null) continue;
-		// Only `path[:line]` is replaced; a `:col` tail stays as written.
-		const lineSuffix = candidate.line === undefined ? "" : `:${candidate.line}`;
-		const replacedEnd = candidate.start + candidate.cleanPath.length + lineSuffix.length;
+		// `path[:line]` is replaced as written; outside code a `:col` tail stays, inside
+		// a whole-path code span it goes, so the span stays one parseable token.
+		const written = /^:\d+/.exec(candidate.raw.slice(candidate.cleanPath.length))?.[0] ?? "";
 		out += line.slice(cursor, candidate.start) + replacement;
-		cursor = replacedEnd;
+		cursor = span ? candidate.end + 1 : candidate.start + candidate.cleanPath.length + written.length;
 	}
 	return cursor === 0 ? line : out + line.slice(cursor);
 }
@@ -162,22 +188,32 @@ export function projectRelative(path: string): string | null {
 	return normalized;
 }
 
-/** An annotation `annotatePathRefs` wrote: ` (<absolute path>[:line])` right after a token or its code span. */
-const ANNOTATION = /^`? \(((?:\/|[A-Za-z]:[\\/]|\\\\)[^()\n]*)\)/;
+/** The annotation `annotatePathRefs` writes for `ref` when it names `absolute`. */
+function annotationFor(ref: PathRef, absolute: string): string {
+	return ` (${absolute}${ref.line ? `:${ref.line}` : ""})`;
+}
 
-/** Text without the absolute paths `annotatePathRefs` added, so a written-back copy stores only tokens. */
-export function stripPathAnnotations(text: string): string {
+/**
+ * Text without the absolute paths `annotatePathRefs` added, so a written-back copy
+ * stores only tokens. Only an exact annotation goes: an author's own `(...)` stays.
+ */
+export function stripPathAnnotations(text: string, resolve: (ref: PathRef) => string | null): string {
 	if (!text.includes("path:")) return text;
-	let out = "";
-	let cursor = 0;
-	for (const { end } of findPathRefsInText(text)) {
-		const match = ANNOTATION.exec(text.slice(end));
-		if (!match) continue;
-		const keep = match[0].startsWith("`") ? 1 : 0;
-		out += text.slice(cursor, end + keep);
-		cursor = end + match[0].length;
-	}
-	return cursor === 0 ? text : out + text.slice(cursor);
+	return linesOutsideFences(text).map(({ line, code }) => {
+		if (code) return line;
+		let out = "";
+		let cursor = 0;
+		for (const { ref, end } of findPathRefsInText(line)) {
+			const absolute = resolve(ref);
+			if (!absolute) continue;
+			const at = line[end] === "`" ? end + 1 : end;
+			const annotation = annotationFor(ref, absolute);
+			if (!line.startsWith(annotation, at)) continue;
+			out += line.slice(cursor, at);
+			cursor = at + annotation.length;
+		}
+		return cursor === 0 ? line : out + line.slice(cursor);
+	}).join("\n");
 }
 
 /** Characters of absolute paths added to one text at most. */
@@ -187,10 +223,10 @@ export const LAUNCH_ANNOTATION_MAX_ADDED_CHARS = 512;
 
 /**
  * Text handed to an agent: each path token outside fenced code gains the absolute
- * path it names, `path:a1c9fe4e/x.md (/abs/x.md)`, replacing any older annotation.
+ * path it names, `path:a1c9fe4e/x.md (/abs/x.md)`, once.
  */
 export function annotatePathRefs(text: string, resolve: (ref: PathRef) => string | null, maxAdded = ANNOTATION_MAX_ADDED_CHARS): string {
-	const lines = linesOutsideFences(stripPathAnnotations(text));
+	const lines = linesOutsideFences(stripPathAnnotations(text, resolve));
 	let budget = maxAdded;
 	return lines.map(({ line, code }) => {
 		if (code) return line;
@@ -199,7 +235,7 @@ export function annotatePathRefs(text: string, resolve: (ref: PathRef) => string
 		for (const { ref, end } of findPathRefsInText(line)) {
 			const absolute = resolve(ref);
 			if (!absolute) continue;
-			const suffix = ` (${absolute}${ref.line ? `:${ref.line}` : ""})`;
+			const suffix = annotationFor(ref, absolute);
 			if (suffix.length > budget) break;
 			budget -= suffix.length;
 			// A token in a code span keeps the span whole; the path follows it.

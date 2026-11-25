@@ -33,6 +33,8 @@ const ON_DISK: Record<string, { path: string; kind: "file" | "directory" }> = {
 	"C:\\Users\\me\\plan.md": { path: "C:\\Users\\me\\plan.md", kind: "file" },
 	"C:/Users/me/plan.md": { path: "C:\\Users\\me\\plan.md", kind: "file" },
 	"src/__init__.py": { path: "/repo/src/__init__.py", kind: "file" },
+	"C:\\Users\\me\\.claude\\x.md": { path: "C:\\Users\\me\\.claude\\x.md", kind: "file" },
+	"src\\_gen\\a.ts": { path: "C:\\repo\\src\\_gen\\a.ts", kind: "file" },
 };
 
 const wrap = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nProvider>);
@@ -173,6 +175,13 @@ describe("TaskDescriptionMarkdown path links", () => {
 	it("links Windows drive paths with either separator", async () => {
 		wrap(<TaskDescriptionMarkdown body={"Plan: C:\\Users\\me\\plan.md or C:/Users/me/plan.md"} projectId="p1" taskId="t1" />);
 		await waitFor(() => expect(screen.getAllByRole("button", { name: /plan\.md/ })).toHaveLength(2));
+	});
+
+	it("keeps a backslash before punctuation in a Windows path", async () => {
+		const { container } = wrap(<TaskDescriptionMarkdown body={"Config C:\\Users\\me\\.claude\\x.md and src\\_gen\\a.ts"} projectId="p1" taskId="t1" />);
+		await screen.findByRole("button", { name: /\.claude\\x\.md/ });
+		await screen.findByRole("button", { name: /_gen/ });
+		expect(container.textContent).toContain("C:\\Users\\me\\.claude\\x.md");
 	});
 
 	it("links a dunder file name that markdown would otherwise read as emphasis", async () => {

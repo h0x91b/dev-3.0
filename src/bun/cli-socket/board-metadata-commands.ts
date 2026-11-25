@@ -1,4 +1,5 @@
 import type { Project, Task, TaskStatus, NoteSource } from "../../shared/types";
+import { withoutAbsolutePaths } from "../path-refs-agent";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../../shared/review";
 import { formatStatus, getTaskTitle, STATUS_LABELS } from "../../shared/types";
 import { nextKeepAliveState } from "../../shared/keep-alive";
@@ -23,7 +24,7 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 			throw new Error("overview text is required");
 		}
 		const { project, task } = await resolveTaskFromParams(params);
-		return (await updateTaskMetadata(boardPorts, project, task.id, { overview }, AGENT_ACTOR)).task;
+		return (await updateTaskMetadata(boardPorts, project, task.id, { overview: await withoutAbsolutePaths(overview) }, AGENT_ACTOR)).task;
 	},
 
 	"overview.show": async (params) => {
@@ -88,7 +89,7 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 		}
 
 		const { task: updated } = await taskNotes.addNote(
-			boardPorts, project, task.id, content, AGENT_ACTOR, params.source as NoteSource | undefined,
+			boardPorts, project, task.id, await withoutAbsolutePaths(content), AGENT_ACTOR, params.source as NoteSource | undefined,
 		);
 		return updated;
 	},

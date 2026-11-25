@@ -13,7 +13,7 @@ vi.mock("../data", () => ({
 	},
 }));
 
-import { absolutizeSenderPaths, qualifyWriterPaths, withAbsolutePaths } from "../path-refs-agent";
+import { absolutizeSenderPaths, qualifyWriterPaths, withAbsolutePaths, withoutAbsolutePaths } from "../path-refs-agent";
 
 let root: string;
 let readerRoot: string;
@@ -38,6 +38,11 @@ describe("absolutizeSenderPaths", () => {
 		expect(out).toBe(`see ${join(root, "todo", "x.md")}:2 and todo/none.md`);
 	});
 
+	it("gives the sender's absolute path even for a file both boards hold", async () => {
+		const out = await absolutizeSenderPaths("I changed README.md", "a1c9fe4e-0000-4000-8000-000000000001", "b2d0aa11-0000-4000-8000-000000000002");
+		expect(out).toBe(`I changed ${join(root, "README.md")}`);
+	});
+
 	it("keeps paths as written on the sender's own board", async () => {
 		const id = "a1c9fe4e-0000-4000-8000-000000000001";
 		expect(await absolutizeSenderPaths("see todo/x.md", id, id)).toBe("see todo/x.md");
@@ -58,7 +63,14 @@ describe("qualifyWriterPaths", () => {
 		expect(await qualifyWriterPaths("see README.md and todo/x.md", writer, reader)).toBe("see README.md and path:a1c9fe4e/todo/x.md");
 	});
 
+	it("round-trips: what dev3 prints for an agent is stored back as the bare token", async () => {
+		const printed = await withAbsolutePaths("note: path:a1c9fe4e/todo/x.md (keep this)");
+		expect(printed).not.toBe("note: path:a1c9fe4e/todo/x.md (keep this)");
+		expect(await withoutAbsolutePaths(printed)).toBe("note: path:a1c9fe4e/todo/x.md (keep this)");
+	});
+
 	it("drops the absolute path an agent copied back from dev3's output", async () => {
-		expect(await qualifyWriterPaths("brief path:a1c9fe4e/todo/x.md (/Users/me/todo/x.md)", reader, reader)).toBe("brief path:a1c9fe4e/todo/x.md");
+		const copied = `brief path:a1c9fe4e/todo/x.md (${join(root, "todo", "x.md")})`;
+		expect(await qualifyWriterPaths(copied, reader, reader)).toBe("brief path:a1c9fe4e/todo/x.md");
 	});
 });

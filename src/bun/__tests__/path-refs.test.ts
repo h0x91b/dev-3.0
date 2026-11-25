@@ -78,8 +78,17 @@ describe("qualifyPathsFor and code", () => {
 		expect(qualifyPathsFor(text, WRITER, READER, exists)).toBe(text.replace(/then todo\/x\.md$/, "then path:a1c9fe4e/todo/x.md"));
 	});
 
-	it("keeps a :col tail as written", () => {
+	it("keeps a :col tail as written, and the line digits as written", () => {
 		expect(qualifyPathsFor("at todo/x.md:12:5", WRITER, READER, exists)).toBe("at path:a1c9fe4e/todo/x.md:12:5");
+		expect(qualifyPathsFor("at todo/x.md:012 now", WRITER, READER, exists)).toBe("at path:a1c9fe4e/todo/x.md:12 now");
+	});
+
+	it("drops a :col inside a whole-path code span, so the span stays one token", () => {
+		expect(qualifyPathsFor("see `todo/x.md:12:5`", WRITER, READER, exists)).toBe("see `path:a1c9fe4e/todo/x.md:12`");
+	});
+
+	it("does not read a backtick line with more backticks as a fence", () => {
+		expect(qualifyPathsFor("```foo``` then todo/x.md", WRITER, READER, exists)).toBe("```foo``` then path:a1c9fe4e/todo/x.md");
 	});
 });
 
@@ -91,9 +100,15 @@ describe("annotatePathRefs", () => {
 		expect(annotatePathRefs(once, resolve)).toBe(once);
 	});
 
-	it("replaces a stale annotation instead of stacking a second one", () => {
-		expect(annotatePathRefs("read path:a1c9fe4e/todo/x.md (/old/todo/x.md) now", () => "/new/todo/x.md"))
-			.toBe("read path:a1c9fe4e/todo/x.md (/new/todo/x.md) now");
+	it("keeps an author's own parenthetical after a token", () => {
+		const text = "see path:a1c9fe4e/src/routes.ts (/users endpoint)";
+		expect(stripPathAnnotations(text, () => "/r/src/routes.ts")).toBe(text);
+		expect(annotatePathRefs(text, () => "/r/src/routes.ts")).toBe("see path:a1c9fe4e/src/routes.ts (/r/src/routes.ts) (/users endpoint)");
+	});
+
+	it("strips an annotation whose path holds parentheses", () => {
+		const abs = "C:\\Program Files (x86)\\p\\x.md";
+		expect(stripPathAnnotations(`a path:a1c9fe4e/x.md (${abs}) b`, () => abs)).toBe("a path:a1c9fe4e/x.md b");
 	});
 
 	it("leaves fenced code untouched, so a command in it still runs", () => {
@@ -110,7 +125,8 @@ describe("annotatePathRefs", () => {
 
 	it("is undone by stripPathAnnotations, in prose and after a code span", () => {
 		const text = "a path:a1c9fe4e/todo/x.md:2 and `path:a1c9fe4e/todo/x.md` and (not this)";
-		expect(stripPathAnnotations(annotatePathRefs(text, () => "C:\\r\\todo\\x.md"))).toBe(text);
+		const resolve = () => "C:\\r\\todo\\x.md";
+		expect(stripPathAnnotations(annotatePathRefs(text, resolve), resolve)).toBe(text);
 	});
 
 	it("puts the path after a code span, not inside it", () => {
