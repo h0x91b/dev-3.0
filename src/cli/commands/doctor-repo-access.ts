@@ -23,7 +23,7 @@ export interface RepoAccessDeps {
 export type RepoAccessCause = "ok" | "missing" | "denied" | "filesystem" | "unknown";
 
 const LABEL = "repository access";
-const DOCS_URL = "https://github.com/h0x91b/dev-3.0/blob/main/docs/troubleshooting.md#task-terminals-lose-access-to-desktop-or-documents-on-macos";
+export const DOCS_URL = "https://github.com/h0x91b/dev-3.0/blob/main/docs/troubleshooting.md#task-terminals-lose-access-to-desktop-or-documents-on-macos";
 
 /** Folders macOS guards per program (Apple Platform Security: "Controlling app access to files in macOS"). */
 export function macPrivacyFolder(path: string, home: string): string | null {

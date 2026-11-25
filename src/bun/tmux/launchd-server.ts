@@ -37,6 +37,8 @@ const LAUNCHCTL_NO_SUCH_SERVICE = 113;
 const MIRROR_PRUNE_MIN_AGE_MS = 10 * 60_000;
 /** Written once every file of a mirror is linked. */
 const MIRROR_COMPLETE = "complete";
+/** Pruning is housekeeping: it waits until the first pane has opened. */
+const MIRROR_PRUNE_DELAY_MS = 30_000;
 
 type SpawnSyncFn = (cmd: string[], opts?: Record<string, unknown>) => {
 	exitCode: number | null;
@@ -71,6 +73,8 @@ export interface LaunchdServerDeps {
 	listDir: (path: string) => string[];
 	/** Last modification time in ms; null when it cannot be read. */
 	mtimeMs: (path: string) => number | null;
+	/** Runs `task` later, off the server start path. */
+	defer: (task: () => void) => void;
 }
 
 const defaultDeps: LaunchdServerDeps = {
@@ -117,6 +121,9 @@ const defaultDeps: LaunchdServerDeps = {
 		} catch {
 			return null;
 		}
+	},
+	defer: (task) => {
+		setTimeout(task, MIRROR_PRUNE_DELAY_MS).unref?.();
 	},
 };
 
@@ -260,6 +267,8 @@ function splitBundlePath(binary: string): [string, string] {
  * (another volume, a read-only data root): the server then runs from the bundle, as before.
  */
 function mirrorBundle(binary: string, deps: LaunchdServerDeps): string | null {
+	// Keyed by inode, not dev:ino: links cannot cross volumes, so only a bundle on the data root's
+	// volume is ever mirrored, and one elsewhere sharing a mirror's number is a theoretical collision.
 	const key = deps.inode(binary);
 	if (key === null) return null;
 	const [bundle, inside] = splitBundlePath(binary);
@@ -268,7 +277,8 @@ function mirrorBundle(binary: string, deps: LaunchdServerDeps): string | null {
 	const complete = join(dir, MIRROR_COMPLETE);
 	if (deps.inode(mirrored) === key && deps.pathExists(complete)) return mirrored;
 	try {
-		// No marker: an interrupted build, which may already hold tmux but not Info.plist.
+		// No marker: an interrupted build, which may already hold tmux but not Info.plist. Assumes one
+		// writer; a concurrent build at worst makes the other start fall back to the bundle.
 		deps.removeDir(dir);
 		deps.linkTree(bundle, join(dir, basename(bundle)));
 		deps.writeFile(complete, "");
@@ -280,23 +290,30 @@ function mirrorBundle(binary: string, deps: LaunchdServerDeps): string | null {
 	return null;
 }
 
-/** Deletes the mirrors no process runs from any more, so an old bundle costs disk only while its server lives. */
-function pruneMirrors(keep: string, inside: string, deps: LaunchdServerDeps): void {
+/** Deletes the mirrors no tmux runs from any more, so an old bundle costs disk only while its server lives. */
+function pruneMirrors(deps: LaunchdServerDeps): void {
 	const root = deps.mirrorRoot();
-	for (const name of deps.listDir(root)) {
-		const dir = join(root, name);
-		if (dir === keep) continue;
-		const modified = deps.mtimeMs(dir);
-		if (modified === null || deps.now() - modified < MIRROR_PRUNE_MIN_AGE_MS) continue;
-		if (deps.listDir(dir).some((app) => fileInUse(join(dir, app) + inside, deps))) continue;
-		deps.removeDir(dir);
-	}
+	const old = deps.listDir(root).filter((name) => {
+		const modified = /^\d+$/.test(name) ? deps.mtimeMs(join(root, name)) : null;
+		return modified !== null && deps.now() - modified >= MIRROR_PRUNE_MIN_AGE_MS;
+	});
+	if (old.length === 0) return;
+	// A mirror is named by its tmux inode, so one scan of every tmux's executable covers them all.
+	const running = runningTmuxInodes(deps);
+	if (!running) return;
+	for (const name of old) if (!running.has(Number(name))) deps.removeDir(join(root, name));
 }
 
-/** lsof exits 1 with no output when no process has the file open; any other answer keeps it. */
-function fileInUse(path: string, deps: LaunchdServerDeps): boolean {
-	const result = deps.spawnSync(["/usr/sbin/lsof", "-t", "--", path], { stdout: "pipe", stderr: "ignore", timeout: PROBE_TIMEOUT_MS });
-	return !(result.exitCode === 1 && !new TextDecoder().decode(result.stdout ?? new Uint8Array()).trim());
+/** The inodes every running tmux maps as program text; null when lsof cannot tell, which keeps every mirror. */
+function runningTmuxInodes(deps: LaunchdServerDeps): Set<number> | null {
+	const result = deps.spawnSync(["/usr/sbin/lsof", "-c", "tmux", "-a", "-d", "txt", "-Fi"], {
+		stdout: "pipe",
+		stderr: "ignore",
+		timeout: PROBE_TIMEOUT_MS,
+	});
+	if (result.exitCode !== 0 || result.exitedDueToTimeout) return null;
+	const out = new TextDecoder().decode(result.stdout ?? new Uint8Array());
+	return new Set([...out.matchAll(/^i(\d+)$/gm)].map((match) => Number(match[1])));
 }
 
 /**
@@ -353,7 +370,13 @@ export function ensureLaunchdServer(
 
 	if (waitForServer(binary, opts.socket, deps)) {
 		log.info("tmux server started as a launchd job", { label, binary: serverBinary });
-		if (serverBinary !== binary) pruneMirrors(dirname(splitBundlePath(serverBinary)[0]), splitBundlePath(binary)[1], deps);
+		if (serverBinary !== binary) deps.defer(() => {
+			try {
+				pruneMirrors(deps);
+			} catch (err) {
+				log.warn("could not prune old tmux bundle mirrors", { error: String(err) });
+			}
+		});
 		return "started";
 	}
 	// A server that never came up must not be left to race the caller's own start.

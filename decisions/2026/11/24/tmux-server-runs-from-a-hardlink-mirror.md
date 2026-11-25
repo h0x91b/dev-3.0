@@ -28,8 +28,10 @@ on the mirror (`dev3.electrobun.dev`), and hardlinking out of `/Applications/dev
 order links tmux long before `Info.plist`, so an interrupted build is never reused), and starts the job from that tmux.
 An update deletes the bundle, not the server's file, so tccd never has to fall back. When the mirror
 cannot be built (another volume, a read-only root), the server runs from the bundle as before.
-After a successful start, `pruneMirrors` deletes mirrors older than 10 minutes that no process
-has open (`lsof -t`), so an old bundle costs disk only while its server lives. `staleServerBinary`
+Thirty seconds after a successful start, off the start path, `pruneMirrors` deletes mirrors older than
+10 minutes whose name is no running tmux's executable inode (one `lsof -c tmux -a -d txt -Fi` scan,
+~0.15 s; a per-path `lsof -t` took ~3 s and timed out on busy Macs), so an old bundle costs disk only
+while its server lives. `staleServerBinary`
 again reports `deleted` for an executable with no links (or, without a link count, a replaced inode or a
 missing path; `src/shared/tmux-server-executable.ts`), so servers started before this change get the
 "Restart terminals" notice once. A mirror is recognised by its inode-named directory, not by lsof's path. `dev3 doctor` gained a `tmux server` line (`src/cli/commands/doctor-tmux-server.ts`), only in panes
@@ -41,7 +43,8 @@ project under a privacy folder from the terminal's own process.
 - tccd crediting a mirror outside `/Applications` to the app's grants is observed, not documented.
 - A mirror holds the old bundle's blocks (~350 MB) until its server exits; long-lived servers keep it.
 - Pruning deletes under the data root. It touches only `tmux-host/`, which this code creates, and
-  never a mirror a process has open or one younger than 10 minutes (another instance may be about to start from it).
+  only numeric entries there, never one a running tmux executes, one younger than 10 minutes (another
+  instance may be about to start from it), or anything at all when the scan fails.
 - The one-time notice after the first update still asks to restart terminals on Macs where the path
   fallback would have held.
 

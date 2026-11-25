@@ -72,15 +72,16 @@ describe("tmux server check", () => {
 		const denied = checkTmuxServer(deps({ probe: "EPERM" }));
 		expect(denied?.status).toBe("fail");
 		expect(denied?.detail).toContain(`~/Documents denied (EPERM reading ${PROJECT})`);
-		expect(denied?.hints).toBeUndefined();
+		expect(denied?.hints?.join(" ")).toContain("`repository access` line");
+		expect(denied?.hints?.join(" ")).not.toContain("Restart terminals");
 		const deletedAndDenied = checkTmuxServer(deps({ probe: "EPERM", lsof: LSOF(TMUX, 216663566, 0) }));
 		expect(deletedAndDenied?.status).toBe("fail");
-		expect(deletedAndDenied?.hints?.length).toBeGreaterThan(0);
+		expect(deletedAndDenied?.hints?.join(" ")).toContain("Restart terminals");
 	});
 
 	it("still reports the probe when lsof fails, and says when no project is protected", () => {
 		expect(checkTmuxServer(deps({ lsof: null }))?.detail).toBe(
-			`pid 7471 its executable could not be read; ~/Documents readable (${PROJECT})`,
+			`pid 7471, executable unreadable; ~/Documents readable (${PROJECT})`,
 		);
 		expect(checkTmuxServer(deps({ projectPaths: () => [`${HOME}/code/app`] }))?.detail).toContain("no project in a protected folder to probe");
 	});

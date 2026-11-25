@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { executableDeleted, parseLsofExecutable } from "../../shared/tmux-server-executable";
 import type { CheckResult } from "./doctor";
-import { classifyAccessError, findTerminalHost, macPrivacyFolder, type RepoAccessDeps } from "./doctor-repo-access";
+import { DOCS_URL, classifyAccessError, findTerminalHost, macPrivacyFolder, type RepoAccessDeps } from "./doctor-repo-access";
 
 // Names the dev3 tmux server hosting this pane, whether the file it runs survived updates, and
 // probes a protected project folder from this terminal's own process (it shares the server's access).
@@ -23,6 +23,10 @@ const RESTART_HINTS = [
 	"An update or uninstall deleted the tmux this server runs, so macOS can cut every pane's folder access at its next check.",
 	"Relaunch dev-3.0 and choose \"Restart terminals\" in its notice once no agent is mid-turn; agents come back with `dev3 agent resume`.",
 ];
+const DENIED_HINTS = [
+	"This server's executable is intact, so restarting it will not help; the `repository access` line lists the possible causes.",
+	`Details: ${DOCS_URL}`,
+];
 
 /** Null unless this runs in a pane of dev3's bundled tmux on macOS: no other server is dev3's to restart. */
 export function checkTmuxServer(deps: TmuxServerDeps): CheckResult | null {
@@ -33,15 +37,15 @@ export function checkTmuxServer(deps: TmuxServerDeps): CheckResult | null {
 	const executable = lsof === null ? null : parseLsofExecutable(lsof);
 	const deleted = executable !== null && executableDeleted(executable, deps.inode);
 	const runs = !executable
-		? "its executable could not be read"
+		? ", executable unreadable"
 		: deleted
-			? `runs ${executable.path} (inode ${executable.inode ?? "?"}), which is no longer on disk`
+			? ` runs ${executable.path} (inode ${executable.inode ?? "?"}), which is no longer on disk`
 			: executable.inode !== null && deps.inode(join(deps.mirrorRoot, String(executable.inode))) !== null
-				? `runs its update-proof copy in ${join(deps.mirrorRoot, String(executable.inode))}`
-				: `runs ${executable.path}`;
+				? ` runs its update-proof copy in ${join(deps.mirrorRoot, String(executable.inode))}`
+				: ` runs ${executable.path}`;
 	const probe = probeProtectedProject(deps);
-	const detail = `pid ${host.pid} ${runs}; ${probe.text}`;
-	if (probe.denied) return { label: LABEL, status: "fail", detail, ...(deleted ? { hints: RESTART_HINTS } : {}) };
+	const detail = `pid ${host.pid}${runs}; ${probe.text}`;
+	if (probe.denied) return { label: LABEL, status: "fail", detail, hints: deleted ? RESTART_HINTS : DENIED_HINTS };
 	if (deleted) return { label: LABEL, status: "warn", detail, hints: RESTART_HINTS };
 	return { label: LABEL, status: "ok", detail };
 }

@@ -30,9 +30,12 @@ function fakeDeps(over: {
 	/** Inodes by path; a path not listed has none. */
 	inodes?: Record<string, number>;
 	linkThrows?: boolean;
+	/** Entries of the mirror root; `inUse` puts the name, as an inode, in a running tmux's program text. */
 	mirrors?: Record<string, { ageMs: number; inUse: boolean }>;
 	/** Mirror keys whose build finished (their completion marker exists). */
 	completeMirrors?: number[];
+	tmuxScanFails?: boolean;
+	removeThrows?: string;
 } = {}) {
 	const probes = [...(over.probes ?? ["absent", "alive"])];
 	const calls: string[][] = [];
@@ -41,6 +44,7 @@ function fakeDeps(over: {
 	const removed: string[] = [];
 	const signals: [number, string][] = [];
 	const links: [string, string][] = [];
+	const deferred: (() => void)[] = [];
 	const inodes = new Map(Object.entries(over.inodes ?? {}));
 	let clock = 1_000_000_000;
 	const deps: LaunchdServerDeps = {
@@ -49,8 +53,9 @@ function fakeDeps(over: {
 		spawnSync: (cmd, opts) => {
 			calls.push(cmd);
 			if (cmd[0] === "/usr/sbin/lsof") {
-				const name = cmd[cmd.length - 1].slice(MIRRORS.length + 1).split("/")[0];
-				return over.mirrors?.[name]?.inUse ? { exitCode: 0, stdout: new TextEncoder().encode("4242\n") } : { exitCode: 1 };
+				if (over.tmuxScanFails) return { exitCode: null, exitedDueToTimeout: true };
+				const inUse = Object.entries(over.mirrors ?? {}).filter(([, m]) => m.inUse).map(([name]) => `ftxt\ni${name}\n`);
+				return { exitCode: 0, stdout: new TextEncoder().encode(`p4242\n${inUse.join("")}ftxt\ni9\n`) };
 			}
 			if (cmd[0] === "launchctl") {
 				timeouts.push(opts?.timeout);
@@ -73,7 +78,10 @@ function fakeDeps(over: {
 			if (over.writeThrows) throw new Error("EEXIST");
 			files.set(path, contents);
 		},
-		removeDir: (path) => removed.push(path),
+		removeDir: (path) => {
+			if (path === over.removeThrows) throw new Error("EACCES");
+			removed.push(path);
+		},
 		sleep: (ms) => { clock += ms; },
 		now: () => clock,
 		signal: (pid, signal) => signals.push([pid, signal]),
@@ -90,14 +98,16 @@ function fakeDeps(over: {
 			links.push([src, dst]);
 			inodes.set(dst + "/Contents/Resources/app/tmux/tmux", inodes.get(BUNDLED)!);
 		},
-		listDir: (path) => (path === MIRRORS ? Object.keys(over.mirrors ?? {}) : path.startsWith(`${MIRRORS}/`) ? ["dev-3.0.app"] : []),
+		listDir: (path) => (path === MIRRORS ? Object.keys(over.mirrors ?? {}) : []),
 		mtimeMs: (path) => {
 			const mirror = over.mirrors?.[path.slice(MIRRORS.length + 1)];
 			return mirror ? clock - mirror.ageMs : null;
 		},
+		defer: (task) => deferred.push(task),
 	};
 	const launchctl = () => calls.filter((c) => c[0] === "launchctl").map((c) => c.slice(0, 2).join(" "));
-	return { deps, calls, timeouts, files, removed, signals, links, launchctl };
+	const runDeferred = () => deferred.splice(0).forEach((task) => task());
+	return { deps, calls, timeouts, files, removed, signals, links, deferred, runDeferred, launchctl };
 }
 
 describe("usesLaunchdServer", () => {
@@ -266,25 +276,46 @@ describe("ensureLaunchdServer bundle mirror", () => {
 		expect(f.removed).toContain(`${MIRRORS}/42`);
 	});
 
-	it("deletes old mirrors nothing runs from, and keeps in-use, young and its own", () => {
-		const f = fakeDeps({
-			inodes: { [BUNDLED]: 42 },
-			mirrors: {
-				"42": { ageMs: 0, inUse: false },
-				"7": { ageMs: 86_400_000, inUse: false },
-				"8": { ageMs: 86_400_000, inUse: true },
-				"9": { ageMs: 60_000, inUse: false },
-			},
-		});
+	const OLD_MIRRORS = {
+		"42": { ageMs: 86_400_000, inUse: true },
+		"7": { ageMs: 86_400_000, inUse: false },
+		"8": { ageMs: 86_400_000, inUse: true },
+		"9": { ageMs: 60_000, inUse: false },
+		stray: { ageMs: 86_400_000, inUse: false },
+	};
+	const pruned = (f: ReturnType<typeof fakeDeps>) => f.removed.filter((p) => p.startsWith(MIRRORS) && p !== `${MIRRORS}/42`);
+
+	it("prunes after the start, with one tmux scan: old mirrors no tmux runs go, in-use, young and foreign entries stay", () => {
+		const f = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: OLD_MIRRORS });
 		expect(ensureLaunchdServer(OPTS, f.deps)).toBe("started");
-		expect(f.removed.filter((p) => p.startsWith(MIRRORS))).toEqual([`${MIRRORS}/42`, `${MIRRORS}/7`]);
-		expect(f.calls.filter((c) => c[0] === "/usr/sbin/lsof").map((c) => c[c.length - 1])).toEqual([MIRRORED(7), MIRRORED(8)]);
+		expect(pruned(f)).toEqual([]);
+		expect(f.calls.some((c) => c[0] === "/usr/sbin/lsof")).toBe(false);
+		f.runDeferred();
+		expect(pruned(f)).toEqual([`${MIRRORS}/7`]);
+		expect(f.calls.filter((c) => c[0] === "/usr/sbin/lsof")).toEqual([["/usr/sbin/lsof", "-c", "tmux", "-a", "-d", "txt", "-Fi"]]);
 	});
 
-	it("leaves every mirror alone when the server runs from the bundle", () => {
-		const f = fakeDeps({ inodes: { [BUNDLED]: 42 }, linkThrows: true, mirrors: { "7": { ageMs: 86_400_000, inUse: false } } });
-		ensureLaunchdServer(OPTS, f.deps);
-		expect(f.removed).not.toContain(`${MIRRORS}/7`);
+	it("keeps every mirror when the tmux scan fails, and never throws out of the deferred prune", () => {
+		const failed = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: OLD_MIRRORS, tmuxScanFails: true });
+		ensureLaunchdServer(OPTS, failed.deps);
+		failed.runDeferred();
+		expect(pruned(failed)).toEqual([]);
+
+		const throwing = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: OLD_MIRRORS, removeThrows: `${MIRRORS}/7` });
+		ensureLaunchdServer(OPTS, throwing.deps);
+		expect(() => throwing.runDeferred()).not.toThrow();
+	});
+
+	it("skips the scan without old mirrors, and leaves every mirror alone when the server runs from the bundle", () => {
+		const young = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: { "9": { ageMs: 60_000, inUse: false } } });
+		ensureLaunchdServer(OPTS, young.deps);
+		young.runDeferred();
+		expect(young.calls.some((c) => c[0] === "/usr/sbin/lsof")).toBe(false);
+
+		const unmirrored = fakeDeps({ inodes: { [BUNDLED]: 42 }, linkThrows: true, mirrors: { "7": { ageMs: 86_400_000, inUse: false } } });
+		ensureLaunchdServer(OPTS, unmirrored.deps);
+		expect(unmirrored.deferred).toHaveLength(0);
+		expect(unmirrored.removed).not.toContain(`${MIRRORS}/7`);
 	});
 });
 
