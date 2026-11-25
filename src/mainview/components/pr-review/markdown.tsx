@@ -11,10 +11,11 @@ import {
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { MarkdownImage, MarkdownImageProvider } from "./markdown-images";
 import { createSourceLineComponents } from "./markdown-source-lines";
-import { remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
-import { remarkBareTaskRefs, remarkHtmlAsText } from "./markdown-task-text";
+import { isRelativeUrl, remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
+import { parsePathLinkUrl, remarkBarePathLinks, remarkBareTaskRefs, remarkHtmlAsText } from "./markdown-task-text";
+import { pathLinkLabel } from "../../text-path-links";
 import { parseRefUri } from "../../../shared/task-refs";
-import { TaskRefLink, TaskRefScopeContext } from "../TaskRefText";
+import { PathLink, TaskRefLink, TaskRefScopeContext } from "../TaskRefText";
 
 const mermaidPlugin = createMermaidPlugin();
 const plugins = { mermaid: mermaidPlugin };
@@ -26,6 +27,7 @@ const taskTextRemarkPlugins = [
 	...Object.values(defaultRemarkPlugins),
 	remarkHtmlAsText,
 	remarkBareTaskRefs,
+	remarkBarePathLinks,
 	remarkProtectRelativeUrls,
 	remarkBreaks,
 ];
@@ -168,6 +170,12 @@ export function MarkdownContent({
 			const target = unprotect(href);
 			const taskRef = target ? parseRefUri(target) : null;
 			if (taskRef) return <TaskRefLink taskRef={taskRef}>{children}</TaskRefLink>;
+			if (taskText && target && isRelativeUrl(target) && !target.startsWith("#")) {
+				const { path, line } = parsePathLinkUrl(target);
+				const text = typeof children === "string" ? children : undefined;
+				const label = text ? pathLinkLabel(text) : undefined;
+				return <PathLink path={path} line={line} label={label === text ? undefined : label}>{children}</PathLink>;
+			}
 			return <ExternalMarkdownLink {...props} href={safeLinkHref(target)}>{children}</ExternalMarkdownLink>;
 		},
 		img: ({ node: _node, src, ...props }) => (
@@ -180,7 +188,7 @@ export function MarkdownContent({
 		),
 		input: ({ node: _node, ...props }) => <input {...props} disabled />,
 		strong: ({ node: _node, ...props }) => <strong {...props} />,
-	}), [imageBaseDir, imageRootDir, lineOffset, commentedLines, rowSignature]);
+	}), [imageBaseDir, imageRootDir, lineOffset, commentedLines, rowSignature, taskText]);
 
 	// Streamdown's memo comparator ignores `components`, so a changed set of
 	// commented lines or table row kinds only repaints through the key.

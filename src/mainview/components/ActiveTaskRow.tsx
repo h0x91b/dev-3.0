@@ -352,7 +352,7 @@ function ActiveTaskRow({
 							className="mt-1.5 pt-1.5 border-t border-accent/20 text-xs leading-relaxed text-fg-2 whitespace-pre-wrap break-words"
 							data-testid={`active-task-overview-${task.id}`}
 						>
-							<TaskRefText text={effective} contextProjectId={task.projectId} taskId={task.id} />
+							<TaskRefText text={effective} contextProjectId={task.projectId} taskId={task.id} pathLinks={false} />
 						</div>
 					);
 				})()}
