@@ -64,7 +64,9 @@ beforeAll(async () => {
 		} else if (input.endsWith("native-bold.woff2")) {
 			asset = resolve(fixtureDirectory, "../assets/fonts/JetBrainsMonoNerdFontMono-Bold.woff2");
 		} else throw new Error(`Unexpected test asset: ${input}`);
-		return new Response(new Uint8Array(readFileSync(asset)).buffer);
+		// A plain object, not a Response: a host-realm Response body does not survive the vm pool.
+		const bytes = new Uint8Array(readFileSync(asset));
+		return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer };
 	});
 	sheet.textContent = `
 		@font-face { font-family: "${FAMILY}"; font-weight: 400; src: url("/native-regular.woff2"); }

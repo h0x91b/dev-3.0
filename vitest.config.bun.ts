@@ -11,6 +11,8 @@ export default defineConfig({
 	test: {
 		retry: ciRetry,
 		maxWorkers: resolveMaxWorkers("bun"),
+		// See decisions/2026/11/25/renderer-tests-on-vm-threads.md; test-realm-guard.ts restores per file.
+		pool: "vmForks",
 		root: "src/bun",
 		globals: true,
 		setupFiles: ["./test-setup.ts"],

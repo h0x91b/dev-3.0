@@ -1,3 +1,5 @@
+import { guardSharedRealm } from "../../test-realm-guard";
+
 // Stub Bun global for vitest (runs in Node.js, not Bun runtime)
 // Must run before any src/bun/ module is imported.
 (globalThis as any).Bun = {
@@ -42,3 +44,6 @@
 if (typeof process === "undefined") {
 	(globalThis as any).process = { env: { HOME: "/tmp" } };
 }
+
+// The vm pool shares one context and process between files: undo whatever this file patched.
+afterAll(guardSharedRealm());
