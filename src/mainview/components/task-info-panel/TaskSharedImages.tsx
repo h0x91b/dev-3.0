@@ -23,8 +23,9 @@ interface TaskSharedImagesProps {
 export default function TaskSharedImages({ task, projectId, compact = false, touch = false }: TaskSharedImagesProps) {
 	const t = useT();
 	const media = taskSharedMedia(task);
-	const count = media.length;
-	if (count === 0) return null;
+	if (media.length === 0) return null;
+	// Removed clips still open in the viewer as tombstones, but are not counted.
+	const count = media.filter((item) => !item.removedAt).length;
 
 	const isUnread = media.some((item) => item.isUnread);
 	const hasClips = media.some(isSharedClip);

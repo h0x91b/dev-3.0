@@ -1,6 +1,6 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchClaudeConfigLocation } from "../shared/claude-config-dir";
 import type { Project, ProjectFolder } from "../shared/types";
@@ -154,9 +154,14 @@ export async function readWorkspaceFolders(projectPath: string): Promise<string[
 	return folders;
 }
 
-/** The path with symlinks resolved; a missing path keeps its text form. */
+/** The path with symlinks resolved; a missing path resolves through its closest existing parent. */
 async function realPathOr(path: string): Promise<string> {
-	return realpath(path).catch(() => path);
+	try {
+		return await realpath(path);
+	} catch {
+		const parent = dirname(path);
+		return parent === path ? path : join(await realPathOr(parent), basename(path));
+	}
 }
 
 async function isDirectory(path: string): Promise<boolean> {

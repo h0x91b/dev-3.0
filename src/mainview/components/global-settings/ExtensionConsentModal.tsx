@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef } from "react";
 import type { ExtensionManifest } from "../../../shared/extensions";
 import { useT } from "../../i18n";
 import { useFocusTrap } from "../../utils/useFocusTrap";
+import { useEscapeClaim } from "../../hooks/useEscapeClaim";
 
 export interface ExtensionConsentRequest {
 	manifest: ExtensionManifest;
@@ -38,6 +39,7 @@ export default function ExtensionConsentModal({
 }) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	useEscapeClaim();
 	const cancelRef = useRef<HTMLButtonElement>(null);
 	const { manifest } = request;
 

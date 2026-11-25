@@ -12,9 +12,14 @@ vi.mock("../../rpc", () => ({
 			readImageBase64: vi.fn(),
 			getSharedMediaUrl: vi.fn(),
 			openImageFile: vi.fn().mockResolvedValue(undefined),
+			deleteSharedMedia: vi.fn(),
+			previewSharedMediaDelete: vi.fn(),
 		},
 	},
 }));
+
+const confirmMock = vi.hoisted(() => ({ confirm: vi.fn(async (_options: { title: string; message: string; danger?: boolean }) => true) }));
+vi.mock("../../confirm", () => confirmMock);
 
 const platform = vi.hoisted(() => ({ remote: false }));
 vi.mock("../../utils/platform", async (importOriginal) => ({
@@ -466,6 +471,130 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(screen.getByText("2 / 3")).toBeInTheDocument();
 	});
 
+	it("deletes the clip's stored file from its right-click menu after a confirmation, then shows the tombstone", async () => {
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
+		deleteMock.mockReset();
+		previewMock.mockReset();
+		previewMock.mockResolvedValue({ count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] });
+		deleteMock.mockResolvedValue({
+			task: { id: "t1", sharedVideos: [{ ...MIXED[1], removedAt: 1_780_000_000_000, removedBytes: 0 }] },
+			summary: { count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] },
+		});
+		confirmMock.confirm.mockClear();
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		await userEvent.click(screen.getByTestId("image-save-menu-delete"));
+
+		await screen.findByTestId("viewer-media-removed");
+		expect(screen.getByText("Removed to free space")).toBeInTheDocument();
+		expect(confirmMock.confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true, title: "Delete the stored file of demo.mp4?" }));
+		// The dialog states the honest gain: a clone of a live original frees ~0.
+		expect(confirmMock.confirm.mock.calls[0][0].message).toContain("frees almost no space");
+		expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(deleteMock).toHaveBeenCalledTimes(1);
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
+	});
+
+	it("deletes nothing when the confirmation is declined", async () => {
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		deleteMock.mockReset();
+		(mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, bytes: 10, freeableBytes: 10, failed: [] });
+		confirmMock.confirm.mockResolvedValueOnce(false);
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		await userEvent.click(screen.getByTestId("image-save-menu-delete"));
+		await waitFor(() => expect(confirmMock.confirm).toHaveBeenCalled());
+		expect(deleteMock).not.toHaveBeenCalled();
+		expect(screen.getByTestId("viewer-main-video")).toBeInTheDocument();
+	});
+
+	it("shows a removed clip as a tombstone with no delete or download", async () => {
+		const removed = [MIXED[0], { ...MIXED[1], removedAt: 1_780_000_000_000 }, MIXED[2]];
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={removed} initialIndex={1} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		expect(await screen.findByTestId("viewer-media-removed")).toHaveTextContent("Removed to free space");
+		expect(screen.getByTestId("image-viewer-download")).toBeDisabled();
+		expect(screen.getByTestId("image-viewer-copy-path")).toBeDisabled();
+		expect(screen.getByTestId("image-viewer-open")).toBeDisabled();
+		expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(1);
+		fireEvent.contextMenu(screen.getByTestId("viewer-media-removed"));
+		expect(screen.queryByTestId("image-save-menu-delete")).toBeNull();
+	});
+
+	it("offers the older-clips sweep in the menu of an open task's viewer and tombstones what it deleted", async () => {
+		const MB = 1024 * 1024;
+		const big = [vid("old", "old.mp4"), vid("mid", "mid.mp4"), vid("new", "new.mp4")].map((item, i) => ({ ...item, bytes: 20 * MB, createdAt: i + 1 }));
+		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		previewMock.mockReset();
+		deleteMock.mockReset();
+		confirmMock.confirm.mockClear();
+		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] });
+		deleteMock.mockResolvedValue({
+			task: { id: "t1", sharedVideos: big.map((item) => (item.id === "new" ? item : { ...item, removedAt: 9 })) },
+			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] },
+		});
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={big} initialIndex={2} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] }));
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		const sweep = await screen.findByTestId("image-save-menu-delete-older");
+		expect(sweep).toHaveTextContent("Free 20 MB · delete older clips");
+		await userEvent.click(sweep);
+		await waitFor(() => expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(2));
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] });
+		fireEvent.contextMenu(screen.getByTestId("viewer-main-video"));
+		expect(screen.queryByTestId("image-save-menu-delete-older")).toBeNull();
+	});
+
+	it("shows the older-clips sweep as a rail button that confirms, deletes and then disappears", async () => {
+		const MB = 1024 * 1024;
+		const big = [vid("old", "old.mp4"), vid("mid", "mid.mp4"), vid("new", "new.mp4")].map((item, i) => ({ ...item, bytes: 20 * MB, createdAt: i + 1 }));
+		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		previewMock.mockReset();
+		deleteMock.mockReset();
+		confirmMock.confirm.mockClear();
+		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] });
+		deleteMock.mockResolvedValue({
+			task: { id: "t1", sharedVideos: big.map((item) => (item.id === "new" ? item : { ...item, removedAt: 9 })) },
+			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] },
+		});
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={big} initialIndex={2} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		const button = await screen.findByTestId("image-viewer-delete-older");
+		await waitFor(() => expect(button).toHaveTextContent("Free 20 MB · delete older clips"));
+		await userEvent.click(button);
+		expect(confirmMock.confirm).toHaveBeenCalledTimes(1);
+		await waitFor(() => expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(2));
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] });
+		expect(screen.queryByTestId("image-viewer-delete-older")).toBeNull();
+	});
+
+	it("shows no rail sweep when there are no older large clips", async () => {
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		await screen.findByTestId("viewer-main-video");
+		expect(screen.queryByTestId("image-viewer-delete-older")).toBeNull();
+	});
+
+	it("offers no delete item without a task to delete it from", async () => {
+		renderMixed(1);
+		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+		expect(screen.getByTestId("image-save-menu")).toBeInTheDocument();
+		expect(screen.queryByTestId("image-save-menu-delete")).toBeNull();
+	});
+
 	it("asks for a clip's stream URL only when it is on stage, never reading its bytes", async () => {
 		renderMixed(2);
 		await waitFor(() => {
@@ -668,21 +797,140 @@ describe("TaskImageViewer video review", () => {
 		expect(screen.getByRole("button", { name: "Comment 1 at 0:12.500: Early" })).toBe(marker);
 	});
 
-	it("drags with keyframe seeks and lands precisely on release", async () => {
-		const { video } = await renderClip();
-		const fastSeek = vi.fn();
-		Object.defineProperty(video, "fastSeek", { configurable: true, value: fastSeek });
+	function scrubberOf() {
 		const scrubber = screen.getByTestId("video-scrubber");
 		scrubber.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 28, right: 400, bottom: 28, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
 		scrubber.setPointerCapture = () => {};
+		return scrubber;
+	}
+
+	it("moves a paused picture with every drag step by precise seeks, never fastSeek's keyframe snap", async () => {
+		const { video } = await renderClip();
+		const fastSeek = vi.fn();
+		Object.defineProperty(video, "fastSeek", { configurable: true, value: fastSeek });
+		const scrubber = scrubberOf();
+		expect(video.paused).toBe(true);
 		fireEvent.pointerDown(scrubber, { clientX: 100, pointerId: 1 });
 		expect(video.currentTime).toBe(30);
 		fireEvent.pointerMove(scrubber, { clientX: 200, pointerId: 1 });
-		expect(fastSeek).toHaveBeenCalledWith(60);
+		expect(video.currentTime).toBe(60);
+		fireEvent.pointerMove(scrubber, { clientX: 220, pointerId: 1 });
+		expect(video.currentTime).toBe(66);
 		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
 		expect(video.currentTime).toBe(90);
+		expect(fastSeek).not.toHaveBeenCalled();
 		fireEvent.keyDown(scrubber, { key: "PageDown" });
 		expect(video.currentTime).toBe(30);
+	});
+
+	it("keeps one seek in flight while dragging and lands on the newest target", async () => {
+		const { video } = await renderClip();
+		let seeking = false;
+		Object.defineProperty(video, "seeking", { configurable: true, get: () => seeking });
+		const writes: number[] = [];
+		let time = 0;
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; writes.push(v); seeking = true; } });
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 40, pointerId: 1 });
+		for (const x of [80, 120, 160, 200]) fireEvent.pointerMove(scrubber, { clientX: x, pointerId: 1 });
+		expect(writes).toEqual([12]);
+		seeking = false;
+		fireEvent(video, new Event("seeked"));
+		expect(writes).toEqual([12, 60]);
+		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
+		seeking = false;
+		fireEvent(video, new Event("seeked"));
+		expect(writes).toEqual([12, 60, 90]);
+		fireEvent(video, new Event("seeked"));
+		expect(writes).toEqual([12, 60, 90]);
+	});
+
+	function seekingClip(video: HTMLVideoElement) {
+		let seeking = false;
+		let time = 0;
+		const writes: number[] = [];
+		Object.defineProperty(video, "seeking", { configurable: true, get: () => seeking });
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; writes.push(v); seeking = true; } });
+		const land = () => { seeking = false; fireEvent(video, new Event("seeked")); };
+		return { writes, land, started: () => fireEvent(video, new Event("seeking")) };
+	}
+
+	it("lets a jump right after release win over a drag target still waiting for its seek", async () => {
+		const { video } = await renderClip();
+		const clip = seekingClip(video);
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 200, pointerId: 1 });
+		clip.started();
+		fireEvent.pointerUp(scrubber, { clientX: 40, pointerId: 1 });
+		expect(clip.writes).toEqual([60]);
+		// From where the drag let go (12 s), not from the seek still in flight (60 s).
+		fireEvent.keyDown(window, { key: "l", code: "KeyL" });
+		clip.started();
+		expect(clip.writes).toEqual([60, 27]);
+		clip.land();
+		expect(clip.writes).toEqual([60, 27]);
+		expect(video.currentTime).toBe(27);
+	});
+
+	it("keeps the thumb on the pointer while a seek is in flight, and on the release target until it is written", async () => {
+		const { video } = await renderClip();
+		const clip = seekingClip(video);
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 40, pointerId: 1 });
+		clip.started();
+		fireEvent.pointerMove(scrubber, { clientX: 200, pointerId: 1 });
+		expect(clip.writes).toEqual([12]);
+		expect(scrubber).toHaveAttribute("aria-valuenow", "60");
+		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
+		expect(scrubber).toHaveAttribute("aria-valuenow", "90");
+		clip.land();
+		clip.started();
+		expect(clip.writes).toEqual([12, 90]);
+		expect(scrubber).toHaveAttribute("aria-valuenow", "90");
+	});
+
+	it("clicks a marker right after release and stays on it", async () => {
+		const { video } = await renderClip([moment("m1", 90, "Late")]);
+		const clip = seekingClip(video);
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 200, pointerId: 1 });
+		clip.started();
+		fireEvent.pointerUp(scrubber, { clientX: 40, pointerId: 1 });
+		fireEvent.click(await screen.findByTestId("video-marker"));
+		clip.started();
+		clip.land();
+		expect(clip.writes).toEqual([60, 90]);
+	});
+
+	it("types J and L into the comment composer instead of seeking", async () => {
+		const user = userEvent.setup();
+		const { video, at } = await renderClip();
+		at(50);
+		fireEvent.keyDown(window, { key: "c", code: "KeyC" });
+		const box = await screen.findByPlaceholderText("Leave a comment on this line...");
+		await user.type(box, "jjll");
+		expect(box).toHaveValue("jjll");
+		expect(video.currentTime).toBe(50);
+	});
+
+	it("jumps 15 seconds with the buttons and J / L, clamped to the clip, paused or playing", async () => {
+		const { video, at } = await renderClip();
+		at(50);
+		await userEvent.click(screen.getByTestId("video-jump-forward"));
+		expect(video.currentTime).toBe(65);
+		await userEvent.click(screen.getByTestId("video-jump-back"));
+		await userEvent.click(screen.getByTestId("video-jump-back"));
+		expect(video.currentTime).toBe(35);
+		at(7);
+		fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+		expect(video.currentTime).toBe(0);
+		Object.defineProperty(video, "paused", { configurable: true, get: () => false });
+		at(110);
+		fireEvent.keyDown(window, { key: "l", code: "KeyL" });
+		expect(video.currentTime).toBe(120);
+		expect(video.paused).toBe(false);
+		expect(screen.getByTestId("video-jump-back")).toHaveAccessibleName("Back 15 seconds");
+		expect(screen.getByTestId("video-jump-forward")).toHaveAttribute("title", expect.stringContaining("Forward 15 seconds"));
 	});
 
 	it("offers no comment action without a project to store it in", async () => {

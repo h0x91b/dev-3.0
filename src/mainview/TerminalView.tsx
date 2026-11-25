@@ -78,6 +78,7 @@ import { isFinalPtyCloseCode, PTY_WS_CLOSE } from "../shared/pty-ws-close-codes"
 import { terminalThemeFor } from "./terminal-themes";
 import { installTerminalRefHover, type TerminalRefHover } from "./terminal-ref-hover";
 import { TaskRefFloatingPreview } from "./components/TaskRefPreviewCard";
+import { reloadPage } from "./tab-close-guard";
 
 /**
  * What ghostty is told: the user's size, narrowed to the reference font's cell if
@@ -634,7 +635,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				liveTerminals: session.liveTerminals,
 				sessionCrashes: session.crashes,
 			});
-			toast.error(t("terminal.rendererCrashed"), { taskId, onClick: () => window.location.reload() });
+			toast.error(t("terminal.rendererCrashed"), { taskId, onClick: () => reloadPage() });
 			return;
 		}
 		recoveryAttemptsRef.current = attempt;

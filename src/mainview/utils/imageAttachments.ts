@@ -6,7 +6,7 @@ const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
  * Paths may contain spaces (e.g. "/Users/foo/Screenshot 2026-03-04.png").
  * The path ends at the image extension boundary.
  */
-const IMAGE_PATH_RE = /(\/(?:[^\n"'<>]*\/)*[^\n"'<>]+\.(png|jpe?g|gif|webp|bmp|svg))/gi;
+const IMAGE_PATH_RE = /(\/[^\n"'<>]+\.(png|jpe?g|gif|webp|bmp|svg))/gi;
 
 /**
  * Match non-image attachment paths we generate under the worktree uploads dir.

@@ -5,6 +5,8 @@ import { useT, type TFunction } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { useImageDataUrl } from "../utils/useImageDataUrl";
 import { ArtifactsIcon, ImagesIcon } from "./TaskIcons";
+import Tooltip from "./Tooltip";
+import { useOlderClipsCleanup } from "../shared-media-delete";
 import VideoFrameThumb from "./VideoFrameThumb";
 
 interface SharedOutputsListProps {
@@ -29,7 +31,9 @@ function artifactMeta(artifact: SharedArtifact, t: TFunction): string {
 	const version = latestArtifactVersion(artifact);
 	if (version > 1) parts.push(`v${version}`);
 	parts.push(formatBytes(artifact.bundleBytes ?? artifact.bytes));
-	if (artifact.assets.length > 0) parts.push(t.plural("infoPanel.artifactAssets", artifact.assets.length));
+	// Records written before assets existed have none.
+	const assets = artifact.assets?.length ?? 0;
+	if (assets > 0) parts.push(t.plural("infoPanel.artifactAssets", assets));
 	return parts.join(" · ");
 }
 
@@ -60,7 +64,9 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
 			onClick={onOpen}
 		>
 			<span className="block h-[5.5rem] w-full overflow-hidden rounded bg-base">
-				{isSharedAudio(image)
+				{image.removedAt
+					? <span data-testid="shared-media-removed-card" className="flex h-full w-full items-center justify-center text-micro text-fg-muted">{t("sharedMedia.removedBadge")}</span>
+					: isSharedAudio(image)
 					// Audio bytes load only in the viewer; a video card streams just enough for its first frame.
 					? <span data-testid="shared-audio-card" title={t("imageViewer.audio")} className={CLIP_TILE} style={{ fontFamily: CLIP_ICON_FONT }}>{"\uf001"}</span>
 					: isSharedClip(image)
@@ -75,6 +81,24 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
 			{image.caption && <span className="mt-0.5 line-clamp-2 text-micro leading-snug text-fg-muted">{image.caption}</span>}
 			<span className="mt-0.5 block text-nano tabular-nums text-fg-muted">{formatStamp(image.createdAt)}</span>
 		</button>
+	);
+}
+
+/** Bulk disk cleanup: shown only while there are older large clips to delete. */
+function DeleteOlderClipsButton({ images, taskId, projectId, t }: { images: SharedImage[]; taskId: string; projectId: string; t: TFunction }) {
+	const cleanup = useOlderClipsCleanup({ projectId, taskId, media: images, t });
+	if (!cleanup.available) return null;
+	return (
+		<Tooltip content={cleanup.label} detail={t("sharedMedia.deleteOlderHint")}>
+			<button
+				type="button"
+				data-testid="shared-media-delete-older"
+				onClick={() => void cleanup.run()}
+				className="flex-shrink-0 rounded-md border border-danger/30 px-2 py-0.5 text-micro font-medium text-danger transition-colors hover:bg-danger/10"
+			>
+				{cleanup.label}
+			</button>
+		</Tooltip>
 	);
 }
 
@@ -142,11 +166,14 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 
 			{images.length > 0 && (
 				<section aria-labelledby="shared-images-heading">
-					<h3 id="shared-images-heading" className={SECTION_HEADING}>
-						<ImagesIcon className="h-3.5 w-3.5 text-accent" />
-						{t(images.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}
-						<span className="tabular-nums text-accent">{images.length}</span>
-					</h3>
+					<div className="flex items-center justify-between gap-2">
+						<h3 id="shared-images-heading" className={SECTION_HEADING}>
+							<ImagesIcon className="h-3.5 w-3.5 text-accent" />
+							{t(images.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}
+							<span className="tabular-nums text-accent">{images.filter((item) => !item.removedAt).length}</span>
+						</h3>
+						<DeleteOlderClipsButton images={images} taskId={task.id} projectId={projectId} t={t} />
+					</div>
 					<div className="mt-2 flex flex-wrap items-stretch gap-2">
 						{images.map((image, i) => (
 							<SharedImageCard

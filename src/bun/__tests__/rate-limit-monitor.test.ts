@@ -40,6 +40,14 @@ describe("buildClaudeManagedSettings", () => {
 		expect(s.statusLine).toEqual({ type: "command", command: '"/bin/dev3" statusline' });
 	});
 
+	it("asks the wrapper for the account prefix only when showAccount is on", () => {
+		expect(buildClaudeManagedSettings("/bin/dev3", true, false, true).statusLine).toEqual({
+			type: "command",
+			command: '"/bin/dev3" statusline --account',
+		});
+		expect(buildClaudeManagedSettings("/bin/dev3", false, false, true)).not.toHaveProperty("statusLine");
+	});
+
 	it("adds the AWS SSO refresh only when asked", () => {
 		expect(buildClaudeManagedSettings("/bin/dev3", true)).not.toHaveProperty("awsAuthRefresh");
 		expect(buildClaudeManagedSettings("/bin/dev3", true, true).awsAuthRefresh).toBe("aws sso login");

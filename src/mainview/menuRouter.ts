@@ -20,6 +20,7 @@ import {
 	openProjectSettings,
 	openProjectTerminal,
 	openSessions,
+	openLibrary,
 	openTaskInFinder,
 	pullProjectMain,
 	runDevServerOp,
@@ -28,6 +29,11 @@ import {
 	toggleTaskWatch,
 	type AppActionContext,
 } from "./app-actions";
+import { reloadPage } from "./tab-close-guard";
+import { toggleFullscreen } from "./fullscreen";
+
+/** The browser menu bar's stand-in for the native `toggleFullScreen` role. */
+export const BROWSER_TOGGLE_FULLSCREEN_ACTION = "toggle-fullscreen";
 
 /**
  * Dispatch for native menu actions: the bun side forwards `application-menu-clicked`
@@ -83,7 +89,12 @@ export async function handleMenuAction(action: string, ctx: AppActionContext): P
 			return;
 		}
 		case "hard-refresh":
-			window.location.reload();
+			reloadPage();
+			return;
+		// Browser menu bar only: element fullscreen, which is what lets Keyboard
+		// Lock hand ⌘W / Ctrl+W to the page. The native menu keeps its own role.
+		case BROWSER_TOGGLE_FULLSCREEN_ACTION:
+			void toggleFullscreen();
 			return;
 
 		// ── Debug screens (browser equivalents of the bun navigate-to-* pushes) ──
@@ -159,6 +170,9 @@ export async function handleMenuAction(action: string, ctx: AppActionContext): P
 			return;
 		case "view-sessions":
 			openSessions(ctx);
+			return;
+		case "view-library":
+			openLibrary(ctx);
 			return;
 		case "open-settings":
 			navigateTo(ctx, { screen: "settings" });
@@ -326,11 +340,11 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// App
 	"set-theme-light", "set-theme-dark", "set-theme-auto",
 	"set-locale-en", "set-locale-ru", "set-locale-es",
-	"about", "hard-refresh",
+	"about", "hard-refresh", BROWSER_TOGGLE_FULLSCREEN_ACTION,
 	// View / navigation
 	"view-dashboard", "view-board",
 	"view-board:builtin:kanban", "view-board:builtin:table", "view-board:builtin:tree", "view-board:builtin:attention",
-	"view-changelog", "view-stats", "view-sessions", "open-settings",
+	"view-changelog", "view-stats", "view-sessions", "view-library", "open-settings",
 	// The traffic log is a renderer overlay, so it works in a browser tab too — it
 	// was only ever missing here, which left remote users on ⇧⌘M and the palette.
 	"view-agent-traffic-log",

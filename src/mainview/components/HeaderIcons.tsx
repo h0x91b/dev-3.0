@@ -225,6 +225,19 @@ export function SessionsIcon({ className }: HeaderIconProps) {
 	);
 }
 
+// Library: a stack of outputs; the front card lifts to show what is underneath.
+export function LibraryIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M7 3h11a2 2 0 0 1 2 2v11" />
+			<g className="hdr hdr-lib">
+				<rect x="4" y="7" width="13" height="14" rx="2" />
+				<path d="M9 11.5v5l4-2.5z" />
+			</g>
+		</svg>
+	);
+}
+
 // 15 — GitHub: the octocat takes a polite little bow. Brand mark — shape kept.
 export function GitHubIcon({ className }: HeaderIconProps) {
 	return (

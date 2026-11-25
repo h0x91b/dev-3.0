@@ -59,6 +59,7 @@ import {
 	AgentTrafficIcon,
 	StatsIcon,
 	SessionsIcon,
+	LibraryIcon,
 	GitHubIcon,
 	ReportBugIcon,
 	ChangelogIcon,
@@ -450,6 +451,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;
 	const openSessions = () => navigate(currentProjectId ? { screen: "sessions", scopeProjectId: currentProjectId } : { screen: "sessions" });
+	const openLibrary = () => navigate(currentProjectId ? { screen: "library", scopeProjectId: currentProjectId } : { screen: "library" });
 	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
 	// ---- The space level of the trail, and the way up to it ----
 	// The space the user came THROUGH rides on the route (board and task routes
@@ -568,6 +570,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	} else if (route.screen === "sessions") {
 		// Same as traffic: the scope project is a filter on the screen, not a location.
 		segments.push({ label: t("sessions.title") });
+	} else if (route.screen === "library") {
+		segments.push({ label: t("library.title") });
 	} else if (route.screen === "gauge-demo") {
 		segments.push({ label: t("gaugeDemo.title") });
 	} else if (route.screen === "native-pane-layout-lab") {
@@ -816,6 +820,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				// The strip inside the usage sheet links here too, but only once sessions exist;
 				// the screen is a destination, so the sheet carries a row for it like Changelog.
 				...(route.screen !== "sessions" ? [{ key: "sessions", label: t("sessions.title"), run: openSessions }] : []),
+				...(route.screen !== "library" ? [{ key: "library", label: t("library.title"), run: openLibrary }] : []),
 				...(route.screen !== "changelog" ? [{ key: "changelog", label: t("header.changelogLabel"), run: () => navigate({ screen: "changelog" }) }] : []),
 				{ key: "website", label: t("header.githubLabel"), run: () => window.open("https://h0x91b.github.io/dev-3.0/", "_blank") },
 				{ key: "report", label: t("header.reportLabel"), run: () => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank") },
@@ -1312,6 +1317,19 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 									>
 										<SessionsIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 										<span className="text-sm">{t("sessions.title")}</span>
+									</button>
+								)}
+								{route.screen !== "library" && (
+									<button
+										role="menuitem"
+										onClick={() => {
+											setShowOverflowMenu(false);
+											openLibrary();
+										}}
+										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
+									>
+										<LibraryIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
+										<span className="text-sm">{t("library.title")}</span>
 									</button>
 								)}
 								<button

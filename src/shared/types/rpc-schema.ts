@@ -6,6 +6,7 @@ import type { ImportConversationsResult, ImportableConversationView } from "../c
 import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-model";
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
+import type { LibraryReport } from "../library";
 import type { AutoAccountPreview } from "../account-routing";
 import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudePickLaunches, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
@@ -43,7 +44,7 @@ import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from
 import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
-import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage, SharedMediaDeleteSummary } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
 import type { NativeTaskAgent, TaskSessionState } from "./task-lifecycle";
 import type { Automation, AutomationDraft } from "./automations";
@@ -545,6 +546,11 @@ export type AppRPCSchema = {
 			getProductivityStats: {
 				params: void;
 				response: ProductivityStats;
+			};
+			/** Every artifact and shown media record across all projects and task statuses (the Library screen). */
+			getLibrary: {
+				params: void;
+				response: LibraryReport;
 			};
 			getAgentUsage: {
 				/** `since` (ISO) skips transcripts last written before that local day. */
@@ -1296,6 +1302,15 @@ export type AppRPCSchema = {
 			markTaskSharedItemsRead: {
 				params: { taskId: string; projectId: string; kind: "images" | "artifacts"; itemIds: string[] };
 				response: Task;
+			};
+			/** Deletes stored show-media clip files (tombstoning the records); `dryRun` only reports what it would free. */
+			previewSharedMediaDelete: {
+				params: { taskId: string; projectId: string; mediaIds: string[] };
+				response: SharedMediaDeleteSummary;
+			};
+			deleteSharedMedia: {
+				params: { taskId: string; projectId: string; mediaIds: string[] };
+				response: { task: Task; summary: SharedMediaDeleteSummary };
 			};
 			toggleTaskWatch: {
 				params: { taskId: string; projectId: string; watched: boolean };

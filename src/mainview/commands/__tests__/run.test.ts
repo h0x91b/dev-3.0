@@ -64,6 +64,7 @@ const EXPECTED: Record<string, Effect[]> = {
 	"view-changelog": [nav({ screen: "changelog" })],
 	"view-stats": [nav({ screen: "stats" })],
 	"view-sessions": [nav({ screen: "sessions", scopeProjectId: "p1" })],
+	"view-library": [nav({ screen: "library", scopeProjectId: "p1" })],
 	"open-settings": [nav({ screen: "settings" })],
 	"project-settings": [nav({ screen: "project-settings", projectId: "p1" })],
 	"go-back": [{ dispatch: { type: "goBack" } }],

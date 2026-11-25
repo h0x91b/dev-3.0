@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
 import { ConfirmHost, confirm, placeBesideAnchor, whenConfirmHostMounted } from "../confirm";
 import { I18nProvider } from "../i18n";
+import { hasEscapeClaims } from "../escape-claims";
 
 function renderHost() {
 	return render(
@@ -35,6 +36,21 @@ describe("confirm service", () => {
 		await expect(result!).resolves.toBe(true);
 		// Dialog closes after a choice
 		expect(screen.queryByText("Delete task")).not.toBeInTheDocument();
+	});
+
+	it("claims Escape while the dialog is open, so a fullscreen browser hands Esc to it", async () => {
+		const user = userEvent.setup();
+		renderHost();
+		expect(hasEscapeClaims()).toBe(false);
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({ title: "Delete task", message: "Sure?", confirmLabel: "Confirm" });
+		});
+		await screen.findByText("Delete task");
+		expect(hasEscapeClaims()).toBe(true);
+		await user.click(screen.getByRole("button", { name: "Confirm" }));
+		await result!;
+		expect(hasEscapeClaims()).toBe(false);
 	});
 
 	it("shows an agent's reason, attributed to the asking task, as plain text", async () => {

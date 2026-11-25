@@ -5,6 +5,7 @@ import Changelog from "../components/Changelog";
 import Dashboard from "../components/Dashboard";
 import ProductivityStatsView from "../components/ProductivityStatsView";
 import SessionsScreen from "../components/SessionsScreen";
+import LibraryScreen from "../components/library/LibraryScreen";
 import type { BuiltinPlugin } from "../plugins/runtime";
 import { useDestinationProps } from "./props";
 // Defines the slot before the plugin injects it.
@@ -13,6 +14,10 @@ import type { DestinationId } from "./registry";
 
 function SessionsBody() {
 	return <SessionsScreen {...useDestinationProps("sessions")} />;
+}
+
+function LibraryBody() {
+	return <LibraryScreen {...useDestinationProps("library")} />;
 }
 
 function StatsBody() {
@@ -34,6 +39,7 @@ function DashboardBody() {
 /** Each destination's own body: registered as its slot item, and its undisableable fallback. */
 export const BUILTIN_DESTINATION_BODIES: { readonly [D in DestinationId]: { id: string; component: ComponentType<{ ctx: Context }> } } = {
 	sessions: { id: "builtin:sessions", component: SessionsBody },
+	library: { id: "builtin:library", component: LibraryBody },
 	stats: { id: "builtin:stats", component: StatsBody },
 	changelog: { id: "builtin:changelog", component: ChangelogBody },
 	"agent-traffic": { id: "builtin:agent-traffic", component: AgentTrafficBody },
