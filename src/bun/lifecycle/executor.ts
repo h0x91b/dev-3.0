@@ -87,7 +87,7 @@ import {
 	buildCleanupWrapper,
 	cleanupNoteContent,
 	cleanupScriptFiles,
-	cleanupToastMessage,
+	cleanupToastContent,
 	readCleanupExitCode,
 	readCleanupLogTail,
 	removeCleanupRunFiles,
@@ -689,7 +689,7 @@ async function surfaceCleanupFailure(
 		pushCliToast({
 			taskId: task.id,
 			projectId: project.id,
-			message: cleanupToastMessage(outcome, transition.toStatus !== "deleted"),
+			...cleanupToastContent(outcome, transition.toStatus !== "deleted"),
 			level: "error",
 			taskSeq: task.seq,
 			taskTitle: getTaskTitle(task),

@@ -3,6 +3,7 @@
  * teardown. The tmux client exits 0 regardless, so the verdict is the status file.
  */
 import { spawnSync } from "node:child_process";
+import { open } from "node:fs/promises";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,7 +59,7 @@ import { pushCliAttention, pushCliToast } from "../../rpc-handlers/shared";
 import { addNote } from "../../board-operations/task-notes";
 import { tmux } from "../../tmux";
 import { CLEANUP_SCRIPT_HARD_TIMEOUT_MS, runCleanupScript } from "../executor";
-import { buildCleanupWrapper, cleanupScriptFiles, readCleanupExitCode, readCleanupLogTail } from "../cleanup-script-run";
+import { CLEANUP_LOG_READ_BYTES, buildCleanupWrapper, cleanupScriptFiles, readCleanupExitCode, readCleanupLogTail } from "../cleanup-script-run";
 import { launchDialect } from "../../../shared/platform-launch";
 
 const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
@@ -135,6 +136,8 @@ describe("cleanup script outcome", () => {
 			taskSeq: 7,
 			projectName: "Project",
 			message: "Cleanup script failed (exit 3). Leftovers may remain — see the task's notes.",
+			messageKey: "kanban.cleanupFailed",
+			messageParams: { code: 3 },
 		}));
 		const content = vi.mocked(addNote).mock.calls[0][3];
 		expect(content).toContain("Cleanup script failed with exit code 3.");
@@ -147,6 +150,7 @@ describe("cleanup script outcome", () => {
 
 		await runCleanupScript(task(), project(), transitionTo("completed"));
 
+		expect(vi.mocked(pushCliToast).mock.calls[0][0].messageKey).toBe("kanban.cleanupUnfinished");
 		expect(vi.mocked(pushCliToast).mock.calls[0][0].message).toBe(
 			"Cleanup script did not finish (no exit status was recorded, tmux client exit 1). Leftovers may remain — see the task's notes.",
 		);
@@ -210,6 +214,7 @@ describe("cleanup script outcome", () => {
 
 		expect(pushCliToast).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(pushCliToast).mock.calls[0][0].message).toBe("Cleanup script failed (exit 3). Leftovers may remain.");
+		expect(vi.mocked(pushCliToast).mock.calls[0][0]).toMatchObject({ messageKey: "kanban.cleanupFailedDeleted", messageParams: { code: 3 } });
 		expect(addNote).not.toHaveBeenCalled();
 	});
 
@@ -249,5 +254,30 @@ describe("cleanup wrapper", () => {
 		expect(tail).toHaveLength(20);
 		expect(tail[0]).toBe("line 11");
 		expect(tail[19]).toBe("line 30");
+	});
+
+	it("reads only a bounded range from the end of a large log", async () => {
+		const files = cleanupScriptFiles(TASK_ID);
+		const lines = Array.from({ length: 200_000 }, (_, i) => `output line ${i + 1}`);
+		writeFileSync(files.log, `${lines.join("\n")}\n`);
+		const probe = await open(files.log, "r");
+		const spy = vi.spyOn(Object.getPrototypeOf(probe), "read");
+		await probe.close();
+
+		const tail = (await readCleanupLogTail(files)).split("\n");
+
+		expect(tail).toHaveLength(20);
+		expect(tail[0]).toBe("output line 199981");
+		expect(tail[19]).toBe("output line 200000");
+		expect(spy).toHaveBeenCalled();
+		for (const [buffer] of spy.mock.calls) expect((buffer as Buffer).length).toBeLessThanOrEqual(CLEANUP_LOG_READ_BYTES);
+		spy.mockRestore();
+	});
+
+	it("drops the line a mid-file read cut, instead of showing half of it", async () => {
+		const files = cleanupScriptFiles(TASK_ID);
+		writeFileSync(files.log, `${"é".repeat(CLEANUP_LOG_READ_BYTES)}\nlast line\n`);
+
+		expect(await readCleanupLogTail(files)).toBe("last line");
 	});
 });

@@ -2851,6 +2851,20 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 		});
 
+		it("renders a keyed CLI toast with its params", async () => {
+			await renderWithBoard();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliToast", {
+					detail: {
+						taskId: "t-receiver", projectId: "p1", message: "fallback", level: "error",
+						messageKey: "kanban.cleanupFailedDeleted", messageParams: { code: 3 },
+					},
+				}));
+			});
+
+			expect(await screen.findByText("Cleanup script failed (exit 3). Leftovers may remain.")).toBeInTheDocument();
+		});
+
 		// The traffic screen already shows the message in full; a toast on top of it
 		// previews what is right there and covers its own destination.
 		it("raises no toast while this window is on the traffic screen", async () => {
