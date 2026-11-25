@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
+import * as nodePath from "node:path";
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
@@ -74,9 +75,19 @@ async function projectRoots(): Promise<string[]> {
 	}
 }
 
-/** `separator` is the host's (a backslash on Windows); a parameter only so tests can cover both. */
-export function isUnder(absPath: string, root: string, separator: string = sep): boolean {
-	return absPath === root || absPath.startsWith(root.endsWith(separator) ? root : `${root}${separator}`);
+type PathApi = Pick<typeof nodePath, "isAbsolute" | "resolve" | "sep">;
+
+/**
+ * On Windows `c:/x` is under `C:\X`: slashes and ASCII case fold, nothing else (NTFS keeps `\u212A` and `K` apart).
+ * A relative root is refused. `pathApi` defaults to the host's; a parameter so tests cover both.
+ */
+export function isUnder(absPath: string, root: string, pathApi: PathApi = nodePath): boolean {
+	if (!pathApi.isAbsolute(root)) return false;
+	const asciiLower = (p: string) => p.replace(/[A-Z]/g, (c) => c.toLowerCase());
+	const fold = (p: string) => (pathApi.sep === "\\" ? asciiLower(pathApi.resolve(p)) : pathApi.resolve(p));
+	const path = fold(absPath);
+	const base = fold(root);
+	return path === base || path.startsWith(base.endsWith(pathApi.sep) ? base : `${base}${pathApi.sep}`);
 }
 
 /**
