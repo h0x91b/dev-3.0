@@ -1308,13 +1308,14 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; mediaId: string; pinned: boolean };
 				response: Task;
 			};
-			/** Deletes stored show-media clip files (tombstoning the records); `dryRun` only reports what it would free. */
+			/** Read-only: what deleting these clips would remove and free. `skipRefused` reports refused clips instead of throwing. */
 			previewSharedMediaDelete: {
-				params: { taskId: string; projectId: string; mediaIds: string[] };
+				params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean };
 				response: SharedMediaDeleteSummary;
 			};
+			/** Deletes stored show-media clip files, tombstoning their records. */
 			deleteSharedMedia: {
-				params: { taskId: string; projectId: string; mediaIds: string[] };
+				params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean };
 				response: { task: Task; summary: SharedMediaDeleteSummary };
 			};
 			toggleTaskWatch: {

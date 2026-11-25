@@ -144,6 +144,8 @@ export interface SharedMediaDeleteSummary {
 	bytes: number;
 	freeableBytes: number;
 	failed: Array<{ id: string; reason: string }>;
+	/** Refused and left alone by a `skipRefused` call (shared file, outside this project's pools). */
+	skipped: Array<{ id: string; reason: string }>;
 }
 
 /** Max images accepted in a single `dev3 show-image` invocation. */

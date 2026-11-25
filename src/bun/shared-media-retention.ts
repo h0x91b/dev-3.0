@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Project, SharedImage, Task } from "../shared/types";
 import { dueSharedMediaIds, isDeletableSharedMedia } from "../shared/types";
-import { deleteSharedMedia, SharedMediaDeleteError, type SharedMediaDeletePorts } from "./shared-media-delete";
+import { deleteSharedMedia, type SharedMediaDeletePorts } from "./shared-media-delete";
 
 /**
  * The daily retention pass over closed tasks' show-media clips: tiers by rank since
@@ -10,7 +10,7 @@ import { deleteSharedMedia, SharedMediaDeleteError, type SharedMediaDeletePorts 
  * decisions/2026/11/24/shared-media-retention-tiers.md
  */
 
-export interface SharedMediaRetentionDeps extends Omit<SharedMediaDeletePorts, "now" | "guard"> {
+export interface SharedMediaRetentionDeps extends Omit<SharedMediaDeletePorts, "now" | "guard" | "skipRefused"> {
 	loadProjects(): Promise<Project[]>;
 	loadTasks(project: Project): Promise<Task[]>;
 	now(): number;
@@ -45,25 +45,18 @@ function stillDue(now: number, retentionStartedAt: number | undefined) {
 
 type Outcome = { task: Task; removed: number; freedBytes: number; skipped: number; failed: number };
 
-/** One delete call per clip after a batch refusal, so one refused record cannot shield the rest. */
 async function deleteDue(project: Project, task: Task, ids: string[], deps: SharedMediaRetentionDeps, now: number): Promise<Outcome> {
 	try {
-		const { task: updated, summary } = await deleteSharedMedia(project, task.id, ids, { ...deps, now: () => now, guard: stillDue(now, deps.retentionStartedAt) });
-		return { task: updated, removed: summary.count, freedBytes: summary.freeableBytes, skipped: 0, failed: summary.failed.length };
-	} catch (err) {
-		if (!(err instanceof SharedMediaDeleteError)) return { task, removed: 0, freedBytes: 0, skipped: 0, failed: ids.length };
-		if (ids.length === 1) return { task, removed: 0, freedBytes: 0, skipped: 1, failed: 0 };
+		const { task: updated, summary } = await deleteSharedMedia(project, task.id, ids, {
+			...deps,
+			now: () => now,
+			guard: stillDue(now, deps.retentionStartedAt),
+			skipRefused: true,
+		});
+		return { task: updated, removed: summary.count, freedBytes: summary.freeableBytes, skipped: summary.skipped.length, failed: summary.failed.length };
+	} catch {
+		return { task, removed: 0, freedBytes: 0, skipped: 0, failed: ids.length };
 	}
-	const total: Outcome = { task, removed: 0, freedBytes: 0, skipped: 0, failed: 0 };
-	for (const id of ids) {
-		const one = await deleteDue(project, total.task, [id], deps, now);
-		total.task = one.task;
-		total.removed += one.removed;
-		total.freedBytes += one.freedBytes;
-		total.skipped += one.skipped;
-		total.failed += one.failed;
-	}
-	return total;
 }
 
 export async function runSharedMediaRetention(deps: SharedMediaRetentionDeps): Promise<SharedMediaRetentionResult> {

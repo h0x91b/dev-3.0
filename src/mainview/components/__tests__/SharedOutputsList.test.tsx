@@ -151,16 +151,16 @@ describe("SharedOutputsList", () => {
 			request.mockReset();
 			confirmMock.confirm.mockClear();
 			// 400 MB stored, but one of the two is a clone of a live original.
-			preview.mockResolvedValue({ count: 2, bytes: 400 * MB, freeableBytes: 200 * MB, failed: [] });
-			request.mockResolvedValue({ task: { id: "task-1" } as Task, summary: { count: 2, bytes: 400 * MB, freeableBytes: 200 * MB, failed: [] } });
+			preview.mockResolvedValue({ count: 2, bytes: 400 * MB, freeableBytes: 200 * MB, failed: [], skipped: [] });
+			request.mockResolvedValue({ task: { id: "task-1" } as Task, summary: { count: 2, bytes: 400 * MB, freeableBytes: 200 * MB, failed: [], skipped: [] } });
 			renderList({ sharedVideos: [video("v1", 200 * MB, 1), video("v2", 200 * MB, 2), video("v3", 300 * MB, 3), video("tiny", 1 * MB, 4), video("gone", 300 * MB, 0, 5)] });
 			const button = screen.getByTestId("shared-media-delete-older");
 			expect(button).toHaveTextContent("Delete older clips");
 			await vi.waitFor(() => expect(button).toHaveTextContent("Free 200 MB · delete older clips"));
-			expect(preview).toHaveBeenCalledWith({ projectId: "project-1", taskId: "task-1", mediaIds: ["v1", "v2"] });
+			expect(preview).toHaveBeenCalledWith({ projectId: "project-1", taskId: "task-1", mediaIds: ["v1", "v2"], skipRefused: true });
 			await userEvent.click(button);
 			await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
-			expect(request).toHaveBeenLastCalledWith({ projectId: "project-1", taskId: "task-1", mediaIds: ["v1", "v2"] });
+			expect(request).toHaveBeenLastCalledWith({ projectId: "project-1", taskId: "task-1", mediaIds: ["v1", "v2"], skipRefused: true });
 			expect(confirmMock.confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true, title: "Delete 2 older clips?" }));
 		});
 
@@ -169,7 +169,7 @@ describe("SharedOutputsList", () => {
 			preview.mockReset();
 			confirmMock.confirm.mockClear();
 			confirmMock.confirm.mockResolvedValueOnce(false);
-			preview.mockResolvedValue({ count: 1, bytes: 200 * MB, freeableBytes: 0, failed: [] });
+			preview.mockResolvedValue({ count: 1, bytes: 200 * MB, freeableBytes: 0, failed: [], skipped: [] });
 			renderList({ sharedVideos: [video("v1", 200 * MB, 1), video("v2", 200 * MB, 2)] });
 			const button = screen.getByTestId("shared-media-delete-older");
 			await vi.waitFor(() => expect(preview).toHaveBeenCalled());
@@ -182,7 +182,7 @@ describe("SharedOutputsList", () => {
 		it("opens one confirmation however fast the button is clicked", async () => {
 			const preview = vi.mocked(api.request.previewSharedMediaDelete);
 			preview.mockReset();
-			preview.mockResolvedValue({ count: 1, bytes: 200 * MB, freeableBytes: 200 * MB, failed: [] });
+			preview.mockResolvedValue({ count: 1, bytes: 200 * MB, freeableBytes: 200 * MB, failed: [], skipped: [] });
 			confirmMock.confirm.mockClear();
 			let answer: (ok: boolean) => void = () => {};
 			confirmMock.confirm.mockImplementationOnce(() => new Promise<boolean>((resolve) => { answer = resolve; }));
@@ -194,6 +194,33 @@ describe("SharedOutputsList", () => {
 			answer(false);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(confirmMock.confirm).toHaveBeenCalledTimes(1);
+		});
+
+		it("re-previews the size when the window regains focus", async () => {
+			const preview = vi.mocked(api.request.previewSharedMediaDelete);
+			preview.mockReset();
+			preview.mockResolvedValueOnce({ count: 1, bytes: 200 * MB, freeableBytes: 0, failed: [], skipped: [] });
+			preview.mockResolvedValue({ count: 1, bytes: 200 * MB, freeableBytes: 200 * MB, failed: [], skipped: [] });
+			renderList({ sharedVideos: [video("v1", 200 * MB, 1), video("v2", 200 * MB, 2)] });
+			const button = screen.getByTestId("shared-media-delete-older");
+			await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+			expect(button).toHaveTextContent(/^Delete older clips$/);
+			window.dispatchEvent(new Event("focus"));
+			await vi.waitFor(() => expect(button).toHaveTextContent("Free 200 MB · delete older clips"));
+		});
+
+		it("asks nothing when every older clip is refused", async () => {
+			const preview = vi.mocked(api.request.previewSharedMediaDelete);
+			const request = vi.mocked(api.request.deleteSharedMedia);
+			preview.mockReset();
+			request.mockReset();
+			confirmMock.confirm.mockClear();
+			preview.mockResolvedValue({ count: 0, bytes: 0, freeableBytes: 0, failed: [], skipped: [{ id: "v1", reason: "Stored file is shared with another record" }] });
+			renderList({ sharedVideos: [video("v1", 200 * MB, 1), video("v2", 200 * MB, 2)] });
+			await userEvent.click(screen.getByTestId("shared-media-delete-older"));
+			await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
+			expect(confirmMock.confirm).not.toHaveBeenCalled();
+			expect(request).not.toHaveBeenCalled();
 		});
 
 		it("does not count removed clips in the Media heading", () => {

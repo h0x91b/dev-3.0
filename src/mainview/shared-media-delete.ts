@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SharedImage, Task } from "../shared/types";
 import { olderLargeSharedClips } from "../shared/types";
 import { confirm } from "./confirm";
@@ -9,6 +9,9 @@ import { formatBytes } from "./utils/formatBytes";
 
 /** Below this a clip deletion frees "almost nothing" and the copy says so. */
 const MEANINGFUL_BYTES = 1024 * 1024;
+
+/** Tasks with a delete in flight, shared by every surface (viewer, Media section) so a repeat click is ignored. */
+const inFlight = new Set<string>();
 
 /**
  * Confirm, then delete stored clip files. The dialog states the honest disk gain
@@ -24,10 +27,16 @@ export async function confirmDeleteSharedMedia(opts: {
 	scope: "one" | "older";
 }): Promise<Task | null> {
 	const { projectId, taskId, items, t, scope } = opts;
-	if (items.length === 0) return null;
+	if (items.length === 0 || inFlight.has(taskId)) return null;
+	inFlight.add(taskId);
 	const mediaIds = items.map((item) => item.id);
+	const skipRefused = scope === "older";
 	try {
-		const plan = await api.request.previewSharedMediaDelete({ projectId, taskId, mediaIds });
+		const plan = await api.request.previewSharedMediaDelete({ projectId, taskId, mediaIds, skipRefused });
+		if (plan.count === 0) {
+			toast.error(t("sharedMedia.deleteFailed", { error: plan.skipped[0]?.reason ?? "" }), { taskId });
+			return null;
+		}
 		const size = formatBytes(plan.bytes);
 		const freed = formatBytes(plan.freeableBytes);
 		const sharedBytes = plan.bytes - plan.freeableBytes;
@@ -42,7 +51,7 @@ export async function confirmDeleteSharedMedia(opts: {
 			danger: true,
 		});
 		if (!ok) return null;
-		const { task, summary } = await api.request.deleteSharedMedia({ projectId, taskId, mediaIds });
+		const { task, summary } = await api.request.deleteSharedMedia({ projectId, taskId, mediaIds, skipRefused });
 		if (summary.failed.length > 0) {
 			toast.error(t("sharedMedia.deleteFailed", { error: summary.failed[0].reason }), { taskId });
 		}
@@ -51,37 +60,41 @@ export async function confirmDeleteSharedMedia(opts: {
 	} catch (err) {
 		toast.error(t("sharedMedia.deleteFailed", { error: err instanceof Error ? err.message : String(err) }), { taskId });
 		return null;
+	} finally {
+		inFlight.delete(taskId);
 	}
 }
 
 /**
  * The "delete older clips" sweep for one task: which clips it covers, a label
- * carrying the disk it really frees (server preview), and a run that ignores
- * repeat clicks while a confirmation is already open.
+ * carrying the disk it really frees (server preview, refreshed when the window
+ * regains focus since an original may have been deleted meanwhile), and a run.
  */
 export function useOlderClipsCleanup(opts: { projectId?: string; taskId?: string; media: SharedImage[]; t: TFunction }) {
 	const { projectId, taskId, media, t } = opts;
 	const older = useMemo(() => olderLargeSharedClips(media), [media]);
 	const key = older.map((item) => item.id).join(",");
 	const [freeable, setFreeable] = useState<number | null>(null);
+	const [refresh, setRefresh] = useState(0);
 	useEffect(() => {
-		setFreeable(null);
-		if (!projectId || !taskId || !key) return;
-		let live = true;
-		api.request.previewSharedMediaDelete({ projectId, taskId, mediaIds: key.split(",") })
-			.then((summary) => { if (live) setFreeable(summary.freeableBytes); })
-			.catch(() => {});
-		return () => { live = false; };
-	}, [projectId, taskId, key]);
-	const busy = useRef(false);
-	const run = async (): Promise<Task | null> => {
-		if (busy.current || !projectId || !taskId) return null;
-		busy.current = true;
-		try {
-			return await confirmDeleteSharedMedia({ projectId, taskId, items: older, t, scope: "older" });
-		} finally {
-			busy.current = false;
+		const bump = () => setRefresh((n) => n + 1);
+		window.addEventListener("focus", bump);
+		return () => window.removeEventListener("focus", bump);
+	}, []);
+	useEffect(() => {
+		if (!projectId || !taskId || !key) {
+			setFreeable(null);
+			return;
 		}
+		let live = true;
+		api.request.previewSharedMediaDelete({ projectId, taskId, mediaIds: key.split(","), skipRefused: true })
+			.then((summary) => { if (live) setFreeable(summary.freeableBytes); })
+			.catch(() => { if (live) setFreeable(null); });
+		return () => { live = false; };
+	}, [projectId, taskId, key, refresh]);
+	const run = async (): Promise<Task | null> => {
+		if (!projectId || !taskId) return null;
+		return confirmDeleteSharedMedia({ projectId, taskId, items: older, t, scope: "older" });
 	};
 	const label = freeable !== null && freeable >= MEANINGFUL_BYTES ? t("sharedMedia.freeOlder", { size: formatBytes(freeable) }) : t("sharedMedia.deleteOlder");
 	return { older, label, run, available: Boolean(projectId && taskId) && older.length > 0 };

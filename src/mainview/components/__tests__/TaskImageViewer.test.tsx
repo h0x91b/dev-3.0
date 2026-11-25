@@ -477,10 +477,10 @@ describe("TaskImageViewer with a shared video", () => {
 		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
 		deleteMock.mockReset();
 		previewMock.mockReset();
-		previewMock.mockResolvedValue({ count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] });
+		previewMock.mockResolvedValue({ count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [], skipped: [] });
 		deleteMock.mockResolvedValue({
 			task: { id: "t1", sharedVideos: [{ ...MIXED[1], removedAt: 1_780_000_000_000, removedBytes: 0 }] },
-			summary: { count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [] },
+			summary: { count: 1, bytes: 300 * 1024 * 1024, freeableBytes: 0, failed: [], skipped: [] },
 		});
 		confirmMock.confirm.mockClear();
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
@@ -492,16 +492,32 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(confirmMock.confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true, title: "Delete the stored file of demo.mp4?" }));
 		// The dialog states the honest gain: a clone of a live original frees ~0.
 		expect(confirmMock.confirm.mock.calls[0][0].message).toContain("frees almost no space");
-		expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"], skipRefused: false });
 		expect(deleteMock).toHaveBeenCalledTimes(1);
-		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"] });
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["v"], skipRefused: false });
 		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
+	});
+
+	it("opens one confirmation for a per-clip delete clicked twice", async () => {
+		(mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, bytes: 10, freeableBytes: 10, failed: [], skipped: [] });
+		confirmMock.confirm.mockClear();
+		let answer: (ok: boolean) => void = () => {};
+		confirmMock.confirm.mockImplementationOnce(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		for (let i = 0; i < 2; i++) {
+			fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
+			await userEvent.click(screen.getByTestId("image-save-menu-delete"));
+		}
+		await waitFor(() => expect(confirmMock.confirm).toHaveBeenCalledTimes(1));
+		answer(false);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(confirmMock.confirm).toHaveBeenCalledTimes(1);
 	});
 
 	it("deletes nothing when the confirmation is declined", async () => {
 		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
 		deleteMock.mockReset();
-		(mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, bytes: 10, freeableBytes: 10, failed: [] });
+		(mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, bytes: 10, freeableBytes: 10, failed: [], skipped: [] });
 		confirmMock.confirm.mockResolvedValueOnce(false);
 		renderMixed(1, { taskId: "t1", projectId: "p1" });
 		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
@@ -535,23 +551,23 @@ describe("TaskImageViewer with a shared video", () => {
 		previewMock.mockReset();
 		deleteMock.mockReset();
 		confirmMock.confirm.mockClear();
-		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] });
+		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [], skipped: [] });
 		deleteMock.mockResolvedValue({
 			task: { id: "t1", sharedVideos: big.map((item) => (item.id === "new" ? item : { ...item, removedAt: 9 })) },
-			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] },
+			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [], skipped: [] },
 		});
 		render(
 			<I18nProvider>
 				<TaskImageViewer images={big} initialIndex={2} onClose={vi.fn()} taskId="t1" projectId="p1" />
 			</I18nProvider>,
 		);
-		await waitFor(() => expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] }));
+		await waitFor(() => expect(previewMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"], skipRefused: true }));
 		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));
 		const sweep = await screen.findByTestId("image-save-menu-delete-older");
 		expect(sweep).toHaveTextContent("Free 20 MB · delete older clips");
 		await userEvent.click(sweep);
 		await waitFor(() => expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(2));
-		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] });
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"], skipRefused: true });
 		fireEvent.contextMenu(screen.getByTestId("viewer-main-video"));
 		expect(screen.queryByTestId("image-save-menu-delete-older")).toBeNull();
 	});
@@ -564,10 +580,10 @@ describe("TaskImageViewer with a shared video", () => {
 		previewMock.mockReset();
 		deleteMock.mockReset();
 		confirmMock.confirm.mockClear();
-		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] });
+		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [], skipped: [] });
 		deleteMock.mockResolvedValue({
 			task: { id: "t1", sharedVideos: big.map((item) => (item.id === "new" ? item : { ...item, removedAt: 9 })) },
-			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] },
+			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [], skipped: [] },
 		});
 		render(
 			<I18nProvider>
@@ -579,7 +595,7 @@ describe("TaskImageViewer with a shared video", () => {
 		await userEvent.click(button);
 		expect(confirmMock.confirm).toHaveBeenCalledTimes(1);
 		await waitFor(() => expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(2));
-		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] });
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"], skipRefused: true });
 		expect(screen.queryByTestId("image-viewer-delete-older")).toBeNull();
 	});
 

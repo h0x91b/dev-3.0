@@ -209,9 +209,9 @@ async function markTaskSharedItemsRead(params: {
 }
 
 /** What deleting these clips would remove and free; nothing is touched. */
-async function previewSharedMediaDeletion(params: { taskId: string; projectId: string; mediaIds: string[] }) {
+async function previewSharedMediaDeletion(params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean }) {
 	const project = await data.getProject(params.projectId);
-	return previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks);
+	return previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks, { skipRefused: params.skipRefused });
 }
 
 /** Keep (pin) or release one shared item; automatic cleanup skips pinned items. */
@@ -237,13 +237,14 @@ async function setSharedMediaPinned(params: { taskId: string; projectId: string;
 }
 
 /** Frees disk by deleting stored show-media clips; records stay as tombstones. */
-async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[] }) {
+async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean }) {
 	const project = await data.getProject(params.projectId);
 	log.info("→ deleteSharedMedia", { taskId: params.taskId, count: params.mediaIds.length });
 	const { task, summary } = await deleteStoredSharedMedia(project, params.taskId, params.mediaIds, {
 		updateTaskWith: data.updateTaskWith,
+		skipRefused: params.skipRefused,
 	});
-	log.info("← deleteSharedMedia done", { taskId: params.taskId, count: summary.count, freeableBytes: summary.freeableBytes, failed: summary.failed.length });
+	log.info("← deleteSharedMedia done", { taskId: params.taskId, count: summary.count, freeableBytes: summary.freeableBytes, failed: summary.failed.length, skipped: summary.skipped.length });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	return { task, summary };
 }
