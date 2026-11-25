@@ -40,9 +40,10 @@ describe("resolveOriginalStatusLine", () => {
 		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
 	});
 
-	it("finds the user-level statusLine in ~/.claude/settings.json", () => {
+	it("finds the user-level statusLine in ~/.claude/settings.json, also with a null projectDir", () => {
 		writeSettings(home, { type: "command", command: "echo user" });
 		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo user" });
+		expect(resolveOriginalStatusLine(null, home, undefined)).toEqual({ command: "echo user" });
 	});
 
 	it("prefers project settings.local.json over project settings.json over user settings", () => {
@@ -58,7 +59,8 @@ describe("resolveOriginalStatusLine", () => {
 		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command: "echo local" });
 	});
 
-	it.each([
+	it("skips a statusLine that points back at dev3 statusline (recursion guard)", () => {
+		for (const command of [
 		'"/Users/x/.dev3.0/bin/dev3" statusline',
 		"dev3 statusline",
 		"~/.dev3.0/bin/dev3 statusline | cat",
@@ -73,21 +75,24 @@ describe("resolveOriginalStatusLine", () => {
 		"`which dev3` statusline",
 		"true; dev3 statusline",
 		"x=1 && dev3 statusline",
-	])("skips a statusLine that points back at dev3 statusline (recursion guard): %s", (command) => {
-		writeSettings(home, { type: "command", command });
-		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toBeNull();
+		]) {
+			writeSettings(home, { type: "command", command });
+			expect(resolveOriginalStatusLine(projectDir, home, undefined), command).toBeNull();
+		}
 	});
 
-	it.each([
+	it("keeps a user statusLine that only mentions dev3 and statusline", () => {
+		for (const command of [
 		"~/.dev3.0/bin/my-statusline.sh",
 		"bash /Users/x/.dev3.0/statusline.sh",
 		"~/scripts/dev3-statusline.sh",
 		"node ~/dev3/tools/statusline.js",
 		"mydev3 statusline",
 		"dev3 statusline-custom.sh",
-	])("keeps a user statusLine that only mentions dev3 and statusline: %s", (command) => {
-		writeSettings(home, { type: "command", command });
-		expect(resolveOriginalStatusLine(projectDir, home, undefined)).toEqual({ command });
+		]) {
+			writeSettings(home, { type: "command", command });
+			expect(resolveOriginalStatusLine(projectDir, home, undefined), command).toEqual({ command });
+		}
 	});
 
 	it("skips corrupt settings files and falls through to the next level", () => {
@@ -110,16 +115,7 @@ describe("resolveOriginalStatusLine", () => {
 		writeFileSync(join(configDir, "settings.json"), JSON.stringify({ statusLine: { type: "command", command: "echo config" } }));
 		writeSettings(home, { type: "command", command: "echo user" });
 		expect(resolveOriginalStatusLine(projectDir, home, configDir)).toEqual({ command: "echo config" });
-	});
-
-	it("falls back to ~/.claude when CLAUDE_CONFIG_DIR is blank", () => {
-		writeSettings(home, { type: "command", command: "echo user" });
-		expect(resolveOriginalStatusLine(projectDir, home, "  ")).toEqual({ command: "echo user" });
-	});
-
-	it("works with a null projectDir (user settings only)", () => {
-		writeSettings(home, { type: "command", command: "echo user" });
-		expect(resolveOriginalStatusLine(null, home, undefined)).toEqual({ command: "echo user" });
+		expect(resolveOriginalStatusLine(projectDir, home, "  "), "blank CLAUDE_CONFIG_DIR falls back").toEqual({ command: "echo user" });
 	});
 });
 
@@ -163,23 +159,15 @@ describe("handleStatusLine nesting guard (subprocess)", () => {
 describe("claudeDumpFilePaths", () => {
 	const base = "/base";
 
-	it("writes the system login (no managed id) to the shared claude.json", () => {
+	it("routes the system login to claude.json and managed accounts / pinned dirs to their own files", () => {
 		expect(claudeDumpFilePaths(null, base)).toEqual([join(base, "claude.json")]);
-	});
-
-	it("writes a managed account to its own per-account file only (never claude.json)", () => {
-		const paths = claudeDumpFilePaths("acc-123", base);
-		expect(paths).toEqual([join(base, "claude", "acc-123.json")]);
-		expect(paths).not.toContain(join(base, "claude.json"));
-	});
-
-	it("writes a project-pinned config dir to its own per-dir file, never claude.json", () => {
-		const paths = claudeDumpFilePaths(null, base, "/work/proj/.claude");
-		expect(paths).toEqual([join(base, "claude-config-dirs", `${configDirDumpName("/work/proj/.claude")}.json`)]);
-	});
-
-	it("lets a managed account id win over a config dir", () => {
-		expect(claudeDumpFilePaths("acc-123", base, "/work/proj/.claude")).toEqual([join(base, "claude", "acc-123.json")]);
+		expect(claudeDumpFilePaths("acc-123", base)).toEqual([join(base, "claude", "acc-123.json")]);
+		expect(claudeDumpFilePaths(null, base, "/work/proj/.claude")).toEqual([
+			join(base, "claude-config-dirs", `${configDirDumpName("/work/proj/.claude")}.json`),
+		]);
+		expect(claudeDumpFilePaths("acc-123", base, "/work/proj/.claude"), "account id wins over config dir").toEqual([
+			join(base, "claude", "acc-123.json"),
+		]);
 	});
 
 	it("names each config dir stably and distinctly", () => {
@@ -190,11 +178,8 @@ describe("claudeDumpFilePaths", () => {
 });
 
 describe("sessionDumpFilePath", () => {
-	it("writes one dump per dev3 task under sessions/", () => {
+	it("writes one dump per dev3 task under sessions/, and nothing outside a task or for an unsafe id", () => {
 		expect(sessionDumpFilePath("9994e79b-4c1b", "/base")).toBe(join("/base", "sessions", "9994e79b-4c1b.json"));
-	});
-
-	it("writes nothing outside a task or for an unsafe id", () => {
 		expect(sessionDumpFilePath(undefined, "/base")).toBeNull();
 		expect(sessionDumpFilePath("  ", "/base")).toBeNull();
 		expect(sessionDumpFilePath("../escape", "/base")).toBeNull();
@@ -212,9 +197,6 @@ describe("claudeDumpOwner", () => {
 		// account id comes from a tmux session created for the task's earlier account.
 		const env = { CLAUDE_CONFIG_DIR: accountDir(BASE44), DEV3_AGENT_ACCOUNT_ID: WIX };
 		expect(claudeDumpOwner(env, "/u", "/w", dev3Home)).toEqual({ accountId: BASE44, configDir: null });
-	});
-
-	it("reads a managed account from its config dir alone", () => {
 		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: `${accountDir(WIX)}/` }, "/u", "/w", dev3Home)).toEqual({
 			accountId: WIX,
 			configDir: null,
@@ -234,9 +216,7 @@ describe("claudeDumpOwner", () => {
 			accountId: null,
 			configDir: "/work/proj/.claude",
 		});
-	});
-
-	it("does not read an account id out of a dir that only looks like an account slot", () => {
+		// A dir that only looks like an account slot is a config-dir login, not an account id.
 		const elsewhere = "/tmp/agent-accounts/claude/x";
 		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: elsewhere }, "/u", "/w", dev3Home)).toEqual({ accountId: null, configDir: elsewhere });
 		const nested = `${accountDir(WIX)}/projects`;
@@ -265,22 +245,19 @@ describe("statusLineAccountLabel", () => {
 	it("prefers the managed account's label", () => {
 		writeRegistry("work");
 		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("work");
-	});
-
-	it("falls back to the login's email when the label is blank or the registry is missing", () => {
-		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("me@work.test");
 		writeRegistry("  ");
-		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("me@work.test");
+		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home), "blank label").toBe("me@work.test");
 	});
 
-	it("reads the system login's email from ~/.claude.json", () => {
-		writeFileSync(join(home, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "me@home.test" } }));
-		expect(statusLineAccountLabel({}, home, tmp, dev3Home)).toBe("me@home.test");
+	it("falls back to the login's email when the registry is missing", () => {
+		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("me@work.test");
 	});
 
 	it("strips control characters and returns null when nothing names the login", () => {
 		writeRegistry("wo\u001b[31mrk\n");
 		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("wo[31mrk");
 		expect(statusLineAccountLabel({}, home, tmp, dev3Home)).toBeNull();
+		writeFileSync(join(home, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "me@home.test" } }));
+		expect(statusLineAccountLabel({}, home, tmp, dev3Home), "system login email").toBe("me@home.test");
 	});
 });

@@ -60,7 +60,7 @@ afterEach(() => {
 });
 
 describe("config show", () => {
-	it("passes worktreePath when context has it", async () => {
+	it("passes worktreePath when context has it and displays 'exists' for a repo config", async () => {
 		mockSend.mockResolvedValue(okResp({
 			settings: { setupScript: "bun install" },
 			sources: { setupScript: "repo" },
@@ -77,6 +77,7 @@ describe("config show", () => {
 				worktreePath: "/tmp/worktrees/proj/aaaaaaaa/worktree",
 			}),
 		);
+		expect(stdoutOutput).toContain("exists");
 	});
 
 	it("sends undefined worktreePath when context has no worktree", async () => {
@@ -96,18 +97,6 @@ describe("config show", () => {
 				worktreePath: undefined,
 			}),
 		);
-	});
-
-	it("displays 'exists' when hasRepoConfig is true", async () => {
-		mockSend.mockResolvedValue(okResp({
-			settings: { setupScript: "bun install" },
-			sources: { setupScript: "repo" },
-			hasRepoConfig: true,
-		}));
-
-		await handleConfig("show", EMPTY_ARGS, SOCKET, CTX_WITH_WT);
-
-		expect(stdoutOutput).toContain("exists");
 	});
 
 	// The handler maps unset config keys to null (not undefined) so they survive
@@ -174,7 +163,7 @@ describe("config show", () => {
 });
 
 describe("config export", () => {
-	it("passes worktreePath when context has it", async () => {
+	it("passes worktreePath when context has it, and undefined outside a worktree", async () => {
 		mockSend.mockResolvedValue(okResp({
 			path: "/tmp/worktrees/proj/aaaaaaaa/worktree/.dev3/config.json",
 		}));
@@ -189,12 +178,8 @@ describe("config export", () => {
 				worktreePath: "/tmp/worktrees/proj/aaaaaaaa/worktree",
 			}),
 		);
-	});
 
-	it("sends undefined worktreePath when not in a worktree", async () => {
-		mockSend.mockResolvedValue(okResp({
-			path: "/project/.dev3/config.json",
-		}));
+		// Outside a worktree it sends undefined.
 
 		await handleConfig("export", EMPTY_ARGS, SOCKET, CTX);
 
@@ -233,13 +218,11 @@ describe("config set", () => {
 		expect(stdoutOutput).toContain('Set clonePaths = ["a","b"]');
 	});
 
-	it("rejects an invalid value with exit 47 and never calls the app", async () => {
+	it("rejects an invalid value with exit 47 and never calls the app, naming the closest key for a typo", async () => {
 		await expect(handleConfig("set", EMPTY_ARGS, SOCKET, CTX, ["peerReviewEnabled", "maybe"])).rejects.toThrow("process.exit");
 		expect(exitSpy).toHaveBeenCalledWith(47);
 		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("names the closest key for a typo", async () => {
+		// A typo names the closest key.
 		await expect(handleConfig("set", EMPTY_ARGS, SOCKET, CTX, ["portcont", "2"])).rejects.toThrow("process.exit");
 		expect(stderrOutput).toContain('Did you mean "portCount"');
 	});

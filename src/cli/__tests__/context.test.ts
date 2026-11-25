@@ -73,21 +73,10 @@ afterEach(() => {
 });
 
 describe("detectContext", () => {
-	it("returns null when not in a worktree path", async () => {
+	it("detects context from a worktree path or a nested dir, and null outside a worktree", async () => {
 		const { detectContext } = await import("../context");
 		expect(detectContext("/tmp/random-dir")).toBeNull();
-	});
-
-	it("detects context from worktree path", async () => {
-		const { detectContext } = await import("../context");
-		const ctx = detectContext(TEST_WORKTREE);
-		expect(ctx).not.toBeNull();
-		expect(ctx!.projectId).toBe(TEST_PROJECT_ID);
-		expect(ctx!.taskId).toBe(TEST_TASK_ID);
-	});
-
-	it("detects context from nested directory inside worktree", async () => {
-		const { detectContext } = await import("../context");
+		expect(detectContext(TEST_WORKTREE)).toMatchObject({ projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID });
 		const nestedDir = `${TEST_WORKTREE}/src/components`;
 		mkdirSync(nestedDir, { recursive: true });
 
@@ -214,186 +203,27 @@ describe("detectFromWorktreePath — realDev3Home extraction", () => {
 		vi.resetModules();
 	});
 
-	// ---- macOS standard ----
+	const positives: Array<[label: string, home: string, cwd: string, slug: string, short: string, dev3Home: string]> = [
+		["macOS: HOME matches cwd", "/Users/alice", "/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree", "my-project", "abcd1234", "/Users/alice/.dev3.0"],
+		["macOS: nested cwd, HOME=/tmp sandbox", "/tmp", "/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree/src/lib/utils", "my-project", "abcd1234", "/Users/alice/.dev3.0"],
+		["Linux: HOME=/tmp, cwd under /home/dev", "/tmp", "/home/dev/.dev3.0/worktrees/Users-dev-projects-myapp/ff001122/worktree", "Users-dev-projects-myapp", "ff001122", "/home/dev/.dev3.0"],
+		["NixOS: deep non-standard home", "/home/nixuser/.local/share", "/home/nixuser/.local/share/.dev3.0/worktrees/my-nix-proj/aabb0011/worktree", "my-nix-proj", "aabb0011", "/home/nixuser/.local/share/.dev3.0"],
+		["WSL: worktrees on /mnt/c", "/home/wsluser", "/mnt/c/Users/WinUser/.dev3.0/worktrees/cross-os-proj/babe1234/worktree", "cross-os-proj", "babe1234", "/mnt/c/Users/WinUser/.dev3.0"],
+		["sandbox HOME=/run/user/1000", "/run/user/1000", "/home/carol/.dev3.0/worktrees/carol-proj/abcdef01/worktree", "carol-proj", "abcdef01", "/home/carol/.dev3.0"],
+		["slug with many dashes", "/tmp", "/Users/arsenyp/.dev3.0/worktrees/Users-arsenyp-Desktop-src-shared-dev-3.0/1c173543/worktree", "Users-arsenyp-Desktop-src-shared-dev-3.0", "1c173543", "/Users/arsenyp/.dev3.0"],
+		["slug with dots and numbers", "/tmp", "/home/user/.dev3.0/worktrees/home-user-my.project.v2/a1b2c3d4/worktree", "home-user-my.project.v2", "a1b2c3d4", "/home/user/.dev3.0"],
+	];
 
-	it("macOS: HOME matches cwd — uses HOME-based path", async () => {
-		process.env.HOME = "/Users/alice";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("my-project");
-		expect(result!.taskShortId).toBe("abcd1234");
-		expect(result!.realDev3Home).toBe("/Users/alice/.dev3.0");
+	it("extracts slug, short id and the real dev3 home whether or not HOME matches the cwd", async () => {
+		for (const [label, home, cwd, slug, short, dev3Home] of positives) {
+			process.env.HOME = home;
+			vi.resetModules();
+			const { detectFromWorktreePath } = await import("../context");
+			expect(detectFromWorktreePath(cwd), label).toMatchObject({ projectSlug: slug, taskShortId: short, realDev3Home: dev3Home });
+		}
 	});
 
-	it("macOS: HOME=/tmp, cwd under /Users/alice — sandbox fallback", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("my-project");
-		expect(result!.taskShortId).toBe("abcd1234");
-		expect(result!.realDev3Home).toBe("/Users/alice/.dev3.0");
-	});
-
-	it("macOS: nested cwd inside worktree — walks up to find marker", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree/src/lib/utils");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("my-project");
-		expect(result!.taskShortId).toBe("abcd1234");
-		expect(result!.realDev3Home).toBe("/Users/alice/.dev3.0");
-	});
-
-	// ---- Linux standard (/home/user) ----
-
-	it("Linux: HOME=/home/dev, cwd matches — standard detection", async () => {
-		process.env.HOME = "/home/dev";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/home/dev/.dev3.0/worktrees/Users-dev-projects-myapp/ff001122/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("Users-dev-projects-myapp");
-		expect(result!.taskShortId).toBe("ff001122");
-		expect(result!.realDev3Home).toBe("/home/dev/.dev3.0");
-	});
-
-	it("Linux: HOME=/tmp, cwd under /home/dev — sandbox fallback", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/home/dev/.dev3.0/worktrees/Users-dev-projects-myapp/ff001122/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("Users-dev-projects-myapp");
-		expect(result!.taskShortId).toBe("ff001122");
-		expect(result!.realDev3Home).toBe("/home/dev/.dev3.0");
-	});
-
-	// ---- NixOS / non-standard home ----
-
-	it("NixOS: HOME=/home/nixuser/.local/share, cwd under that path", async () => {
-		process.env.HOME = "/home/nixuser/.local/share";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/home/nixuser/.local/share/.dev3.0/worktrees/my-nix-proj/aabb0011/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/home/nixuser/.local/share/.dev3.0");
-	});
-
-	it("NixOS: HOME=/tmp, cwd under deep non-standard path — sandbox fallback", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/home/nixuser/.local/share/.dev3.0/worktrees/my-nix-proj/aabb0011/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("my-nix-proj");
-		expect(result!.realDev3Home).toBe("/home/nixuser/.local/share/.dev3.0");
-	});
-
-	// ---- Root user ----
-
-	it("root: HOME=/root — standard detection", async () => {
-		process.env.HOME = "/root";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/root/.dev3.0/worktrees/some-project/deadbeef/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/root/.dev3.0");
-	});
-
-	it("root: HOME=/tmp sandbox, cwd under /root", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/root/.dev3.0/worktrees/some-project/deadbeef/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/root/.dev3.0");
-	});
-
-	// ---- Docker / custom home ----
-
-	it("Docker: HOME=/app — custom container home", async () => {
-		process.env.HOME = "/app";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/app/.dev3.0/worktrees/container-proj/11223344/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/app/.dev3.0");
-	});
-
-	it("Docker: HOME=/tmp sandbox, cwd under /app", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/app/.dev3.0/worktrees/container-proj/11223344/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/app/.dev3.0");
-	});
-
-	// ---- WSL ----
-
-	it("WSL: HOME=/home/wsluser — standard Linux-style", async () => {
-		process.env.HOME = "/home/wsluser";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/home/wsluser/.dev3.0/worktrees/win-proj-slug/cafe0000/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/home/wsluser/.dev3.0");
-	});
-
-	it("WSL: HOME mismatch — cwd under /mnt/c/Users path", async () => {
-		process.env.HOME = "/home/wsluser";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		// User might store worktrees on the Windows drive
-		const result = detectFromWorktreePath("/mnt/c/Users/WinUser/.dev3.0/worktrees/cross-os-proj/babe1234/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("cross-os-proj");
-		expect(result!.realDev3Home).toBe("/mnt/c/Users/WinUser/.dev3.0");
-	});
-
-	// ---- Sandbox with different non-/tmp HOMEs ----
-
-	it("sandbox HOME=/var/sandbox, cwd under /Users/bob", async () => {
-		process.env.HOME = "/var/sandbox";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/Users/bob/.dev3.0/worktrees/bob-project/12345678/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/Users/bob/.dev3.0");
-	});
-
-	it("sandbox HOME=/run/user/1000, cwd under /home/carol", async () => {
-		process.env.HOME = "/run/user/1000";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath("/home/carol/.dev3.0/worktrees/carol-proj/abcdef01/worktree");
-		expect(result).not.toBeNull();
-		expect(result!.realDev3Home).toBe("/home/carol/.dev3.0");
-	});
-
-	// ---- Negative cases ----
-
-	it("returns null for paths without /.dev3.0/worktrees/ marker", async () => {
+	it("returns null without the marker, with a truncated structure, or for other .dev3.0 dirs", async () => {
 		process.env.HOME = "/Users/alice";
 		vi.resetModules();
 		const { detectFromWorktreePath } = await import("../context");
@@ -401,56 +231,10 @@ describe("detectFromWorktreePath — realDev3Home extraction", () => {
 		expect(detectFromWorktreePath("/Users/alice/projects/myapp")).toBeNull();
 		expect(detectFromWorktreePath("/tmp/random")).toBeNull();
 		expect(detectFromWorktreePath("/")).toBeNull();
-	});
-
-	it("returns null when path has marker but wrong structure (no worktree dir)", async () => {
-		process.env.HOME = "/Users/alice";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		// Only slug, no taskId/worktree
 		expect(detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project")).toBeNull();
-		// slug + taskId but no /worktree
 		expect(detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234")).toBeNull();
-	});
-
-	it("returns null for /.dev3.0/ without /worktrees/", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
 		expect(detectFromWorktreePath("/Users/alice/.dev3.0/sockets/1234.sock")).toBeNull();
 		expect(detectFromWorktreePath("/Users/alice/.dev3.0/data/my-project/tasks.json")).toBeNull();
-	});
-
-	// ---- Slugs with complex characters ----
-
-	it("handles slugs with many dashes (typical path-derived slugs)", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath(
-			"/Users/arsenyp/.dev3.0/worktrees/Users-arsenyp-Desktop-src-shared-dev-3.0/1c173543/worktree",
-		);
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("Users-arsenyp-Desktop-src-shared-dev-3.0");
-		expect(result!.taskShortId).toBe("1c173543");
-		expect(result!.realDev3Home).toBe("/Users/arsenyp/.dev3.0");
-	});
-
-	it("handles slug with dots and numbers", async () => {
-		process.env.HOME = "/tmp";
-		vi.resetModules();
-		const { detectFromWorktreePath } = await import("../context");
-
-		const result = detectFromWorktreePath(
-			"/home/user/.dev3.0/worktrees/home-user-my.project.v2/a1b2c3d4/worktree",
-		);
-		expect(result).not.toBeNull();
-		expect(result!.projectSlug).toBe("home-user-my.project.v2");
-		expect(result!.taskShortId).toBe("a1b2c3d4");
-		expect(result!.realDev3Home).toBe("/home/user/.dev3.0");
 	});
 });
 
@@ -461,8 +245,10 @@ describe("expandShortProjectId", () => {
 		expect(expandShortProjectId("proj-tes", null)).toBe(TEST_PROJECT_ID);
 	});
 
-	it("returns a full-length ID (>=36 chars) unchanged without scanning", async () => {
+	it("returns a full-length ID, an unmatched one, or a too-short prefix unchanged", async () => {
 		const { expandShortProjectId } = await import("../context");
+		expect(expandShortProjectId("zzzzzzzz", null)).toBe("zzzzzzzz");
+		expect(expandShortProjectId("pro", null)).toBe("pro");
 		const fullId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 		expect(expandShortProjectId(fullId, null)).toBe(fullId);
 	});
@@ -471,11 +257,6 @@ describe("expandShortProjectId", () => {
 		const { expandShortProjectId } = await import("../context");
 		const ctx = { projectId: "ctx-proj-999", taskId: TEST_TASK_ID, socketPath: "" };
 		expect(expandShortProjectId("ctx-pro", ctx)).toBe("ctx-proj-999");
-	});
-
-	it("returns the input unchanged when no project matches", async () => {
-		const { expandShortProjectId } = await import("../context");
-		expect(expandShortProjectId("zzzzzzzz", null)).toBe("zzzzzzzz");
 	});
 });
 
@@ -490,6 +271,9 @@ describe("expandShortId — prefix guards", () => {
 		// A 3-char prefix must NOT be resolved to whatever task happens to match
 		// first — that is exactly the silent-misresolution bug this guard closes.
 		expect(expandShortId("aab", null)).toBe("aab");
+		// Context is authoritative — an in-worktree short prefix means "this task".
+		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
+		expect(expandShortId("aab", ctx)).toBe(TEST_TASK_ID);
 	});
 
 	it("throws on an ambiguous prefix matching more than one task", async () => {
@@ -505,13 +289,6 @@ describe("expandShortId — prefix guards", () => {
 		expect(() => expandShortId("dupe1234", null)).toThrow(/Ambiguous task prefix/);
 	});
 
-	it("still honors a context task match even below the min length", async () => {
-		const { expandShortId } = await import("../context");
-		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
-		// Context is authoritative — an in-worktree short prefix means "this task".
-		expect(expandShortId("aab", ctx)).toBe(TEST_TASK_ID);
-	});
-
 	it("passes a stable seq:<N> reference through verbatim (resolved server-side)", async () => {
 		const { expandShortId } = await import("../context");
 		expect(expandShortId("seq:1066", null)).toBe("seq:1066");
@@ -523,27 +300,12 @@ describe("expandShortId — prefix guards", () => {
 	});
 });
 
-describe("expandShortProjectId — prefix guards", () => {
-	it("leaves a too-short project prefix unchanged", async () => {
-		const { expandShortProjectId } = await import("../context");
-		expect(expandShortProjectId("pro", null)).toBe("pro");
-	});
-});
-
 describe("resolveProjectId", () => {
 	it("expands a short --project flag value", async () => {
 		const { resolveProjectId } = await import("../context");
 		expect(resolveProjectId("proj-tes", null)).toBe(TEST_PROJECT_ID);
-	});
-
-	it("falls back to context project when flag is absent", async () => {
-		const { resolveProjectId } = await import("../context");
 		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
-		expect(resolveProjectId(undefined, ctx)).toBe(TEST_PROJECT_ID);
-	});
-
-	it("returns undefined when neither flag nor context is present and no project owns the cwd", async () => {
-		const { resolveProjectId } = await import("../context");
+		expect(resolveProjectId(undefined, ctx), "context fallback").toBe(TEST_PROJECT_ID);
 		expect(resolveProjectId(undefined, null, `${HOME}/nowhere-near-a-project`)).toBeUndefined();
 	});
 

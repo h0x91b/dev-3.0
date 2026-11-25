@@ -177,7 +177,7 @@ describe("detectContext socket selection", () => {
 		expect(found).toBe(`${SOCKETS_DIR}/44818.sock`);
 	});
 
-	it("resolveSocketPathWithRetry returns a socket on the first successful probe", async () => {
+	it("resolveSocketPathWithRetry returns a socket on the first successful probe, and gives up (null) when none appears", async () => {
 		mockReaddirSync.mockReturnValue(["999.sock"]);
 		mockStatSync.mockReturnValue({ mtimeMs: 100 });
 
@@ -185,21 +185,15 @@ describe("detectContext socket selection", () => {
 		const result = await resolveSocketPathWithRetry(TEST_CWD, { attempts: 3, retryDelayMs: 5 });
 
 		expect(result).toBe(`${SOCKETS_DIR}/999.sock`);
-	});
 
-	it("resolveSocketPathWithRetry gives up (null) after attempts when no socket appears", async () => {
 		mockExistsSync.mockImplementation(() => false);
 		mockReaddirSync.mockReturnValue([]);
-
-		const { resolveSocketPathWithRetry } = await import("../context");
 		const start = Date.now();
-		const result = await resolveSocketPathWithRetry(TEST_CWD, { attempts: 3, retryDelayMs: 5 });
-
-		expect(result).toBeNull();
+		expect(await resolveSocketPathWithRetry(TEST_CWD, { attempts: 3, retryDelayMs: 5 })).toBeNull();
 		expect(Date.now() - start).toBeLessThan(2000);
 	});
 
-	it("socketDiagnostics distinguishes live from stale sockets", async () => {
+	it("socketDiagnostics distinguishes live from stale sockets, and flags a missing sockets dir", async () => {
 		mockReaddirSync.mockReturnValue(["123.sock", "456.sock"]);
 		killSpy.mockImplementation((pid: number) => {
 			if (pid === 456) {
@@ -216,14 +210,9 @@ describe("detectContext socket selection", () => {
 		expect(out).toContain(`HOME: ${TEST_HOME}`);
 		expect(out).toContain("socket 123.sock: pid=123 → process alive");
 		expect(out).toContain("socket 456.sock: pid=456 → process dead (stale socket)");
-	});
+		expect(out).not.toContain("sockets dir status: NOT FOUND");
 
-	it("socketDiagnostics flags a missing sockets dir (likely wrong HOME)", async () => {
 		mockExistsSync.mockImplementation(() => false);
-
-		const { socketDiagnostics } = await import("../context");
-		const out = socketDiagnostics(TEST_CWD);
-
-		expect(out).toContain("sockets dir status: NOT FOUND");
+		expect(socketDiagnostics(TEST_CWD), "likely wrong HOME").toContain("sockets dir status: NOT FOUND");
 	});
 });

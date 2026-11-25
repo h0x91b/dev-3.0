@@ -75,13 +75,11 @@ describe("task hibernate", () => {
 		expect(stderrOutput).toContain("THIS task");
 	});
 
-	it("exits with its own code when there is nothing to free", async () => {
+	it("exits with its own codes when there is nothing to free or the user declines", async () => {
 		mockSend.mockResolvedValue(ok({ outcome: "nothing-to-free", taskId: OTHER_ID, seq: 12, reason: "already-hibernated", message: "The task is already hibernated." }));
 		expect(await exitCode(handleTask("hibernate", args([OTHER_ID]), SOCKET, CTX))).toBe(`EXIT_${CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE}`);
 		expect(stderrOutput).toContain("already hibernated");
-	});
 
-	it("exits with its own code when the user declines", async () => {
 		mockSend.mockResolvedValue(ok({ outcome: "declined", taskId: OTHER_ID, seq: 12 }));
 		expect(await exitCode(handleTask("hibernate", args([OTHER_ID]), SOCKET, CTX))).toBe(`EXIT_${CLI_EXIT_CODE_HIBERNATE_DECLINED}`);
 		expect(stderrOutput).toContain("Nothing was stopped");
@@ -111,9 +109,11 @@ describe("task wake", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it.each(["resume", "shell", "allow-agent-latest", "json"])("refuses --%s when it swallowed the id", async (flag) => {
-		expect(await exitCode(handleTask("wake", args([], { [flag]: "seq:12", shell: flag === "shell" ? "seq:12" : "true" }), SOCKET, CTX))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
-		expect(stderrOutput).toContain(`--${flag} takes no value`);
+	it("refuses --resume / --shell / --allow-agent-latest / --json when one swallowed the id", async () => {
+		for (const flag of ["resume", "shell", "allow-agent-latest", "json"]) {
+			expect(await exitCode(handleTask("wake", args([], { [flag]: "seq:12", shell: flag === "shell" ? "seq:12" : "true" }), SOCKET, CTX)), flag).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+			expect(stderrOutput, flag).toContain(`--${flag} takes no value`);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
@@ -139,12 +139,10 @@ describe("task wake", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("exits with its own code for a task that is not hibernated", async () => {
+	it("exits with its own code for a task that is not hibernated, and like a declined launch on decline", async () => {
 		mockSend.mockResolvedValue(ok({ outcome: "not-hibernated", taskId: OTHER_ID, seq: 12 }));
 		expect(await exitCode(handleTask("wake", args([OTHER_ID], { shell: "true" }), SOCKET, null))).toBe(`EXIT_${CLI_EXIT_CODE_TASK_NOT_HIBERNATED}`);
-	});
-
-	it("exits like a declined launch when the user declines a shell wake", async () => {
+		// A declined shell wake exits like a declined launch.
 		mockSend.mockResolvedValue(ok({ outcome: "declined", taskId: OTHER_ID, seq: 12 }));
 		expect(await exitCode(handleTask("wake", args([OTHER_ID], { shell: "true" }), SOCKET, CTX))).toBe(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 	});

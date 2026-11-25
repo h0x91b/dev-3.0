@@ -77,14 +77,17 @@ afterEach(() => {
 });
 
 describe("Claude SessionStart adapter", () => {
-	it.each(["startup", "clear", "compact"])("injects the newest five on %s", async (source) => {
+	it("injects the newest five on startup, clear and compact", async () => {
 		serveNotes({ "task-own": OWN_NOTES });
-		await handleClaudeSessionStart(sessionStart(source), SOCKET, CONTEXT);
-		const block = additionalContext(stdout);
-		expect(block).toContain("The 5 newest of 7 notes");
-		expect(block).toContain("> own finding 6");
-		expect(block).not.toContain("> own finding 1");
-		expect(block).toContain("`dev3 note show <id>`");
+		for (const source of ["startup", "clear", "compact"]) {
+			stdout = "";
+			await handleClaudeSessionStart(sessionStart(source), SOCKET, CONTEXT);
+			const block = additionalContext(stdout);
+			expect(block, source).toContain("The 5 newest of 7 notes");
+			expect(block, source).toContain("> own finding 6");
+			expect(block, source).not.toContain("> own finding 1");
+			expect(block, source).toContain("`dev3 note show <id>`");
+		}
 	});
 
 	it("stays silent on resume — that transcript already holds its block", async () => {
@@ -133,12 +136,6 @@ describe("Claude SessionStart adapter", () => {
 		expect(additionalContext(stdout)).toContain("The 5 newest of 7 notes");
 	});
 
-	it("injects nothing when the task has no notes", async () => {
-		serveNotes({});
-		await handleClaudeSessionStart(sessionStart("startup"), SOCKET, CONTEXT);
-		expect(stdout).toBe("");
-	});
-
 	it("never blocks startup when the app is offline or the socket errors", async () => {
 		await handleClaudeSessionStart(sessionStart("startup"), null, CONTEXT);
 		expect(stdout).toBe("");
@@ -148,7 +145,9 @@ describe("Claude SessionStart adapter", () => {
 		expect(stderr).toContain("ECONNREFUSED");
 	});
 
-	it("does nothing outside a dev3 task or for a malformed payload", async () => {
+	it("does nothing without notes, outside a dev3 task or for a malformed payload", async () => {
+		serveNotes({});
+		await handleClaudeSessionStart(sessionStart("startup"), SOCKET, CONTEXT);
 		await handleClaudeSessionStart(sessionStart("startup"), SOCKET, null);
 		await handleClaudeSessionStart("not json", SOCKET, CONTEXT);
 		expect(stdout).toBe("");
@@ -163,15 +162,16 @@ describe("Codex hook — startup notes", () => {
 		expect(additionalContext(stdout)).toContain("The 5 newest of 7 notes");
 	});
 
-	it.each(["resume", "clear", "compact", "fork"])("keeps the bare {} on %s", async (source) => {
+	it("keeps the bare {} on resume, clear, compact, fork and every other event", async () => {
 		serveNotes({ "task-own": OWN_NOTES });
-		await handleCodexHook(sessionStart(source), SOCKET, CONTEXT);
-		expect(stdout).toBe("{}");
-		expect(mockSend.mock.calls.map((call) => call[1])).toEqual(["task.agentHook"]);
-	});
-
-	it("keeps the bare {} on every other event", async () => {
-		serveNotes({ "task-own": OWN_NOTES });
+		for (const source of ["resume", "clear", "compact", "fork"]) {
+			stdout = "";
+			mockSend.mockClear();
+			await handleCodexHook(sessionStart(source), SOCKET, CONTEXT);
+			expect(stdout, source).toBe("{}");
+			expect(mockSend.mock.calls.map((call) => call[1]), source).toEqual(["task.agentHook"]);
+		}
+		stdout = "";
 		await handleCodexHook(JSON.stringify({ hook_event_name: "Stop" }), SOCKET, CONTEXT);
 		expect(stdout).toBe("{}");
 	});
@@ -198,13 +198,11 @@ describe("dev3 note recent", () => {
 		expect(mockSend.mock.calls[0]![2]).toEqual({ taskId: "task-own", projectId: "project-1" });
 	});
 
-	it("says so plainly when there are none", async () => {
+	it("says so plainly when there are none, and answers offline with one line instead of failing the skill load", async () => {
 		serveNotes({});
 		await handleNoteRecent(args(), SOCKET, CONTEXT);
 		expect(stdout).toBe("No notes on this task yet.\n");
-	});
-
-	it("answers offline with one line instead of failing the skill load", async () => {
+		stdout = "";
 		await handleNoteRecent(args(), null, CONTEXT);
 		expect(stdout).toBe("Recent notes unavailable (the dev3 app is not running). Try `dev3 note list` later.\n");
 	});

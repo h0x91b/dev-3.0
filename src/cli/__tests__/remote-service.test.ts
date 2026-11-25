@@ -79,34 +79,22 @@ const stdoutText = () => stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])
 const stderrText = () => stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
 
 describe("buildExecStartArgs", () => {
-	it("defaults to `remote start --no-detach` with no extra flags", () => {
+	// --no-detach is forced so systemd keeps the foreground process (never bare --detach).
+	it("defaults to `remote start --no-detach` and maps --port / --no-tunnel / --expose-ports / --static-code / --host", () => {
 		expect(buildExecStartArgs(args())).toEqual(["remote", "start", "--no-detach"]);
-	});
-
-	it("maps --port / --no-tunnel / --expose-ports / --static-code", () => {
 		const out = buildExecStartArgs(args({ port: "3017", "no-tunnel": "true", "expose-ports": "3000,5173", "static-code": "letmein1" }));
 		expect(out).toEqual(["remote", "start", "--no-detach", "--port", "3017", "--no-tunnel", "--expose-ports=3000,5173", "--static-code=letmein1"]);
+		expect(buildExecStartArgs(args({ host: "127.0.0.1", "no-tunnel": "true" }))).toEqual(["remote", "start", "--no-detach", "--host", "127.0.0.1", "--no-tunnel"]);
+		expect(stderrText(), "quiet about the tunnel with --no-tunnel").not.toContain("public tunnel is on");
 	});
 
-	it("forces --no-detach so systemd keeps the foreground process (never bare --detach)", () => {
-		const out = buildExecStartArgs(args({ port: "3017" }));
-		expect(out).toContain("--no-detach");
-		expect(out).not.toContain("--detach");
-	});
-
-	it("passes --host through to the unit", () => {
-		const out = buildExecStartArgs(args({ host: "127.0.0.1", "no-tunnel": "true" }));
-		expect(out).toEqual(["remote", "start", "--no-detach", "--host", "127.0.0.1", "--no-tunnel"]);
-	});
-
-	it("rejects a --host other than 127.0.0.1, localhost or 0.0.0.0", () => {
+	it("rejects a --host other than 127.0.0.1/localhost/0.0.0.0, an invalid port, and a valueless --static-code", () => {
 		expect(() => buildExecStartArgs(args({ host: "example.com" }))).toThrow("__exit__");
 		expect(stderrText()).toContain("--host must be 127.0.0.1, localhost or 0.0.0.0");
-	});
-
-	it("rejects an invalid port", () => {
 		expect(() => buildExecStartArgs(args({ port: "abc" }))).toThrow("__exit__");
 		expect(stderrText()).toContain("--port must be an integer");
+		expect(() => buildExecStartArgs(args({ "static-code": "true" }))).toThrow("__exit__");
+		expect(stderrText()).toContain("--static-code requires a value");
 	});
 
 	// F1: install-service must enforce the same minimum that `remote start`
@@ -141,17 +129,6 @@ describe("buildExecStartArgs", () => {
 		expect(stderrText()).toContain("must not contain whitespace");
 	});
 
-	it("rejects --static-code with no value", () => {
-		expect(() => buildExecStartArgs(args({ "static-code": "true" }))).toThrow("__exit__");
-		expect(stderrText()).toContain("--static-code requires a value");
-	});
-
-	it("accepts a valid static-code when paired with --no-tunnel", () => {
-		const out = buildExecStartArgs(args({ "static-code": "letmein1", "no-tunnel": "true" }));
-		expect(out).toContain("--static-code=letmein1");
-		expect(out).toContain("--no-tunnel");
-	});
-
 	// The combination is legitimate — it is how you sign in to a headless box from
 	// a phone — so the unit is written and the user is told what it means.
 	it("warns but still writes the unit for --static-code without --no-tunnel", () => {
@@ -159,11 +136,6 @@ describe("buildExecStartArgs", () => {
 		expect(out).toContain("--static-code=letmein1");
 		expect(out).not.toContain("--no-tunnel");
 		expect(stderrText()).toContain("public tunnel is on");
-	});
-
-	it("stays quiet about the tunnel when --no-tunnel is given", () => {
-		buildExecStartArgs(args({ "static-code": "letmein1", "no-tunnel": "true" }));
-		expect(stderrText()).not.toContain("public tunnel is on");
 	});
 });
 
@@ -174,11 +146,12 @@ describe("renderUnitFile", () => {
 		expect(unit).toContain("Type=simple");
 		expect(unit).toContain("Restart=on-failure");
 		expect(unit).toContain("WantedBy=default.target");
+		expect(unit, "nothing carried").not.toContain("Environment=");
 	});
 });
 
 describe("collectServiceEnv", () => {
-	it("keeps only allowlisted, non-empty variables", () => {
+	it("keeps only allowlisted, non-empty variables, making a relative DEV3_HOME absolute (systemd runs from ~)", () => {
 		const env = collectServiceEnv({
 			DEV3_TELEMETRY: "off",
 			DO_NOT_TRACK: "1",
@@ -188,9 +161,6 @@ describe("collectServiceEnv", () => {
 			DEV3_REMOTE_STATIC_CODE: "letmein1",
 		});
 		expect(env).toEqual([["DEV3_TELEMETRY", "off"], ["DO_NOT_TRACK", "1"]]);
-	});
-
-	it("makes a relative DEV3_HOME absolute (systemd runs the unit from ~, not this cwd)", () => {
 		expect(collectServiceEnv({ DEV3_HOME: "rel/home" })).toEqual([["DEV3_HOME", `${process.cwd()}/rel/home`]]);
 	});
 
@@ -201,33 +171,25 @@ describe("collectServiceEnv", () => {
 });
 
 describe("renderUnitFile environment", () => {
-	it("writes Environment= lines in [Service] before ExecStart", () => {
+	it("writes Environment= lines in [Service] before ExecStart, escaping quotes, backslashes and % specifiers", () => {
 		const unit = renderUnitFile("/usr/local/bin/dev3", ["remote", "start"], [["DEV3_TELEMETRY", "off"]]);
 		const lines = unit.split("\n");
 		const envIdx = lines.indexOf('Environment="DEV3_TELEMETRY=off"');
 		expect(envIdx).toBeGreaterThan(lines.indexOf("[Service]"));
 		expect(envIdx).toBeLessThan(lines.findIndex((l) => l.startsWith("ExecStart=")));
+		const escaped = renderUnitFile("/bin/dev3", [], [["DEV3_HOME", '/srv/a b/"q"\\x%h']]);
+		expect(escaped).toContain('Environment="DEV3_HOME=/srv/a b/\\"q\\"\\\\x%%h"');
 	});
 
-	it("escapes quotes, backslashes and systemd % specifiers", () => {
-		const unit = renderUnitFile("/bin/dev3", [], [["DEV3_HOME", '/srv/a b/"q"\\x%h']]);
-		expect(unit).toContain('Environment="DEV3_HOME=/srv/a b/\\"q\\"\\\\x%%h"');
-	});
-
-	it("writes no Environment= line when nothing is carried", () => {
-		expect(renderUnitFile("/bin/dev3", [])).not.toContain("Environment=");
-	});
 });
 
 describe("parseUnitServiceEnv", () => {
-	it("round-trips what renderUnitFile wrote, escapes included", () => {
+	it("round-trips what renderUnitFile wrote, and ignores keys outside the allowlist", () => {
 		const env: Array<[string, string]> = [["DEV3_TELEMETRY", "off"], ["DEV3_HOME", '/srv/a b/"q"\\x%h']];
 		expect(parseUnitServiceEnv(renderUnitFile("/bin/dev3", [], env))).toEqual(env);
-	});
-
-	it("ignores keys outside the allowlist, e.g. a hand-edited unit", () => {
 		expect(parseUnitServiceEnv('[Service]\nEnvironment="PATH=/x"\nEnvironment="DO_NOT_TRACK=1"\n')).toEqual([["DO_NOT_TRACK", "1"]]);
 	});
+
 });
 
 describe("mergeServiceEnv", () => {
@@ -262,27 +224,20 @@ describe("installRemoteService", () => {
 		expect(stdoutText()).toContain("DEV3_TELEMETRY=off");
 	});
 
-	it("says nothing was carried when no allowlisted variable is set", async () => {
-		setPlatform("linux");
-		await installRemoteService(args({ port: "3017" }));
-		expect(String(vi.mocked(writeFileSync).mock.calls[0][1])).not.toContain("Environment=");
-		expect(stdoutText()).toContain("No environment carried");
-	});
-
-	it("refuses on non-Linux platforms", async () => {
+	it("refuses on non-Linux platforms (install and uninstall) and when running via bun", async () => {
 		setPlatform("darwin");
 		await expect(installRemoteService(args())).rejects.toThrow("__exit__");
+		await expect(uninstallRemoteService(args())).rejects.toThrow("__exit__");
 		expect(stderrText()).toContain("Linux-only");
-	});
+		expect(unlinkSync).not.toHaveBeenCalled();
 
-	it("refuses when running via bun (no compiled binary)", async () => {
 		setPlatform("linux");
 		process.execPath = "/opt/homebrew/bin/bun";
 		await expect(installRemoteService(args())).rejects.toThrow("__exit__");
 		expect(stderrText()).toContain("compiled dev3 binary");
 	});
 
-	it("writes the unit and enables it via systemctl", async () => {
+	it("writes the unit and enables it via systemctl, warning when no --port is given", async () => {
 		setPlatform("linux");
 		await installRemoteService(args({ port: "3017" }));
 		expect(mkdirSync).toHaveBeenCalledWith("/home/tester/.config/systemd/user", { recursive: true });
@@ -294,9 +249,8 @@ describe("installRemoteService", () => {
 		expect(cmds.some((c) => c.includes("daemon-reload"))).toBe(true);
 		expect(cmds.some((c) => c.includes("enable --now dev3-remote.service"))).toBe(true);
 		expect(stdoutText()).toContain("enabled and started");
-	});
-
-	it("warns when no --port is given", async () => {
+		expect(String(writeCall[1])).not.toContain("Environment=");
+		expect(stdoutText()).toContain("No environment carried");
 		setPlatform("linux");
 		await installRemoteService(args());
 		expect(stdoutText()).toContain("No --port given");
@@ -312,12 +266,6 @@ describe("installRemoteService", () => {
 });
 
 describe("uninstallRemoteService", () => {
-	it("refuses on non-Linux platforms", async () => {
-		setPlatform("darwin");
-		await expect(uninstallRemoteService(args())).rejects.toThrow("__exit__");
-		expect(stderrText()).toContain("Linux-only");
-	});
-
 	it("disables and removes the unit on Linux", async () => {
 		setPlatform("linux");
 		await uninstallRemoteService(args());

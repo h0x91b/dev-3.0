@@ -105,38 +105,28 @@ describe("dev3 pane list", () => {
 		expect(stdoutOutput).toContain("NOT readable");
 	});
 
-	it("names its own pane from DEV3_PANE_ID on a native task", async () => {
-		process.env.DEV3_PANE_ID = "pane-3";
-		mockSend.mockResolvedValue(okResp(listing()));
-		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: "pane-3" });
-	});
-
-	it("names its own pane from TMUX_PANE on a tmux task", async () => {
-		process.env.TMUX_PANE = "%17";
-		mockSend.mockResolvedValue(okResp(listing()));
-		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: "%17" });
-	});
-
-	it("prefers the native id when both are set, and sends nothing when neither is", async () => {
-		process.env.DEV3_PANE_ID = "pane-3";
-		process.env.TMUX_PANE = "%17";
-		mockSend.mockResolvedValue(okResp(listing()));
-		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: "pane-3" });
-
-		delete process.env.DEV3_PANE_ID;
-		delete process.env.TMUX_PANE;
-		mockSend.mockClear();
-		mockSend.mockResolvedValue(okResp(listing()));
-		await handlePane("list", args(), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: undefined });
+	it("names its own pane: DEV3_PANE_ID on native, TMUX_PANE on tmux, native first, nothing when neither", async () => {
+		const cases: Array<[string | undefined, string | undefined, string | undefined]> = [
+			["pane-3", undefined, "pane-3"],
+			[undefined, "%17", "%17"],
+			["pane-3", "%17", "pane-3"],
+			[undefined, undefined, undefined],
+		];
+		for (const [native, tmux, expected] of cases) {
+			if (native === undefined) delete process.env.DEV3_PANE_ID;
+			else process.env.DEV3_PANE_ID = native;
+			if (tmux === undefined) delete process.env.TMUX_PANE;
+			else process.env.TMUX_PANE = tmux;
+			mockSend.mockClear();
+			mockSend.mockResolvedValue(okResp(listing()));
+			await handlePane("list", args(), SOCKET, CTX);
+			expect(mockSend, `${native}/${tmux}`).toHaveBeenCalledWith(SOCKET, "pane.list", { taskId: TASK_ID, projectId: "proj-001", selfPaneId: expected });
+		}
 	});
 });
 
 describe("dev3 pane run", () => {
-	it("sends the command and tells the agent how to read it back", async () => {
+	it("sends the command, passes --below/--label, and tells the agent how to read it back", async () => {
 		mockSend.mockResolvedValue(
 			okResp({ runId: "run-0123456789ab", paneId: "pane-2", backend: "native", logPath: "/tmp/x.log" }),
 		);
@@ -150,16 +140,10 @@ describe("dev3 pane run", () => {
 			label: undefined,
 		});
 		expect(stdoutOutput).toContain("dev3 pane logs run-0123456789ab");
-	});
 
-	it("passes --below and --label through", async () => {
 		mockSend.mockResolvedValue(okResp({ runId: "run-0123456789ab", paneId: "%2", backend: "tmux", logPath: "/tmp/x" }));
 		await handlePane("run", args({ below: "true", label: "Build" }, ["bun run build"]), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"pane.run",
-			expect.objectContaining({ placement: "below", label: "Build" }),
-		);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "pane.run", expect.objectContaining({ placement: "below", label: "Build" }));
 	});
 
 	it("exits with the no-room code, and the message without its wire prefix, when nothing fits", async () => {
@@ -170,12 +154,6 @@ describe("dev3 pane run", () => {
 		expect(stderrOutput).toContain("no room for another pane");
 		expect(stderrOutput).not.toContain("DEV3_PANE_NO_ROOM");
 	});
-
-	it("refuses to run with no command instead of opening an empty pane", async () => {
-		await expect(handlePane("run", args(), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("needs a command");
-	});
 });
 
 describe("dev3 pane logs", () => {
@@ -184,18 +162,6 @@ describe("dev3 pane logs", () => {
 		await handlePane("logs", args({}, ["run-0123456789ab"]), SOCKET, CTX);
 		expect(stdoutOutput).toContain("outcome: finished — exit code 0");
 		expect(stdoutOutput).toContain("built");
-	});
-
-	it("refuses a --lines value outside the documented window before calling the app", async () => {
-		await expect(
-			handlePane("logs", args({ lines: String(PANE_RUN_TAIL_MAX_LINES + 1) }, ["run-0123456789ab"]), SOCKET, CTX),
-		).rejects.toThrow(/EXIT_/);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("needs a run id", async () => {
-		await expect(handlePane("logs", args(), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
-		expect(stderrOutput).toContain("needs a run id");
 	});
 });
 
@@ -208,13 +174,19 @@ describe("dev3 pane close", () => {
 });
 
 describe("usage", () => {
-	it("rejects an unknown subcommand rather than guessing", async () => {
-		await expect(handlePane("frobnicate", args(), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
-		expect(stderrOutput).toContain("Unknown subcommand: pane frobnicate");
-	});
-
-	it("asks for a task when there is none in context", async () => {
-		await expect(handlePane("list", args(), SOCKET, null)).rejects.toThrow(/EXIT_/);
-		expect(stderrOutput).toContain("No task in context");
+	it("refuses bad input before calling the app: no command, bad --lines, no run id, unknown subcommand, no task", async () => {
+		const cases: Array<[string, ParsedArgs, CliContext | null, string]> = [
+			["run", args(), CTX, "needs a command"],
+			["logs", args({ lines: String(PANE_RUN_TAIL_MAX_LINES + 1) }, ["run-0123456789ab"]), CTX, "--lines"],
+			["logs", args(), CTX, "needs a run id"],
+			["frobnicate", args(), CTX, "Unknown subcommand: pane frobnicate"],
+			["list", args(), null, "No task in context"],
+		];
+		for (const [sub, parsed, ctx, message] of cases) {
+			stderrOutput = "";
+			await expect(handlePane(sub, parsed, SOCKET, ctx), message).rejects.toThrow(/EXIT_/);
+			expect(stderrOutput, message).toContain(message);
+		}
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

@@ -6,21 +6,11 @@ describe("hasCommandHelp", () => {
 		expect(hasCommandHelp("task")).toBe(true);
 		expect(hasCommandHelp("note")).toBe(true);
 		expect(hasCommandHelp("vents")).toBe(true);
-	});
-
-	it("does not claim unknown commands", () => {
 		expect(hasCommandHelp("bogus")).toBe(false);
 		// remote/gui render their own help inside their handlers and are
 		// intentionally absent from the registry.
 		expect(hasCommandHelp("remote")).toBe(false);
 		expect(hasCommandHelp("gui")).toBe(false);
-	});
-});
-
-describe("renderHelp — unknown command", () => {
-	it("returns null", () => {
-		expect(renderHelp("bogus")).toBeNull();
-		expect(renderHelp("bogus", "sub")).toBeNull();
 	});
 });
 
@@ -34,12 +24,9 @@ describe("renderHelp — group listing", () => {
 		}
 		expect(out).toContain('Run "dev3 task <subcommand> --help" for details');
 		expect(out).toContain("Global options:");
-	});
-
-	it("falls back to the group listing for an unknown subcommand", () => {
-		const out = renderHelp("task", "frobnicate")!;
-		expect(out).toContain("dev3 task — Inspect and manage individual tasks.");
-		expect(out).toContain("Subcommands:");
+		expect(renderHelp("task", "frobnicate"), "unknown subcommand falls back to the listing").toBe(out);
+		expect(renderHelp("bogus")).toBeNull();
+		expect(renderHelp("bogus", "sub")).toBeNull();
 	});
 });
 
@@ -83,54 +70,32 @@ describe("renderHelp — leaf command", () => {
 		expect(out).toContain('dev3 vents "short name" "markdown body"');
 		// A leaf command has no subcommand listing.
 		expect(out).not.toContain("Subcommands:");
-	});
-
-	it("ignores a stray subcommand arg for a leaf command", () => {
 		expect(renderHelp("vents", "whatever")).toEqual(renderHelp("vents"));
 	});
 });
 
 describe("resolveHelp — routing decision", () => {
-	it("no args → top-level help", () => {
-		expect(resolveHelp([])).toEqual({ action: "top" });
-	});
 
 	it("ignores --help after a bare -- : it belongs to the script", () => {
 		expect(resolveHelp(["dev-server", "start", "--", "--help"])).toEqual({ action: "none" });
 		expect(resolveHelp(["dev-server", "start", "--help", "--", "-h"]).action).toBe("command");
 	});
 
-	it("bare --help → top-level help", () => {
+	it("no args, bare --help, or an unknown '<command> --help' → top-level help", () => {
+		expect(resolveHelp([])).toEqual({ action: "top" });
+		expect(resolveHelp(["bogus", "--help"])).toEqual({ action: "top" });
 		expect(resolveHelp(["--help"])).toEqual({ action: "top" });
 		expect(resolveHelp(["-h"])).toEqual({ action: "top" });
 	});
 
-	it("'<command> --help' → command-specific help text", () => {
-		const res = resolveHelp(["task", "--help"]);
-		expect(res.action).toBe("command");
-		if (res.action === "command") {
-			expect(res.text).toBe(renderHelp("task"));
-		}
+	it("'<command> [<subcommand>] --help' → that command's help text", () => {
+		expect(resolveHelp(["task", "--help"])).toEqual({ action: "command", text: renderHelp("task") });
+		expect(resolveHelp(["task", "create", "--help"])).toEqual({ action: "command", text: renderHelp("task", "create") });
 	});
 
-	it("'<command> <subcommand> --help' → subcommand-specific help text", () => {
-		const res = resolveHelp(["task", "create", "--help"]);
-		expect(res.action).toBe("command");
-		if (res.action === "command") {
-			expect(res.text).toBe(renderHelp("task", "create"));
-		}
-	});
-
-	it("remote/gui --help fall through to their own handlers (none)", () => {
+	it("remote/gui --help and a real invocation are not help requests (none)", () => {
 		expect(resolveHelp(["remote", "--help"])).toEqual({ action: "none" });
 		expect(resolveHelp(["gui", "--help"])).toEqual({ action: "none" });
-	});
-
-	it("unknown '<command> --help' → top-level help", () => {
-		expect(resolveHelp(["bogus", "--help"])).toEqual({ action: "top" });
-	});
-
-	it("a real invocation without --help is not a help request (none)", () => {
 		expect(resolveHelp(["task", "create", "--title", "x"])).toEqual({ action: "none" });
 	});
 });
@@ -156,15 +121,10 @@ describe("registry coverage", () => {
 		"pr",
 	];
 
-	for (const cmd of dispatched) {
-		it(`has help for "${cmd}"`, () => {
-			expect(hasCommandHelp(cmd)).toBe(true);
-			expect(renderHelp(cmd)).not.toBeNull();
-		});
-	}
-
-	it("every subcommand renders a non-empty detail view", () => {
+	it("every dispatched command and subcommand renders help", () => {
 		for (const cmd of dispatched) {
+			expect(hasCommandHelp(cmd), cmd).toBe(true);
+			expect(renderHelp(cmd), cmd).not.toBeNull();
 			const spec = getCommandHelp(cmd)!;
 			for (const sub of spec.subcommands) {
 				const out = renderHelp(cmd, sub.name)!;
@@ -183,9 +143,6 @@ describe("the singular `project` alias", () => {
 		expect(hasCommandHelp("project")).toBe(true);
 		expect(getCommandHelp("project")).toBe(getCommandHelp("projects"));
 		expect(renderHelp("project", "list")).toContain("dev3 projects list");
-	});
-
-	it("resolves the singular `space` to the plural spaces command", () => {
 		expect(getCommandHelp("space")).toBe(getCommandHelp("spaces"));
 	});
 });
@@ -196,9 +153,6 @@ describe("projects / spaces help", () => {
 		expect(out).toContain("exits 33");
 		expect(out).toContain("exit 34");
 		expect(out).toContain("dev3 projects clone <url>");
-	});
-
-	it("tells the reader that spaces set replaces the whole membership", () => {
 		expect(renderHelp("spaces", "set")).toContain("REPLACE");
 	});
 });
