@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./rpc";
 import type { ResolvedTerminalPath } from "../shared/types";
+import { isRootedPathText, pathBaseName } from "../shared/path-candidates";
 
 /**
  * Resolves paths written in task text through the terminal's `resolveTerminalPaths`
@@ -94,13 +95,11 @@ export function useResolvedTextPath(path: string, projectId?: string, taskId?: s
 }
 
 /**
- * The chip label for a written path: an absolute or home path shows its file
- * name, since the leading directories are noise in prose. A relative path is
- * already short and says where it lives, so it shows as written.
+ * The chip label for a written path: an absolute or home path (any platform)
+ * shows its file name, since the leading directories are noise in prose. A
+ * relative path is already short and says where it lives, so it shows as written.
  */
 export function pathLinkLabel(raw: string): string {
-	if (!raw.startsWith("/") && !raw.startsWith("~/")) return raw;
-	const trimmed = raw.replace(/\/+$/, "");
-	const base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
-	return base || raw;
+	if (!isRootedPathText(raw)) return raw;
+	return pathBaseName(raw) || raw;
 }

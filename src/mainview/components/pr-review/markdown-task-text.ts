@@ -1,5 +1,5 @@
 import { findRefsInText, refUri } from "../../../shared/task-refs";
-import { findPathCandidates } from "../../terminal-file-links";
+import { findPathCandidates } from "../../../shared/path-candidates";
 
 /**
  * Remark plugins for agent-written plain text rendered as Markdown (task

@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createFilePathLinkProvider,
 	createRowCache,
-	findPathCandidates,
 	getLogicalLines,
 	lineToText,
 	mapRangeToBuffer,
 	type CellLine,
 } from "../terminal-file-links";
 import type { ResolvedTerminalPath } from "../../shared/types";
+import { findPathCandidates } from "../../shared/path-candidates";
 
 describe("findPathCandidates", () => {
 	it("finds absolute paths", () => {

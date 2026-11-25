@@ -8,7 +8,7 @@ import { useTaskPrRefPreview } from "../task-ref-preview";
 import { TaskRefHoverCard } from "./TaskRefPreviewCard";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import Tooltip from "./Tooltip";
-import { findPathCandidates } from "../terminal-file-links";
+import { findPathCandidates } from "../../shared/path-candidates";
 import { activateTerminalPath } from "../terminal-path-open";
 import { pathLinkLabel, useResolvedTextPath } from "../text-path-links";
 
