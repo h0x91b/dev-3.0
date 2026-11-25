@@ -12,6 +12,7 @@ import * as taskNotes from "../board-operations/task-notes";
 import * as labels from "../board-operations/labels";
 import { boardPorts } from "../board-operations/runtime";
 import { USER_ACTOR } from "../board-operations/types";
+import { deleteSharedMedia as deleteStoredSharedMedia, previewSharedMediaDelete } from "../shared-media-delete";
 
 async function createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
 	log.info("→ createLabel", { projectId: params.projectId, name: params.name });
@@ -207,6 +208,47 @@ async function markTaskSharedItemsRead(params: {
 	return task;
 }
 
+/** What deleting these clips would remove and free; nothing is touched. */
+async function previewSharedMediaDeletion(params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean }) {
+	const project = await data.getProject(params.projectId);
+	return previewSharedMediaDelete(project, params.taskId, params.mediaIds, data.loadTasks, { skipRefused: params.skipRefused });
+}
+
+/** Keep (pin) or release one shared item; automatic cleanup skips pinned items. */
+async function setSharedMediaPinned(params: { taskId: string; projectId: string; mediaId: string; pinned: boolean }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	const { task } = await data.updateTaskWith(project, params.taskId, (current) => {
+		const toggle = (list: SharedImage[] | undefined) =>
+			list?.map((item) => {
+				if (item.id !== params.mediaId || item.removedAt) return item;
+				if (params.pinned) return item.pinnedAt ? item : { ...item, pinnedAt: Date.now() };
+				const { pinnedAt: _pinnedAt, ...rest } = item;
+				return rest;
+			});
+		const updates: Partial<Task> = {};
+		if (current.sharedImages) updates.sharedImages = toggle(current.sharedImages);
+		if (current.sharedVideos) updates.sharedVideos = toggle(current.sharedVideos);
+		if (current.sharedAudio) updates.sharedAudio = toggle(current.sharedAudio);
+		return { updates, result: undefined };
+	});
+	log.info("setSharedMediaPinned", { taskId: params.taskId, pinned: params.pinned });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return task;
+}
+
+/** Frees disk by deleting stored show-media clips; records stay as tombstones. */
+async function deleteSharedMedia(params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean }) {
+	const project = await data.getProject(params.projectId);
+	log.info("→ deleteSharedMedia", { taskId: params.taskId, count: params.mediaIds.length });
+	const { task, summary } = await deleteStoredSharedMedia(project, params.taskId, params.mediaIds, {
+		updateTaskWith: data.updateTaskWith,
+		skipRefused: params.skipRefused,
+	});
+	log.info("← deleteSharedMedia done", { taskId: params.taskId, count: summary.count, freeableBytes: summary.freeableBytes, failed: summary.failed.length, skipped: summary.skipped.length });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return { task, summary };
+}
+
 async function addTaskNote(params: { taskId: string; projectId: string; content: string; source?: NoteSource }): Promise<Task> {
 	log.info("→ addTaskNote", { taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
@@ -266,6 +308,9 @@ export const notesLabelsHandlers = {
 	reorderLabels,
 	setTaskLabels,
 	markTaskSharedItemsRead,
+	deleteSharedMedia,
+	previewSharedMediaDelete: previewSharedMediaDeletion,
+	setSharedMediaPinned,
 	addTaskNote,
 	updateTaskNote,
 	deleteTaskNote,

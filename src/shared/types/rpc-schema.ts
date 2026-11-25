@@ -44,7 +44,7 @@ import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from
 import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
-import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage, SharedMediaDeleteSummary } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
 import type { NativeTaskAgent, TaskSessionState } from "./task-lifecycle";
 import type { Automation, AutomationDraft } from "./automations";
@@ -101,6 +101,14 @@ export interface CliResponse {
 }
 
 // ---- RPC schema ----
+
+/** agents.json could not be read: its presets were restored from the last-known-good
+ *  copy, or (no usable copy) built-in defaults are being served. `backupFile` is the
+ *  basename of the copy of the unreadable bytes, next to agents.json. */
+export interface AgentsStoreNotice {
+	kind: "recovered" | "unreadable";
+	backupFile: string | null;
+}
 
 export type AppRPCSchema = {
 	bun: RPCSchema<{
@@ -508,6 +516,11 @@ export type AppRPCSchema = {
 			getAgents: {
 				params: void;
 				response: CodingAgent[];
+			};
+			/** The pending agents.json storage notice, for a renderer that mounted after it was pushed. */
+			getAgentsStoreNotice: {
+				params: void;
+				response: AgentsStoreNotice | null;
 			};
 			saveAgents: {
 				params: { agents: CodingAgent[] };
@@ -1306,6 +1319,21 @@ export type AppRPCSchema = {
 			markTaskSharedItemsRead: {
 				params: { taskId: string; projectId: string; kind: "images" | "artifacts"; itemIds: string[] };
 				response: Task;
+			};
+			/** Pins (keeps) or unpins one shared item: a pinned item is never removed by automatic cleanup. */
+			setSharedMediaPinned: {
+				params: { taskId: string; projectId: string; mediaId: string; pinned: boolean };
+				response: Task;
+			};
+			/** Read-only: what deleting these clips would remove and free. `skipRefused` reports refused clips instead of throwing. */
+			previewSharedMediaDelete: {
+				params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean };
+				response: SharedMediaDeleteSummary;
+			};
+			/** Deletes stored show-media clip files, tombstoning their records. */
+			deleteSharedMedia: {
+				params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean };
+				response: { task: Task; summary: SharedMediaDeleteSummary };
 			};
 			toggleTaskWatch: {
 				params: { taskId: string; projectId: string; watched: boolean };
@@ -2338,6 +2366,8 @@ export type AppRPCSchema = {
 			 * paths became strict no longer exists. Once per agent and path per host run.
 			 */
 			staleAgentPath: { agentId: string; agentName: string; path: string; command: string };
+			/** agents.json was unreadable; see AgentsStoreNotice. Also served by getAgentsStoreNotice. */
+			agentsStoreNotice: AgentsStoreNotice;
 			cliToast: {
 				taskId: string | null;
 				projectId: string | null;

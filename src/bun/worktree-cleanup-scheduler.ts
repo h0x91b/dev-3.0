@@ -7,6 +7,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import type { WorktreeCleanupResult } from "./worktree-cleanup-job";
+import { runSharedMediaRetention, tombstonePrunedClips, type SharedMediaRetentionDeps } from "./shared-media-retention";
 
 const log = createLogger("worktree-cleanup");
 
@@ -27,6 +28,8 @@ export interface WorktreeCleanupState {
 	lastFinishedAt?: string;
 	lastResult?: { freedBytes: number; removedDirs: number; removedMediaFiles?: number; failed: number; scannedDirs: number };
 	lastError?: string;
+	/** First shared-media retention run on this machine; starts the rollout grace (additive field). */
+	retentionStartedAt?: string;
 }
 
 export interface WorktreeCleanupDeps {
@@ -148,8 +151,57 @@ const realDeps: WorktreeCleanupDeps = {
 			}
 			return result;
 		}),
-	run: () => runInWorker(workerPath!),
+	run: async () => {
+		const retentionDeps = await claimRetentionStart(realDeps).then(realRetentionDeps).catch((err) => {
+			log.error("Shared media retention unavailable", { error: String(err) });
+			return null;
+		});
+		const retention = retentionDeps
+			? await runSharedMediaRetention(retentionDeps).catch((err) => {
+				log.error("Shared media retention failed", { error: String(err) });
+				return null;
+			})
+			: null;
+		const { removedMediaPaths = [], ...result } = await runInWorker(workerPath!);
+		const tombstoned = retentionDeps
+			? await tombstonePrunedClips(retentionDeps, removedMediaPaths).catch((err) => {
+				log.error("Tombstoning pruned clips failed", { error: String(err) });
+				return 0;
+			})
+			: 0;
+		log.info("Shared media retention finished", { removed: retention?.removed ?? 0, freed: formatBytes(retention?.freedBytes ?? 0), skipped: retention?.skipped ?? 0, failed: retention?.failed ?? 0, tombstoned });
+		return {
+			...result,
+			freedBytes: result.freedBytes + (retention?.freedBytes ?? 0),
+			removedMediaFiles: result.removedMediaFiles + (retention?.removed ?? 0),
+			failed: result.failed + (retention?.failed ?? 0),
+		};
+	},
 };
+
+/** The first retention run's time, recorded once and shared by every installed version. */
+export async function claimRetentionStart(deps: Pick<WorktreeCleanupDeps, "now" | "withState">): Promise<number> {
+	return deps.withState((state) => {
+		const recorded = state.retentionStartedAt ? Date.parse(state.retentionStartedAt) : Number.NaN;
+		if (Number.isFinite(recorded)) return { result: recorded };
+		const now = deps.now();
+		return { next: { ...state, retentionStartedAt: new Date(now).toISOString() }, result: now };
+	});
+}
+
+/** The host's own data layer: retention writes tombstones under the tasks lock, which the worker cannot. */
+async function realRetentionDeps(retentionStartedAt: number): Promise<SharedMediaRetentionDeps> {
+	const data = await import("./data");
+	const { getPushMessage } = await import("./rpc-handlers/shared");
+	return {
+		now: () => Date.now(),
+		retentionStartedAt,
+		loadProjects: async () => [...(await data.loadProjects()), ...(await data.loadVirtualProjects())],
+		loadTasks: data.loadTasks,
+		updateTaskWith: data.updateTaskWith,
+		onTaskUpdated: (project, task) => getPushMessage()?.("taskUpdated", { projectId: project.id, task }),
+	};
+}
 
 async function tick(deps: WorktreeCleanupDeps): Promise<void> {
 	if (checkInFlight) return;

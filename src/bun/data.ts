@@ -1073,7 +1073,8 @@ export async function updateTask(
 export async function updateTaskWith<T>(
 	project: Project,
 	taskId: string,
-	mutator: (task: Task) => Promise<{ updates: Partial<Task>; result: T }> | { updates: Partial<Task>; result: T },
+	/** Gets the target and the project's whole task list, both read under the lock. */
+	mutator: (task: Task, tasks?: readonly Task[]) => Promise<{ updates: Partial<Task>; result: T }> | { updates: Partial<Task>; result: T },
 	options?: {
 		ifStatus?: string;
 		ifStatusNot?: string;
@@ -1084,7 +1085,7 @@ export async function updateTaskWith<T>(
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
-		const { updates, result } = await mutator(tasks[idx]);
+		const { updates, result } = await mutator(tasks[idx], tasks);
 		const { task, changed } = applyTaskUpdate(tasks, idx, updates, options);
 		if (changed) await rawSaveTasks(project, tasks);
 		return { task, result };
