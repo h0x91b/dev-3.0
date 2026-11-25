@@ -5,7 +5,8 @@
  * driven entirely by the env override and the source-checkout probe.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 vi.mock("../logger", () => ({
@@ -22,6 +23,9 @@ vi.mock("../native-terminal-registry/host-images/packaged-image", () => ({
 	discoverPackagedImage: vi.fn(() => ({ status: "absent", reason: "no native-host-image/ in this test package" })),
 	stagePackagedImage: vi.fn(() => ({ status: "failed", tag: null, reason: "not reached" })),
 }));
+
+// Never let a launch test prune the real staging root.
+vi.mock("../native-terminal-registry/host-images/prune", () => ({ pruneHostImages: vi.fn(async () => null) }));
 
 // The source-checkout probe must be switchable: this repo genuinely has the
 // registry CLI on disk, and one case needs a build that does not.
@@ -42,7 +46,8 @@ import {
 	PACKAGED_HOST_SESSION_VERB,
 	resolveNativeHostRuntime,
 } from "../native-host-runtime";
-import { discoverPackagedImage } from "../native-terminal-registry/host-images/packaged-image";
+import { discoverPackagedImage, stagePackagedImage } from "../native-terminal-registry/host-images/packaged-image";
+import { pruneHostImages } from "../native-terminal-registry/host-images/prune";
 import { nativeHostPackageLayout } from "../native-terminal-registry/host-images/package-layout";
 import { encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../native-terminal-registry/shell-launch";
 
@@ -201,6 +206,71 @@ describe("packaged image lookup", () => {
 
 		// The near root misses, the parent hits — resolution must not stop at the miss.
 		expect(() => resolveNativeHostRuntime()).toThrow(/Staging the packaged host image/);
+	});
+});
+
+describe("staged image last-used marker and prune trigger", () => {
+	let imageDir: string;
+
+	beforeEach(async () => {
+		// Earlier cases that failed to stage leave a zero-delay prune timer behind.
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		vi.mocked(pruneHostImages).mockClear();
+		imageDir = mkdtempSync(join(tmpdir(), "dev3-host-runtime-image-"));
+		const longAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+		utimesSync(imageDir, longAgo, longAgo);
+		vi.mocked(discoverPackagedImage).mockImplementation(
+			() => ({ status: "ok", imageDir: "/pkg/native-host-image/tag", tag: "tag", manifest: {} }) as never,
+		);
+	});
+
+	afterEach(() => {
+		rmSync(imageDir, { recursive: true, force: true });
+		vi.mocked(stagePackagedImage).mockImplementation(
+			() => ({ status: "failed", tag: null, reason: "not reached" }) as never,
+		);
+	});
+
+	function stageAs(status: "staged" | "already-staged"): void {
+		vi.mocked(stagePackagedImage).mockImplementation(
+			() =>
+				({
+					status,
+					tag: "1.0.0-p1-aaaaaaaaaaaa",
+					imageDir,
+					entrypointPath: join(imageDir, "entrypoint.mjs"),
+					runtimeCarrierPath: join(imageDir, "dev3-terminal-host"),
+				}) as never,
+		);
+	}
+
+	it("sets the image directory's mtime to now after a launch, even for an already-staged image", () => {
+		stageAs("already-staged");
+		resolveNativeHostRuntime();
+		expect(Date.now() - statSync(imageDir).mtimeMs).toBeLessThan(60_000);
+	});
+
+	it("prunes after a new image is staged", async () => {
+		stageAs("staged");
+		resolveNativeHostRuntime();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(pruneHostImages).toHaveBeenCalledTimes(1);
+	});
+
+	it("prunes after a failed stage so a half-deleted image cannot block the next launch", async () => {
+		vi.mocked(stagePackagedImage).mockImplementation(
+			() => ({ status: "failed", tag: "tag", reason: "already-staged image tag is unusable" }) as never,
+		);
+		resolveNativeHostRuntime();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(pruneHostImages).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not prune on a launch that only reused an image", async () => {
+		stageAs("already-staged");
+		resolveNativeHostRuntime();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(pruneHostImages).not.toHaveBeenCalled();
 	});
 });
 

@@ -21,7 +21,7 @@
  */
 
 import { NATIVE_CAPTURE_MODE_ENV } from "./native-terminal-registry/capture-mode";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, utimesSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn as spawnChild } from "node:child_process";
@@ -35,6 +35,7 @@ import {
 	PACKAGED_HOST_IMAGE_PARENT,
 } from "./native-terminal-registry/host-images/packaged-image";
 import { hostImageRootForPackagedCli } from "./native-terminal-registry/host-images/package-layout";
+import { pruneHostImages } from "./native-terminal-registry/host-images/prune";
 import type { PackagedHostImageExpectations } from "./native-terminal-registry/host-images/packaged-image-manifest";
 import type { HostLaunch, HostLauncher, HostSpawnOptions } from "./native-terminal-registry/registry";
 import { encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "./native-terminal-registry/shell-launch";
@@ -131,6 +132,35 @@ function developmentRuntime(): NativeHostRuntime | null {
 	};
 }
 
+/** The image directory's mtime is its "last used" time, which the prune retention reads. */
+function markImageUsed(imageDir: string): void {
+	try {
+		const now = new Date();
+		utimesSync(imageDir, now, now);
+	} catch (err) {
+		log.warn("Could not mark native host image as used", { imageDir, error: String(err) });
+	}
+}
+
+/** Remove stale staged host images. Detached and never throws; see `prune.ts` for the rule. */
+export async function pruneStagedHostImages(): Promise<void> {
+	try {
+		const report = await pruneHostImages();
+		if (!report) return;
+		const changed = report.deleted.length > 0 || report.deletedStaging.length > 0 || report.failed.length > 0;
+		if (changed) {
+			log.info("Pruned staged native host images", {
+				deleted: report.deleted,
+				deletedStaging: report.deletedStaging,
+				failed: report.failed,
+				kept: report.kept,
+			});
+		}
+	} catch (err) {
+		log.warn("Pruning staged native host images failed", { error: String(err) });
+	}
+}
+
 function packagedImageRuntime(diagnostics: string[]): NativeHostRuntime | null {
 	const packageRoots = packagedHostImageRoots();
 	if (packageRoots.length === 0) {
@@ -162,9 +192,14 @@ function packagedImageRuntime(diagnostics: string[]): NativeHostRuntime | null {
 	const staged = stagePackagedImage({ sourceImageDir: discovered.imageDir, stagingRoot, expectations });
 	if (staged.status === "failed") {
 		diagnostics.push(`Staging the packaged host image into ${stagingRoot} failed: ${staged.reason}`);
+		// A half-deleted image blocks staging until a prune removes it.
+		setTimeout(() => void pruneStagedHostImages(), 0);
 		return null;
 	}
 	log.info("Native host image ready", { tag: staged.tag, status: staged.status, imageDir: staged.imageDir });
+	markImageUsed(staged.imageDir);
+	// A new tag means an update just landed, so older images may now be stale.
+	if (staged.status === "staged") setTimeout(() => void pruneStagedHostImages(), 0);
 	return {
 		kind: "packaged-image",
 		runtimePath: staged.runtimeCarrierPath,
