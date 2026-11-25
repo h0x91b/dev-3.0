@@ -155,9 +155,8 @@ function rewriteLine(line: string, rewrite: (relativePath: string, line: number 
 		const relative = projectRelative(candidate.cleanPath);
 		const replacement = relative ? rewrite(relative, candidate.line) : null;
 		if (replacement === null) continue;
-		// `path[:line]` is replaced as written; outside code a `:col` tail stays, inside
-		// a whole-path code span it goes, so the span stays one parseable token.
-		const written = /^:\d+/.exec(candidate.raw.slice(candidate.cleanPath.length))?.[0] ?? "";
+		// `path[:line[:col]]` is replaced whole, so no `:col` tail sticks to the new token.
+		const written = /^:\d+(?::\d+)?/.exec(candidate.raw.slice(candidate.cleanPath.length))?.[0] ?? "";
 		out += line.slice(cursor, candidate.start) + replacement;
 		cursor = span ? candidate.end + 1 : candidate.start + candidate.cleanPath.length + written.length;
 	}

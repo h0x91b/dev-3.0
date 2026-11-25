@@ -78,8 +78,8 @@ describe("qualifyPathsFor and code", () => {
 		expect(qualifyPathsFor(text, WRITER, READER, exists)).toBe(text.replace(/then todo\/x\.md$/, "then path:a1c9fe4e/todo/x.md"));
 	});
 
-	it("keeps a :col tail as written, and the line digits as written", () => {
-		expect(qualifyPathsFor("at todo/x.md:12:5", WRITER, READER, exists)).toBe("at path:a1c9fe4e/todo/x.md:12:5");
+	it("drops a :col tail in prose too, so no ':5' sticks to the chip", () => {
+		expect(qualifyPathsFor("at todo/x.md:12:5, then", WRITER, READER, exists)).toBe("at path:a1c9fe4e/todo/x.md:12, then");
 		expect(qualifyPathsFor("at todo/x.md:012 now", WRITER, READER, exists)).toBe("at path:a1c9fe4e/todo/x.md:12 now");
 	});
 
