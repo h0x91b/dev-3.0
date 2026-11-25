@@ -9,6 +9,10 @@ interface ImageSaveMenuProps {
 	onDownload: () => void;
 	onCopyPath?: () => void;
 	onClose: () => void;
+	/** Destructive last item that deletes the stored file; the host confirms first. */
+	onDelete?: () => void;
+	/** Destructive sweep over the task's older large clips, labelled with what it frees. */
+	onDeleteOlder?: { label: string; run: () => void };
 	/** What the items save and copy — labels them for a clip instead of an image. */
 	media?: "image" | "video" | "audio";
 }
@@ -20,7 +24,7 @@ interface ImageSaveMenuProps {
  * brings its own. Escape belongs to the host overlay, which knows it must close the
  * menu before itself.
  */
-export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, media = "image" }: ImageSaveMenuProps) {
+export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, onDelete, onDeleteOlder, media = "image" }: ImageSaveMenuProps) {
 	const t = useT();
 	const ref = useRef<HTMLDivElement>(null);
 
@@ -51,6 +55,7 @@ export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, med
 	}, [onClose]);
 
 	const item = "w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors";
+	const danger = "w-full text-left px-3 py-2 text-sm text-danger hover:bg-danger/10 flex items-center gap-2.5 transition-colors";
 	const glyph = "w-4 text-center text-sm leading-none flex-shrink-0";
 
 	return (
@@ -69,6 +74,19 @@ export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, med
 				<button type="button" role="menuitem" data-testid="image-save-menu-copy-path" onClick={onCopyPath} className={item}>
 					<span className={glyph} style={{ fontFamily: ICON }}>{""}</span>
 					{t(media === "audio" ? "imageViewer.copyAudioPath" : media === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath")}
+				</button>
+			)}
+			{(onDelete || onDeleteOlder) && <div role="separator" className="my-1 border-t border-edge" />}
+			{onDelete && (
+				<button type="button" role="menuitem" data-testid="image-save-menu-delete" onClick={onDelete} className={danger}>
+					<span className={glyph} style={{ fontFamily: ICON }}>{"\uf1f8"}</span>
+					{t(media === "audio" ? "sharedMedia.deleteAudio" : "sharedMedia.deleteVideo")}
+				</button>
+			)}
+			{onDeleteOlder && (
+				<button type="button" role="menuitem" data-testid="image-save-menu-delete-older" onClick={onDeleteOlder.run} className={danger}>
+					<span className={glyph} style={{ fontFamily: ICON }}>{"\uf1f8"}</span>
+					{onDeleteOlder.label}
 				</button>
 			)}
 		</div>
