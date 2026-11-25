@@ -197,8 +197,16 @@ describe("TaskDescriptionMarkdown path links", () => {
 		await screen.findByRole("button", { name: /src\/__init__\.py/ });
 	});
 
+	it("leaves a token in PR Markdown as text and does not probe the disk", async () => {
+		const { container } = wrap(<CommentMarkdown body={"[setup docs](path:a1c9fe4e/todo/x.md)"} />);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(screen.queryByRole("button")).toBeNull();
+		expect(container.textContent).toContain("setup docs");
+		expect(resolveTerminalPaths).not.toHaveBeenCalled();
+	});
+
 	it("labels a token by its real path, whatever text an author wrapped it in", async () => {
-		wrap(<CommentMarkdown body={"[setup docs](path:a1c9fe4e/todo/x.md)"} />);
+		wrap(<TaskDescriptionMarkdown body={"[setup docs](path:a1c9fe4e/todo/x.md)"} projectId="p1" taskId="t1" />);
 		const chip = await screen.findByRole("button", { name: /\/other\/todo\/x\.md/ });
 		expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
 	});

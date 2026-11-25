@@ -171,7 +171,8 @@ export function MarkdownContent({
 			const target = unprotect(href);
 			const taskRef = target ? parseRefUri(target) : null;
 			if (taskRef) return <TaskRefLink taskRef={taskRef}>{children}</TaskRefLink>;
-			const pathRef = target ? parsePathRefUri(target) : null;
+			// Tokens are dev3's own task text; PR Markdown from outside authors never probes the disk.
+			const pathRef = taskText && target ? parsePathRefUri(target) : null;
 			if (pathRef) {
 				const { line, ...file } = pathRef;
 				// Always the real path: link text from an untrusted author must not disguise the file.
