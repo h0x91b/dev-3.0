@@ -1,7 +1,5 @@
 # Cross-project path tokens: `path:<project>/<path>`
 
-> Superseded in part on 2026-11-24 by `decisions/2026/11/24/path-tokens-in-notes-overviews-and-moves.md`: notes and overviews written from another board, and a task moved to another project, now qualify their plain paths too.
-
 ## 1. Context
 
 A plain relative path in task text resolves against the task's own project (`file-path-links-in-task-text`). An agent on board A that writes "Brief: todo/x.md in AI-Work" into a task on board B leaves a path that resolves on B, where it names nothing or the wrong file. An absolute path works on one machine only and is mostly home-directory noise.
@@ -11,7 +9,7 @@ A plain relative path in task text resolves against the task's own project (`fil
 - **Grammar** (`src/shared/path-refs.ts`): `<path:a1c9fe4e/todo/x.md>`, or bare `path:a1c9fe4e/src/app.ts:12`. The qualifier is the one `seq:<project>/N` uses (8-char id prefix emitted, project name accepted). The path is `/`-separated on every OS, relative to the project root, and may not contain empty, `.` or `..` segments. A bare token drops trailing sentence punctuation and a trailing `/`. The tag is lowercase `path:` only; `Path:` is prose.
 - **`path:`, not `file:`**: `file:` is a real URI scheme, which markdown autolinks and OSC 8 targets already read as a local file URL.
 - **Always qualified.** A same-project path needs no token, because a plain relative path already links there.
-- **Writer side.** `task.create` and `task.update` from a task on another board run `qualifyWriterPaths` after `qualifyRefsFor`.
+- **Writer side.** `task.create` and `task.update` from a task on another board run `qualifyWriterPaths` after `qualifyRefsFor`. Notes, overviews and cross-project moves do the same: `decisions/2026/11/24/path-tokens-in-notes-overviews-and-moves.md`.
   - A relative path that exists under the writer project's root and not under the reader's becomes its bare token. A path both boards hold (`README.md`, `src/index.ts`) is ambiguous and stays as written.
   - An edit keeps lines already in the old description, as `qualifyEditedRefsFor` does.
   - Fenced code, indented fences included, is skipped, because a command in one must still run. A backtick line with more backticks after the opener is inline code, not a fence (CommonMark). Inline code is skipped too, unless the span is one whole path, the same rule the renderer's `wrapCodePath` uses; there a `:col` tail is dropped, so the span stays one token. In prose a `:col` tail stays as written.
