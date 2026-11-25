@@ -79,6 +79,17 @@ describe("collectProjectFolders", () => {
 		}
 	});
 
+	it("drops a missing folder inside a project reached through a symlink", async () => {
+		const linkedProject = join(tmp, "link-to-project");
+		symlinkSync(projectDir, linkedProject);
+		try {
+			const folders = await collectProjectFolders(project({ path: linkedProject, extraFolders: [join(linkedProject, "not-yet"), "./not-yet-either"] }));
+			expect(folders.map((f) => f.path)).toEqual([lib, docs]);
+		} finally {
+			rmSync(linkedProject);
+		}
+	});
+
 	it("resolves relative paths against the project and ~ against home", async () => {
 		const folders = await collectProjectFolders(project({ extraFolders: ["../lib", "~/dev3-nonexistent-folder"] }));
 		expect(folders[0].path).toBe(lib);
