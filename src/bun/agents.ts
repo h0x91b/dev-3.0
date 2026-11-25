@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { claudeTranscriptDir } from "../shared/conversation-search-core";
 import { claudeConfigDirHasSession } from "./agent-transcripts";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project, ProtocolMode } from "../shared/types";
@@ -15,6 +15,8 @@ import { DEV3_HOME } from "./paths";
 import { atomicWriteFile } from "./atomic-write";
 import { withFileLock } from "./file-lock";
 import { backupCorruptFile, readJsonFallback, readJsonGuarded } from "./json-store-guard";
+import { getPushMessage } from "./rpc-handlers/shared-pure";
+import type { AgentsStoreNotice } from "../shared/types/rpc-schema";
 import { resolveAccountHome } from "../shared/user-home";
 import { notifyStaleCustomPath } from "./stale-agent-path";
 // Writer and pruner share one path constant: whatever registers an entry must
@@ -376,25 +378,71 @@ function isAgentArray(data: unknown): data is any[] {
 	return Array.isArray(data);
 }
 
+/** The last storage problem worth telling the user about, kept for a renderer that mounts after it happened. */
+let agentsStoreNotice: AgentsStoreNotice | null = null;
+
+export function getAgentsStoreNotice(): AgentsStoreNotice | null {
+	return agentsStoreNotice;
+}
+
+function raiseAgentsStoreNotice(notice: AgentsStoreNotice): void {
+	// getAllAgents re-reads under its lock, so the same problem is seen twice per call.
+	if (agentsStoreNotice?.kind === notice.kind && agentsStoreNotice.backupFile === notice.backupFile) return;
+	agentsStoreNotice = notice;
+	getPushMessage()?.("agentsStoreNotice", notice);
+}
+
+/** An unreadable file's verdict, keyed by its stat, so the retry + backup + toast run once per file state. */
+let unreadableVerdict: { key: string; load: StoredAgentsLoad } | null = null;
+
+export function resetAgentsStoreStateForTests(): void {
+	agentsStoreNotice = null;
+	unreadableVerdict = null;
+}
+
+async function statKey(file: string): Promise<string | null> {
+	try {
+		const st = await stat(file);
+		return `${st.ino}:${st.size}:${st.mtimeMs}`;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Never report an unreadable agents.json as "no agents": the caller would merge
  * defaults into nothing and save that over the user's presets (#2434). Unreadable
  * bytes are copied aside, then the last-known-good snapshot is used when it parses;
- * without one, defaults are served from memory and the file is left untouched.
+ * without one, defaults are served from memory and nothing is written until the
+ * user saves agent settings themselves. Either way the user is told, once.
  */
 async function loadStoredAgents(): Promise<StoredAgentsLoad> {
+	if (unreadableVerdict && unreadableVerdict.key === (await statKey(AGENTS_FILE))) return unreadableVerdict.load;
+
 	const read = await readJsonGuarded(AGENTS_FILE, isAgentArray);
-	if (read.kind === "missing") return { agents: [], writable: true, recovered: false };
-	if (read.kind === "ok") return { agents: migrateOldFormat(read.data), writable: true, recovered: false };
+	if (read.kind !== "corrupt") {
+		unreadableVerdict = null;
+		if (agentsStoreNotice?.kind === "unreadable") agentsStoreNotice = null;
+		if (read.kind === "missing") return { agents: [], writable: true, recovered: false };
+		return { agents: migrateOldFormat(read.data), writable: true, recovered: false };
+	}
 
 	const backup = await backupCorruptFile(AGENTS_FILE, read.raw);
+	const backupFile = backup ? basename(backup) : null;
 	const lastKnownGood = await readJsonFallback(AGENTS_LAST_KNOWN_GOOD_FILE, isAgentArray);
 	if (lastKnownGood && lastKnownGood.length > 0) {
 		log.error("agents.json is unreadable; restoring it from the last-known-good copy", { error: read.error, bytes: read.raw.length, backup });
+		raiseAgentsStoreNotice({ kind: "recovered", backupFile });
 		return { agents: migrateOldFormat(lastKnownGood), writable: true, recovered: true };
 	}
+
 	log.error("agents.json is unreadable; serving defaults without overwriting it", { error: read.error, bytes: read.raw.length, backup });
-	return { agents: [], writable: false, recovered: false };
+	const load: StoredAgentsLoad = { agents: [], writable: false, recovered: false };
+	const key = await statKey(AGENTS_FILE);
+	// Cache only when the stat still describes the bytes we judged; a file mid-change gets re-read next time.
+	if (key && key.split(":")[1] === String(Buffer.byteLength(read.raw))) unreadableVerdict = { key, load };
+	raiseAgentsStoreNotice({ kind: "unreadable", backupFile });
+	return load;
 }
 
 async function saveAgents(agents: CodingAgent[]): Promise<void> {

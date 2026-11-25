@@ -13,6 +13,10 @@
 
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { withFileLock } from "./file-lock";
+import { createLogger } from "./logger";
+
+const log = createLogger("json-store-guard");
 
 export type GuardedJsonRead<T> =
 	| { kind: "missing" }
@@ -67,22 +71,33 @@ export async function readJsonFallback<T>(file: string, isValid: (data: unknown)
 /**
  * Copy unreadable bytes to `<file>.corrupt-<timestamp>` so nothing that later
  * rewrites `file` can destroy them. Identical bytes already copied are not copied
- * again — a loader runs on every read, and a stuck file must not fill the disk.
- * Returns the backup path, the existing one for a repeat, or null on failure.
+ * again — concurrent callers are serialized by a lock so they cannot each write
+ * their own copy. Returns the backup path (the existing one for a repeat), or
+ * null when the copy could not be written.
  */
 export async function backupCorruptFile(file: string, raw: string, now: Date = new Date()): Promise<string | null> {
 	const dir = dirname(file);
 	const prefix = `${basename(file)}.corrupt-`;
 	try {
-		for (const name of await readdir(dir)) {
-			if (!name.startsWith(prefix)) continue;
-			const existing = join(dir, name);
-			if ((await readFile(existing, "utf8").catch(() => null)) === raw) return existing;
-		}
-		const target = join(dir, `${prefix}${now.toISOString().replace(/[:.]/g, "-")}`);
-		await writeFile(target, raw, { flag: "wx" });
-		return target;
-	} catch {
+		return await withFileLock(`${file}.backup`, async () => {
+			for (const name of await readdir(dir)) {
+				if (!name.startsWith(prefix)) continue;
+				const existing = join(dir, name);
+				if ((await readFile(existing, "utf8").catch(() => null)) === raw) return existing;
+			}
+			const stamp = now.toISOString().replace(/[:.]/g, "-");
+			for (let n = 0; ; n++) {
+				const target = join(dir, `${prefix}${stamp}${n === 0 ? "" : `-${n}`}`);
+				try {
+					await writeFile(target, raw, { flag: "wx" });
+					return target;
+				} catch (err: any) {
+					if (err?.code !== "EEXIST" || n >= 50) throw err;
+				}
+			}
+		});
+	} catch (err) {
+		log.error("Could not back up an unreadable file", { file, error: String(err) });
 		return null;
 	}
 }
