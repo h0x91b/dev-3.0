@@ -3,6 +3,7 @@
  * hot-swap without re-login). Thin wrappers over src/bun/agent-accounts.ts.
  */
 
+import { claudeFolderSwitchImpact } from "../claude-folder-notice";
 import type {
 	AccountLoginState,
 	AgentAccount,
@@ -334,6 +335,7 @@ export const agentAccountHandlers = {
 	getProjectClaudeLogin,
 	getClaudePickLaunches,
 	listPinnedClaudeLogins,
+	claudeFolderSwitchImpact: (params: { enabled: boolean }) => claudeFolderSwitchImpact(params.enabled),
 	listAgentAccounts,
 	importAgentAccount,
 	addAgentApiProfile,

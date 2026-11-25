@@ -691,6 +691,42 @@ describe("AddProjectModal", () => {
 		});
 	});
 
+	describe("Claude folder notice", () => {
+		it("says which folder the agents use and that it has no login yet", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				claudeFolder: { state: "no-login", dir: "/base/my-repo/.claude" },
+			});
+			renderModal();
+			await user.click(screen.getByText("Browse..."));
+
+			expect(toast.info).toHaveBeenCalledWith(
+				"my-repo: Claude agents use my-repo/.claude, which has no Claude login yet. The first Claude task asks you to sign in.",
+				expect.anything(),
+			);
+		});
+
+		it("reports a refused folder as an error", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				claudeFolder: { state: "refused", dir: "/base/my-repo/.claude" },
+			});
+			renderModal();
+			await user.click(screen.getByText("Browse..."));
+
+			expect(toast.error).toHaveBeenCalledWith(
+				"my-repo: Claude agents keep ~/.claude, because git does not ignore my-repo/.claude/.credentials.json, where the login would be saved.",
+				expect.anything(),
+			);
+		});
+	});
+
 	describe("auto-configure switch", () => {
 		it("is off by default and adds projects without it", async () => {
 			const user = userEvent.setup();
