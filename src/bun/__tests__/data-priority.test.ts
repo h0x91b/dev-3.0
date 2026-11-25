@@ -86,10 +86,11 @@ describe("priority load migration", () => {
 		expect(saved[0].priority).toBe("P3");
 	});
 
-	it("new tasks are created with P3 by default", async () => {
+	it("new tasks are created with P3 by default, or with an explicit priority", async () => {
 		const task = await addTask(testProject, "Fresh task");
 		expect(task.priority).toBe("P3");
 		expect(readSavedTasks()[0].priority).toBe("P3");
+		expect((await addTask(testProject, "Urgent", "todo", { priority: "P0" })).priority).toBe("P0");
 	});
 
 	it("addTask persists the self-completion opt-in, and leaves it off otherwise", async () => {
@@ -98,11 +99,6 @@ describe("priority load migration", () => {
 		const stored = await loadTasks(testProject);
 		expect(stored.find((t) => t.id === opted.id)?.selfCompletion).toBe(true);
 		expect(stored.find((t) => t.id === plain.id)?.selfCompletion).toBeUndefined();
-	});
-
-	it("addTask honors an explicit priority", async () => {
-		const task = await addTask(testProject, "Urgent", "todo", { priority: "P0" });
-		expect(task.priority).toBe("P0");
 	});
 });
 
@@ -152,12 +148,8 @@ describe("setTaskPriority", () => {
 		const changed = await setTaskPriority(testProject, "a", "P1");
 		expect(changed.map((t) => t.id)).toEqual(["a"]);
 		expect(readSavedTasks().find((t) => t.id === "b")!.priority).toBe("P2");
-	});
-
-	it("returns nothing changed when the value already matches", async () => {
-		seedTasks([makeTask({ id: "a", seq: 1, priority: "P3" })]);
-		const changed = await setTaskPriority(testProject, "a", "P3");
-		expect(changed).toEqual([]);
+		// Returns nothing changed when the value already matches.
+		expect(await setTaskPriority(testProject, "a", "P1")).toEqual([]);
 	});
 });
 
@@ -174,31 +166,20 @@ describe("setTaskPriority", () => {
  * sidebar, the CLI and the lifecycle machine at once.
  */
 describe("column moves preserve priority", () => {
-	it("keeps the priority when the built-in status changes", async () => {
-		seedTasks([makeTask({ id: "a", seq: 1, priority: "P0" })]);
-		const moved = await updateTask(testProject, "a", { status: "in-progress" });
-		expect(moved.priority).toBe("P0");
-		expect(readSavedTasks()[0].priority).toBe("P0");
-	});
-
-	it("keeps the priority when the task moves into a custom column", async () => {
+	it("keeps the priority across status changes, into and out of a custom column, and on a terminal move", async () => {
 		seedTasks([makeTask({ id: "a", seq: 1, priority: "P1" })]);
-		const moved = await updateTask(testProject, "a", { customColumnId: "col-hold" });
-		expect(moved.customColumnId).toBe("col-hold");
-		expect(moved.priority).toBe("P1");
-	});
-
-	it("keeps the priority when the task leaves a custom column", async () => {
-		seedTasks([makeTask({ id: "a", seq: 1, priority: "P4", customColumnId: "col-hold" })]);
-		const moved = await updateTask(testProject, "a", { customColumnId: null });
-		expect(moved.customColumnId).toBeNull();
-		expect(moved.priority).toBe("P4");
-	});
-
-	it("keeps the priority on a terminal move", async () => {
-		seedTasks([makeTask({ id: "a", seq: 1, priority: "P0" })]);
-		const moved = await updateTask(testProject, "a", { status: "completed" });
-		expect(moved.priority).toBe("P0");
+		const moves: Array<Parameters<typeof updateTask>[2]> = [
+			{ status: "in-progress" },
+			{ customColumnId: "col-hold" },
+			{ customColumnId: null },
+			{ status: "completed" },
+		];
+		for (const move of moves) {
+			const moved = await updateTask(testProject, "a", move);
+			expect(moved.priority, JSON.stringify(move)).toBe("P1");
+			expect(readSavedTasks()[0].priority, JSON.stringify(move)).toBe("P1");
+		}
+		expect(readSavedTasks()[0].customColumnId ?? null).toBeNull();
 	});
 
 	it("leaves the rest of a variant group's priority alone when one member moves", async () => {

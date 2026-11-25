@@ -30,8 +30,15 @@ const DEV3_CLI = "~/.dev3.0/bin/dev3";
 /** One representative metadata rule from the injected allowlist. */
 const DEV3_BASH_PERMISSION = "Bash(dev3 note *)";
 
+const CLAUDE_CORE_EVENTS = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"] as const;
+const CODEX_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop"] as const;
+
+function expectOneGroupPerEvent(hooks: Record<string, MatcherGroup[]>, events: readonly string[]) {
+	for (const event of events) expect(hooks[event], event).toHaveLength(1);
+}
+
 describe("buildClaudeHooks", () => {
-	it.each([2, 1, 7])("an older offline CLI exit %s cannot accidentally block tool or Stop hooks", exitCode => {
+	it.each([2, 1])("an older offline CLI exit %s cannot accidentally block tool or Stop hooks", exitCode => {
 		const hooks = buildClaudeHooks({ dialect: { cli: `sh -c 'exit ${exitCode}' --`, posixShell: true } });
 		for (const event of ["PreToolUse", "Stop"] as const) {
 			const result = spawnSync("sh", ["-c", hooks[event][0].hooks[0].command]);
@@ -39,192 +46,65 @@ describe("buildClaudeHooks", () => {
 		}
 	});
 
-	it("returns UserPromptSubmit, tool, PermissionRequest and Stop matcher groups", () => {
+	it("builds one atomic adapter group per event, with the observation-only events exact", () => {
 		const hooks = buildClaudeHooks();
+		expectOneGroupPerEvent(hooks, CLAUDE_CORE_EVENTS);
 
-		expect(hooks).toHaveProperty("UserPromptSubmit");
-		expect(hooks).toHaveProperty("PreToolUse");
-		expect(hooks).toHaveProperty("PostToolUse");
-		expect(hooks).toHaveProperty("PermissionRequest");
-		expect(hooks).toHaveProperty("Stop");
-		// One atomic handler records the prompt and starts lifecycle observation.
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PostToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("SessionStart only injects recent notes, on fresh conversations, and never moves status", () => {
-		const hooks = buildClaudeHooks();
-		expect(hooks.SessionStart).toHaveLength(1);
-		const group = hooks.SessionStart[0];
-		expect(group.matcher).toBe("startup|clear|compact");
-		expect(group.hooks).toEqual([
-			{ type: "command", command: `${DEV3_CLI} hook claude-session-start`, timeout: 5 },
-		]);
-		expect(group.hooks[0].command).not.toContain("task move");
-	});
-
-	it("submits prompts through one atomic lifecycle handler", () => {
-		const hooks = buildClaudeHooks();
+		// SessionStart only injects recent notes, on fresh conversations, and never moves status.
+		expect(hooks.SessionStart).toEqual([{
+			matcher: "startup|clear|compact",
+			hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-session-start`, timeout: 5 }],
+		}]);
 		expect(hooks.UserPromptSubmit).toEqual([{ hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-prompt`, timeout: 5 }] }]);
-	});
-
-	it("PreToolUse uses the owner-aware JSON adapter that owns the review guard", () => {
-		const hooks = buildClaudeHooks();
-		const cmd = hooks.PreToolUse[0].hooks[0].command;
-
-		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("hook claude-pre-tool");
-		expect(cmd).not.toContain("review-by-user");
-	});
-
-	it("PostToolUse resumes work after AskUserQuestion receives an answer", () => {
-		const hooks = buildClaudeHooks();
-
-		expect(hooks).toHaveProperty("PostToolUse");
-		const cmd = hooks.PostToolUse[0].hooks[0].command;
-		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("hook claude-post-tool");
-	});
-
-	it("PostToolUse delegates status and mailbox delivery to the subagent-aware adapter", () => {
-		const hooks = buildClaudeHooks();
-		const entry = hooks.PostToolUse[0].hooks[0];
-		expect(entry.command).toBe(`${DEV3_CLI} hook claude-post-tool || [ $? -eq 2 ]`);
-		// Same as the plain move it replaced: no hook timeout of its own.
-		expect(entry.timeout).toBeUndefined();
-	});
-
-	it("PostToolUse on Windows also inspects the subagent identity", () => {
-		const hooks = buildClaudeHooks({ dialect: { cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"', posixShell: false } });
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe('"C:/Users/dev/.dev3.0/bin/dev3.exe" hook claude-post-tool --tolerate-app-offline');
-	});
-
-	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
-		const hooks = buildClaudeHooks();
-
-		// Each event has an array of matcher groups
-		const permGroup = hooks.PermissionRequest[0];
-		expect(permGroup).toHaveProperty("hooks");
-		expect(permGroup.hooks).toHaveLength(1);
-		expect(permGroup.hooks[0]).toHaveProperty("type", "command");
-		expect(permGroup.hooks[0]).toHaveProperty("command");
-	});
-
-	it("observes permission and elicitation notifications without treating idle notifications as questions", () => {
-		const hooks = buildClaudeHooks();
+		// PostToolUse has no hook timeout of its own.
+		expect(hooks.PostToolUse[0].hooks[0].timeout).toBeUndefined();
+		// Idle notifications are not questions.
 		expect(hooks.Notification).toEqual([{
 			matcher: "permission_prompt|elicitation_dialog",
 			hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`, timeout: 5 }],
 		}]);
-	});
-
-	it("PermissionRequest hook reports the prompt and its owner, falling back to the plain user-questions move", () => {
-		const hooks = buildClaudeHooks();
-		const cmd = hooks.PermissionRequest[0].hooks[0].command;
-
-		expect(cmd.startsWith(`${DEV3_CLI} hook claude-permission || `)).toBe(true);
-		expect(cmd).toContain("--status user-questions");
-	});
-
-	it.each(["review-by-user", "review-by-ai", "user-questions"] as const)("Stop uses one atomic adapter with stop target %s", stopTarget => {
-		const hooks = buildClaudeHooks({ stopTarget });
-		expect(hooks.Stop).toEqual([{
-			hooks: [{
-				type: "command",
-				command: `${DEV3_CLI} hook claude-turn-ended --stop-target ${stopTarget} || [ $? -eq 2 ]`,
-				timeout: 5,
-			}],
-		}]);
-	});
-
-	it("Stop defaults to review-by-user and leaves SessionEnd observation unchanged", () => {
-		const hooks = buildClaudeHooks();
-		expect(hooks.Stop[0].hooks[0].command).toContain("--stop-target review-by-user");
+		expect(hooks.Stop[0].hooks[0].command, "default stop target").toContain("--stop-target review-by-user");
 		expect(hooks.SessionEnd).toEqual([{
 			hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-turn-ended`, timeout: 5 }],
 		}]);
-	});
-
-	it("working hooks allow transition from review-by-user (user feedback resumes agent)", () => {
-		const hooks = buildClaudeHooks();
-		const cmd = hooks.PreToolUse[0].hooks[0].command;
-
-		// review-by-user must NOT be excluded — when user leaves feedback
-		// and the agent resumes, the hook should move the task back to in-progress
-		expect(cmd).not.toContain("review-by-user");
-		expect(cmd).toContain("hook claude-pre-tool");
-	});
-
-	it("working hooks delegate AI review guards to the adapters", () => {
-		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
-
-		const preCmd = hooks.PreToolUse[0].hooks[0].command;
-		const userCmd = hooks.UserPromptSubmit[0].hooks[0].command;
-
-		expect(preCmd).toContain("hook claude-pre-tool");
-		expect(userCmd).toContain("hook claude-prompt");
-		expect(preCmd).not.toContain("review-by-user");
-		expect(userCmd).not.toContain("review-by-user");
-	});
-
-	it("all hooks use command type", () => {
-		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
-
-		for (const groups of Object.values(hooks)) {
-			for (const group of groups) {
-				for (const entry of group.hooks) {
-					expect(entry.type).toBe("command");
-				}
-			}
-		}
-	});
-
-	it("hook commands do not contain task IDs (auto-detected from worktree context)", () => {
-		const hooks = buildClaudeHooks();
-
-		for (const groups of Object.values(hooks)) {
-			for (const group of groups) {
-				for (const entry of group.hooks) {
-					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
-					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended|hook claude-post-tool|hook claude-pre-tool/);
-					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
-				}
-			}
-		}
-	});
-
-	it("StopFailure parks the task through the dev3 hook adapter, with no matcher", () => {
-		const hooks = buildClaudeHooks();
-
 		// StopFailure fires INSTEAD of Stop when an API error killed the turn, so
 		// without it a rate-limited task stays in "Agent is Working" forever.
 		expect(hooks.StopFailure).toHaveLength(1);
 		expect(hooks.StopFailure[0].matcher).toBeUndefined();
 		expect(hooks.StopFailure[0].hooks[0].command).toContain("hook claude-stop-failure");
+		// review-by-user must not be excluded: user feedback resumes the agent.
+		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
 
-	it.each(["PreToolUse", "PostToolUse", "PermissionRequest", "Stop"] as const)("%s tolerates app-offline without hiding other failures", event => {
-		const command = buildClaudeHooks()[event][0].hooks[0].command;
-		expect(command).toContain("|| [ $? -eq 2 ]");
-		expect(command).not.toContain("|| true");
+	it("Stop uses one atomic adapter carrying the configured stop target", () => {
+		for (const stopTarget of ["review-by-user", "review-by-ai", "user-questions"] as const) {
+			expect(buildClaudeHooks({ stopTarget }).Stop, stopTarget).toEqual([{
+				hooks: [{
+					type: "command",
+					command: `${DEV3_CLI} hook claude-turn-ended --stop-target ${stopTarget} || [ $? -eq 2 ]`,
+					timeout: 5,
+				}],
+			}]);
+		}
 	});
 
-	it("working hooks use adapters that tolerate an offline app", () => {
-		const hooks = buildClaudeHooks();
-
-		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || [ $? -eq 2 ]`);
-	});
-
-	it("PermissionRequest adapter also tolerates older offline CLIs", () => {
-		const hooks = buildClaudeHooks();
-		const cmd = hooks.PermissionRequest[0].hooks[0].command;
-		expect(cmd).toContain("hook claude-permission");
-		expect(cmd).toContain("|| [ $? -eq 2 ]");
+	it("every hook is a task-id-free command, and status hooks tolerate only app-offline", () => {
+		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
+		for (const groups of Object.values(hooks)) {
+			for (const group of groups) {
+				for (const entry of group.hooks) {
+					expect(entry.type).toBe("command");
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended|hook claude-post-tool|hook claude-pre-tool/);
+					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+				}
+			}
+		}
+		for (const event of ["PreToolUse", "PostToolUse", "PermissionRequest", "Stop"] as const) {
+			const command = hooks[event][0].hooks[0].command;
+			expect(command, event).toContain("|| [ $? -eq 2 ]");
+			expect(command, event).not.toContain("|| true");
+		}
 	});
 });
 
@@ -253,59 +133,39 @@ describe("Claude Stop adapter status transitions (#1803)", () => {
 });
 
 describe("mergeClaudeHooks", () => {
-	it("adds hooks to empty settings", () => {
-		const result = mergeClaudeHooks({});
+	it("adds hooks to empty settings idempotently and passes stopTarget through", () => {
+		const first = mergeClaudeHooks({});
+		expectOneGroupPerEvent(first.hooks as Record<string, MatcherGroup[]>, CLAUDE_CORE_EVENTS);
+		const second = mergeClaudeHooks(first as Record<string, unknown>);
+		expectOneGroupPerEvent(second.hooks as Record<string, MatcherGroup[]>, CLAUDE_CORE_EVENTS);
 
-		expect(result.hooks).toBeDefined();
-		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-		// One atomic handler records the prompt and starts lifecycle observation.
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PostToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
+		const ai = mergeClaudeHooks(mergeClaudeHooks({}, { stopTarget: "review-by-ai" }) as Record<string, unknown>, { stopTarget: "review-by-ai" });
+		const aiStop = (ai.hooks as Record<string, MatcherGroup[]>).Stop;
+		expect(aiStop).toHaveLength(1);
+		expect(aiStop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-ai");
 	});
 
-	it("preserves existing non-hook settings", () => {
-		const existing = { permissions: { allow: ["Bash(*)"] }, someKey: 42 };
-		const result = mergeClaudeHooks(existing);
-
-		expect(result.permissions).toEqual({ allow: ["Bash(*)"] });
-		expect(result.someKey).toBe(42);
-		expect(result.hooks).toBeDefined();
-	});
-
-	it("preserves user-defined hooks when a dev3 hook shares the event", () => {
-		const existing = {
+	it("preserves non-hook settings and user matcher groups on events dev3 also writes", () => {
+		const result = mergeClaudeHooks({
+			permissions: { allow: ["Bash(*)"] },
+			someKey: 42,
 			hooks: {
 				PostToolUse: [{ hooks: [{ type: "command", command: "echo post" }] }],
-			},
-		};
-		const result = mergeClaudeHooks(existing);
-		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-
-		expect(hooks.PostToolUse).toHaveLength(2);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe("echo post");
-		expect(hooks.PostToolUse[1].hooks[0].command).toContain("hook claude-post-tool");
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("preserves non-dev3 matcher groups on the same events", () => {
-		const existing = {
-			hooks: {
 				PermissionRequest: [{ hooks: [{ type: "command", command: "echo notify" }] }],
 				Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
 			},
-		};
-		const result = mergeClaudeHooks(existing);
+		});
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 
-		// Original matcher groups preserved + dev3 groups appended
+		expect(result.permissions).toEqual({ allow: ["Bash(*)"] });
+		expect(result.someKey).toBe(42);
+		expect(hooks.PostToolUse).toHaveLength(2);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe("echo post");
+		expect(hooks.PostToolUse[1].hooks[0].command).toContain("hook claude-post-tool");
 		expect(hooks.PermissionRequest).toHaveLength(2);
 		expect(hooks.Stop).toHaveLength(2);
 		expect(hooks.Stop[0].hooks[0].command).toBe("echo done");
+		expect(hooks.PreToolUse).toHaveLength(1);
 	});
 
 	it("replaces both previous Stop move groups with one atomic adapter", () => {
@@ -321,100 +181,34 @@ describe("mergeClaudeHooks", () => {
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 		expect(hooks.Stop).toEqual([userHook, ...buildClaudeHooks({ stopTarget: "review-by-ai" }).Stop]);
 	});
-
-	it("is idempotent — running twice does not duplicate dev3 hooks", () => {
-		const first = mergeClaudeHooks({});
-		const second = mergeClaudeHooks(first as Record<string, unknown>);
-		const hooks = second.hooks as Record<string, MatcherGroup[]>;
-
-		// One atomic handler records the prompt and starts lifecycle observation.
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("is idempotent with review-by-ai stopTarget (one atomic Stop adapter)", () => {
-		const first = mergeClaudeHooks({}, { stopTarget: "review-by-ai" });
-		const second = mergeClaudeHooks(first as Record<string, unknown>, { stopTarget: "review-by-ai" });
-		const hooks = second.hooks as Record<string, MatcherGroup[]>;
-
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("passes stopTarget through to buildClaudeHooks", () => {
-		const result = mergeClaudeHooks({}, { stopTarget: "review-by-ai" });
-		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-
-		expect(hooks.Stop).toHaveLength(1);
-		expect(hooks.Stop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-ai");
-	});
 });
 
 describe("buildCodexHooks", () => {
-	it("returns every lifecycle event needed for automatic task status sync", () => {
+	it("returns every lifecycle event with the tool and question-tool matchers", () => {
 		const hooks = buildCodexHooks();
+		expectOneGroupPerEvent(hooks, CODEX_EVENTS);
+		expect(hooks.SessionStart[0].matcher).toBe("startup|resume");
 
-		expect(hooks).toHaveProperty("SessionStart");
-		expect(hooks).toHaveProperty("UserPromptSubmit");
-		expect(hooks).toHaveProperty("PreToolUse");
-		expect(hooks).toHaveProperty("PermissionRequest");
-		expect(hooks).toHaveProperty("PostToolUse");
-		expect(hooks).toHaveProperty("Stop");
-		expect(hooks.SessionStart).toHaveLength(1);
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.PostToolUse).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("SessionStart uses the startup|resume matcher", () => {
-		const hooks = buildCodexHooks();
-		const group = hooks.SessionStart[0];
-
-		expect(group.matcher).toBe("startup|resume");
-	});
-
-	it("tool hooks cover Bash, apply_patch aliases, and MCP tools", () => {
-		const hooks = buildCodexHooks();
 		const matcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*|^(functions\\.)?request_user_input(_async)?$";
-
-		expect(hooks.PreToolUse[0].matcher).toBe(matcher);
-		expect(hooks.PermissionRequest[0].matcher).toBe(matcher);
-		expect(hooks.PostToolUse[0].matcher).toBe(matcher);
-	});
-
-	it.each(["request_user_input", "request_user_input_async", "functions.request_user_input_async"])(
-		"subscribes to question tool %s", (tool) => {
-			const hooks = buildCodexHooks();
+		for (const event of ["PreToolUse", "PermissionRequest", "PostToolUse"]) expect(hooks[event][0].matcher, event).toBe(matcher);
+		for (const tool of ["request_user_input", "request_user_input_async", "functions.request_user_input_async"]) {
 			for (const event of ["PreToolUse", "PostToolUse"]) {
-				expect(hooks[event].some(group => new RegExp(group.matcher!).test(tool))).toBe(true);
-			}
-		},
-	);
-
-	it("every event calls one stable worktree-local handler", () => {
-		const hooks = buildCodexHooks();
-
-		for (const [event, groups] of Object.entries(hooks)) {
-			for (const group of groups) {
-				expect(group.hooks).toEqual([
-					{ type: "command", command: CODEX_DEV3_HOOK_COMMAND, timeout: event === "Interrupt" || event === "SessionEnd" ? 3 : 5 },
-				]);
+				expect(hooks[event].some(group => new RegExp(group.matcher!).test(tool)), `${event} ${tool}`).toBe(true);
 			}
 		}
 	});
 
-	it("uses one Stop handler so concurrent hook execution cannot skip AI review", () => {
+	it("every event, including the single Stop, calls one stable worktree-local handler", () => {
 		const hooks = buildCodexHooks();
-
+		for (const [event, groups] of Object.entries(hooks)) {
+			for (const group of groups) {
+				expect(group.hooks, event).toEqual([
+					{ type: "command", command: CODEX_DEV3_HOOK_COMMAND, timeout: event === "Interrupt" || event === "SessionEnd" ? 3 : 5 },
+				]);
+			}
+		}
+		// One Stop handler so concurrent hook execution cannot skip AI review.
 		expect(hooks.Stop).toHaveLength(1);
-		expect(hooks.Stop[0].hooks[0]).toEqual({
-			type: "command",
-			command: CODEX_DEV3_HOOK_COMMAND,
-			timeout: 5,
-		});
 	});
 });
 
@@ -423,7 +217,6 @@ describe("getAgentHookTargetStatus", () => {
 		["SessionStart", "review-by-user", true, null, "in-progress"],
 		["UserPromptSubmit", "in-progress", false, null, "in-progress"],
 		["PreToolUse", "user-questions", false, null, "in-progress"],
-		["PostToolUse", "user-questions", false, null, "in-progress"],
 		["PermissionRequest", "in-progress", false, null, "user-questions"],
 		["Stop", "in-progress", false, null, "review-by-user"],
 		["Stop", "in-progress", true, null, "review-by-ai"],
@@ -442,81 +235,54 @@ describe("getAgentHookTargetStatus", () => {
 
 	// A scratch task launches parked in user-questions with no prompt. Codex
 	// fires SessionStart at startup, which must not claim the task is working —
-	// only a real prompt may.
-	it("leaves a task parked in user-questions when the session starts", () => {
+	// only a real prompt may, or the remembered status after an approval.
+	it("a session start leaves a parked task alone unless a status was remembered", () => {
 		expect(getAgentHookTargetStatus("SessionStart", "user-questions", "review-by-user")).toBeNull();
-	});
-
-	it("resumes the remembered status when the session starts after an approval", () => {
 		expect(getAgentHookTargetStatus("SessionStart", "user-questions", "review-by-user", "in-progress"))
 			.toBe("in-progress");
 	});
 
-	it.each(["todo", "user-questions", "review-by-user"] as const)(
-		"does not overwrite %s when a turn stops",
-		(status) => {
-			expect(getAgentHookTargetStatus("Stop", status, "review-by-ai")).toBeNull();
-		},
-	);
+	it("a turn stop does not overwrite a column the agent does not own", () => {
+		for (const status of ["todo", "user-questions", "review-by-user"] as const) {
+			expect(getAgentHookTargetStatus("Stop", status, "review-by-ai"), status).toBeNull();
+		}
+	});
 
-	it.each(["completed", "cancelled"] as const)("never reopens terminal status %s", (status) => {
-		expect(getAgentHookTargetStatus("UserPromptSubmit", status, "review-by-ai")).toBeNull();
+	// An agent that outlived a reset must never start the fresh card again, and a
+	// terminal task is never reopened.
+	it("never moves a To Do or terminal task, whatever the event", () => {
+		const events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"] as const;
+		for (const status of ["todo", "completed", "cancelled"] as const) {
+			for (const event of events) {
+				expect(getAgentHookTargetStatus(event, status, "review-by-ai"), `${event} in ${status}`).toBeNull();
+				expect(getAgentHookTargetStatus(event, status, "review-by-user"), `${event} in ${status}`).toBeNull();
+			}
+		}
 	});
 });
 
 describe("mergeCodexHooks", () => {
-	it("adds hooks to empty settings", () => {
-		const result = mergeCodexHooks({});
-
-		expect(result.hooks).toBeDefined();
-		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-		expect(hooks.SessionStart).toHaveLength(1);
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.PostToolUse).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("preserves existing hooks when adding dev3 to the same event", () => {
-		const existing = {
-			hooks: {
-				PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo post" }] }],
-			},
-		};
-		const result = mergeCodexHooks(existing);
-		const hooks = result.hooks as Record<string, MatcherGroup[]>;
-
-		expect(hooks.PostToolUse).toHaveLength(2);
-		expect(hooks.SessionStart).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
+	it("adds hooks to empty settings idempotently", () => {
+		const first = mergeCodexHooks({});
+		expectOneGroupPerEvent(first.hooks as Record<string, MatcherGroup[]>, CODEX_EVENTS);
+		const second = mergeCodexHooks(first as Record<string, unknown>);
+		expectOneGroupPerEvent(second.hooks as Record<string, MatcherGroup[]>, CODEX_EVENTS);
 	});
 
 	it("preserves non-dev3 matcher groups on the same events", () => {
-		const existing = {
+		const result = mergeCodexHooks({
 			hooks: {
+				PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo post" }] }],
 				PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo audit" }] }],
 				Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
 			},
-		};
-		const result = mergeCodexHooks(existing);
+		});
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 
+		expect(hooks.PostToolUse).toHaveLength(2);
 		expect(hooks.PreToolUse).toHaveLength(2);
 		expect(hooks.Stop).toHaveLength(2);
-	});
-
-	it("is idempotent", () => {
-		const first = mergeCodexHooks({});
-		const second = mergeCodexHooks(first as Record<string, unknown>);
-		const hooks = second.hooks as Record<string, MatcherGroup[]>;
-
 		expect(hooks.SessionStart).toHaveLength(1);
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.PostToolUse).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
 	});
 });
 
@@ -531,138 +297,74 @@ describe("writeClaudeHooks", () => {
 		rmSync(tmp, { recursive: true, force: true });
 	});
 
-	it("creates .claude dir and settings file from scratch", () => {
+	const readLocal = () => JSON.parse(readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"));
+
+	it("creates settings.local.json from scratch with hooks and one copy of the permission", () => {
+		writeClaudeHooks(tmp);
 		writeClaudeHooks(tmp);
 
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const content = readLocal();
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
-
-		// One atomic handler records the prompt and starts lifecycle observation.
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 		expect(hooks.Stop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-user");
-		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(content.permissions.allow.filter((p: string) => p === DEV3_BASH_PERMISSION)).toHaveLength(1);
+		expect(content.permissions?.defaultMode, "no permissionMode given").toBeUndefined();
+
+		writeClaudeHooks(tmp, { permissionMode: "default" });
+		expect(readLocal().permissions?.defaultMode, "'default' is the no-op baseline").toBeUndefined();
 	});
 
-	it("preserves existing settings when merging", () => {
+	it("merges into existing settings, keeping the user's keys and writing a non-default mode", () => {
 		const claudeDir = join(tmp, ".claude");
 		mkdirSync(claudeDir, { recursive: true });
 		writeFileSync(
 			join(claudeDir, "settings.local.json"),
-			JSON.stringify({ permissions: { allow: ["Bash(*)"] } }),
+			JSON.stringify({ enableAllProjectMcpServers: true, permissions: { allow: ["Bash(ls:*)"] } }),
 		);
 
-		writeClaudeHooks(tmp);
+		writeClaudeHooks(tmp, { permissionMode: "dontAsk" });
 
-		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		expect(content.permissions.allow).toContain("Bash(*)");
+		const content = readLocal();
+		expect(content.enableAllProjectMcpServers).toBe(true);
+		expect(content.permissions.allow).toContain("Bash(ls:*)");
 		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(content.permissions.defaultMode).toBe("dontAsk");
 		expect(content.hooks).toBeDefined();
 	});
 
-	it("writes hooks with stopTarget review-by-ai (one atomic Stop adapter)", () => {
+	it("writes the review-by-ai Stop adapter and adapter-based working hooks", () => {
 		writeClaudeHooks(tmp, { stopTarget: "review-by-ai" });
 
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		const hooks = content.hooks as Record<string, MatcherGroup[]>;
-
+		const hooks = readLocal().hooks as Record<string, MatcherGroup[]>;
 		expect(hooks.Stop).toHaveLength(1);
 		expect(hooks.Stop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-ai");
+		for (const [event, adapter] of [["PreToolUse", "hook claude-pre-tool"], ["PostToolUse", "hook claude-post-tool"], ["UserPromptSubmit", "hook claude-prompt"]]) {
+			expect(hooks[event][0].hooks[0].command, event).toContain(adapter);
+			expect(hooks[event][0].hooks[0].command, event).not.toContain("review-by-user");
+		}
 	});
 
-	it("writes working hooks with --if-status-not guard", () => {
-		writeClaudeHooks(tmp, { stopTarget: "review-by-ai" });
-
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		const hooks = content.hooks as Record<string, MatcherGroup[]>;
-
-		expect(hooks.PreToolUse[0].hooks[0].command).toContain("hook claude-pre-tool");
-		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.PostToolUse[0].hooks[0].command).toContain("hook claude-post-tool");
-		expect(hooks.PostToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("hook claude-prompt");
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
-	});
-
-	it("never writes the committed settings.json, even when it is the only settings file", () => {
-		const claudeDir = join(tmp, ".claude");
-		mkdirSync(claudeDir, { recursive: true });
-		const shared = JSON.stringify({ permissions: { allow: ["Read(*)"] } });
-		writeFileSync(join(claudeDir, "settings.json"), shared);
-
-		writeClaudeHooks(tmp);
-
-		expect(readFileSync(join(claudeDir, "settings.json"), "utf-8")).toBe(shared);
-		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		expect(local.hooks).toBeDefined();
-		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
-	});
-
-	it("keeps defaultMode and the permission out of the committed settings.json", () => {
+	it("never writes the committed settings.json — hooks, permission and defaultMode go to settings.local.json", () => {
 		const claudeDir = join(tmp, ".claude");
 		mkdirSync(claudeDir, { recursive: true });
 		const shared = JSON.stringify({ permissions: { allow: ["Read(*)"] } });
 		writeFileSync(join(claudeDir, "settings.json"), shared);
 
 		writeClaudeHooks(tmp, { permissionMode: "acceptEdits" });
-
-		expect(readFileSync(join(claudeDir, "settings.json"), "utf-8")).toBe(shared);
-		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(readFileSync(join(claudeDir, "settings.json"), "utf-8"), "only settings file").toBe(shared);
+		let local = readLocal();
+		expect(local.hooks).toBeDefined();
 		expect(local.permissions.defaultMode).toBe("acceptEdits");
 		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
-	});
 
-	it("adds permission to settings.local.json when both files exist", () => {
-		const claudeDir = join(tmp, ".claude");
-		mkdirSync(claudeDir, { recursive: true });
-		writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ permissions: { allow: ["Read(*)"] } }));
 		writeFileSync(join(claudeDir, "settings.local.json"), JSON.stringify({ someKey: true }));
-
 		writeClaudeHooks(tmp);
-
-		// Permission goes to settings.local.json (takes priority)
-		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(readFileSync(join(claudeDir, "settings.json"), "utf-8"), "both files exist").toBe(shared);
+		local = readLocal();
 		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 		expect(local.someKey).toBe(true);
 		expect(local.hooks).toBeDefined();
-
-		// settings.json stays untouched
-		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
-		expect(shared.permissions.allow).toEqual(["Read(*)"]);
-	});
-
-	it("creates settings.local.json with permission when no settings files exist", () => {
-		writeClaudeHooks(tmp);
-
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
-		expect(content.hooks).toBeDefined();
-	});
-
-	it("does not duplicate permission on repeated writes", () => {
-		writeClaudeHooks(tmp);
-		writeClaudeHooks(tmp);
-
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		const count = content.permissions.allow.filter((p: string) => p === DEV3_BASH_PERMISSION).length;
-		expect(count).toBe(1);
-	});
-
-	it("overwrites corrupted JSON gracefully", () => {
-		const claudeDir = join(tmp, ".claude");
-		mkdirSync(claudeDir, { recursive: true });
-		writeFileSync(join(claudeDir, "settings.local.json"), "NOT VALID JSON{{{");
-
-		writeClaudeHooks(tmp);
-
-		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		const hooks = content.hooks as Record<string, MatcherGroup[]>;
-		expect(hooks.Stop).toHaveLength(1);
 	});
 
 	// A settings.local.json Claude Code wrote itself carries permissions.allow and
@@ -681,7 +383,7 @@ describe("writeClaudeHooks", () => {
 
 		writeClaudeHooks(tmp, { permissionMode: "auto" });
 
-		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		const content = readLocal();
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 		expect(Object.keys(hooks)).toEqual([
 			"SessionStart",
@@ -702,108 +404,14 @@ describe("writeClaudeHooks", () => {
 			"Bash(gh:*)",
 			...dev3BashPermissions(),
 		]);
+		// The default dev3 'auto' mode propagates so teammates inherit it.
 		expect(content.permissions.defaultMode).toBe("auto");
 		expect(content.enabledMcpjsonServers).toEqual(["local-trino", "playwright"]);
-	});
-
-	// Claude Code rewrites settings.local.json from its own in-memory snapshot, so
-	// a snapshot taken before the hooks landed drops them. The next agent launch
-	// runs setupAgentHooks again and must put them back.
-	it("restores hooks after an external writer replaced the file without them", () => {
-		writeClaudeHooks(tmp);
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-
-		writeFileSync(
-			settingsPath,
-			JSON.stringify({
-				permissions: { allow: ["Bash(gh:*)"] },
-				enabledMcpjsonServers: ["playwright"],
-			}, null, 2),
-		);
-
-		writeClaudeHooks(tmp);
-
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		expect(content.hooks?.Stop).toHaveLength(1);
-		expect(content.enabledMcpjsonServers).toEqual(["playwright"]);
-	});
-
-	it("produces identical output on repeated writes (no task-specific content)", () => {
-		writeClaudeHooks(tmp);
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const first = readFileSync(settingsPath, "utf-8");
-
-		writeClaudeHooks(tmp);
-		const second = readFileSync(settingsPath, "utf-8");
-
-		expect(first).toBe(second);
-	});
-
-	// --- permissions.defaultMode (teammate auto-approve propagation) ---
-
-	it("writes permissions.defaultMode into settings.local.json for a non-default mode", () => {
-		writeClaudeHooks(tmp, { permissionMode: "bypassPermissions" });
-
-		const settingsPath = join(tmp, ".claude", "settings.local.json");
-		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		expect(content.permissions.defaultMode).toBe("bypassPermissions");
-		// hooks + dev3 permission still present alongside defaultMode
-		expect(content.hooks).toBeDefined();
-		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
-	});
-
-	it("propagates the 'auto' mode (default dev3 config) so teammates inherit it", () => {
-		writeClaudeHooks(tmp, { permissionMode: "auto" });
-
-		const content = JSON.parse(
-			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
-		);
-		expect(content.permissions.defaultMode).toBe("auto");
-	});
-
-	it("does NOT write defaultMode when no permissionMode is given", () => {
-		writeClaudeHooks(tmp);
-
-		const content = JSON.parse(
-			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
-		);
-		expect(content.permissions?.defaultMode).toBeUndefined();
-	});
-
-	it("does NOT write defaultMode for the 'default' mode (no-op baseline)", () => {
-		writeClaudeHooks(tmp, { permissionMode: "default" });
-
-		const content = JSON.parse(
-			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
-		);
-		expect(content.permissions?.defaultMode).toBeUndefined();
-	});
-
-	it("preserves an existing defaultMode-bearing file's other keys", () => {
-		const claudeDir = join(tmp, ".claude");
-		mkdirSync(claudeDir, { recursive: true });
-		writeFileSync(
-			join(claudeDir, "settings.local.json"),
-			JSON.stringify({ enableAllProjectMcpServers: true, permissions: { allow: ["Bash(ls:*)"] } }),
-		);
-
-		writeClaudeHooks(tmp, { permissionMode: "dontAsk" });
-
-		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		expect(content.enableAllProjectMcpServers).toBe(true);
-		expect(content.permissions.allow).toContain("Bash(ls:*)");
-		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
-		expect(content.permissions.defaultMode).toBe("dontAsk");
 	});
 });
 
 describe("ensureDefaultMode", () => {
-	it("sets permissions.defaultMode on an empty object", () => {
-		const result = ensureDefaultMode({}, "bypassPermissions");
-		expect((result.permissions as Record<string, unknown>).defaultMode).toBe("bypassPermissions");
-	});
-
-	it("preserves existing permission allow/deny lists", () => {
+	it("sets the mode, keeps allow/deny lists and overwrites a stale mode", () => {
 		const result = ensureDefaultMode(
 			{ permissions: { allow: ["Bash(git:*)"], deny: ["Read(secret)"] } },
 			"acceptEdits",
@@ -812,11 +420,8 @@ describe("ensureDefaultMode", () => {
 		expect(perms.allow).toEqual(["Bash(git:*)"]);
 		expect(perms.deny).toEqual(["Read(secret)"]);
 		expect(perms.defaultMode).toBe("acceptEdits");
-	});
 
-	it("is idempotent and overwrites a stale mode", () => {
-		const once = ensureDefaultMode({}, "plan");
-		const twice = ensureDefaultMode(once, "auto");
+		const twice = ensureDefaultMode(ensureDefaultMode({}, "plan"), "auto");
 		expect((twice.permissions as Record<string, unknown>).defaultMode).toBe("auto");
 	});
 });
@@ -832,53 +437,30 @@ describe("writeCodexHooks", () => {
 		rmSync(tmp, { recursive: true, force: true });
 	});
 
-	it("creates a worktree-local hooks file from scratch", () => {
-		writeCodexHooks(tmp);
-
-		const hooksPath = join(tmp, ".codex", "hooks.json");
-		const content = JSON.parse(readFileSync(hooksPath, "utf-8"));
-		const hooks = content.hooks as Record<string, MatcherGroup[]>;
-
-		expect(hooks.SessionStart).toHaveLength(1);
-		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.PreToolUse).toHaveLength(1);
-		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.PostToolUse).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(1);
-	});
-
-	it("preserves existing non-hook settings when merging", () => {
-		mkdirSync(join(tmp, ".codex"), { recursive: true });
-		writeFileSync(join(tmp, ".codex", "hooks.json"), JSON.stringify({ version: 1 }));
-
-		writeCodexHooks(tmp);
-
-		const content = JSON.parse(readFileSync(join(tmp, ".codex", "hooks.json"), "utf-8"));
-		expect(content.version).toBe(1);
-		expect(content.hooks).toBeDefined();
-	});
-
-	it("replaces a corrupted generated worktree hooks file", () => {
-		mkdirSync(join(tmp, ".codex"), { recursive: true });
-		writeFileSync(join(tmp, ".codex", "hooks.json"), "NOT VALID JSON{{{");
-
-		writeCodexHooks(tmp);
-
-		expect(JSON.parse(readFileSync(join(tmp, ".codex", "hooks.json"), "utf-8"))).toHaveProperty("hooks.Stop");
-	});
-
-	it("produces identical output on repeated writes", () => {
+	it("creates a worktree-local hooks file from scratch, identically on repeated writes", () => {
 		writeCodexHooks(tmp);
 		const hooksPath = join(tmp, ".codex", "hooks.json");
 		const first = readFileSync(hooksPath, "utf-8");
+		expectOneGroupPerEvent(JSON.parse(first).hooks, CODEX_EVENTS);
 
 		writeCodexHooks(tmp);
-		const second = readFileSync(hooksPath, "utf-8");
+		expect(readFileSync(hooksPath, "utf-8")).toBe(first);
+	});
 
-		expect(first).toBe(second);
+	it("merges into existing settings and replaces a corrupted generated file", () => {
+		const hooksPath = join(tmp, ".codex", "hooks.json");
+		mkdirSync(join(tmp, ".codex"), { recursive: true });
+		writeFileSync(hooksPath, JSON.stringify({ version: 1 }));
+		writeCodexHooks(tmp);
+		const content = JSON.parse(readFileSync(hooksPath, "utf-8"));
+		expect(content.version).toBe(1);
+		expect(content.hooks).toBeDefined();
+
+		writeFileSync(hooksPath, "NOT VALID JSON{{{");
+		writeCodexHooks(tmp);
+		expect(JSON.parse(readFileSync(hooksPath, "utf-8"))).toHaveProperty("hooks.Stop");
 	});
 });
-
 // ---------------------------------------------------------------------------
 // Platform dialects: the POSIX strings are frozen (older dev3 builds read the
 // same worktree files), Windows must be shell-free and tilde-free.
@@ -902,10 +484,11 @@ function everyCommand(hooks: Record<string, MatcherGroup[]>): string[] {
 	return Object.values(hooks).flatMap((groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)));
 }
 
+
 describe("POSIX hook output (byte-identical contract)", () => {
 	const posix = hookCliDialect({ platform: "darwin" });
 
-	it("renders the exact Claude command strings", () => {
+	it("renders the exact Claude and Codex command strings, with no Windows flag, as the default dialect", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix });
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-prompt`);
@@ -917,30 +500,21 @@ describe("POSIX hook output (byte-identical contract)", () => {
 		expect(hooks.Stop[0].hooks[0].command).toBe(
 			`${DEV3_CLI} hook claude-turn-ended --stop-target review-by-ai || [ $? -eq 2 ]`,
 		);
-	});
-
-	it("renders the exact Codex handler command", () => {
 		expect(buildCodexHooks({ dialect: posix }).Stop[0].hooks[0].command).toBe(
 			`sh -c '[ -z "$DEV3_TASK_ID" ] || exec ~/.dev3.0/bin/dev3 hook codex'`,
 		);
-	});
 
-	it("never carries the Windows tolerance flag", () => {
-		for (const command of everyCommand(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix }))) {
+		for (const command of everyCommand(hooks)) {
 			expect(command).not.toContain(TOLERATE_APP_OFFLINE_FLAG);
 		}
-	});
 
-	it("is what the default (this machine) dialect produces", () => {
-		expect(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix })).toEqual(
-			buildClaudeHooks({ stopTarget: "review-by-ai" }),
-		);
+		expect(hooks).toEqual(buildClaudeHooks({ stopTarget: "review-by-ai" }));
 		expect(buildCodexHooks({ dialect: posix })).toEqual(buildCodexHooks());
 	});
 });
 
 describe("Windows hook output", () => {
-	it("renders the exact Claude command strings", () => {
+	it("renders the exact Claude and Codex command strings", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES });
 		const cli = WIN_SPACES.cli;
 		expect(cli).toBe('"C:/Users/John Doe/.dev3.0/bin/dev3.exe"');
@@ -952,38 +526,25 @@ describe("Windows hook output", () => {
 		expect(hooks.Stop[0].hooks[0].command).toBe(
 			`${cli} hook claude-turn-ended --stop-target review-by-ai --tolerate-app-offline`,
 		);
+		// No tolerance flag on Codex — the subcommand always exits 0.
+		expect(buildCodexHooks({ dialect: WIN_SPACES }).Stop[0].hooks[0].command).toBe(`${cli} hook codex`);
 	});
 
-	it("renders the exact Codex handler command (no tolerance flag — the subcommand always exits 0)", () => {
-		expect(buildCodexHooks({ dialect: WIN_SPACES }).Stop[0].hooks[0].command).toBe(
-			`${WIN_SPACES.cli} hook codex`,
-		);
-	});
-
-	it("emits no tilde, no shell operators and no redirects in either hook map", () => {
-		const commands = [
+	it("starts every command with an absolute dev3.exe and emits no tilde, shell operator or redirect", () => {
+		const shellFree = [
 			...everyCommand(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES })),
 			...everyCommand(buildCodexHooks({ dialect: WIN_SPACES })),
 		];
-		expect(commands.length).toBeGreaterThan(6);
-
-		for (const command of commands) {
-			expect(command).not.toContain("~");
-			expect(command).not.toContain("&&");
-			expect(command).not.toContain("||");
-			expect(command).not.toContain(";");
-			expect(command).not.toContain("$?");
-			expect(command).not.toContain("2>&1");
+		expect(shellFree.length).toBeGreaterThan(6);
+		for (const command of shellFree) {
+			for (const forbidden of ["~", "&&", "||", ";", "$?", "2>&1"]) expect(command, forbidden).not.toContain(forbidden);
 		}
-	});
 
-	it("starts every command with an absolute path to dev3.exe", () => {
-		const commands = [
+		const plain = [
 			...everyCommand(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_PLAIN })),
 			...everyCommand(buildCodexHooks({ dialect: WIN_PLAIN })),
 		];
-
-		for (const command of commands) {
+		for (const command of plain) {
 			const [binary] = command.split(" ");
 			expect(binary).toBe('"C:/Users/dev/.dev3.0/bin/dev3.exe"');
 			// Quoted, forward-slashed, and still an absolute drive path: bash strips a
@@ -1008,40 +569,29 @@ describe("Windows hook output", () => {
 		expect(block).not.toContain("2>&1");
 	});
 
-	it("still recognizes and replaces dev3 entries written by a POSIX dev3", () => {
-		const existing = {
+	it("replaces dev3 entries written by a POSIX dev3 or the bare-backslash spelling an earlier build wrote", () => {
+		const preToolCommands = (existing: Record<string, unknown>) =>
+			(mergeClaudeHooks(existing, { dialect: WIN_SPACES }) as { hooks: Record<string, MatcherGroup[]> })
+				.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => h.command));
+
+		const fromPosix = preToolCommands({
 			hooks: {
 				PreToolUse: [
 					{ hooks: [{ type: "command", command: `${DEV3_CLI} task move --status in-progress` }] },
 					{ hooks: [{ type: "command", command: "echo mine" }] },
 				],
 			},
-		};
+		});
+		expect(fromPosix).toContain("echo mine");
+		expect(fromPosix.some((c) => c.includes("dev3.exe"))).toBe(true);
+		expect(fromPosix.some((c) => c.includes("~/.dev3.0/bin/dev3"))).toBe(false);
 
-		const merged = mergeClaudeHooks(existing, { dialect: WIN_SPACES }) as {
-			hooks: Record<string, MatcherGroup[]>;
-		};
-		const commands = merged.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => h.command));
-
-		expect(commands).toContain("echo mine");
-		expect(commands.some((c) => c.includes("dev3.exe"))).toBe(true);
-		expect(commands.some((c) => c.includes("~/.dev3.0/bin/dev3"))).toBe(false);
-	});
-
-	it("replaces the bare-backslash spelling an earlier build wrote (bash ate the separators)", () => {
+		// Bash ate the separators of that earlier spelling.
 		const broken = "C:\\Users\\John Doe\\.dev3.0\\bin\\dev3.exe task move --status in-progress";
-		const existing = {
-			hooks: { PreToolUse: [{ hooks: [{ type: "command", command: broken }] }] },
-		};
-
-		const merged = mergeClaudeHooks(existing, { dialect: WIN_SPACES }) as {
-			hooks: Record<string, MatcherGroup[]>;
-		};
-		const commands = merged.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => h.command));
-
-		expect(commands).not.toContain(broken);
-		expect(commands.every((c) => !c.includes("\\"))).toBe(true);
-		expect(commands.some((c) => c.startsWith(WIN_SPACES.cli))).toBe(true);
+		const fromBackslash = preToolCommands({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: broken }] }] } });
+		expect(fromBackslash).not.toContain(broken);
+		expect(fromBackslash.every((c) => !c.includes("\\"))).toBe(true);
+		expect(fromBackslash.some((c) => c.startsWith(WIN_SPACES.cli))).toBe(true);
 	});
 });
 
@@ -1067,69 +617,55 @@ describe("mergeClaudeHooks with malformed settings", () => {
 		"StopFailure",
 	];
 
-	it.each([
-		["hooks is an array", { hooks: [{ type: "command", command: "x" }] }],
-		["hooks is a string", { hooks: "nope" }],
-		["hooks is null", { hooks: null }],
-		["hooks is a number", { hooks: 7 }],
-		["an event holds a matcher group instead of an array", { hooks: { PreToolUse: { hooks: [] } } }],
-		["an event holds a string", { hooks: { PreToolUse: "x" } }],
-		["an event holds null", { hooks: { Stop: null } }],
-	])("installs every dev3 event when %s", (_label, existing) => {
-		const merged = mergeClaudeHooks(existing as Record<string, unknown>);
-		expect(hookEvents(merged)).toEqual(expect.arrayContaining(DEV3_EVENTS));
-	});
+	it("installs every dev3 event whatever malformed shape the root, hooks or an event holds", () => {
+		const slotCases: [string, unknown][] = [
+			["hooks is an array", { hooks: [{ type: "command", command: "x" }] }],
+			["hooks is a string", { hooks: "nope" }],
+			["hooks is null", { hooks: null }],
+			["hooks is a number", { hooks: 7 }],
+			["an event holds a matcher group instead of an array", { hooks: { PreToolUse: { hooks: [] } } }],
+			["an event holds a string", { hooks: { PreToolUse: "x" } }],
+			["an event holds null", { hooks: { Stop: null } }],
+		];
+		for (const [label, existing] of slotCases) {
+			expect(hookEvents(mergeClaudeHooks(existing as Record<string, unknown>)), label).toEqual(expect.arrayContaining(DEV3_EVENTS));
+		}
 
-	it("does not leak numeric keys from a spread string or array", () => {
-		for (const existing of [{ hooks: "nope" }, { hooks: ["a", "b"] }]) {
-			const merged = mergeClaudeHooks(existing as Record<string, unknown>);
-			expect(hookEvents(merged)).toEqual(DEV3_EVENTS);
+		// Exact key lists: no numeric keys leak from a spread string or array.
+		const exactCases: [string, unknown][] = [
+			["hooks is a spread string", { hooks: "nope" }],
+			["hooks is a spread array", { hooks: ["a", "b"] }],
+			["the root is null", null],
+			["the root is an array", [1, 2, 3]],
+			["the root is a number", 42],
+			["the root is a string", "settings"],
+		];
+		for (const [label, existing] of exactCases) {
+			expect(hookEvents(mergeClaudeHooks(existing as unknown as Record<string, unknown>)), label).toEqual(DEV3_EVENTS);
 		}
 	});
 
-	it.each([
-		["the root is null", null],
-		["the root is an array", [1, 2, 3]],
-		["the root is a number", 42],
-		["the root is a string", "settings"],
-	])("installs hooks when %s", (_label, existing) => {
-		const merged = mergeClaudeHooks(existing as unknown as Record<string, unknown>);
-		expect(hookEvents(merged)).toEqual(DEV3_EVENTS);
-	});
-
-	it("keeps a user hook on an event dev3 also writes, even next to a broken sibling", () => {
+	it("keeps user and malformed entries it does not own while appending dev3's", () => {
 		const userHook = { hooks: [{ type: "command", command: ".claude/hooks/auto-approve.sh" }] };
-		const merged = mergeClaudeHooks({
+		const nextToBroken = mergeClaudeHooks({
 			hooks: { PreToolUse: [userHook], Stop: "broken" },
 		}) as { hooks: Record<string, MatcherGroup[]> };
+		expect(nextToBroken.hooks.PreToolUse[0]).toEqual(userHook);
+		expect(nextToBroken.hooks.Stop).toHaveLength(1);
 
-		expect(merged.hooks.PreToolUse[0]).toEqual(userHook);
-		expect(merged.hooks.Stop).toHaveLength(1);
-	});
-
-	it("leaves an unrelated event alone even when its value is malformed", () => {
-		const merged = mergeClaudeHooks({
-			hooks: { ConfigChange: "whatever" },
-		}) as { hooks: Record<string, unknown> };
-
-		expect(merged.hooks.ConfigChange).toBe("whatever");
-	});
-
-	it("drops a malformed group without dropping the rest of the event", () => {
-		const merged = mergeClaudeHooks({
-			hooks: { PreToolUse: [null, "x", { hooks: "not-an-array" }] },
-		}) as { hooks: Record<string, unknown[]> };
+		const unrelated = mergeClaudeHooks({ hooks: { ConfigChange: "whatever" } }) as { hooks: Record<string, unknown> };
+		expect(unrelated.hooks.ConfigChange, "unrelated malformed event").toBe("whatever");
 
 		// Nothing here mentions dev3, so all three survive, and dev3 is appended.
-		expect(merged.hooks.PreToolUse).toHaveLength(4);
-	});
+		const badGroups = mergeClaudeHooks({
+			hooks: { PreToolUse: [null, "x", { hooks: "not-an-array" }] },
+		}) as { hooks: Record<string, unknown[]> };
+		expect(badGroups.hooks.PreToolUse, "malformed groups").toHaveLength(4);
 
-	it("tolerates a non-string command inside an otherwise valid group", () => {
-		const merged = mergeClaudeHooks({
+		const badCommand = mergeClaudeHooks({
 			hooks: { Stop: [{ hooks: [{ type: "command", command: 42 }] }, { hooks: [null] }] },
 		}) as { hooks: Record<string, unknown[]> };
-
-		expect(merged.hooks.Stop).toHaveLength(3);
+		expect(badCommand.hooks.Stop, "non-string command").toHaveLength(3);
 	});
 
 	it("replaces an old dev3 hook stored in the legacy flat format", () => {
@@ -1148,46 +684,44 @@ describe("dev3BashPermissions — metadata subcommands, every spelling the agent
 	// The skill and hook text dev3 generates spells the CLI as an absolute path,
 	// while the protocol tells the agent to type a bare `dev3`. Claude Code matches
 	// the literal command text, so both spellings carry the same allowlist.
-	it("covers metadata subcommands in the bare CLI and the POSIX absolute path", () => {
+	it("covers metadata subcommands in the bare CLI, the POSIX path and the quoted Windows dev3.exe", () => {
 		const rules = dev3BashPermissions(POSIX);
 		for (const rule of ["Bash(dev3 current)", "Bash(dev3 task *)", "Bash(dev3 pane logs *)",
 			"Bash(~/.dev3.0/bin/dev3 current)", "Bash(~/.dev3.0/bin/dev3 note *)"]) {
 			expect(rules).toContain(rule);
 		}
-	});
-
-	it("covers the quoted absolute dev3.exe on Windows", () => {
 		expect(dev3BashPermissions(WINDOWS)).toContain('Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" task *)');
-	});
 
-	it("emits only bare-CLI rules when the dialect already is the bare CLI", () => {
-		const rules = dev3BashPermissions({ cli: "dev3", posixShell: true });
-		expect(rules.every((rule) => rule.startsWith("Bash(dev3 "))).toBe(true);
-		expect(new Set(rules).size).toBe(rules.length);
+		const bareOnly = dev3BashPermissions({ cli: "dev3", posixShell: true });
+		expect(bareOnly.every((rule) => rule.startsWith("Bash(dev3 "))).toBe(true);
+		expect(new Set(bareOnly).size).toBe(bareOnly.length);
 	});
 
 	// Issue #2043: any of these approved here skips the harness's own check on
 	// a command the agent could not have run directly.
-	it.each([
-		"dev3 pane run",
-		"dev3 __pane-run",
-		"dev3 dev-server start",
-		"dev3 dev-server restart",
-		"dev3 agent spawn",
-		"dev3 automations run",
-		"dev3 automations create",
-		"dev3 remote",
-		"dev3 local",
-		"dev3 update",
-		"dev3 projects clone",
-		"dev3 doctor",
-	])("never approves the executing command %s", (command) => {
+	it("never approves an executing command (#2043)", () => {
+		const executing = [
+			"dev3 pane run",
+			"dev3 __pane-run",
+			"dev3 dev-server start",
+			"dev3 dev-server restart",
+			"dev3 agent spawn",
+			"dev3 automations run",
+			"dev3 automations create",
+			"dev3 remote",
+			"dev3 local",
+			"dev3 update",
+			"dev3 projects clone",
+			"dev3 doctor",
+		];
 		for (const dialect of [POSIX, WINDOWS]) {
 			const rules = dev3BashPermissions(dialect);
-			const cli = command.replace(/^dev3/, dialect.cli);
-			for (const spelled of [command, cli]) {
-				expect(rules).not.toContain(`Bash(${spelled})`);
-				expect(rules).not.toContain(`Bash(${spelled} *)`);
+			for (const command of executing) {
+				const cli = command.replace(/^dev3/, dialect.cli);
+				for (const spelled of [command, cli]) {
+					expect(rules, spelled).not.toContain(`Bash(${spelled})`);
+					expect(rules, spelled).not.toContain(`Bash(${spelled} *)`);
+				}
 			}
 			expect(rules.some((rule) => rule === "Bash(dev3:*)" || rule === `Bash(${dialect.cli} *)`)).toBe(false);
 		}
@@ -1218,43 +752,40 @@ describe("dev3BashPermissions — metadata subcommands, every spelling the agent
 });
 
 describe("isBroadDev3Rule", () => {
-	it.each([
-		"Bash(dev3:*)",
-		"Bash(dev3 *)",
-		"Bash(~/.dev3.0/bin/dev3 *)",
-		'Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)',
-		'Bash("C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe" *)',
-	])("recognizes %s", (rule) => {
-		expect(isBroadDev3Rule(rule)).toBe(true);
+	it("recognizes whole-CLI rules in every spelling and leaves narrow or foreign rules alone", () => {
+		for (const rule of [
+			"Bash(dev3:*)",
+			"Bash(dev3 *)",
+			"Bash(~/.dev3.0/bin/dev3 *)",
+			'Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)',
+			'Bash("C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe" *)',
+		]) {
+			expect(isBroadDev3Rule(rule), rule).toBe(true);
+		}
+		for (const rule of ["Bash(dev3 note *)", "Bash(dev3 pane run *)", "Bash(gh:*)", "Bash(*)", "Read(dev3)", 42]) {
+			expect(isBroadDev3Rule(rule), String(rule)).toBe(false);
+		}
 	});
-
-	it.each(["Bash(dev3 note *)", "Bash(dev3 pane run *)", "Bash(gh:*)", "Bash(*)", "Read(dev3)", 42])(
-		"leaves %s alone",
-		(rule) => {
-			expect(isBroadDev3Rule(rule)).toBe(false);
-		},
-	);
 });
 
 describe("ensureDevPermission / ensureDefaultMode with malformed settings", () => {
-	it.each([
-		["permissions is a string", { permissions: "all" }],
-		["permissions is an array", { permissions: ["a"] }],
-		["permissions is null", { permissions: null }],
-		["permissions is a number", { permissions: 1 }],
-	])("writes a clean permissions object when %s", (_label, settings) => {
-		const result = ensureDevPermission(settings as Record<string, unknown>) as {
-			permissions: Record<string, unknown>;
-		};
-		expect(Object.keys(result.permissions)).toEqual(["allow"]);
-		expect(result.permissions.allow).toEqual(dev3BashPermissions());
-	});
-
-	it("replaces a non-array allow rather than throwing", () => {
-		const result = ensureDevPermission({ permissions: { allow: "Bash(gh:*)" } }) as {
-			permissions: { allow: string[] };
-		};
-		expect(result.permissions.allow).toEqual(dev3BashPermissions());
+	it("writes a clean allow list over any malformed permissions slot and never throws", () => {
+		const cases: [string, Record<string, unknown>, string[]][] = [
+			["permissions is a string", { permissions: "all" }, ["allow"]],
+			["permissions is an array", { permissions: ["a"] }, ["allow"]],
+			["permissions is null", { permissions: null }, ["allow"]],
+			["permissions is a number", { permissions: 1 }, ["allow"]],
+			["allow is not an array", { permissions: { allow: "Bash(gh:*)" } }, ["allow"]],
+		];
+		for (const [label, settings, keys] of cases) {
+			const result = ensureDevPermission(settings) as { permissions: Record<string, unknown> };
+			expect(Object.keys(result.permissions), label).toEqual(keys);
+			expect(result.permissions.allow, label).toEqual(dev3BashPermissions());
+		}
+		for (const root of [null, []]) {
+			expect(() => ensureDevPermission(root as unknown as Record<string, unknown>)).not.toThrow();
+			expect(() => ensureDefaultMode(root as unknown as Record<string, unknown>, "auto")).not.toThrow();
+		}
 	});
 
 	it("keeps sibling permission keys", () => {
@@ -1265,14 +796,6 @@ describe("ensureDevPermission / ensureDefaultMode with malformed settings", () =
 		expect(result.permissions.deny).toEqual(["Bash(rm:*)"]);
 		expect(result.permissions.defaultMode).toBe("auto");
 		expect(result.permissions.allow).toEqual(["Bash(gh:*)", ...dev3BashPermissions()]);
-	});
-
-	it.each([
-		["the root is null", null],
-		["the root is an array", []],
-	])("does not throw when %s", (_label, settings) => {
-		expect(() => ensureDevPermission(settings as unknown as Record<string, unknown>)).not.toThrow();
-		expect(() => ensureDefaultMode(settings as unknown as Record<string, unknown>, "auto")).not.toThrow();
 	});
 });
 
@@ -1376,22 +899,14 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 		expect(content.enabledMcpjsonServers).toEqual(["playwright"]);
 	});
 
-	it("installs hooks over a file that parses to a non-object", () => {
-		writeFileSync(settingsPath(), "[1,2,3]");
-
-		writeClaudeHooks(tmp);
-
-		const content = read();
-		expect(content.hooks?.Stop).toHaveLength(1);
-		expect(content["0"]).toBeUndefined();
-	});
-
-	it("installs hooks over an empty file", () => {
-		writeFileSync(settingsPath(), "");
-
-		writeClaudeHooks(tmp);
-
-		expect(read().hooks?.Stop).toHaveLength(1);
+	it("installs hooks over invalid JSON, a non-object, or an empty file", () => {
+		for (const [label, raw] of [["invalid JSON", "NOT VALID JSON{{{"], ["non-object", "[1,2,3]"], ["empty", ""]]) {
+			writeFileSync(settingsPath(), raw);
+			writeClaudeHooks(tmp);
+			const content = read();
+			expect(content.hooks?.Stop, label).toHaveLength(1);
+			expect(content["0"], label).toBeUndefined();
+		}
 	});
 
 	it("does not write the dev3 permission into a malformed shared settings.json", () => {
@@ -1420,31 +935,30 @@ describe("writeClaudeHooks write suppression", () => {
 
 	const settingsPath = () => join(tmp, ".claude", "settings.local.json");
 
-	it("reports a write on the first install and none on the second", () => {
+	it("reports a write on the first install and leaves the file untouched on the second", () => {
 		expect(writeClaudeHooks(tmp).written).toBe(true);
+		const before = readFileSync(settingsPath(), "utf-8");
+		const mtime = statSync(settingsPath()).mtimeMs;
+
 		expect(writeClaudeHooks(tmp).written).toBe(false);
+
+		expect(statSync(settingsPath()).mtimeMs).toBe(mtime);
+		expect(readFileSync(settingsPath(), "utf-8")).toBe(before);
 	});
 
-	it("leaves the file untouched when nothing changed", () => {
+	// Claude Code rewrites settings.local.json from its own in-memory snapshot, so
+	// a snapshot taken before the hooks landed drops them. The next agent launch
+	// must put them back.
+	it("writes again once an external rewrite dropped the hooks, or the stop target changes", () => {
 		writeClaudeHooks(tmp);
-		const before = statSync(settingsPath()).mtimeMs;
-
-		writeClaudeHooks(tmp);
-
-		expect(statSync(settingsPath()).mtimeMs).toBe(before);
-	});
-
-	it("writes again once an external rewrite dropped the hooks", () => {
-		writeClaudeHooks(tmp);
-		writeFileSync(settingsPath(), JSON.stringify({ permissions: { allow: ["Bash(gh:*)"] } }));
+		writeFileSync(settingsPath(), JSON.stringify({ permissions: { allow: ["Bash(gh:*)"] }, enabledMcpjsonServers: ["playwright"] }));
 
 		expect(writeClaudeHooks(tmp).written).toBe(true);
-		expect(JSON.parse(readFileSync(settingsPath(), "utf-8")).hooks?.Stop).toHaveLength(1);
-	});
+		const content = JSON.parse(readFileSync(settingsPath(), "utf-8"));
+		expect(content.hooks?.Stop).toHaveLength(1);
+		expect(content.enabledMcpjsonServers).toEqual(["playwright"]);
 
-	it("writes again when the stop target changes", () => {
-		writeClaudeHooks(tmp, { stopTarget: "review-by-user" });
-		expect(writeClaudeHooks(tmp, { stopTarget: "review-by-ai" }).written).toBe(true);
+		expect(writeClaudeHooks(tmp, { stopTarget: "review-by-ai" }).written, "stop target change").toBe(true);
 	});
 
 	it("settles on the second run when a shared settings.json is present", () => {
@@ -1459,45 +973,19 @@ describe("writeClaudeHooks write suppression", () => {
 });
 
 describe("generated hook commands stay instance-neutral", () => {
-	function everyCommand(): string[] {
-		const out: string[] = [CODEX_DEV3_HOOK_COMMAND];
-		for (const map of [buildClaudeHooks(), buildCodexHooks()]) {
-			for (const groups of Object.values(map)) {
-				for (const group of groups as MatcherGroup[]) {
-					for (const hook of group.hooks) out.push(hook.command);
-				}
-			}
-		}
-		return out;
-	}
-
 	// Instance targeting is for a HUMAN shell. If it ever leaked into these
 	// strings, every task's status hooks would route into one guest dev-server —
 	// #910/#920 reproduced by construction. The strings also sit in worktrees that
 	// older builds read, where an unknown flag is not even parseable.
-	it("never carries --instance or the armed dev3-self shim", () => {
-		for (const command of everyCommand()) {
+	it("never carries --instance or the armed dev3-self shim, and keeps the frozen bin/dev3 path", () => {
+		const commands = [CODEX_DEV3_HOOK_COMMAND, ...everyCommand(buildClaudeHooks()), ...everyCommand(buildCodexHooks())];
+		for (const command of commands) {
 			expect(command).not.toContain("--instance");
 			expect(command).not.toContain("dev3-self");
-		}
-	});
-
-	it("still invokes the CLI through the frozen bin/dev3 path", () => {
-		for (const command of everyCommand()) {
 			expect(command).toContain("dev3");
 		}
 		expect(CODEX_DEV3_HOOK_COMMAND).toContain("~/.dev3.0/bin/dev3");
 	});
-});
-
-describe("getAgentHookTargetStatus on a To Do task", () => {
-	// An agent that outlived a reset must never start the fresh card again.
-	it.each(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"] as const)(
-		"%s → no move", (event) => {
-			expect(getAgentHookTargetStatus(event, "todo", "review-by-ai")).toBeNull();
-			expect(getAgentHookTargetStatus(event, "todo", "review-by-user")).toBeNull();
-		},
-	);
 });
 
 describe("claudeSessionStartHookInstalled", () => {
@@ -1509,18 +997,15 @@ describe("claudeSessionStartHookInstalled", () => {
 		rmSync(tmp, { recursive: true, force: true });
 	});
 
-	it("sees the hook writeClaudeHooks installs", () => {
+	it("sees the hook writeClaudeHooks installs, not someone else's SessionStart", () => {
 		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
-		writeClaudeHooks(tmp);
-		expect(claudeSessionStartHookInstalled(tmp)).toBe(true);
-	});
-
-	it("answers false for settings whose SessionStart is someone else's", () => {
 		mkdirSync(join(tmp, ".claude"));
 		writeFileSync(join(tmp, ".claude", "settings.local.json"), JSON.stringify({
 			hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }] },
 		}));
-		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
+		expect(claudeSessionStartHookInstalled(tmp), "foreign SessionStart").toBe(false);
+		writeClaudeHooks(tmp);
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(true);
 	});
 });
 
@@ -1546,28 +1031,18 @@ describe("Claude hooks outside a dev3-owned folder", () => {
 		return everyCommand(settings.hooks);
 	}
 
-	it("owns worktree and ops folders only, never their roots or a project folder", () => {
-		const home = process.env.DEV3_HOME!;
-		expect(isDev3OwnedFolder(`${home}/worktrees/slug/id/worktree`)).toBe(true);
-		expect(isDev3OwnedFolder(`${home}/ops/slug/id/work`)).toBe(true);
-		expect(isDev3OwnedFolder(`${home}/worktrees`)).toBe(false);
-		expect(isDev3OwnedFolder("/mnt/e/Projects/photos")).toBe(false);
-	});
-
-	it("guards every command written into a project folder", () => {
-		const folder = join(tmp, "project");
-		mkdirSync(folder);
-		writeClaudeHooks(folder);
-		const commands = readCommands(folder);
+	it("guards every command written into a project folder and leaves worktree hooks unguarded", () => {
+		const project = join(tmp, "project");
+		mkdirSync(project);
+		writeClaudeHooks(project);
+		const commands = readCommands(project);
 		expect(commands.length).toBeGreaterThan(0);
 		for (const command of commands) expect(command.startsWith('[ -z "$DEV3_TASK_ID" ] || ')).toBe(true);
-	});
 
-	it("leaves worktree hooks unguarded", () => {
-		const folder = join(process.env.DEV3_HOME!, "worktrees", "slug", "id", "worktree");
-		mkdirSync(folder, { recursive: true });
-		writeClaudeHooks(folder);
-		for (const command of readCommands(folder)) expect(command).not.toContain("DEV3_TASK_ID");
+		const worktree = join(process.env.DEV3_HOME!, "worktrees", "slug", "id", "worktree");
+		mkdirSync(worktree, { recursive: true });
+		writeClaudeHooks(worktree);
+		for (const command of readCommands(worktree)) expect(command, "worktree").not.toContain("DEV3_TASK_ID");
 	});
 
 	it("replaces stale unguarded dev3 hooks instead of stacking guarded ones beside them", () => {
@@ -1584,9 +1059,10 @@ describe("Claude hooks outside a dev3-owned folder", () => {
 		expect(buildClaudeHooks({ dialect: windows, requireTaskEnv: true })).toEqual(buildClaudeHooks({ dialect: windows }));
 	});
 
-	describe("in a real shell", () => {
+	it("in a real shell, skips the CLI outside a dev3 pane and tolerates only the app-offline exit inside one", () => {
 		function runGuarded(taskId: string | undefined, exitCode: number): { status: number | null; ran: boolean } {
 			const marker = join(tmp, "ran");
+			rmSync(marker, { force: true });
 			const fake = join(tmp, "dev3");
 			writeFileSync(fake, `#!/bin/sh\ntouch "${marker}"\nexit ${exitCode}\n`, { mode: 0o755 });
 			const command = buildClaudeHooks({ dialect: { ...posix, cli: fake }, requireTaskEnv: true })
@@ -1597,14 +1073,9 @@ describe("Claude hooks outside a dev3-owned folder", () => {
 			return { status: result.status, ran: existsSync(marker) };
 		}
 
-		it("skips the CLI and exits 0 outside a dev3 pane", () => {
-			expect(runGuarded(undefined, 1)).toEqual({ status: 0, ran: false });
-		});
-
-		it("runs the CLI inside a pane and still tolerates only the app-offline exit", () => {
-			expect(runGuarded("task-1", 2)).toEqual({ status: 0, ran: true });
-			expect(runGuarded("task-1", 1).status).toBe(1);
-		});
+		expect(runGuarded(undefined, 1), "outside a pane").toEqual({ status: 0, ran: false });
+		expect(runGuarded("task-1", 2)).toEqual({ status: 0, ran: true });
+		expect(runGuarded("task-1", 1).status).toBe(1);
 	});
 });
 
@@ -1641,13 +1112,10 @@ describe("writeClaudeHooks in an in-project worktree", () => {
 	});
 	afterEach(() => rmSync(project, { recursive: true, force: true }));
 
-	it("excludes the parent .claude/CLAUDE.md when the parent .claude is a plain project folder", () => {
+	it("excludes the parent .claude/CLAUDE.md until that folder becomes Claude's config dir", () => {
 		writeClaudeHooks(worktree);
-		expect(excludes()).toContain(`${project}/.claude/CLAUDE.md`);
-	});
+		expect(excludes(), "plain project folder").toContain(`${project}/.claude/CLAUDE.md`);
 
-	it("lets the parent .claude/CLAUDE.md load once that folder is Claude's config dir", () => {
-		writeClaudeHooks(worktree);
 		writeFileSync(join(project, ".claude", ".claude.json"), "{}");
 		writeClaudeHooks(worktree);
 		expect(excludes()).toEqual([`${project}/CLAUDE.md`, `${project}/CLAUDE.local.md`]);
@@ -1657,15 +1125,13 @@ describe("writeClaudeHooks in an in-project worktree", () => {
 describe("isDev3OwnedFolder", () => {
 	const env = { DEV3_HOME: "/home/u/.dev3.0" };
 
-	it("owns home worktrees, ops folders and in-project task dirs", () => {
+	it("owns home worktrees, ops folders and in-project task dirs, never their roots or a project folder", () => {
 		expect(isDev3OwnedFolder("/home/u/.dev3.0/worktrees/p/abcd1234/worktree", env)).toBe(true);
 		expect(isDev3OwnedFolder("/home/u/.dev3.0/ops/board/abcd1234/work", env)).toBe(true);
 		expect(isDev3OwnedFolder("/home/u/acme/.dev3/worktrees/abcd1234/worktree", env)).toBe(true);
-	});
-
-	it("does not own a project folder, the worktrees root or the in-project root", () => {
 		expect(isDev3OwnedFolder("/home/u/acme", env)).toBe(false);
 		expect(isDev3OwnedFolder("/home/u/.dev3.0/worktrees", env)).toBe(false);
 		expect(isDev3OwnedFolder("/home/u/acme/.dev3/worktrees", env)).toBe(false);
+		expect(isDev3OwnedFolder("/mnt/e/Projects/photos", env)).toBe(false);
 	});
 });

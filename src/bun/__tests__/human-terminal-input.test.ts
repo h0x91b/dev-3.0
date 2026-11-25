@@ -5,22 +5,17 @@ import { scanHumanTerminalInput } from "../../shared/human-terminal-input";
 const SHIFT_ENTER = "\x1b\r";
 
 describe("scanHumanTerminalInput — is that a submit?", () => {
-	it("reads a plain Enter as a submit", () => {
+	it("reads a plain Enter as a submit, including the one ending a multi-line prompt or following a paste", () => {
 		expect(scanHumanTerminalInput("\r").submitted).toBe(true);
 		expect(scanHumanTerminalInput("fix the test\r").submitted).toBe(true);
+		expect(scanHumanTerminalInput(`one${SHIFT_ENTER}two\r`).submitted).toBe(true);
+		expect(scanHumanTerminalInput(`\x1b[200~pasted\r\x1b[201~\r`).submitted).toBe(true);
 	});
 
-	it("does NOT read Shift+Enter as a submit", () => {
+	it("does NOT read Shift+Enter, ordinary typing, LF, or escape sequences as a submit", () => {
 		// dev3 encodes Shift+Enter as ESC+CR: a newline the user is still writing.
 		expect(scanHumanTerminalInput(SHIFT_ENTER).submitted).toBe(false);
 		expect(scanHumanTerminalInput(`first line${SHIFT_ENTER}second line`).submitted).toBe(false);
-	});
-
-	it("still sees the submit that ends a multi-line prompt", () => {
-		expect(scanHumanTerminalInput(`one${SHIFT_ENTER}two\r`).submitted).toBe(true);
-	});
-
-	it("ignores ordinary typing, LF, and escape sequences", () => {
 		expect(scanHumanTerminalInput("checking the diff").submitted).toBe(false);
 		expect(scanHumanTerminalInput("\n").submitted).toBe(false);
 		expect(scanHumanTerminalInput("\x1b[Z").submitted).toBe(false); // Shift+Tab
@@ -31,10 +26,6 @@ describe("scanHumanTerminalInput — is that a submit?", () => {
 	it("treats CRs inside a bracketed paste as content, not keypresses", () => {
 		const paste = `\x1b[200~line one\rline two\r\x1b[201~`;
 		expect(scanHumanTerminalInput(paste)).toEqual({ submitted: false, typed: true, inPaste: false });
-	});
-
-	it("sees the Enter that follows a paste", () => {
-		expect(scanHumanTerminalInput(`\x1b[200~pasted\r\x1b[201~\r`).submitted).toBe(true);
 	});
 
 	it("carries an unfinished paste across chunks, so its content is never a submit", () => {
@@ -56,14 +47,12 @@ describe("scanHumanTerminalInput — is that typing?", () => {
 		expect(scanHumanTerminalInput("\x1b[I\x1b[O").typed).toBe(false);
 	});
 
-	it("reads keys around a mouse report as typing", () => {
+	it("reads keys around a mouse report as typing, and still sees a submit after a click", () => {
 		expect(scanHumanTerminalInput(`${CLICK}a`).typed).toBe(true);
 		expect(scanHumanTerminalInput(`x${CLICK}`).typed).toBe(true);
 		expect(scanHumanTerminalInput("\x1b[Z").typed).toBe(true); // Shift+Tab
 		expect(scanHumanTerminalInput("\x1b").typed).toBe(true); // a bare Escape
-	});
-
-	it("still sees a submit after a click", () => {
+		// A submit after a click is still a submit.
 		expect(scanHumanTerminalInput(`${CLICK}\r`)).toEqual({ submitted: true, typed: true, inPaste: false });
 	});
 });

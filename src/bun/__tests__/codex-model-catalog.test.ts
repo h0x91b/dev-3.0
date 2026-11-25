@@ -43,15 +43,10 @@ describe("writeCodexModelCatalog", () => {
 		writeFileSyncMock.mockReset();
 	});
 
-	it("asks Codex itself for the metadata it will clone", async () => {
-		spawnMock.mockReturnValue(fakeProc(DUMP));
-		await writeCodexModelCatalog("codex", catalog);
-		expect(spawnMock.mock.calls[0]?.[0]).toEqual(["codex", "debug", "models"]);
-	});
-
-	it("writes the generated document and returns its path", async () => {
+	it("asks Codex itself for the metadata it will clone, writes the generated document and returns its path", async () => {
 		spawnMock.mockReturnValue(fakeProc(DUMP));
 		const path = await writeCodexModelCatalog("codex", catalog);
+		expect(spawnMock.mock.calls[0]?.[0]).toEqual(["codex", "debug", "models"]);
 		expect(path).toBe("/tmp/dev3-probe-runtime/codex-models.json");
 		const written = JSON.parse(String(writeFileSyncMock.mock.calls[0]?.[1]));
 		expect(written.models.map((m: { slug: string }) => m.slug)).toEqual(["openrouter/fast-gremlin", "gpt-5.5"]);

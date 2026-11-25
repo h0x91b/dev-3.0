@@ -114,13 +114,11 @@ describe("updateClaudeJson", () => {
 		expect(readFileSync(file, "utf-8")).toBe("{ not json");
 	});
 
-	it("does not write when nothing changes", async () => {
+	it("does not write when nothing changes, and creates a missing file", async () => {
 		const mtime = statSync(file).mtimeMs;
 		expect(await updateClaudeJson(file, addKey("/repo/a"))).toBe("unchanged");
 		expect(statSync(file).mtimeMs).toBe(mtime);
-	});
-
-	it("creates a missing file", async () => {
+		// ...but creates a missing file.
 		rmSync(file);
 		expect(await updateClaudeJson(file, addKey("/wt/new"))).toBe("written");
 		expect(projectKeys(file)).toEqual(["/wt/new"]);

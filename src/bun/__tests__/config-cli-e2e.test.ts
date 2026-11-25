@@ -151,17 +151,16 @@ describe("dev3 config, agent-facing flow", () => {
 		expect((await dev3config("validate")).code).toBe(CLI_EXIT_CODE_CONFIG_INVALID);
 	});
 
-	it("warns on unknown keys without failing validation", async () => {
+	it("warns on unknown keys without failing validation, and fails on a missing --file", async () => {
 		writeFileSync(join(MAIN, ".dev3", "config.json"), JSON.stringify({ setupScritp: "x" }));
 		const result = await dev3config("validate");
 		expect(result.code).toBe(0);
 		expect(result.out).toContain('did you mean "setupScript"');
-	});
 
-	it("fails validate on a --file that does not exist instead of reporting defaults", async () => {
-		const result = await dev3config("validate", "--file", join(MAIN, ".dev3", "confg.json"));
-		expect(result.code).not.toBe(0);
-		expect(result.err).toContain("does not exist");
+		// A --file that does not exist fails instead of reporting defaults.
+		const missing = await dev3config("validate", "--file", join(MAIN, ".dev3", "confg.json"));
+		expect(missing.code).not.toBe(0);
+		expect(missing.err).toContain("does not exist");
 	});
 
 	it("refuses a command-bearing --main write from a foreign-code task", async () => {

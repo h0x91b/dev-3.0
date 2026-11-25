@@ -87,11 +87,13 @@ describe("AgentPromptLedger — Codex question status", () => {
 		expect(state.apply("task", "one", "SessionEnd", "user-questions").pending).toBe(false);
 	});
 
-	it.each(["completed", "cancelled"] as const)("forgets questions for %s tasks", (status) => {
-		const state = new CodexQuestions();
-		state.apply("task", "one", "PostToolUse", "in-progress", "request_user_input_async");
-		expect(state.apply("task", "one", "PreToolUse", status, "request_user_input").pending).toBe(false);
-		expect(state.apply("task", "one", "PostToolUse", "in-progress", "Bash").pending).toBe(false);
+	it("forgets questions for completed and cancelled tasks", () => {
+		for (const status of ["completed", "cancelled"] as const) {
+			const state = new CodexQuestions();
+			state.apply("task", "one", "PostToolUse", "in-progress", "request_user_input_async");
+			expect(state.apply("task", "one", "PreToolUse", status, "request_user_input").pending, status).toBe(false);
+			expect(state.apply("task", "one", "PostToolUse", "in-progress", "Bash").pending, status).toBe(false);
+		}
 	});
 });
 
@@ -130,15 +132,18 @@ describe("AgentPromptLedger — Claude prompts gate their pane", () => {
 		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
 	});
 
-	it.each([
-		["the session's next prompt, Stop or SessionEnd", (l: AgentPromptLedger) => l.claudeSessionReturned("task", "s1")],
-		["the user's send-now or the pane exiting", (l: AgentPromptLedger) => { l.closePane("task", "%1"); }],
-	])("closes on %s", (_, close) => {
-		const ledger = new AgentPromptLedger();
-		ledger.claudePreToolUse(tool("Bash", "toolu_1"));
-		ledger.claudePermissionRequest(tool("Bash"));
-		close(ledger);
-		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	it("closes on the session returning (next prompt, Stop, SessionEnd), the user's send-now, or the pane exiting", () => {
+		const closers: Array<[string, (l: AgentPromptLedger) => void]> = [
+			["session returned", (l) => l.claudeSessionReturned("task", "s1")],
+			["pane closed", (l) => { l.closePane("task", "%1"); }],
+		];
+		for (const [name, close] of closers) {
+			const ledger = new AgentPromptLedger();
+			ledger.claudePreToolUse(tool("Bash", "toolu_1"));
+			ledger.claudePermissionRequest(tool("Bash"));
+			close(ledger);
+			expect(ledger.isPromptOpen("task", "%1"), name).toBe(false);
+		}
 	});
 
 	it("stays open through later tool calls of the same agent — a menu waits for its own answer", () => {
@@ -260,13 +265,15 @@ describe("AgentPromptLedger — status-hook harnesses gate their pane", () => {
 		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
 	});
 
-	it.each(["omp", "pi"] as const)("keeps a %s prompt open through a tool's end, and closes it on the prompt's own end", (harness) => {
-		const ledger = new AgentPromptLedger();
-		hook(ledger, harness, "PermissionRequest");
-		hook(ledger, harness, "PostToolUse");
-		expect(ledger.isPromptOpen("task", "%1")).toBe(true);
-		hook(ledger, harness, "PostToolUse", { promptEnd: true });
-		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
+	it("keeps an omp or pi prompt open through a tool's end, and closes it on the prompt's own end", () => {
+		for (const harness of ["omp", "pi"] as const) {
+			const ledger = new AgentPromptLedger();
+			hook(ledger, harness, "PermissionRequest");
+			hook(ledger, harness, "PostToolUse");
+			expect(ledger.isPromptOpen("task", "%1"), `${harness} after a tool end`).toBe(true);
+			hook(ledger, harness, "PostToolUse", { promptEnd: true });
+			expect(ledger.isPromptOpen("task", "%1"), `${harness} after the prompt end`).toBe(false);
+		}
 	});
 
 	it("closes an agy approval wait on its PostToolUse, which names no tool", () => {
@@ -277,13 +284,15 @@ describe("AgentPromptLedger — status-hook harnesses gate their pane", () => {
 		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
 	});
 
-	it.each(["UserPromptSubmit", "Stop", "Interrupt", "SessionStart", "SessionEnd"] as const)("closes on the session's %s, and only that session's", (event) => {
-		const ledger = new AgentPromptLedger();
-		hook(ledger, "omp", "PermissionRequest");
-		hook(ledger, "omp", "PermissionRequest", { sessionId: "s2", paneId: "%2" });
-		hook(ledger, "omp", event);
-		expect(ledger.isPromptOpen("task", "%1")).toBe(false);
-		expect(ledger.isPromptOpen("task", "%2")).toBe(true);
+	it("closes on the session's UserPromptSubmit, Stop, Interrupt, SessionStart or SessionEnd, and only that session's", () => {
+		for (const event of ["UserPromptSubmit", "Stop", "Interrupt", "SessionStart", "SessionEnd"] as const) {
+			const ledger = new AgentPromptLedger();
+			hook(ledger, "omp", "PermissionRequest");
+			hook(ledger, "omp", "PermissionRequest", { sessionId: "s2", paneId: "%2" });
+			hook(ledger, "omp", event);
+			expect(ledger.isPromptOpen("task", "%1"), `${event} closes its own session`).toBe(false);
+			expect(ledger.isPromptOpen("task", "%2"), `${event} leaves the other session`).toBe(true);
+		}
 	});
 
 	it("leaves the card's question status alone: an approval is not a pending Codex question", () => {

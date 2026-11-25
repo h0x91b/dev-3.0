@@ -27,47 +27,29 @@ describe("pushEverywhere", () => {
 		pushToBrowserClients.mockClear();
 	});
 
-	it("delivers a terminal death to desktop windows AND remote browsers", () => {
-		pushEverywhere("ptyDied", { taskId: "task-1" });
+	it("delivers an event to desktop windows AND remote browsers, once each, payload untouched", () => {
+		const payload = { taskId: "task-1", ports: [3000, 5173] };
+		pushEverywhere("ptyDied", payload);
 
-		expect(broadcastToAllWindows).toHaveBeenCalledWith("ptyDied", { taskId: "task-1" });
-		expect(pushToBrowserClients).toHaveBeenCalledWith("ptyDied", { taskId: "task-1" });
-	});
-
-	it("passes name and payload through untouched, whatever the event", () => {
-		const payload = { taskId: "task-2", ports: [3000, 5173] };
-		pushEverywhere("portsUpdated", payload);
-
-		expect(broadcastToAllWindows).toHaveBeenCalledWith("portsUpdated", payload);
-		expect(pushToBrowserClients).toHaveBeenCalledWith("portsUpdated", payload);
+		expect(broadcastToAllWindows).toHaveBeenCalledWith("ptyDied", payload);
+		expect(pushToBrowserClients).toHaveBeenCalledWith("ptyDied", payload);
+		expect(broadcastToAllWindows).toHaveBeenCalledTimes(1);
+		expect(pushToBrowserClients).toHaveBeenCalledTimes(1);
 		// Same object, not a copy: the renderer contract is the payload as built.
 		expect(broadcastToAllWindows.mock.calls[0][1]).toBe(payload);
 		expect(pushToBrowserClients.mock.calls[0][1]).toBe(payload);
 	});
 
-	it("pushes exactly once per target per call", () => {
-		pushEverywhere("projectPtyDied", { projectId: "p1" });
-
-		expect(broadcastToAllWindows).toHaveBeenCalledTimes(1);
-		expect(pushToBrowserClients).toHaveBeenCalledTimes(1);
-	});
-
 	// A sound is not state: every window renders its own state, but they all share
 	// one pair of speakers, so a broadcast chime plays once per open window.
-	it("sends a completion chime to the focused window only", () => {
+	// Remote-only setups exist: a phone on the LAN with no desktop window in view
+	// is the whole point of the push, so browsers keep the full fan-out.
+	it("sends a completion chime to the focused window only, but still to every remote browser", () => {
 		const payload = { status: "completed", taskId: "task-3" };
 		pushEverywhere("taskSound", payload);
 
 		expect(sendToFocusedWindow).toHaveBeenCalledWith("taskSound", payload);
 		expect(broadcastToAllWindows).not.toHaveBeenCalled();
-	});
-
-	// Remote-only setups exist: a phone on the LAN with no desktop window in view
-	// is the whole point of the push, so browsers keep the full fan-out.
-	it("still delivers the chime to remote browsers", () => {
-		const payload = { status: "cancelled", taskId: "task-4" };
-		pushEverywhere("taskSound", payload);
-
 		expect(pushToBrowserClients).toHaveBeenCalledWith("taskSound", payload);
 	});
 });

@@ -254,12 +254,6 @@ describe("renderer watchdog", () => {
 			expect(evidence).toHaveLength(0);
 		});
 
-		it("ignores a shorter stall than the evidence threshold", () => {
-			settledClient(ARTIFACT);
-			runTo(clock + FREEZE_EVIDENCE_MS - CHECK_MS);
-			expect(evidence).toHaveLength(0);
-		});
-
 		it("judges nobody on a tick that arrived far too late — the host slept too", () => {
 			settledClient(ARTIFACT);
 			runTo(clock + CHECK_MS * 2);

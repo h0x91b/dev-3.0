@@ -99,16 +99,8 @@ describe("development entrypoint override", () => {
 		expect(runtime.entrypointPath).toBe(ENTRYPOINT);
 		expect(runtime.sessionVerb).toBe(PACKAGED_HOST_SESSION_VERB);
 		expect(runtime.sessionVerb).toBe("session-host");
-	});
-
-	it("defaults the runtime to this process's executable", () => {
-		process.env[NATIVE_HOST_ENTRYPOINT_ENV] = ENTRYPOINT;
-
-		expect(resolveNativeHostRuntime().runtimePath).toBe(process.execPath);
-	});
-
-	it("lets the runtime be overridden explicitly", () => {
-		process.env[NATIVE_HOST_ENTRYPOINT_ENV] = ENTRYPOINT;
+		// The runtime defaults to this process's executable, and can be overridden.
+		expect(runtime.runtimePath).toBe(process.execPath);
 		process.env[NATIVE_HOST_RUNTIME_ENV] = "/opt/homebrew/bin/bun";
 
 		expect(resolveNativeHostRuntime().runtimePath).toBe("/opt/homebrew/bin/bun");
@@ -140,10 +132,8 @@ describe("a build with no launchable host", () => {
 		expect(error.message).toContain("bun run build:native");
 		expect(error.message).toMatch(/reinstall/i);
 		expect(error.message).toContain("dev3 task terminal-backend --to tmux");
-	});
-
-	it("mentions tmux only as that escape hatch, never as something it started", () => {
-		const tmuxLines = noRuntimeError().message
+		// tmux appears only as that escape hatch, never as something it started.
+		const tmuxLines = error.message
 			.split("\n")
 			.filter((line) => /tmux/i.test(line));
 
@@ -159,11 +149,8 @@ describe("packaged image lookup", () => {
 		const roots = packagedHostImageRoots();
 		expect(roots.length).toBe(2);
 		expect(join(roots[0], "..")).toBe(roots[1]);
-	});
 
-	it("covers where every platform's packaging hook writes the image", () => {
-		const roots = packagedHostImageRoots();
-
+		// Covers where every platform's packaging hook writes the image.
 		// macOS assembles under <bundle>.app/Contents, one level above MacOS/bun.
 		expect(nativeHostPackageLayout("darwin", join(roots[0], "bun")).hostImagePackageRoot).toBe(roots[1]);
 		// Linux and Windows assemble at the bundle root, one level above bin/bun.
@@ -186,10 +173,6 @@ describe("packaged image lookup", () => {
 		expect(roots[roots.length - 1]).toBe(nativeHostPackageLayout("darwin", "/Apps/dev-3.0.app/Contents/MacOS/bun").hostImagePackageRoot);
 	});
 
-	it("adds nothing extra for a desktop runtime that is not the bundled CLI", () => {
-		expect(packagedHostImageRoots()).toHaveLength(2);
-	});
-
 	it("finds an image the Windows package wrote above the runtime's bin/ directory", () => {
 		const roots = packagedHostImageRoots();
 		vi.mocked(discoverPackagedImage).mockImplementation((root: string) =>
@@ -209,7 +192,7 @@ describe("nativeHostLauncher", () => {
 		process.env[NATIVE_HOST_ENTRYPOINT_ENV] = ENTRYPOINT;
 	});
 
-	it("spawns <runtime> <entrypoint> <verb> <sessionId> detached onto the log fd", () => {
+	it("spawns <runtime> <entrypoint> <verb> <sessionId> detached onto the log fd, handing state over through the env", () => {
 		const runtime = resolveNativeHostRuntime();
 
 		const launch = nativeHostLauncher(runtime)(SESSION_ID, { launch: launchSpec() }, 7);
@@ -220,12 +203,12 @@ describe("nativeHostLauncher", () => {
 		expect(runtimePath).toBe(process.execPath);
 		expect(argv).toEqual([ENTRYPOINT, "session-host", SESSION_ID]);
 		expect(options).toMatchObject({ stdio: ["ignore", 7, 7], detached: true });
-	});
 
-	it("hands the session id, launch spec, and geometry over through the environment", () => {
+		// The session id, launch spec, and geometry travel through the environment.
+		vi.mocked(spawn).mockClear();
 		const spec = launchSpec();
 
-		nativeHostLauncher(resolveNativeHostRuntime())(
+		nativeHostLauncher(runtime)(
 			SESSION_ID,
 			{ launch: spec, cols: 120, rows: 40, captureMode: "semantic" },
 			7,
@@ -237,9 +220,8 @@ describe("nativeHostLauncher", () => {
 		expect(env.DEV3_NATIVE_SESSION_COLS).toBe("120");
 		expect(env.DEV3_NATIVE_SESSION_ROWS).toBe("40");
 		expect(env.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("semantic");
-	});
 
-	it("carries every capture mode verbatim, and never a boolean", () => {
+		// Every capture mode is carried verbatim, never as a boolean.
 		for (const mode of ["semantic", "compact", "semantic-and-compact"] as const) {
 			vi.mocked(spawn).mockClear();
 			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: mode }, 7);
@@ -262,30 +244,16 @@ describe("nativeHostLauncher", () => {
 			vi.mocked(spawn).mockClear();
 			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: "none" }, 7);
 			expect(vi.mocked(spawn).mock.calls[0][2]?.env?.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("none");
-		} finally {
-			delete process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE;
-			delete process.env.DEV3_NATIVE_SESSION_STATE_TAP;
-		}
-	});
+			// Geometry genuinely has a host-side default, so absence is meaningful there.
+			expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_COLS");
 
-	it("still honours a mode the call site intentionally supplies under a hostile parent env", () => {
-		process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE = "compact";
-		try {
+			// A mode the call site intentionally supplies still wins over the hostile parent env.
+			vi.mocked(spawn).mockClear();
 			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: "semantic" }, 7);
 			expect(vi.mocked(spawn).mock.calls[0][2]?.env?.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("semantic");
 		} finally {
 			delete process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE;
+			delete process.env.DEV3_NATIVE_SESSION_STATE_TAP;
 		}
-	});
-
-	it("states the opt-in flags OFF rather than omitting them, and omits geometry", () => {
-		nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec() }, 7);
-
-		const env = vi.mocked(spawn).mock.calls[0][2]?.env ?? {};
-		// Stated, not omitted: an inherited value must not decide what a host does.
-		expect(env.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("none");
-		expect(env.DEV3_NATIVE_SESSION_STATE_TAP).toBe("");
-		// Geometry genuinely has a host-side default, so absence is meaningful there.
-		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_COLS");
 	});
 });

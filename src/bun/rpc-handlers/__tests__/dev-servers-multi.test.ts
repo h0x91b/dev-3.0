@@ -196,21 +196,21 @@ beforeEach(() => {
 });
 
 describe("which server a command means", () => {
-	it("an unnamed start runs the default server", async () => {
-		declare({ devScript: "bun run dev", devServers: { api: { script: "bun run api" } } });
-
-		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
-
-		expect(createdSessions()).toEqual(["dev3-dev-abcdef12"]);
-	});
-
 	// A single-server project should never have to spell its server's name.
-	it("an unnamed start runs the only server when there is no default", async () => {
-		declare({ devServers: { api: { script: "bun run api" } } });
-
-		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
-
-		expect(createdSessions()).toEqual(["dev3-dev-abcdef12-api"]);
+	it("starts the default, the only, the named, or --all servers", async () => {
+		const cases: Array<[string, Record<string, unknown>, Record<string, unknown>, string[]]> = [
+			["unnamed → default", { devScript: "bun run dev", devServers: { api: { script: "bun run api" } } }, {}, ["dev3-dev-abcdef12"]],
+			["unnamed → only server", { devServers: { api: { script: "bun run api" } } }, {}, ["dev3-dev-abcdef12-api"]],
+			["named", { devScript: "bun run dev", devServers: { "back-office": { script: "bun run bo" } } }, { server: "back-office" }, ["dev3-dev-abcdef12-back-office"]],
+			["--all", { devScript: "bun run dev", devServers: { api: { script: "x" }, web: { script: "y" } } }, { all: true },
+				["dev3-dev-abcdef12", "dev3-dev-abcdef12-api", "dev3-dev-abcdef12-web"]],
+		];
+		for (const [name, config, args, sessions] of cases) {
+			mocks.tmuxNewSessionDetached.mockClear();
+			declare(config);
+			await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id, ...args });
+			expect(createdSessions(), name).toEqual(sessions);
+		}
 	});
 
 	// Guessing here would start the wrong process, so the refusal carries the
@@ -221,22 +221,6 @@ describe("which server a command means", () => {
 		await expect(runDevServer({ taskId: TASK_ID, projectId: PROJECT.id }))
 			.rejects.toThrow(/DEV3_DEV_SERVER_NAME_REQUIRED.*api, web/);
 		expect(mocks.tmuxNewSessionDetached).not.toHaveBeenCalled();
-	});
-
-	it("a named start runs that server in its own session", async () => {
-		declare({ devScript: "bun run dev", devServers: { "back-office": { script: "bun run bo" } } });
-
-		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id, server: "back-office" });
-
-		expect(createdSessions()).toEqual(["dev3-dev-abcdef12-back-office"]);
-	});
-
-	it("--all starts every declared server", async () => {
-		declare({ devScript: "bun run dev", devServers: { api: { script: "x" }, web: { script: "y" } } });
-
-		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id, all: true });
-
-		expect(createdSessions()).toEqual(["dev3-dev-abcdef12", "dev3-dev-abcdef12-api", "dev3-dev-abcdef12-web"]);
 	});
 });
 
@@ -355,15 +339,13 @@ describe("a port Docker publishes", () => {
 });
 
 describe("refused declarations", () => {
-	it("refuses to start anything while two servers claim one named port", async () => {
+	it("refuses to start while two servers claim one named port or `dev` is declared twice", async () => {
 		declare({ devServers: { api: { script: "x", ports: ["http"] }, web: { script: "y", ports: ["http"] } } });
 
 		await expect(runDevServer({ taskId: TASK_ID, projectId: PROJECT.id, all: true }))
 			.rejects.toThrow(/claimed by both/);
 		expect(mocks.tmuxNewSessionDetached).not.toHaveBeenCalled();
-	});
 
-	it("refuses to start while `dev` is declared twice", async () => {
 		declare({ devScript: "bun run dev", devServers: { dev: { script: "something else" } } });
 
 		await expect(runDevServer({ taskId: TASK_ID, projectId: PROJECT.id }))

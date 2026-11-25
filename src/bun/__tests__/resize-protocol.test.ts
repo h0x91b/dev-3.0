@@ -18,22 +18,17 @@ import {
 // unilaterally must fail here, not at runtime.
 
 describe("resize protocol", () => {
-	it("encodes the documented wire format", () => {
+	it("encodes the documented wire format and round-trips encode → parse", () => {
 		expect(encodeResizeSequence(120, 40)).toBe("\x1b]resize;120;40\x07");
 		expect(RESIZE_SEQUENCE_PREFIX).toBe("\x1b]resize;");
-	});
-
-	it("round-trips encode → parse", () => {
 		expect(parseResizeSequence(encodeResizeSequence(220, 51))).toEqual({ cols: 220, rows: 51 });
 	});
 
-	it("isResizeSequence detects only resize reports", () => {
+	it("isResizeSequence detects only resize reports, and parse rejects malformed ones", () => {
 		expect(isResizeSequence(encodeResizeSequence(1, 1))).toBe(true);
 		expect(isResizeSequence("plain keyboard input")).toBe(false);
 		expect(isResizeSequence("\x1b]52;c;xyz\x07")).toBe(false);
-	});
-
-	it("parse returns null for malformed sequences (caller still swallows them)", () => {
+		// parse returns null for malformed sequences (caller still swallows them)
 		expect(parseResizeSequence("\x1b]resize;12;\x07")).toBeNull();
 		expect(parseResizeSequence("\x1b]resize;a;b\x07")).toBeNull();
 		expect(parseResizeSequence("\x1b]resize;12;34")).toBeNull();
@@ -41,32 +36,24 @@ describe("resize protocol", () => {
 });
 
 describe("viewer signal", () => {
-	it("encodes the documented wire format", () => {
+	it("encodes the documented wire format, round-trips, and is never mistaken for a resize report or input", () => {
 		expect(encodeViewerSignal("active")).toBe("\x1b]dev3viewer;active\x07");
 		expect(encodeViewerSignal("hidden")).toBe("\x1b]dev3viewer;hidden\x07");
-	});
-
-	it("round-trips and is never mistaken for a resize report or input", () => {
 		expect(parseViewerSignal(encodeViewerSignal("active"))).toBe("active");
 		expect(parseViewerSignal(encodeViewerSignal("hidden"))).toBe("hidden");
 		expect(isResizeSequence(encodeViewerSignal("active"))).toBe(false);
 		expect(isViewerSignal(encodeResizeSequence(80, 24))).toBe(false);
 		expect(isViewerSignal("plain keyboard input")).toBe(false);
-	});
-
-	it("parses an unknown signal to null (caller still swallows it)", () => {
+		// An unknown signal parses to null (the caller still swallows it).
 		expect(isViewerSignal("\x1b]dev3viewer;bogus\x07")).toBe(true);
 		expect(parseViewerSignal("\x1b]dev3viewer;bogus\x07")).toBeNull();
 	});
 });
 
 describe("sizing notice", () => {
-	it("encodes the documented wire format", () => {
+	it("encodes the documented wire format, round-trips, and rejects anything else", () => {
 		expect(encodeSizingNotice({ cols: 120, rows: 40, sizing: true })).toBe("\x1b]dev3sizing;120;40;1\x07");
 		expect(encodeSizingNotice({ cols: 22, rows: 9, sizing: false })).toBe("\x1b]dev3sizing;22;9;0\x07");
-	});
-
-	it("round-trips and rejects anything else", () => {
 		const notice = { cols: 132, rows: 43, sizing: false };
 		expect(parseSizingNotice(encodeSizingNotice(notice))).toEqual(notice);
 		expect(isSizingNotice(encodeSizingNotice(notice))).toBe(true);
@@ -85,11 +72,24 @@ describe("pickSizingViewer", () => {
 		expect(pickSizingViewer([{ cols: 0, rows: 0, activeAt: 1 }])).toBeNull();
 	});
 
+	it("never lets a viewer without a size win, however recent", () => {
+		const sized = { cols: 150, rows: 45, activeAt: 1 };
+		expect(pickSizingViewer([sized, { activeAt: 99 }, { rows: 60, activeAt: 98 }])).toBe(sized);
+	});
+
 	it("picks the most recently active viewer, not the smallest", () => {
 		const wide = { cols: 200, rows: 50, activeAt: 7 };
 		const narrow = { cols: 22, rows: 40, activeAt: 2 };
 		expect(pickSizingViewer([narrow, wide])).toBe(wide);
 		expect(pickSizingViewer([wide, { ...narrow, activeAt: 9 }])).toEqual({ ...narrow, activeAt: 9 });
+	});
+
+	it("keeps the earliest viewer on a tie, so connecting alone never takes over", () => {
+		const first = { cols: 120, rows: 40 };
+		const later = { cols: 60, rows: 20 };
+		expect(pickSizingViewer([first, later])).toBe(first);
+		const active = { cols: 120, rows: 40, activeAt: 5 };
+		expect(pickSizingViewer([active, { cols: 60, rows: 20 }])).toBe(active);
 	});
 
 	it("ignores a hidden viewer while any visible one has a size", () => {
@@ -102,18 +102,5 @@ describe("pickSizingViewer", () => {
 		const older = { cols: 100, rows: 30, activeAt: 1, hidden: true };
 		const newer = { cols: 80, rows: 24, activeAt: 4, hidden: true };
 		expect(pickSizingViewer([older, newer])).toBe(newer);
-	});
-
-	it("keeps the earliest viewer on a tie, so connecting alone never takes over", () => {
-		const first = { cols: 120, rows: 40 };
-		const later = { cols: 60, rows: 20 };
-		expect(pickSizingViewer([first, later])).toBe(first);
-		const active = { cols: 120, rows: 40, activeAt: 5 };
-		expect(pickSizingViewer([active, { cols: 60, rows: 20 }])).toBe(active);
-	});
-
-	it("never lets a viewer without a size win, however recent", () => {
-		const sized = { cols: 150, rows: 45, activeAt: 1 };
-		expect(pickSizingViewer([sized, { activeAt: 99 }, { rows: 60, activeAt: 98 }])).toBe(sized);
 	});
 });

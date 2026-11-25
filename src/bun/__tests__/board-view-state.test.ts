@@ -16,36 +16,33 @@ describe("normalizeBoardViewState", () => {
 		}
 	});
 
-	it("re-points a slot whose saved view is missing", () => {
+	it("re-points a slot whose saved view is missing, and drops malformed saved views", () => {
 		const state = normalizeBoardViewState({
 			version: 1,
 			slots: { wide: "gone", narrow: "sv-a" },
 			savedViews: [{ id: "sv-a", name: null, viewType: "builtin:table", query: "", layouts: {} }],
 		});
 		expect(state.slots).toEqual({ wide: "sv-a", narrow: "sv-a" });
-	});
 
-	it("drops malformed saved views and fills missing fields", () => {
-		const state = normalizeBoardViewState({
+		// Malformed saved views are dropped and missing fields filled.
+		const filled = normalizeBoardViewState({
 			version: 1,
 			slots: { wide: "sv-a", narrow: "sv-a" },
 			savedViews: [{ nope: true }, { id: "sv-a" }],
 		});
-		expect(state.savedViews).toEqual([{ id: "sv-a", name: null, viewType: KANBAN_VIEW_ID, query: "", layouts: {} }]);
+		expect(filled.savedViews).toEqual([{ id: "sv-a", name: null, viewType: KANBAN_VIEW_ID, query: "", layouts: {} }]);
 	});
 });
 
 describe("per-form-factor updates", () => {
-	it("forks the shared saved view on the first change, leaving the other form factor alone", () => {
+	it("forks the shared saved view on the first change, then updates the fork in place", () => {
 		const wide = withViewType(defaultBoardViewState(), "wide", "builtin:table");
 		expect(activeSavedView(wide, "wide").viewType).toBe("builtin:table");
 		expect(activeSavedView(wide, "narrow").viewType).toBe(KANBAN_VIEW_ID);
 		expect(wide.savedViews).toHaveLength(2);
-	});
 
-	it("updates the forked view in place afterwards", () => {
-		let state = withViewType(defaultBoardViewState(), "wide", "builtin:table");
-		state = withLayout(state, "wide", "builtin:table", { sort: "seq" });
+		// Afterwards the forked view is updated in place.
+		let state = withLayout(wide, "wide", "builtin:table", { sort: "seq" });
 		state = withViewType(state, "wide", "builtin:tree");
 		expect(state.savedViews).toHaveLength(2);
 		expect(activeSavedView(state, "wide")).toMatchObject({ viewType: "builtin:tree", layouts: { "builtin:table": { sort: "seq" } } });

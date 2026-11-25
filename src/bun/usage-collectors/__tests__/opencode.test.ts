@@ -112,12 +112,11 @@ describe("collectOpenCodeUsage", () => {
 });
 
 describe("readonlySqliteTarget", () => {
-	it("opens a checkpointed database immutably and a live WAL database normally", () => {
+	it("opens a checkpointed database immutably, creating no sidecars, and a live WAL database normally", () => {
 		expect(readonlySqliteTarget("/a b/x?.db", false)).toBe("file:/a%20b/x%3F.db?mode=ro&immutable=1");
 		expect(readonlySqliteTarget("/a/x.db", true)).toBe("/a/x.db");
-	});
 
-	it("never creates sidecar files beside a checkpointed database", () => {
+		// Reading a checkpointed database never creates sidecar files beside it.
 		const path = join(dataDir(), "opencode.db");
 		createDb(path, { messages: [["msg1", assistant()]], parts: [["p1", "msg1", step(1, 1)]] }, true);
 		for (const name of readdirSync(dataDir())) if (name !== "opencode.db") rmSync(join(dataDir(), name));

@@ -8,7 +8,7 @@ describe("rollupCiStatus", () => {
 		expect(rollupCiStatus("nope")).toBeNull();
 	});
 
-	it("returns success when all checks pass (CheckRun + StatusContext)", () => {
+	it("rolls checks up to success, failure (which beats pending) or pending", () => {
 		expect(
 			rollupCiStatus([
 				{ status: "COMPLETED", conclusion: "SUCCESS" },
@@ -16,9 +16,6 @@ describe("rollupCiStatus", () => {
 				{ status: "COMPLETED", conclusion: "SKIPPED" },
 			]),
 		).toBe("success");
-	});
-
-	it("returns failure when any check fails or errors", () => {
 		expect(
 			rollupCiStatus([
 				{ status: "COMPLETED", conclusion: "SUCCESS" },
@@ -26,9 +23,6 @@ describe("rollupCiStatus", () => {
 			]),
 		).toBe("failure");
 		expect(rollupCiStatus([{ state: "ERROR" }])).toBe("failure");
-	});
-
-	it("returns pending when a check is still running and none failed", () => {
 		expect(
 			rollupCiStatus([
 				{ status: "COMPLETED", conclusion: "SUCCESS" },
@@ -36,9 +30,6 @@ describe("rollupCiStatus", () => {
 			]),
 		).toBe("pending");
 		expect(rollupCiStatus([{ state: "PENDING" }])).toBe("pending");
-	});
-
-	it("prioritizes failure over pending", () => {
 		expect(
 			rollupCiStatus([
 				{ status: "IN_PROGRESS", conclusion: null },
@@ -49,30 +40,21 @@ describe("rollupCiStatus", () => {
 });
 
 describe("mapReviewDecision", () => {
-	it("maps known GitHub decisions", () => {
+	it("maps known decisions, treats REVIEW_REQUIRED/empty as none and anything else as commented", () => {
 		expect(mapReviewDecision("APPROVED")).toBe("approved");
 		expect(mapReviewDecision("CHANGES_REQUESTED")).toBe("changes_requested");
-	});
-
-	it("treats REVIEW_REQUIRED and empty as no review activity", () => {
 		expect(mapReviewDecision("REVIEW_REQUIRED")).toBeNull();
 		expect(mapReviewDecision("")).toBeNull();
 		expect(mapReviewDecision(undefined)).toBeNull();
-	});
-
-	it("maps any other non-empty value to commented", () => {
 		expect(mapReviewDecision("COMMENTED")).toBe("commented");
 	});
 });
 
 describe("PR status detail helpers", () => {
-	it("distinguishes missing, disabled, and enabled auto-merge data", () => {
+	it("parses auto-merge (missing/disabled/enabled) and keeps GitHub's review decision for diagnostics", () => {
 		expect(parseAutoMergeEnabled(undefined)).toBeNull();
 		expect(parseAutoMergeEnabled(null)).toBe(false);
 		expect(parseAutoMergeEnabled({ enabledAt: "2026-07-15T18:00:00Z" })).toBe(true);
-	});
-
-	it("preserves GitHub's review decision for merge diagnostics", () => {
 		expect(parseReviewDecision("REVIEW_REQUIRED")).toBe("review_required");
 		expect(parseReviewDecision("CHANGES_REQUESTED")).toBe("changes_requested");
 		expect(parseReviewDecision("APPROVED")).toBe("approved");
@@ -87,7 +69,7 @@ describe("PR status detail helpers", () => {
 		expect(summarizeMergeability({ mergeable: "UNKNOWN", status: "UNKNOWN" })).toEqual({ state: "unknown", reason: null });
 	});
 
-	it("counts only explicitly unresolved review threads", () => {
+	it("counts only explicitly unresolved review threads and normalizes checks into linkable rows", () => {
 		expect(countUnresolvedReviewThreads([
 			{ isResolved: false },
 			{ isResolved: true },
@@ -96,9 +78,6 @@ describe("PR status detail helpers", () => {
 			null,
 		])).toBe(2);
 		expect(countUnresolvedReviewThreads({ nodes: [{ isResolved: false }] })).toBe(0);
-	});
-
-	it("normalizes CheckRuns and StatusContexts into linkable checks", () => {
 		expect(normalizeChecks([
 			{ name: "build", status: "completed", conclusion: "success", detailsUrl: "https://ci/build" },
 			{ context: "lint", state: "failure", targetUrl: "https://ci/lint" },
@@ -113,12 +92,9 @@ describe("PR status detail helpers", () => {
 });
 
 describe("computeSignalKey", () => {
-	it("ignores pending CI and null review (no worthy signal)", () => {
+	it("is empty without a worthy signal and stable for settled CI / review states", () => {
 		expect(computeSignalKey("pending", null)).toBe("");
 		expect(computeSignalKey(null, null)).toBe("");
-	});
-
-	it("includes settled CI and any review state, and is stable for dedupe", () => {
 		expect(computeSignalKey("success", null)).toBe("ci:success");
 		expect(computeSignalKey("failure", "changes_requested")).toBe("ci:failure|review:changes_requested");
 		// Same inputs → same key (so the poller fires only once per state).

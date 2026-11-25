@@ -13,16 +13,15 @@ import {
 } from "../workload";
 
 describe("soak workload", () => {
-	it("is byte-identical for the same shape and tag", () => {
+	it("is byte-identical for the same shape and tag, with a completion marker per tag", () => {
 		const first = soakWorkloadCommand(DEFAULT_SOAK_WORKLOAD, "burst-0", "linux");
 		const second = soakWorkloadCommand(DEFAULT_SOAK_WORKLOAD, "burst-0", "linux");
 		expect(first).toBe(second);
-	});
-
-	it("gives every tag its own completion marker", () => {
-		expect(soakWorkloadCommand(SHORT_SOAK_WORKLOAD, "cyc1", "linux")).toContain(`${SOAK_DONE_PREFIX}cyc1`);
-		expect(soakWorkloadCommand(SHORT_SOAK_WORKLOAD, "cyc2", "linux")).not.toContain(`${SOAK_DONE_PREFIX}cyc1`);
-		expect(doneMarker("cyc2")).toBe(`${SOAK_DONE_PREFIX}cyc2`);
+		{
+			expect(soakWorkloadCommand(SHORT_SOAK_WORKLOAD, "cyc1", "linux")).toContain(`${SOAK_DONE_PREFIX}cyc1`);
+			expect(soakWorkloadCommand(SHORT_SOAK_WORKLOAD, "cyc2", "linux")).not.toContain(`${SOAK_DONE_PREFIX}cyc1`);
+			expect(doneMarker("cyc2")).toBe(`${SOAK_DONE_PREFIX}cyc2`);
+		}
 	});
 
 	it("emits alt-screen, colour, and carriage-return redraws on both platforms", () => {

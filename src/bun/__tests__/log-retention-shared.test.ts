@@ -56,13 +56,8 @@ describe("logUsageBeyondRetention", () => {
 		// 30 days keeps 2026-10-17 through today.
 		expect(logUsageBeyondRetention(days, 30, now)).toEqual({ days: 2, bytes: 1001 });
 		expect(logUsageBeyondRetention(days, 365, now)).toEqual({ days: 0, bytes: 0 });
-	});
-});
-
-describe("logUsageBeyondRetention beyond the Date range", () => {
-	it("deletes nothing, like the prune, when the window has no valid cutoff", () => {
-		const days = [{ day: "2001-01-01", bytes: 5 }];
-		expect(logUsageBeyondRetention(days, 1e9, new Date(2026, 10, 15))).toEqual({ days: 0, bytes: 0 });
+		// Beyond the Date range there is no valid cutoff: nothing counts, like the prune.
+		expect(logUsageBeyondRetention([{ day: "2001-01-01", bytes: 5 }], 1e9, now)).toEqual({ days: 0, bytes: 0 });
 	});
 });
 

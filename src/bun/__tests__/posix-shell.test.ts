@@ -11,22 +11,15 @@ const MAC = machine("/bin/zsh", "/bin/bash", "/bin/sh");
 const MINIMAL_LINUX = machine("/bin/sh");
 
 describe("shellFlavorOf", () => {
-	it("names the three flavors dev3 configures", () => {
+	it("names the three configured flavors, reads dash/ash as sh, strips a login dash, and rejects the rest", () => {
 		expect(shellFlavorOf("/bin/zsh")).toBe("zsh");
 		expect(shellFlavorOf("/opt/homebrew/bin/bash")).toBe("bash");
 		expect(shellFlavorOf("/bin/sh")).toBe("sh");
-	});
-
-	it("treats dash and busybox ash as a POSIX sh — that is what /bin/sh is on Debian", () => {
+		// dash and busybox ash are a POSIX sh — that is what /bin/sh is on Debian.
 		expect(shellFlavorOf("/bin/dash")).toBe("sh");
 		expect(shellFlavorOf("/bin/ash")).toBe("sh");
-	});
-
-	it("strips the login dash a passwd entry can carry", () => {
+		// The login dash a passwd entry can carry.
 		expect(shellFlavorOf("-zsh")).toBe("zsh");
-	});
-
-	it("returns null for a shell dev3 does not configure", () => {
 		expect(shellFlavorOf("/usr/local/bin/fish")).toBeNull();
 		expect(shellFlavorOf("")).toBeNull();
 		expect(shellFlavorOf(null)).toBeNull();
@@ -34,16 +27,13 @@ describe("shellFlavorOf", () => {
 });
 
 describe("resolvePosixShell — auto", () => {
-	it("keeps the account shell", () => {
+	it("keeps the account shell, even one dev3 does not configure, rather than switching the user's terminal", () => {
 		expect(resolvePosixShell({ accountShell: "/bin/bash", exists: MAC })).toEqual({
 			path: "/bin/bash",
 			flavor: "bash",
 			requested: "auto",
 			fellBack: false,
 		});
-	});
-
-	it("keeps a shell dev3 does not configure rather than switching the user's terminal under them", () => {
 		const fishMachine = machine("/usr/local/bin/fish", "/bin/zsh");
 		expect(resolvePosixShell({ accountShell: "/usr/local/bin/fish", exists: fishMachine })).toMatchObject({
 			path: "/usr/local/bin/fish",
@@ -51,15 +41,13 @@ describe("resolvePosixShell — auto", () => {
 		});
 	});
 
-	it("falls through to $SHELL when the account record is empty", () => {
+	it("falls through to $SHELL for an empty account record, and ignores a recorded shell that is not installed", () => {
 		expect(resolvePosixShell({ accountShell: null, envShell: "/bin/zsh", exists: MAC }).path).toBe("/bin/zsh");
-	});
-
-	it("ignores a recorded shell that is not installed", () => {
 		expect(resolvePosixShell({ accountShell: "/bin/zsh", exists: MINIMAL_LINUX }).path).toBe("/bin/sh");
 	});
 
-	it("lands on sh where a minimal Linux box has neither zsh nor bash", () => {
+	it("with nothing recorded prefers zsh, and lands on sh on a minimal Linux box", () => {
+		expect(resolvePosixShell({ exists: MAC }).path).toBe("/bin/zsh");
 		expect(resolvePosixShell({ exists: MINIMAL_LINUX })).toEqual({
 			path: "/bin/sh",
 			flavor: "sh",
@@ -67,47 +55,33 @@ describe("resolvePosixShell — auto", () => {
 			fellBack: false,
 		});
 	});
-
-	it("prefers zsh over bash when nothing is recorded", () => {
-		expect(resolvePosixShell({ exists: MAC }).path).toBe("/bin/zsh");
-	});
 });
 
 describe("resolvePosixShell — explicit preference", () => {
-	it("honours the chosen flavor", () => {
+	it("honours the chosen flavor, using the user's own binary so a homebrew zsh wins over /bin/zsh", () => {
 		expect(resolvePosixShell({ preference: "sh", accountShell: "/bin/zsh", exists: MAC })).toEqual({
 			path: "/bin/sh",
 			flavor: "sh",
 			requested: "sh",
 			fellBack: false,
 		});
-	});
-
-	it("uses the user's own binary when it is the chosen flavor, so a homebrew zsh wins over /bin/zsh", () => {
 		const brew = machine("/opt/homebrew/bin/zsh", "/bin/zsh", "/bin/sh");
 		expect(resolvePosixShell({ preference: "zsh", accountShell: "/opt/homebrew/bin/zsh", exists: brew }).path).toBe(
 			"/opt/homebrew/bin/zsh",
 		);
 	});
 
-	it("falls back and says so when the chosen shell is not installed", () => {
+	it("falls back (bash before sh) and says so, never returning a shell-less answer", () => {
 		expect(resolvePosixShell({ preference: "zsh", exists: MINIMAL_LINUX })).toEqual({
 			path: "/bin/sh",
 			flavor: "sh",
 			requested: "zsh",
 			fellBack: true,
 		});
-	});
-
-	it("prefers bash over sh when the chosen zsh is missing but bash is there", () => {
-		const noZsh = machine("/bin/bash", "/bin/sh");
-		expect(resolvePosixShell({ preference: "zsh", exists: noZsh })).toMatchObject({
+		expect(resolvePosixShell({ preference: "zsh", exists: machine("/bin/bash", "/bin/sh") })).toMatchObject({
 			path: "/bin/bash",
 			fellBack: true,
 		});
-	});
-
-	it("never returns a shell-less answer, even when nothing at all is installed", () => {
 		expect(resolvePosixShell({ preference: "bash", exists: machine() })).toEqual({
 			path: "/bin/sh",
 			flavor: "sh",

@@ -119,38 +119,23 @@ describe("native notification channel routing", () => {
 		expect(push.mock.calls.map(([name]) => name)).toEqual(["webNotification"]);
 	});
 
-	it("queues native and web notifications until terminal focus ends", () => {
-		const push = vi.fn();
-		setPushMessage(push);
-		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
-		setTerminalFocus(true);
+	it("queues native and web notifications until terminal focus or persistent Focus Mode ends", () => {
+		for (const [name, suppress] of [["terminal focus", setTerminalFocus], ["Focus Mode", setFocusMode]] as const) {
+			const push = vi.fn();
+			setPushMessage(push);
+			vi.mocked(postNativeTaskNotification).mockReset().mockReturnValue(true);
+			suppress(true);
 
-		notifyFromCliDesktop({ task: makeTask(), body: "done", projectName: "MyProject" });
+			notifyFromCliDesktop({ task: makeTask(), body: "done", projectName: "MyProject" });
 
-		expect(postNativeTaskNotification).not.toHaveBeenCalled();
-		expect(push).not.toHaveBeenCalled();
+			expect(postNativeTaskNotification, name).not.toHaveBeenCalled();
+			expect(push, name).not.toHaveBeenCalled();
 
-		setTerminalFocus(false);
+			suppress(false);
 
-		expect(postNativeTaskNotification).toHaveBeenCalledWith(expect.objectContaining({ body: "done" }));
-		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ body: "done" }));
-	});
-
-	it("queues native and web notifications until persistent Focus Mode ends", () => {
-		const push = vi.fn();
-		setPushMessage(push);
-		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
-		setFocusMode(true);
-
-		notifyFromCliDesktop({ task: makeTask(), body: "done", projectName: "MyProject" });
-
-		expect(postNativeTaskNotification).not.toHaveBeenCalled();
-		expect(push).not.toHaveBeenCalled();
-
-		setFocusMode(false);
-
-		expect(postNativeTaskNotification).toHaveBeenCalledWith(expect.objectContaining({ body: "done" }));
-		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ body: "done" }));
+			expect(postNativeTaskNotification, name).toHaveBeenCalledWith(expect.objectContaining({ body: "done" }));
+			expect(push, name).toHaveBeenCalledWith("webNotification", expect.objectContaining({ body: "done" }));
+		}
 	});
 
 	it("flushes queued CLI toasts after terminal focus ends", () => {
@@ -173,19 +158,6 @@ describe("native notification channel routing", () => {
 		setTerminalFocus(false);
 
 		expect(push).toHaveBeenCalledWith("cliToast", payload);
-	});
-
-	it("flushes queued attention badges after Focus Mode ends", () => {
-		const push = vi.fn();
-		setPushMessage(push);
-		setFocusMode(true);
-
-		pushCliAttention({ taskId: "task-1", projectId: "project-1", reason: "CI passed" });
-		expect(push).not.toHaveBeenCalled();
-
-		setFocusMode(false);
-
-		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", projectId: "project-1", reason: "CI passed" });
 	});
 
 	it("flushes mixed notification types in arrival order with their task targets", () => {
@@ -255,22 +227,16 @@ describe("sensitive projects are silenced while streamer mode is on", () => {
 		expect(push).not.toHaveBeenCalled();
 	});
 
-	it("leaves other projects alone", () => {
+	it("leaves other projects alone, and does nothing when the flag is set but streamer mode is off", () => {
 		const push = vi.fn();
 		setPushMessage(push);
 		setStreamerPrivacy({ streamerMode: true, sensitiveProjectIds: ["proj-other"] });
-
 		pushCliToast({ taskId: "task-1", projectId: "proj-1", message: "hi", level: "info" });
-
 		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ projectId: "proj-1" }));
-	});
 
-	it("does nothing when the flag is set but streamer mode is off", () => {
 		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
 		setStreamerPrivacy({ streamerMode: false, sensitiveProjectIds: ["proj-1"] });
-
 		notifyWatchedTaskStatusChange(makeTask(), "in-progress", "review-by-user", "MyProject");
-
 		expect(postNativeTaskNotification).toHaveBeenCalled();
 	});
 

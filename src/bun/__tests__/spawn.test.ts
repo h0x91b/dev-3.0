@@ -14,29 +14,18 @@ describe("spawn/spawnSync cwd defaulting", () => {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const Bun = globalThis.Bun as any;
 
-	it("defaults child cwd to DEV3_HOME when the caller passes none", () => {
+	it("defaults child cwd to DEV3_HOME — none passed, explicitly undefined, or via spawnSync — and honours an explicit cwd", () => {
 		const spy = vi.spyOn(Bun, "spawn");
 		spawn(["true"]);
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(spy.mock.calls[0][1]).toMatchObject({ cwd: DEV3_HOME });
-	});
-
-	it("honours an explicit cwd over the DEV3_HOME default", () => {
-		const spy = vi.spyOn(Bun, "spawn");
 		spawn(["true"], { cwd: "/some/worktree" });
-		expect(spy.mock.calls[0][1]).toMatchObject({ cwd: "/some/worktree" });
-	});
-
-	it("falls back to DEV3_HOME when cwd is explicitly undefined", () => {
-		const spy = vi.spyOn(Bun, "spawn");
+		expect(spy.mock.calls[1][1]).toMatchObject({ cwd: "/some/worktree" });
 		spawn(["true"], { cwd: undefined, stdout: "pipe" });
-		expect(spy.mock.calls[0][1]).toMatchObject({ cwd: DEV3_HOME, stdout: "pipe" });
-	});
-
-	it("spawnSync also defaults cwd to DEV3_HOME", () => {
-		const spy = vi.spyOn(Bun, "spawnSync");
+		expect(spy.mock.calls[2][1]).toMatchObject({ cwd: DEV3_HOME, stdout: "pipe" });
+		const syncSpy = vi.spyOn(Bun, "spawnSync");
 		spawnSync(["true"]);
-		expect(spy.mock.calls[0][1]).toMatchObject({ cwd: DEV3_HOME });
+		expect(syncSpy.mock.calls[0][1]).toMatchObject({ cwd: DEV3_HOME });
 	});
 
 	it("still merges process.env into the child env", () => {

@@ -5,19 +5,12 @@ import { createSpawnMock, GIT_ENV } from "./git-test-helpers";
 // an uncaught `error` event AND leave `exited` pending forever, so the awaiting test
 // died on the 5s suite timeout — attributed to whichever test happened to be running.
 describe("createSpawnMock", () => {
-	it("resolves exited with a non-zero code when the binary cannot be spawned", async () => {
+	it("resolves exited with a non-zero code and empty output streams when the binary cannot be spawned", async () => {
 		const { spawn } = createSpawnMock();
 
 		const proc = spawn(["dev3-definitely-not-a-real-binary", "--version"]);
 
 		await expect(proc.exited).resolves.toBe(1);
-	});
-
-	it("yields empty output streams for a spawn that never started", async () => {
-		const { spawn } = createSpawnMock();
-
-		const proc = spawn(["dev3-definitely-not-a-real-binary"]);
-		await proc.exited;
 
 		await expect(new Response(proc.stdout).text()).resolves.toBe("");
 		await expect(new Response(proc.stderr).text()).resolves.toBe("");

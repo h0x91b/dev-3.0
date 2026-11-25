@@ -163,22 +163,19 @@ describe("library renderer helpers", () => {
 	];
 	const all = { query: "", kind: "all" as const, projectId: null, unseenOnly: false };
 
-	it("searches every term across title, caption, task, project, agent and #seq", () => {
+	it("searches every term across title, caption, task, project, agent and #seq, and filters by kind, project and unseen", () => {
 		expect(filterLibraryItems(items, { ...all, query: "audit" }).map((i) => i.key)).toEqual(["a", "c"]);
 		expect(filterLibraryItems(items, { ...all, query: "FINAL video-edit" }).map((i) => i.key)).toEqual(["b"]);
 		expect(filterLibraryItems(items, { ...all, query: "opus", agentName: () => "Opus" }).length).toBe(3);
 		expect(filterLibraryItems(items, { ...all, query: "#1" }).length).toBe(3);
+		expect(filterLibraryItems(items, { ...all, kind: "video" }).map((i) => i.key)).toEqual(["b"]);
+		expect(filterLibraryItems(items, { ...all, projectId: "p1" }).map((i) => i.key)).toEqual(["a", "c"]);
+		expect(filterLibraryItems(items, { ...all, unseenOnly: true }).map((i) => i.key)).toEqual(["a"]);
 	});
 
 	it("never matches search text inside a privacy-locked project", () => {
 		expect(filterLibraryItems(items, { ...all, query: "promo", isLocked: (id) => id === "p2" })).toEqual([]);
 		expect(filterLibraryItems(items, { ...all, isLocked: (id) => id === "p2" }).length).toBe(3);
-	});
-
-	it("filters by kind, project and unseen", () => {
-		expect(filterLibraryItems(items, { ...all, kind: "video" }).map((i) => i.key)).toEqual(["b"]);
-		expect(filterLibraryItems(items, { ...all, projectId: "p1" }).map((i) => i.key)).toEqual(["a", "c"]);
-		expect(filterLibraryItems(items, { ...all, unseenOnly: true }).map((i) => i.key)).toEqual(["a"]);
 	});
 
 	it("sorts newest, oldest and largest", () => {

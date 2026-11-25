@@ -51,20 +51,24 @@ describe("Codex turn rollout watch", () => {
 		expect(onFailure.mock.calls[0]![0]).toMatchObject({ taskId: "task", sessionId: "session", message: ERROR });
 	});
 
-	it("ignores errors written before the turn started", async () => {
-		const { transcriptPath, onFailure, check } = fixture(failed);
-		appendFileSync(transcriptPath, record({ type: "token_count" }));
-		await check();
-		expect(onFailure).not.toHaveBeenCalled();
-	});
+	it("reports nothing for errors before the turn started, after a clean turn end, or after the Stop hook", async () => {
+		const before = fixture(failed);
+		appendFileSync(before.transcriptPath, record({ type: "token_count" }));
+		await before.check();
+		expect(before.onFailure, "error written before the turn started").not.toHaveBeenCalled();
 
-	it("stops after a clean turn end", async () => {
-		const { transcriptPath, onFailure, check } = fixture();
-		appendFileSync(transcriptPath, finished);
-		await check();
-		appendFileSync(transcriptPath, failed);
-		await check();
-		expect(onFailure).not.toHaveBeenCalled();
+		const clean = fixture();
+		appendFileSync(clean.transcriptPath, finished);
+		await clean.check();
+		appendFileSync(clean.transcriptPath, failed);
+		await clean.check();
+		expect(clean.onFailure, "error after a clean turn end").not.toHaveBeenCalled();
+
+		const stopped = fixture();
+		stopped.watcher.endTurn("task", "session");
+		appendFileSync(stopped.transcriptPath, failed);
+		await stopped.check();
+		expect(stopped.onFailure, "error after the Stop hook ended the turn").not.toHaveBeenCalled();
 	});
 
 	it("joins a record split across two writes", async () => {
@@ -84,13 +88,5 @@ describe("Codex turn rollout watch", () => {
 		writeFileSync(missing, failed);
 		await watcher.check("task", "fresh");
 		expect(onFailure).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "fresh", message: ERROR }));
-	});
-
-	it("reports nothing once the Stop hook ended the turn", async () => {
-		const { transcriptPath, onFailure, watcher, check } = fixture();
-		watcher.endTurn("task", "session");
-		appendFileSync(transcriptPath, failed);
-		await check();
-		expect(onFailure).not.toHaveBeenCalled();
 	});
 });

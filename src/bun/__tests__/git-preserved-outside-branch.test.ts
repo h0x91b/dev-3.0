@@ -52,14 +52,20 @@ describe("isPreservedOutsideBranch", () => {
 		expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch")).toBe(true);
 	});
 
-	it("another local branch holds the commits: preserved", async () => {
-		g("git branch keep/backup dev3/task-branch", repo.local);
-		expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch")).toBe(true);
-	});
-
-	it("a tag holds the commits: preserved", async () => {
-		g("git tag v9.9.9 dev3/task-branch", repo.local);
-		expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch")).toBe(true);
+	it("another local branch, a tag, or a branch merely prefixed by the task branch's name holds the commits: preserved", async () => {
+		// `--exclude` is a glob; an over-broad one would drop the prefixed sibling
+		// from the negative set and under-report preservation.
+		const holders: Array<[string, string]> = [
+			["git branch keep/backup dev3/task-branch", "git branch -D keep/backup"],
+			["git tag v9.9.9 dev3/task-branch", "git tag -d v9.9.9"],
+			["git branch dev3/task-branch-2 dev3/task-branch", "git branch -D dev3/task-branch-2"],
+		];
+		for (const [create, remove] of holders) {
+			g(create, repo.local);
+			expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch"), create).toBe(true);
+			g(remove, repo.local);
+			expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch"), remove).toBe(false);
+		}
 	});
 
 	it("a remote-tracking ref under another name holds the commits: preserved", async () => {
@@ -80,20 +86,10 @@ describe("isPreservedOutsideBranch", () => {
 		expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch")).toBe(false);
 	});
 
-	it("a branch whose name merely starts with the task branch's is not the task branch", async () => {
-		// `--exclude` is a glob; an over-broad one would drop the sibling from the
-		// negative set and under-report preservation.
-		g("git branch dev3/task-branch-2 dev3/task-branch", repo.local);
-		expect(await isPreservedOutsideBranch(repo.local, "dev3/task-branch")).toBe(true);
-	});
-
-	it("an unknown branch name proves nothing: not preserved", async () => {
+	it("an unknown branch name or a failing git proves nothing: not preserved", async () => {
 		// A detached HEAD leaves nothing to exclude, so HEAD's own branch would
 		// answer for it.
 		expect(await isPreservedOutsideBranch(repo.local, "")).toBe(false);
-	});
-
-	it("a failing git proves nothing: not preserved", async () => {
 		const notARepo = mkdtempSync(join(tmpdir(), "dev3-not-a-repo-"));
 		expect(await isPreservedOutsideBranch(notARepo, "dev3/task-branch")).toBe(false);
 		cleanup({ dir: notARepo, local: notARepo });

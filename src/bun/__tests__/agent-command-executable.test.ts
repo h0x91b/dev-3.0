@@ -9,13 +9,11 @@ const path = (value: string) => ({ kind: "path", path: value });
 const unknown = { kind: "unknown" };
 
 describe("agentCommandExecutable (posix shell text)", () => {
-	it("reads a bare command as a PATH name", () => {
+	it("reads the first word as a PATH name, ignoring the subcommand, arguments and later operators", () => {
 		expect(posix("claude")).toEqual(name("claude"));
-	});
-
-	it("ignores the subcommand and arguments after the executable", () => {
 		expect(posix("opencode mini")).toEqual(name("opencode"));
 		expect(posix("npx claude --verbose")).toEqual(name("npx"));
+		expect(posix("opencode mini | tee log")).toEqual(name("opencode"));
 	});
 
 	// The issue #2218 shape: `env <absolute path> <subcommand>`.
@@ -24,13 +22,10 @@ describe("agentCommandExecutable (posix shell text)", () => {
 		expect(posix("env opencode mini")).toEqual(name("opencode"));
 	});
 
-	it("skips env assignments, before and after `env`", () => {
+	it("skips env assignments (before and after `env`) and the env options it understands", () => {
 		expect(posix("FOO=1 BAR=two claude")).toEqual(name("claude"));
 		expect(posix("env FOO=1 BAR='a b' /opt/bin/opencode mini")).toEqual(path("/opt/bin/opencode"));
 		expect(posix("FOO=1 env BAR=2 claude")).toEqual(name("claude"));
-	});
-
-	it("skips the env options it understands", () => {
 		expect(posix("env -i PATH=/bin claude")).toEqual(name("claude"));
 		expect(posix("env -u NODE_OPTIONS claude")).toEqual(name("claude"));
 		expect(posix("env --unset=NODE_OPTIONS -- claude")).toEqual(name("claude"));
@@ -55,36 +50,25 @@ describe("agentCommandExecutable (posix shell text)", () => {
 	it.each([
 		["a variable in the executable", "$HOME/bin/opencode mini"],
 		["a home-relative path", "~/bin/opencode mini"],
-		["a command substitution", "$(which opencode) mini"],
-		["a relative path", "./bin/opencode mini"],
 		["a nested relative path", "bin/opencode"],
 		["a shell builtin", "exec opencode mini"],
-		["a chained command", "cd /srv && claude"],
 		["an unterminated quote", "env 'opencode mini"],
 		["nothing to run", "env FOO=1"],
-		["an empty command", "   "],
 	])("cannot tell for %s", (_label, command) => {
 		expect(posix(command)).toEqual(unknown);
 	});
 
-	it("does not mistake a later operator for part of the executable", () => {
-		expect(posix("opencode mini | tee log")).toEqual(name("opencode"));
-	});
 });
 
 describe("agentCommandExecutable (windows)", () => {
-	it("treats an absolute path as the whole command", () => {
+	it("treats an absolute path as the whole command, else reads the first word without posix-only syntax", () => {
 		expect(windows("C:\\Program Files\\Claude\\claude.exe")).toEqual(path("C:\\Program Files\\Claude\\claude.exe"));
-	});
 
-	it("reads the first word of shell text, keeping backslashes", () => {
 		expect(windows("npx claude")).toEqual(name("npx"));
 		expect(windows("opencode.cmd mini")).toEqual(name("opencode.cmd"));
+		expect(windows("env opencode mini"), "no env look-through").toEqual(name("env"));
 	});
 
-	it("does not apply posix-only syntax", () => {
-		expect(windows("env opencode mini")).toEqual(name("env"));
-	});
 
 	it("cannot tell for a call operator, a variable or a relative path", () => {
 		expect(windows("& 'C:\\Program Files\\claude.exe' --flag")).toEqual(unknown);

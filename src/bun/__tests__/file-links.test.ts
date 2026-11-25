@@ -84,10 +84,6 @@ describe("mintFileLink / resolveFileLinkPath", () => {
 		}
 	});
 
-	it("refuses a symlink that leads to a dot-file inside the folder", () => {
-		expect(resolveFileLinkPath(`${reportLink().base}e`)).toBeNull();
-	});
-
 	it("rejects encoded separators even when they would land inside the folder", () => {
 		const { base } = reportLink();
 		expect(resolveFileLinkPath(`${base}assets%2Fstyle.css`)).toBeNull();
@@ -99,6 +95,8 @@ describe("mintFileLink / resolveFileLinkPath", () => {
 		const { base } = reportLink();
 		expect(resolveFileLinkPath(`${base}leak.txt`)).toBeNull();
 		expect(resolveFileLinkPath(`${base}up/secret.txt`)).toBeNull();
+		// ...and never to a dot-file inside the folder.
+		expect(resolveFileLinkPath(`${base}e`)).toBeNull();
 	});
 
 	it("serves exactly one name under a file link, and not a symlink swapped in after minting", () => {
@@ -120,10 +118,7 @@ describe("mintFileLink / resolveFileLinkPath", () => {
 		expect(resolveFileLinkPath(first, now + 11 * 60 * 60 * 1000)).not.toBeNull();
 		expect(resolveFileLinkPath(first, now + 13 * 60 * 60 * 1000)).toBeNull();
 		expect(resolveFileLinkPath("/file/not-a-token/spec.md")).toBeNull();
-	});
-
-	it("lets a download link live only briefly", () => {
-		const now = 1_000_000;
+		// A download link lives only briefly.
 		const link = mintFileLink({ kind: "file", path: join(REPORT, "spec.md") }, { now, ttlMs: DOWNLOAD_TTL_MS });
 		expect(resolveFileLinkPath(link, now + DOWNLOAD_TTL_MS - 1)).not.toBeNull();
 		expect(resolveFileLinkPath(link, now + DOWNLOAD_TTL_MS)).toBeNull();
@@ -200,11 +195,14 @@ describe("serveFileLink", () => {
 		expect(await range.text()).toBe("234");
 	});
 
-	it("turns any file into an attachment with ?download=1", async () => {
+	it("turns any file into an attachment with ?download=1, keeping the exact UTF-8 name and an ASCII fallback", async () => {
 		const res = await get(`${reportLink().link}?download=1`);
 		expect(res.headers.get("content-type")).toBe("application/octet-stream");
 		expect(res.headers.get("content-disposition")).toBe(`attachment; filename="index.html"; filename*=UTF-8''index.html`);
 		expect(res.headers.get("content-security-policy")).toBeNull();
+		expect(attachmentDisposition('отчёт "v2".md')).toBe(
+			`attachment; filename="_____ _v2_.md"; filename*=UTF-8''${encodeURIComponent('отчёт "v2".md')}`,
+		);
 	});
 
 	it("404s an unknown token, an escape, a folder, and a file that vanished; 405s writes", async () => {
@@ -422,13 +420,5 @@ describe("error replies", () => {
 			expect(res.headers.get("x-content-type-options")).toBe("nosniff");
 			expect(res.headers.get("cache-control")).toBe("no-store");
 		}
-	});
-});
-
-describe("attachmentDisposition", () => {
-	it("keeps the exact UTF-8 name and an ASCII fallback without quotes", () => {
-		expect(attachmentDisposition('отчёт "v2".md')).toBe(
-			`attachment; filename="_____ _v2_.md"; filename*=UTF-8''${encodeURIComponent('отчёт "v2".md')}`,
-		);
 	});
 });

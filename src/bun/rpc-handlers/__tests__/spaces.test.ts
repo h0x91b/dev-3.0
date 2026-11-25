@@ -54,40 +54,36 @@ describe("spacesHandlers", () => {
 		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
 	});
 
-	it("createSpace delegates and pushes spacesUpdated with the fresh file", async () => {
+	it("every mutating handler delegates and pushes spacesUpdated with the fresh file", async () => {
 		mocks.createSpace.mockResolvedValue(space);
 		expect(await spacesHandlers.createSpace({ name: "A", projectIds: ["p1"] })).toEqual(space);
 		expect(mocks.createSpace).toHaveBeenCalledWith("A", ["p1"]);
 		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
-	});
-
-	it("renameSpace delegates and pushes", async () => {
-		mocks.renameSpace.mockResolvedValue({ ...space, name: "B" });
-		expect((await spacesHandlers.renameSpace({ spaceId: "sp_1", name: "B" })).name).toBe("B");
-		expect(mocks.renameSpace).toHaveBeenCalledWith("sp_1", "B");
-		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
-	});
-
-	it("deleteSpace delegates and pushes", async () => {
-		mocks.deleteSpace.mockResolvedValue(undefined);
-		await spacesHandlers.deleteSpace({ spaceId: "sp_1" });
-		expect(mocks.deleteSpace).toHaveBeenCalledWith("sp_1");
-		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
-	});
-
-	it("setProjectSpaces delegates, returns autoDeleted, and pushes", async () => {
-		mocks.setProjectSpaces.mockResolvedValue({ file, autoDeleted: [space] });
-		const result = await spacesHandlers.setProjectSpaces({ projectId: "p1", spaceIds: [] });
-		expect(result.autoDeleted).toEqual([space]);
-		expect(mocks.setProjectSpaces).toHaveBeenCalledWith("p1", []);
-		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
-	});
-
-	it("reorderMixedOrder delegates and pushes", async () => {
-		mocks.reorderMixed.mockResolvedValue(file);
-		await spacesHandlers.reorderMixedOrder({ ids: ["sp_1", "p2"] });
-		expect(mocks.reorderMixed).toHaveBeenCalledWith(["sp_1", "p2"]);
-		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
+		{
+			mocks.renameSpace.mockResolvedValue({ ...space, name: "B" });
+			expect((await spacesHandlers.renameSpace({ spaceId: "sp_1", name: "B" })).name).toBe("B");
+			expect(mocks.renameSpace).toHaveBeenCalledWith("sp_1", "B");
+			expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
+		}
+		{
+			mocks.deleteSpace.mockResolvedValue(undefined);
+			await spacesHandlers.deleteSpace({ spaceId: "sp_1" });
+			expect(mocks.deleteSpace).toHaveBeenCalledWith("sp_1");
+			expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
+		}
+		{
+			mocks.setProjectSpaces.mockResolvedValue({ file, autoDeleted: [space] });
+			const result = await spacesHandlers.setProjectSpaces({ projectId: "p1", spaceIds: [] });
+			expect(result.autoDeleted).toEqual([space]);
+			expect(mocks.setProjectSpaces).toHaveBeenCalledWith("p1", []);
+			expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
+		}
+		{
+			mocks.reorderMixed.mockResolvedValue(file);
+			await spacesHandlers.reorderMixedOrder({ ids: ["sp_1", "p2"] });
+			expect(mocks.reorderMixed).toHaveBeenCalledWith(["sp_1", "p2"]);
+			expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
+		}
 	});
 
 	it("reorderSpaces and reorderSpaceProjects delegate and push", async () => {

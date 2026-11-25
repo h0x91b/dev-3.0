@@ -183,11 +183,15 @@ describe("persistResetTask — the one compare-and-set write (S2, T11, T12)", ()
 		expect(takeResetBranchOutcome(TASK_ID)).toBeNull();
 	});
 
-	it("writes nothing when another writer moved the task to a new run under the lock", async () => {
+	it("writes nothing, not even the scan floor, when another writer moved the task to a new run, and never resurrects a completed one", async () => {
 		const store = storeWith(liveTask({ lifecycleStartedAt: "2026-09-25T12:00:00.000Z" }));
 		await expect(executeLifecycleEffect(persist(), ctx(liveTask()))).rejects.toThrow(/changed elsewhere.*nothing was written/);
 		expect(store.get().status).toBe("review-by-user");
 		expect(store.get().worktreePath).toBe(PATH);
+		expect(store.get().codexScanFloorAt).toBeUndefined();
+
+		storeWith(liveTask({ status: "completed" }));
+		await expect(executeLifecycleEffect(persist(), ctx(liveTask()))).rejects.toThrow(/changed elsewhere/);
 	});
 
 	it("says the worktree is already gone when the CAS misses after removal", async () => {
@@ -196,23 +200,12 @@ describe("persistResetTask — the one compare-and-set write (S2, T11, T12)", ()
 		await expect(executeLifecycleEffect(persist(), context)).rejects.toThrow(/already removed — reset it again/);
 	});
 
-	it("refuses to resurrect a task that was completed meanwhile", async () => {
-		storeWith(liveTask({ status: "completed" }));
-		await expect(executeLifecycleEffect(persist(), ctx(liveTask()))).rejects.toThrow(/changed elsewhere/);
-	});
-
 	it("writes the Codex scan floor in the same compare-and-set, raising an older one", async () => {
 		const store = storeWith(liveTask({ codexScanFloorAt: "2026-01-01T00:00:00.000Z" }));
 		const before = Date.now();
 		await executeLifecycleEffect(persist(), ctx(liveTask()));
 		expect(Date.parse(store.get().codexScanFloorAt!)).toBeGreaterThanOrEqual(before);
 		expect(vi.mocked(data.updateTaskWith)).toHaveBeenCalledTimes(1);
-	});
-
-	it("writes no floor when the compare-and-set misses", async () => {
-		const store = storeWith(liveTask({ lifecycleStartedAt: "2026-09-25T12:00:00.000Z" }));
-		await expect(executeLifecycleEffect(persist(), ctx(liveTask()))).rejects.toThrow(/changed elsewhere/);
-		expect(store.get().codexScanFloorAt).toBeUndefined();
 	});
 });
 
@@ -254,33 +247,25 @@ describe("resetWorktree — owned branches only, noted first (S1, S4, S7)", () =
 });
 
 describe("episode end voids pending approvals", () => {
-	it.each(["completed", "cancelled"] as const)("%s cancels pending messages with the terminal status", async (status) => {
-		const task = liveTask({ scheduledMessages: [{ id: "reminder" }] as never });
-		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
-		await executeLifecycleEffect({ type: "persistTerminalTask", status, onError: "abort" } as LifecycleEffect, ctx(task));
-		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), TASK_ID, expect.objectContaining({ status, scheduledMessages: null }));
-	});
-
 	// Every kind, completion and cancellation included: a completion dialog left
 	// open after the board or a merged PR completed the task asks a second time.
-	it.each(["completed", "cancelled"] as const)("%s voids every pending approval for the ended run", async (status) => {
-		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status }));
-		await executeLifecycleEffect({ type: "persistTerminalTask", status, onError: "abort" } as LifecycleEffect, ctx(liveTask()));
-		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
+	it("completion and cancellation cancel pending messages, void every pending approval and write the Codex scan floor", async () => {
+		for (const status of ["completed", "cancelled"] as const) {
+			vi.clearAllMocks();
+			const task = liveTask({ scheduledMessages: [{ id: "reminder" }] as never });
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+			const before = Date.now();
+			await executeLifecycleEffect({ type: "persistTerminalTask", status, onError: "abort" } as LifecycleEffect, ctx(task));
+			const updates = vi.mocked(data.updateTask).mock.calls[0]![2];
+			expect(updates, status).toMatchObject({ status, scheduledMessages: null });
+			expect(Date.parse(updates.codexScanFloorAt!), status).toBeGreaterThanOrEqual(before);
+			expect(voidAgentRequestsForTask, status).toHaveBeenCalledWith(TASK_ID);
+		}
 	});
 
 	it("deleting the task record voids every pending approval for it", async () => {
 		await executeLifecycleEffect({ type: "deleteTaskRecord", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
 		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
-	});
-
-	it("persistTerminalTask writes the Codex scan floor with the terminal status", async () => {
-		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status: "completed" }));
-		const before = Date.now();
-		await executeLifecycleEffect({ type: "persistTerminalTask", status: "completed", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
-		const updates = vi.mocked(data.updateTask).mock.calls[0]![2];
-		expect(updates).toMatchObject({ status: "completed" });
-		expect(Date.parse(updates.codexScanFloorAt!)).toBeGreaterThanOrEqual(before);
 	});
 });
 

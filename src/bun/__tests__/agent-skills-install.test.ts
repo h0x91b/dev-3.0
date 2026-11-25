@@ -144,21 +144,24 @@ describe("installAgentSkills", () => {
 		}
 	});
 
-	it.each([undefined, "0", "false", "true"])("restores original bytes after opting out with %s", async (flag) => {
+	it("restores original bytes after opting out with any non-opt-in value", async () => {
 		const { installAgentSkills } = await loadModule();
-		await installAgentSkills();
 		const paths = [
 			".codex/skills/dev3/SKILL.md", ".omp/agent/skills/dev3/SKILL.md",
 			".agents/skills/dev3/SKILL.md", ".cursor/skills/dev3/SKILL.md",
 			".opencode/skills/dev3/SKILL.md", ".config/opencode/skills/dev3/SKILL.md",
 			".agents/AGENTS.md", ".claude/skills/dev3/SKILL.md",
 		];
-		const before = paths.map((path) => readFileSync(join(tempHome, path), "utf-8"));
-		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", "1");
-		await installAgentSkills();
-		vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", flag);
-		await installAgentSkills();
-		expect(paths.map((path) => readFileSync(join(tempHome, path), "utf-8"))).toEqual(before);
+		for (const flag of [undefined, "0", "false", "true"]) {
+			vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", undefined);
+			await installAgentSkills();
+			const before = paths.map((path) => readFileSync(join(tempHome, path), "utf-8"));
+			vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", "1");
+			await installAgentSkills();
+			vi.stubEnv("DEV3_COMPACT_AGENT_SKILLS", flag);
+			await installAgentSkills();
+			expect(paths.map((path) => readFileSync(join(tempHome, path), "utf-8")), String(flag)).toEqual(before);
+		}
 	});
 
 	it("installs Claude skills and settings into CLAUDE_CONFIG_DIR as well as ~/.claude when it is set", async () => {

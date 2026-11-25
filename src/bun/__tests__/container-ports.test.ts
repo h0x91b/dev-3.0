@@ -20,11 +20,9 @@ describe("parseWorktreeContainerPorts", () => {
 		"",
 	].join("\n");
 
-	it("keeps ports of compose projects inside the worktree, including ranges", () => {
+	it("keeps ports of compose projects inside the worktree, including ranges, and nothing else", () => {
 		expect([...parseWorktreeContainerPorts(output, ["/wt/"])].sort()).toEqual([17501, 17502, 17503]);
-	});
-
-	it("ignores a sibling path, an unlabelled container and an unpublished port", () => {
+		// A sibling path, an unlabelled container and an unpublished port are ignored.
 		expect(parseWorktreeContainerPorts(output, ["/wt-other"])).toEqual(new Set([17600]));
 		expect(parseWorktreeContainerPorts("", ["/wt"]).size).toBe(0);
 	});

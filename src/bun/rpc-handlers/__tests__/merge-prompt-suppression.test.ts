@@ -21,13 +21,12 @@ function state(overrides: Partial<MergeCompletionPromptState>): MergeCompletionP
 }
 
 describe("shouldSuppressMergePrompt", () => {
-	it("never suppresses when there is no prior prompt state", () => {
+	it("never suppresses without prior state or for a different head", () => {
 		expect(shouldSuppressMergePrompt(null, preciseFp, NOW)).toBe(false);
-	});
-
-	it("never suppresses when the stored fingerprint is for a different head", () => {
-		const other = state({ fingerprint: "v1:other:deadbeef" });
-		expect(shouldSuppressMergePrompt(other, preciseFp, NOW)).toBe(false);
+		{
+			const other = state({ fingerprint: "v1:other:deadbeef" });
+			expect(shouldSuppressMergePrompt(other, preciseFp, NOW)).toBe(false);
+		}
 	});
 
 	it("permanently suppresses a precise head the user explicitly dismissed", () => {
@@ -41,23 +40,22 @@ describe("shouldSuppressMergePrompt", () => {
 
 	// ── Option B: an unanswered prompt must keep coming back ──────────────────
 
-	it("does NOT suppress an unanswered prompt reserved seconds ago (dismissedAt null)", () => {
+	it("does NOT suppress an unanswered prompt, precise or not", () => {
 		// Reproduces the lost-popup bug: the prompt was reserved (promptedAt set)
 		// but the user never answered (dismissedAt null). Once the task leaves and
 		// re-enters an eligible status, the next poll must re-offer completion —
 		// the 1h fallback window must NOT mute an unanswered prompt.
 		const unanswered = state({ promptedAt: new Date(NOW - 30_000).toISOString() });
 		expect(shouldSuppressMergePrompt(unanswered, preciseFp, NOW)).toBe(false);
-	});
-
-	it("does NOT suppress an unanswered non-precise prompt either", () => {
-		const fallbackFp: MergeCompletionFingerprint = { fingerprint: "fallback:branch", precise: false };
-		const unanswered = state({
-			fingerprint: "fallback:branch",
-			precise: false,
-			promptedAt: new Date(NOW - 30_000).toISOString(),
-		});
-		expect(shouldSuppressMergePrompt(unanswered, fallbackFp, NOW)).toBe(false);
+		{
+			const fallbackFp: MergeCompletionFingerprint = { fingerprint: "fallback:branch", precise: false };
+			const unanswered = state({
+				fingerprint: "fallback:branch",
+				precise: false,
+				promptedAt: new Date(NOW - 30_000).toISOString(),
+			});
+			expect(shouldSuppressMergePrompt(unanswered, fallbackFp, NOW)).toBe(false);
+		}
 	});
 
 	it("time-suppresses a recently dismissed non-precise prompt (can't prove same head)", () => {

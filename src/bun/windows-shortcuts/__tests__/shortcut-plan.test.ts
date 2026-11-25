@@ -12,27 +12,24 @@ function plan(sites: ShortcutSite[], state: ShortcutState = {}) {
 }
 
 describe("planShortcuts", () => {
-	it("creates a shortcut when none exists and we never wrote one", () => {
+	it("creates a shortcut only when none exists and we never wrote one", () => {
 		const [action] = plan([{ slot: "desktop", path: DESKTOP_LNK, existingTarget: null }]);
 		expect(action.kind).toBe("create");
-	});
 
-	it("never recreates a shortcut the user deleted after we wrote it", () => {
+		// Never recreates a shortcut the user deleted after we wrote it.
 		const state: ShortcutState = { desktop: { path: DESKTOP_LNK, target: LAUNCHER } };
-		const [action] = plan([{ slot: "desktop", path: DESKTOP_LNK, existingTarget: null }], state);
-		expect(action.kind).toBe("skip");
-		expect(action.reason).toContain("removed");
+		const [deleted] = plan([{ slot: "desktop", path: DESKTOP_LNK, existingTarget: null }], state);
+		expect(deleted.kind).toBe("skip");
+		expect(deleted.reason).toContain("removed");
 	});
 
-	it("leaves a correct shortcut untouched", () => {
+	it("leaves a correct shortcut untouched, however its path is spelled", () => {
 		const [action] = plan([{ slot: "desktop", path: DESKTOP_LNK, existingTarget: LAUNCHER }]);
 		expect(action.kind).toBe("skip");
-	});
-
-	it("treats a differently-spelled path to the same file as correct", () => {
+		// A differently-spelled path to the same file is correct too.
 		const messy = "c:/Users/user/AppData/Local/dev3.electrobun.dev/canary/app/bin/LAUNCHER.EXE";
-		const [action] = plan([{ slot: "desktop", path: DESKTOP_LNK, existingTarget: messy }]);
-		expect(action.kind).toBe("skip");
+		const [respelled] = plan([{ slot: "desktop", path: DESKTOP_LNK, existingTarget: messy }]);
+		expect(respelled.kind).toBe("skip");
 	});
 
 	// The disqualifying outcome this whole module exists to prevent: an update
@@ -85,12 +82,10 @@ describe("shortcutFileName", () => {
 describe("resolveLauncherPath", () => {
 	// Native separators, so this asserts the same joining the app does at runtime
 	// rather than a Windows string this host cannot parse.
-	it("finds launcher.exe beside the running bun.exe", () => {
+	it("finds launcher.exe beside the running bun.exe, and null without one", () => {
 		const sibling = join("app", "bin", "launcher.exe");
 		expect(resolveLauncherPath(join("app", "bin", "bun.exe"), (path) => path === sibling)).toBe(sibling);
-	});
-
-	it("returns null in a development tree with no launcher", () => {
+		// A development tree with no launcher.
 		expect(resolveLauncherPath("/usr/local/bin/bun", () => false)).toBeNull();
 	});
 });

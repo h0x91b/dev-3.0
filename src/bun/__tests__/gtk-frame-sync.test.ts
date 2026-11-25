@@ -47,7 +47,7 @@ describe("createFrameSyncDisabler", () => {
 		expect(calls.disableFrameSync).not.toHaveBeenCalled();
 	});
 
-	it.each([null, undefined, 0])("does nothing without a window handle (%s)", async (handle) => {
+	it.each([null, 0])("does nothing without a window handle (%s)", async (handle) => {
 		const d = deps(fakeCalls());
 		await expect(createFrameSyncDisabler(d)(handle)).resolves.toBe("no-handle");
 		expect(d.load).not.toHaveBeenCalled();

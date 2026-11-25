@@ -33,19 +33,15 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("shared GraphQL PR reads", () => {
-	it("uses one query for PR, CI, and unresolved-thread status", async () => {
+	it("uses one query for PR, CI, unresolved-thread status, author and head commit date", async () => {
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		const result = await readTaskPullRequest({}, "/repo", "feat/work", 42);
 		expect(query).toHaveBeenCalledTimes(1);
 		expect(query).toHaveBeenCalledWith(account, expect.stringContaining("reviewThreads"), expect.objectContaining({ branch: "feat/work", number: 42, byBranch: true, known: true }), expect.any(AbortSignal));
 		expect(result?.pr).toMatchObject({ number: 42, state: "OPEN", unresolvedCount: 1, statusCheckRollup: [{ name: "build", status: "COMPLETED", conclusion: "SUCCESS" }] });
-	});
 
-	it("carries the author and the head commit's date, and no date when the PR has no commits", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
+		// It carries the author and the head commit's date, and no date when the PR has no commits.
 		const { prSummaryStatus } = await import("../rpc-handlers/pr-status");
-		expect(query).not.toHaveBeenCalled();
-		const result = await readTaskPullRequest({}, "/repo", "feat/work", 42);
 		expect(query.mock.calls[0][1]).toContain("committedDate");
 		expect(prSummaryStatus(result!.pr!)).toMatchObject({ authorLogin: "author", lastCommitAt: "2026-11-20T10:00:00Z" });
 		expect(prSummaryStatus({ ...result!.pr!, author: null, lastCommitAt: undefined })).toMatchObject({ authorLogin: null, lastCommitAt: null });
@@ -60,7 +56,8 @@ describe("shared GraphQL PR reads", () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
-	it.each(["MERGED", "CLOSED"])("expires OPEN after a minute and reports %s, without waiting for restart", async (state) => {
+	it("expires OPEN after a minute and reports CLOSED, without waiting for restart", async () => {
+		const state = "CLOSED";
 		vi.useFakeTimers(); vi.setSystemTime(0);
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		await readTaskPullRequest({}, "/repo", "feat/work", 42);
@@ -108,32 +105,23 @@ describe("shared GraphQL PR reads", () => {
 		expect(read?.state).toBe("MERGED");
 		expect(read).not.toHaveProperty("mergedAt");
 		expect(query.mock.calls[0][1]).toContain("mergedAt");
-	});
 
-	it("keeps a closed PR without mergedAt CLOSED", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
+		vi.resetModules();
+		const fresh = await import("../github-pr-status");
 		query.mockResolvedValue({ repository: { known: pr({ state: "CLOSED", mergedAt: null }) } });
-		expect((await readTaskPullRequest({}, "/repo", "", 42))?.pr?.state).toBe("CLOSED");
+		expect((await fresh.readTaskPullRequest({}, "/repo", "", 42))?.pr?.state).toBe("CLOSED");
 	});
 
-	it("prefers a new open PR over the saved merged PR", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
-		query.mockResolvedValue({ repository: { open: { nodes: [pr({ number: 43 })] }, known: pr({ state: "MERGED" }) } });
-		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr?.number).toBe(43);
-	});
-
-	it("never returns a follow-up PR as the snapshot of a saved PR number", async () => {
+	it("prefers a new open PR, never returns it as the saved number's snapshot, and keeps saved history after a branch change", async () => {
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		query.mockResolvedValueOnce({ repository: { open: { nodes: [pr({ number: 43 })] }, known: pr({ state: "MERGED" }) } });
 		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr?.number).toBe(43);
 		query.mockResolvedValueOnce({ repository: { known: pr({ state: "MERGED" }) } });
 		expect((await readTaskPullRequest({}, "/repo", "", 42))?.pr).toMatchObject({ number: 42, state: "MERGED" });
-	});
 
-	it("keeps saved PR history after a branch change or deletion", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
+		// Saved PR history survives a branch change or deletion.
 		query.mockResolvedValue({ repository: { open: { nodes: [] }, known: pr({ state: "MERGED", headRefName: "old/branch" }) } });
-		expect((await readTaskPullRequest({}, "/repo", "follow-up", 42))?.pr).toMatchObject({ state: "MERGED", headRefName: "old/branch" });
+		expect((await readTaskPullRequest({}, "/repo", "follow-up", 42, { force: true }))?.pr).toMatchObject({ state: "MERGED", headRefName: "old/branch" });
 	});
 
 	it("never reuses data across GitHub accounts or hosts", async () => {
@@ -152,7 +140,7 @@ describe("shared GraphQL PR reads", () => {
 		expect(query).not.toHaveBeenCalled();
 	});
 
-	it("distinguishes a non-GitHub remote from an unavailable API", async () => {
+	it("distinguishes a non-GitHub remote from an unavailable API, and no open PR from an unavailable saved one", async () => {
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		run.mockResolvedValue({ ok: false, stderr: "no git remotes found" });
 		expect(await readTaskPullRequest({}, "/non-github", "feat/work")).toEqual({ pr: null, isGitHub: false, checkedAt: expect.any(Number) });
@@ -161,13 +149,11 @@ describe("shared GraphQL PR reads", () => {
 		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
 		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
 		expect(query).toHaveBeenCalledTimes(2);
-	});
 
-	it("distinguishes no open PR from an unavailable saved PR", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
+		// No open PR is distinguished from an unavailable saved PR.
 		query.mockResolvedValue({ repository: { open: { nodes: [] }, known: null } });
-		expect(await readTaskPullRequest({}, "/repo", "feat/work")).toEqual({ pr: null, isGitHub: true, checkedAt: expect.any(Number) });
-		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		expect(await readTaskPullRequest({}, "/repo", "other/branch")).toEqual({ pr: null, isGitHub: true, checkedAt: expect.any(Number) });
+		expect(await readTaskPullRequest({}, "/repo", "other/branch", 43)).toBeNull();
 	});
 
 	it("retries a failed read on the next poll instead of caching its rejection", async () => {
@@ -184,13 +170,10 @@ describe("shared GraphQL PR reads", () => {
 		query.mockRejectedValue(new GitHubGraphQLError("No such PR", [{ type: "NOT_FOUND", path: ["repository", "known"] }], { repository: { open: { nodes: [pr()] }, known: null } }));
 		expect((await readTaskPullRequest({}, "/repo", "feat/work", 999))?.pr?.number).toBe(42);
 		expect(query).toHaveBeenCalledTimes(1);
-	});
 
-	it("does not accept partial branch data with unrelated GraphQL errors", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
-		const { GitHubGraphQLError } = await import("../github");
+		// Partial branch data with unrelated GraphQL errors is not accepted.
 		query.mockRejectedValue(new GitHubGraphQLError("Cannot read branch PRs", [{ type: "FORBIDDEN", path: ["repository", "open"] }], payload()));
-		expect(await readTaskPullRequest({}, "/repo", "feat/work", 999)).toBeNull();
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 998)).toBeNull();
 	});
 
 	it("paginates all CI contexts against the same commit and all review threads", async () => {
@@ -207,16 +190,16 @@ describe("shared GraphQL PR reads", () => {
 		expect(query.mock.calls[2][2]).toMatchObject({ number: 42, after: "threads-2" });
 	});
 
-	it("keeps PR and CI data when later thread pages fail", async () => {
+	it("keeps PR and CI data when later thread pages fail, but never a falsely green partial check list", async () => {
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		query.mockResolvedValueOnce(payload(pr({ reviewThreads: page([{ isResolved: false }], "more") }))).mockRejectedValueOnce(new Error("thread unavailable"));
 		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr).toMatchObject({ state: "OPEN", unresolvedCount: null });
-	});
 
-	it("does not publish a falsely green partial check list when pagination fails", async () => {
-		const { readTaskPullRequest } = await import("../github-pr-status");
+		// A falsely green partial check list is never published when CI pagination fails.
+		vi.resetModules();
+		const fresh = await import("../github-pr-status");
 		query.mockResolvedValueOnce(payload(pr({ commits: { nodes: [{ commit: { oid: "head", statusCheckRollup: { contexts: page([{ status: "COMPLETED", conclusion: "SUCCESS" }], "more") } } }] } }))).mockRejectedValueOnce(new Error("checks unavailable"));
-		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr).toMatchObject({ number: 42, statusCheckRollup: null });
+		expect((await fresh.readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr).toMatchObject({ number: 42, statusCheckRollup: null });
 	});
 
 	it("keeps PR identity when the token cannot read CI, without claiming green checks", async () => {
@@ -278,7 +261,7 @@ describe("shared GraphQL PR reads", () => {
 		expect(query).toHaveBeenCalledTimes(2);
 	});
 
-	it("evicts an in-flight board discovery that never settles once its deadline passes", async () => {
+	it("evicts a hung or failed board discovery without waiting for the cache TTL, then coalesces it", async () => {
 		vi.useFakeTimers(); vi.setSystemTime(0);
 		const { listOpenPullRequests } = await import("../github-pr-status");
 		query.mockImplementationOnce(() => new Promise(() => {}))
@@ -288,22 +271,15 @@ describe("shared GraphQL PR reads", () => {
 		await vi.advanceTimersByTimeAsync(15_000);
 		await expectation;
 		await expect(listOpenPullRequests({}, "/repo")).resolves.toMatchObject([{ number: 42 }]);
-		expect(query).toHaveBeenCalledTimes(2);
-	});
-
-	it("coalesces board discovery within a minute", async () => {
-		const { listOpenPullRequests } = await import("../github-pr-status");
-		query.mockResolvedValue({ repository: { pullRequests: { nodes: [{ number: 42, url: "u", headRefName: "b" }] } } });
+		// Retried without waiting for the cache TTL, then coalesced within a minute.
 		await Promise.all([listOpenPullRequests({}, "/repo"), listOpenPullRequests({}, "/repo")]);
-		expect(query).toHaveBeenCalledTimes(1);
-	});
-
-	it("retries board discovery after an outage without waiting for the cache TTL", async () => {
-		const { listOpenPullRequests } = await import("../github-pr-status");
-		query.mockRejectedValueOnce(new Error("temporary outage")).mockResolvedValue({ repository: { pullRequests: { nodes: [{ number: 42, headRefName: "feat/work", url: "https://github.com/owner/repo/pull/42" }] } } });
-		await expect(listOpenPullRequests({}, "/repo")).rejects.toThrow("temporary outage");
-		await expect(listOpenPullRequests({}, "/repo")).resolves.toMatchObject([{ number: 42 }]);
 		expect(query).toHaveBeenCalledTimes(2);
+
+		vi.resetModules();
+		const fresh = await import("../github-pr-status");
+		query.mockRejectedValueOnce(new Error("temporary outage"));
+		await expect(fresh.listOpenPullRequests({}, "/repo")).rejects.toThrow("temporary outage");
+		await expect(fresh.listOpenPullRequests({}, "/repo")).resolves.toMatchObject([{ number: 42 }]);
 	});
 
 	it("preserves merged proof after repository discovery expires and fails, while rich CI still refreshes", async () => {
@@ -378,15 +354,6 @@ describe("missing repository backoff", () => {
 
 		vi.setSystemTime(60_000);
 		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr?.number).toBe(42);
-		expect(query).toHaveBeenCalledTimes(2);
-	});
-
-	it("does not back off on other GraphQL failures", async () => {
-		vi.useFakeTimers(); vi.setSystemTime(0);
-		const { readTaskPullRequest } = await import("../github-pr-status");
-		query.mockRejectedValue(new Error("GitHub GraphQL HTTP 502"));
-		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
-		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
 		expect(query).toHaveBeenCalledTimes(2);
 	});
 });

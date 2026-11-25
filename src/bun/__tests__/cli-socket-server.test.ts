@@ -39,87 +39,49 @@ beforeEach(() => {
 });
 
 describe("flushAndEnd", () => {
-	it("writes small data in one shot and ends immediately", () => {
-		const socket = createMockSocket();
-		flushAndEnd(socket, '{"ok":true}\n');
-
-		expect(socket.ended).toBe(true);
-		expect(getFullOutput(socket)).toBe('{"ok":true}\n');
-		expect(pendingWrites.size).toBe(0);
-	});
-
-	it("buffers remainder on partial write (does not end)", () => {
-		// Socket accepts only 10 bytes per write — simulates backpressure
-		const socket = createMockSocket(10);
-		const data = '{"id":"abc","ok":true,"data":"hello world"}\n';
-
-		flushAndEnd(socket, data);
-
-		// Should NOT have ended — there's still data to flush
-		expect(socket.ended).toBe(false);
-		// Should have buffered the remainder
-		expect(pendingWrites.has(socket)).toBe(true);
-		const pending = pendingWrites.get(socket)!;
-		expect(pending.shouldEnd).toBe(true);
-		// First write was 10 bytes
-		expect(socket.totalBytesWritten).toBe(10);
-		// Remaining bytes should match
-		const totalBytes = Buffer.from(data, "utf-8").length;
-		expect(pending.buffer.length).toBe(totalBytes - 10);
-	});
-
-	it("handles zero-byte write (full backpressure)", () => {
-		const socket = createMockSocket(0);
-		const data = '{"ok":true}\n';
-
-		flushAndEnd(socket, data);
-
-		expect(socket.ended).toBe(false);
-		expect(pendingWrites.has(socket)).toBe(true);
-		expect(socket.totalBytesWritten).toBe(0);
-		const pending = pendingWrites.get(socket)!;
-		expect(pending.buffer.length).toBe(Buffer.from(data, "utf-8").length);
-	});
-
-	it("handles multi-byte UTF-8 data correctly", () => {
-		const socket = createMockSocket();
+	it("writes data that fits, ASCII or multi-byte UTF-8, in one shot and ends immediately", () => {
 		// Russian text — each Cyrillic char is 2 bytes in UTF-8
-		const data = '{"title":"Привет мир"}\n';
+		for (const data of ['{"ok":true}\n', '{"title":"Привет мир"}\n']) {
+			pendingWrites.clear();
+			const socket = createMockSocket();
+			flushAndEnd(socket, data);
 
-		flushAndEnd(socket, data);
-
-		expect(socket.ended).toBe(true);
-		expect(getFullOutput(socket)).toBe(data);
+			expect(socket.ended, data).toBe(true);
+			expect(getFullOutput(socket)).toBe(data);
+			expect(pendingWrites.size).toBe(0);
+		}
 	});
 
-	it("buffers correctly when partial write splits multi-byte character", () => {
-		// "Привет" in UTF-8 is 12 bytes (6 chars × 2 bytes each)
-		// Split at byte 15 to land mid-character
-		const socket = createMockSocket(15);
-		const data = '{"title":"Привет мир"}\n';
+	it("buffers the remainder on a partial, zero-byte, or mid-character write and does not end", () => {
+		const cases: Array<[number, string]> = [
+			[10, '{"id":"abc","ok":true,"data":"hello world"}\n'],
+			// Full backpressure.
+			[0, '{"ok":true}\n'],
+			// Byte 15 lands in the middle of a 2-byte Cyrillic character.
+			[15, '{"title":"Привет мир"}\n'],
+		];
+		for (const [accepts, data] of cases) {
+			const socket = createMockSocket(accepts);
+			flushAndEnd(socket, data);
 
-		flushAndEnd(socket, data);
-
-		expect(socket.ended).toBe(false);
-		expect(pendingWrites.has(socket)).toBe(true);
-		// The pending buffer should contain the rest
-		const pending = pendingWrites.get(socket)!;
-		const totalBytes = Buffer.from(data, "utf-8").length;
-		expect(pending.buffer.length).toBe(totalBytes - 15);
+			expect(socket.ended, `accepts ${accepts}`).toBe(false);
+			expect(pendingWrites.has(socket)).toBe(true);
+			const pending = pendingWrites.get(socket)!;
+			expect(pending.shouldEnd).toBe(true);
+			expect(socket.totalBytesWritten).toBe(accepts);
+			expect(pending.buffer.length).toBe(Buffer.from(data, "utf-8").length - accepts);
+		}
 	});
 });
 
 describe("drainSocket", () => {
-	it("does nothing when no pending write exists", () => {
-		const socket = createMockSocket();
+	it("does nothing with nothing pending, and otherwise flushes remaining data and ends the socket", () => {
+		// Nothing pending: drain does nothing.
+		const idle = createMockSocket();
+		drainSocket(idle);
+		expect(idle.ended).toBe(false);
+		expect(idle.totalBytesWritten).toBe(0);
 
-		drainSocket(socket);
-
-		expect(socket.ended).toBe(false);
-		expect(socket.totalBytesWritten).toBe(0);
-	});
-
-	it("flushes remaining data and ends socket", () => {
 		// First: partial write of 10 bytes
 		const socket = createMockSocket(10);
 		const data = '{"id":"abc","ok":true,"data":"hello"}\n';

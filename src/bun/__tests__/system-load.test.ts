@@ -79,14 +79,11 @@ describe("loadSnapshotWorthPushing", () => {
 describe("levels", () => {
 	const levels = DEFAULT_RESOURCE_LEVELS;
 
-	it("judges CPU on busy time against the busy levels", () => {
+	it("judges CPU on busy time against the busy levels and disk on free decimal GB", () => {
 		expect(classifyCpu(0.79, levels)).toBe("normal");
 		expect(classifyCpu(0.8, levels)).toBe("warn");
 		expect(classifyCpu(0.95, levels)).toBe("critical");
 		expect(classifyCpu(1, { ...levels, cpuBusyCriticalPercent: 100 })).toBe("critical");
-	});
-
-	it("judges disk on free decimal GB", () => {
 		expect(classifyDisk(25e9, levels)).toBe("normal");
 		expect(classifyDisk(19.9e9, levels)).toBe("warn");
 		expect(classifyDisk(4e9, levels)).toBe("critical");

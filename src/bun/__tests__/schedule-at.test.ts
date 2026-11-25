@@ -4,26 +4,17 @@ import { describeScheduledTime, parseScheduleAt } from "../../shared/schedule-at
 const utc = (iso: string) => new Date(iso).getTime();
 
 describe("parseScheduleAt — explicit zones are independent of the machine's TZ", () => {
-	it("HH:MMZ is the next occurrence in UTC, today when still ahead", () => {
+	it("HH:MMZ is the next occurrence in UTC: today while ahead, tomorrow once passed (and at exactly now)", () => {
 		expect(parseScheduleAt("06:00Z", utc("2026-09-24T05:59:00Z"))?.toISOString()).toBe("2026-09-24T06:00:00.000Z");
-	});
-
-	it("HH:MMZ rolls to tomorrow once that UTC time has passed (and at exactly now)", () => {
 		expect(parseScheduleAt("06:00Z", utc("2026-09-24T06:00:00Z"))?.toISOString()).toBe("2026-09-25T06:00:00.000Z");
 		expect(parseScheduleAt("06:00 UTC", utc("2026-09-24T07:00:00Z"))?.toISOString()).toBe("2026-09-25T06:00:00.000Z");
 	});
 
-	it("a positive offset whose local day is already tomorrow picks that day's wall time", () => {
+	it("honours positive, negative (across UTC midnight) and half-hour offsets", () => {
 		// 22:30Z is 01:30 next day at +03:00; 06:00+03:00 that day is 03:00Z.
 		expect(parseScheduleAt("06:00+03:00", utc("2026-09-24T22:30:00Z"))?.toISOString()).toBe("2026-09-25T03:00:00.000Z");
-	});
-
-	it("a negative offset across the UTC midnight boundary", () => {
 		// 02:00Z is 22:00 the previous day at -04:00; 23:00-0400 that evening is 03:00Z.
 		expect(parseScheduleAt("23:00-0400", utc("2026-09-25T02:00:00Z"))?.toISOString()).toBe("2026-09-25T03:00:00.000Z");
-	});
-
-	it("a half-hour offset", () => {
 		expect(parseScheduleAt("09:00+05:30", utc("2026-09-24T00:00:00Z"))?.toISOString()).toBe("2026-09-24T03:30:00.000Z");
 	});
 

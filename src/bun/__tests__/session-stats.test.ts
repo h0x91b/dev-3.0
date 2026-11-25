@@ -63,12 +63,9 @@ describe("parseClaudeSessionStats", () => {
 		});
 	});
 
-	it("returns null for a payload with neither model nor context window", () => {
+	it("returns null with neither model nor context window, and leaves missing sections null before the first API response", () => {
 		expect(parseClaudeSessionStats({ rate_limits: {} }, "t", 1)).toBeNull();
 		expect(parseClaudeSessionStats("nope", "t", 1)).toBeNull();
-	});
-
-	it("leaves missing sections null before the first API response", () => {
 		const stats = parseClaudeSessionStats({ model: { display_name: "Sonnet" } }, "t", 1);
 		expect(stats?.cache).toBeNull();
 		expect(stats?.totalTokens).toBeNull();
@@ -101,18 +98,13 @@ function stats(taskId: string, overrides: Partial<AgentSessionStats> = {}): Agen
 const warmFor = (ms: number) => ({ warm: true, ttl: "5m", expiresAt: NOW + ms, hitRatio: null, misses: null });
 
 describe("sessionAttention", () => {
-	it("flags an expiring warm cache only while the task waits on the user", () => {
+	it("flags an expiring warm cache only while the task waits on the user, and context at 85% and above", () => {
 		expect(sessionAttention(stats("a", { awaitingUser: true, cache: warmFor(120_000) }), NOW)).toBe("cacheExpiring");
 		// A working agent refreshes its own 5m cache, so it is always "about to expire".
 		expect(sessionAttention(stats("a", { awaitingUser: false, cache: warmFor(120_000) }), NOW)).toBeNull();
-	});
-
-	it("ignores caches far from expiry or already cold", () => {
+		// Far from expiry, or already cold.
 		expect(sessionAttention(stats("a", { awaitingUser: true, cache: warmFor(30 * 60_000) }), NOW)).toBeNull();
 		expect(sessionAttention(stats("a", { awaitingUser: true, cache: warmFor(-1) }), NOW)).toBeNull();
-	});
-
-	it("flags context at 85% and above", () => {
 		expect(sessionAttention(stats("a", { contextPercent: 85 }), NOW)).toBe("context");
 		expect(sessionAttention(stats("a", { contextPercent: 84 }), NOW)).toBeNull();
 	});
@@ -145,26 +137,19 @@ describe("summarizeSessions", () => {
 });
 
 describe("sortSessions", () => {
-	it("sorts by cost either way and keeps missing values last", () => {
+	it("sorts by cost either way, keeps missing values last, and does not mutate its input", () => {
 		const list = [stats("cheap", { costUsd: 1 }), stats("none"), stats("dear", { costUsd: 9 })];
 		expect(sortSessions(list, "cost", "desc", NOW).map((s) => s.taskId)).toEqual(["dear", "cheap", "none"]);
 		expect(sortSessions(list, "cost", "asc", NOW).map((s) => s.taskId)).toEqual(["cheap", "dear", "none"]);
+		expect(list.map((s) => s.taskId)).toEqual(["cheap", "none", "dear"]);
 	});
 
-	it("orders cache by expiry, with cold caches last", () => {
+	it("orders cache by expiry (cold last), and puts sessions needing attention first under the attention sort", () => {
 		const list = [stats("cold"), stats("later", { cache: warmFor(50 * 60_000) }), stats("soon", { cache: warmFor(60_000) })];
 		expect(sortSessions(list, "cache", "asc", NOW).map((s) => s.taskId)).toEqual(["soon", "later", "cold"]);
-	});
 
-	it("puts sessions needing attention first under the attention sort", () => {
-		const list = [stats("calm"), stats("full", { contextPercent: 92 }), stats("cache", { awaitingUser: true, cache: warmFor(60_000) })];
-		expect(sortSessions(list, "attention", "asc", NOW).map((s) => s.taskId)).toEqual(["cache", "full", "calm"]);
-	});
-
-	it("does not mutate its input", () => {
-		const list = [stats("b", { costUsd: 1 }), stats("a", { costUsd: 2 })];
-		sortSessions(list, "cost", "desc", NOW);
-		expect(list.map((s) => s.taskId)).toEqual(["b", "a"]);
+		const attention = [stats("calm"), stats("full", { contextPercent: 92 }), stats("cache", { awaitingUser: true, cache: warmFor(60_000) })];
+		expect(sortSessions(attention, "attention", "asc", NOW).map((s) => s.taskId)).toEqual(["cache", "full", "calm"]);
 	});
 });
 
@@ -196,13 +181,13 @@ describe("launchConfigDrift", () => {
 		expect(launchConfigDrift(preset, live({ effort: "MEDIUM" }))).toBeNull();
 		expect(launchConfigDrift(preset, null)).toBeNull();
 		expect(launchConfigDrift(preset, undefined)).toBeNull();
+		// The context-window suffix on either side is ignored.
+		expect(launchConfigDrift(preset, live({ modelId: "claude-opus-5-5" }))).toBeNull();
+		expect(launchConfigDrift({ model: "claude-opus-5-5", effort: "medium" }, live())).toBeNull();
 	});
 
-	it("reports an effort changed with /effort", () => {
+	it("reports an effort changed with /effort, a model changed with /model by its display name, or both", () => {
 		expect(launchConfigDrift(preset, live({ effort: "high" }))).toEqual({ effort: "high", model: null });
-	});
-
-	it("reports a model changed with /model by its display name", () => {
 		expect(launchConfigDrift(preset, live({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }))).toEqual({
 			effort: null,
 			model: "Sonnet 5.5",
@@ -211,18 +196,10 @@ describe("launchConfigDrift", () => {
 			effort: null,
 			model: "claude-sonnet-5-5",
 		});
-	});
-
-	it("reports both when /model and /effort both moved", () => {
 		expect(launchConfigDrift(preset, live({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5", effort: "low" }))).toEqual({
 			effort: "low",
 			model: "Sonnet 5.5",
 		});
-	});
-
-	it("ignores the context-window suffix on either side", () => {
-		expect(launchConfigDrift(preset, live({ modelId: "claude-opus-5-5" }))).toBeNull();
-		expect(launchConfigDrift({ model: "claude-opus-5-5", effort: "medium" }, live())).toBeNull();
 	});
 
 	it("never compares what it cannot: an alias, a provider id, or a side with no value", () => {

@@ -32,14 +32,11 @@ function copyTask(overrides: Partial<BoardCopyTask>): BoardCopyTask {
 }
 
 describe("board copy file names", () => {
-	it("slugs titles to short ASCII words", () => {
+	it("slugs titles to short ASCII words and keeps variants that share a seq apart", () => {
 		expect(boardCopySlug("Fix the auth race!")).toBe("fix-the-auth-race");
 		expect(boardCopySlug("Café déjà vu")).toBe("cafe-deja-vu");
 		expect(boardCopySlug("Исправить баг")).toBe("task");
 		expect(boardCopySlug("a".repeat(80)).length).toBe(40);
-	});
-
-	it("keeps variants that share a seq apart", () => {
 		expect(boardCopyTaskStem({ seq: 7, variantIndex: null })).toBe("7");
 		expect(boardCopyTaskStem({ seq: 7, variantIndex: 2 })).toBe("7-v2");
 	});

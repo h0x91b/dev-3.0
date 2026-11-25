@@ -10,12 +10,9 @@ import {
 const BASE = 16;
 
 describe("batchWindowMs", () => {
-	it("keeps the normal cadence while the socket is draining", () => {
+	it("keeps the normal cadence while draining and caps at the maximum once saturated", () => {
 		expect(batchWindowMs(0, BASE)).toBe(BASE);
 		expect(batchWindowMs(PTY_BACKPRESSURE_LOW_WATER_BYTES - 1, BASE)).toBe(BASE);
-	});
-
-	it("caps at the maximum window once the socket is saturated", () => {
 		expect(batchWindowMs(PTY_BACKPRESSURE_HIGH_WATER_BYTES, BASE)).toBe(PTY_BATCH_INTERVAL_MAX_MS);
 		expect(batchWindowMs(PTY_BACKPRESSURE_HIGH_WATER_BYTES * 10, BASE)).toBe(PTY_BATCH_INTERVAL_MAX_MS);
 	});

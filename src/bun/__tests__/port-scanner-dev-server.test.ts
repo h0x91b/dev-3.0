@@ -39,11 +39,12 @@ describe("buildDevServerSummary", () => {
 		expect(summary).toMatchObject({ hasDevScript: false, running: false, ports: [], conflictPorts: [] });
 	});
 
-	it("lists the running server's ports ascending", async () => {
+	it("lists the running server's ports ascending, or none yet — the card reads that as starting", async () => {
 		withDevScript("bun run dev");
-		const map = devPaneMap(100);
-		const summary = await buildDevServerSummary(project, task, "dev3", lsof, tree, map);
-		expect(summary).toMatchObject({ hasDevScript: true, running: true, ports: [5173, 9229] });
+		const listening = await buildDevServerSummary(project, task, "dev3", lsof, tree, devPaneMap(100));
+		expect(listening).toMatchObject({ hasDevScript: true, running: true, ports: [5173, 9229] });
+		const starting = await buildDevServerSummary(project, task, "dev3", lsof, tree, devPaneMap(999));
+		expect(starting).toMatchObject({ running: true, ports: [] });
 	});
 
 	it("is stopped when the dev session is absent", async () => {
@@ -57,13 +58,6 @@ describe("buildDevServerSummary", () => {
 		(getPortAssignments as unknown as ReturnType<typeof vi.fn>).mockReturnValue([5173]);
 		const summary = await buildDevServerSummary(project, task, "dev3", lsof, tree, new Map());
 		expect(summary).toMatchObject({ running: false, conflictPorts: [5173] });
-	});
-
-	it("reports a running server with nothing listening yet — the card reads it as starting", async () => {
-		withDevScript("bun run dev");
-		const map = devPaneMap(999);
-		const summary = await buildDevServerSummary(project, task, "dev3", lsof, tree, map);
-		expect(summary).toMatchObject({ running: true, ports: [] });
 	});
 });
 

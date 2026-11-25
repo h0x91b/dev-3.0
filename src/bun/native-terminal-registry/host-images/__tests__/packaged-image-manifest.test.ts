@@ -79,39 +79,36 @@ describe("buildPackagedHostImageManifest", () => {
 		expect(serializePackagedHostImageManifest(parsePackagedHostImageManifest(text))).toBe(text);
 	});
 
-	test("rejects a carrier that is not a declared file", () => {
+	test("rejects a carrier that is undeclared or the entrypoint, and a blank or too-new runtime floor", () => {
 		expectCode(() => buildPackagedHostImageManifest(input({ runtimeCarrier: "absent.exe" })), "invalid-runtime-carrier");
+		{
+			expectCode(() => buildPackagedHostImageManifest(input({ runtimeCarrier: ENTRYPOINT })), "invalid-runtime-carrier");
+		}
+		{
+			expectCode(() => buildPackagedHostImageManifest(input({ runtimeFloor: "  " })), "invalid-metadata");
+		}
+		{
+			expectCode(() => buildPackagedHostImageManifest(input({ runtimeFloor: "1.4.0" })), "runtime-floor");
+		}
 	});
 
-	test("rejects a carrier that is also the entrypoint", () => {
-		expectCode(() => buildPackagedHostImageManifest(input({ runtimeCarrier: ENTRYPOINT })), "invalid-runtime-carrier");
-	});
-
-	test("rejects a blank runtime floor", () => {
-		expectCode(() => buildPackagedHostImageManifest(input({ runtimeFloor: "  " })), "invalid-metadata");
-	});
-
-	test("rejects a packaged Bun below the runtime floor", () => {
-		expectCode(() => buildPackagedHostImageManifest(input({ runtimeFloor: "1.4.0" })), "runtime-floor");
-	});
 });
 
 describe("parsePackagedHostImageManifest", () => {
-	test("rejects a foreign schema version", () => {
+	test("rejects a foreign schema, invalid JSON or non-objects, and missing merged fields", () => {
 		expectCode(() => parsePackagedHostImageManifest({ imageSchemaVersion: 99 }), "incompatible-schema");
+		{
+			expectCode(() => parsePackagedHostImageManifest("{ not json"), "incompatible-schema");
+			expectCode(() => parsePackagedHostImageManifest([]), "incompatible-schema");
+		}
+		{
+			const manifest = buildPackagedHostImageManifest(input());
+			const raw = JSON.parse(serializePackagedHostImageManifest(manifest));
+			delete raw.runtimeCarrier;
+			expectCode(() => parsePackagedHostImageManifest(raw), "incompatible-schema");
+		}
 	});
 
-	test("rejects invalid JSON and non-objects", () => {
-		expectCode(() => parsePackagedHostImageManifest("{ not json"), "incompatible-schema");
-		expectCode(() => parsePackagedHostImageManifest([]), "incompatible-schema");
-	});
-
-	test("rejects a manifest missing merged fields", () => {
-		const manifest = buildPackagedHostImageManifest(input());
-		const raw = JSON.parse(serializePackagedHostImageManifest(manifest));
-		delete raw.runtimeCarrier;
-		expectCode(() => parsePackagedHostImageManifest(raw), "incompatible-schema");
-	});
 });
 
 describe("validatePackagedHostImageManifest", () => {
@@ -146,18 +143,17 @@ describe("validatePackagedHostImageManifest", () => {
 		);
 	});
 
-	test("rejects an archive root that does not end in the image tag", () => {
+	test("rejects an archive root that does not end in the tag or sits under another parent", () => {
 		expectCode(
 			() => validatePackagedHostImageManifest(serialized((raw) => void (raw.archiveRoot = "native-host-image/other")), imageRoot),
 			"invalid-archive-root",
 		);
-	});
-
-	test("rejects an archive root under a different parent than expected", () => {
-		expectCode(
-			() => validatePackagedHostImageManifest(serialized(), imageRoot, { archiveParent: "somewhere-else" }),
-			"invalid-archive-root",
-		);
+		{
+			expectCode(
+				() => validatePackagedHostImageManifest(serialized(), imageRoot, { archiveParent: "somewhere-else" }),
+				"invalid-archive-root",
+			);
+		}
 	});
 
 	test("rejects an unsafe tag", () => {

@@ -63,20 +63,17 @@ afterEach(async () => {
 });
 
 describe.skipIf(process.platform === "win32")("probeSocketLiveness", () => {
-	it("reports a socket with a listener as listening", async () => {
-		const path = join(dir, "dev3-live-probe");
-		await listenOn(path);
-		expect(await probeSocketLiveness(path)).toBe("listening");
-	});
+	it("reports a listener as listening, and an orphaned socket file or a missing path as dead", async () => {
+		const live = join(dir, "dev3-live-probe");
+		await listenOn(live);
+		expect(await probeSocketLiveness(live)).toBe("listening");
 
-	it("reports an orphaned socket file — the whole point of this module — as dead", async () => {
-		const path = join(dir, "dev3-orphan-probe");
-		orphanedSocketFile(path);
-		expect(statSync(path).isSocket()).toBe(true);
-		expect(await probeSocketLiveness(path)).toBe("dead");
-	});
+		// An orphaned socket file is the whole point of this module.
+		const orphan = join(dir, "dev3-orphan-probe");
+		orphanedSocketFile(orphan);
+		expect(statSync(orphan).isSocket()).toBe(true);
+		expect(await probeSocketLiveness(orphan)).toBe("dead");
 
-	it("reports a path that is not there as dead", async () => {
 		expect(await probeSocketLiveness(join(dir, "dev3-never-existed"))).toBe("dead");
 	});
 });

@@ -8,33 +8,19 @@ afterEach(() => {
 	else process.env.DEV3_FRESH_START = ORIGINAL;
 });
 
-describe("isFreshStartMode", () => {
-	it("is false when the env var is unset", () => {
+describe("isFreshStartMode / shouldOpenLaunchWindowInBackground", () => {
+	it("enables fresh-start mode, and a background launch window, only for DEV3_FRESH_START=1 exactly", () => {
 		delete process.env.DEV3_FRESH_START;
-		expect(isFreshStartMode()).toBe(false);
-	});
-
-	it("is true when DEV3_FRESH_START=1", () => {
-		process.env.DEV3_FRESH_START = "1";
-		expect(isFreshStartMode()).toBe(true);
-	});
-
-	it("is false for any other value (only exact '1' enables it)", () => {
+		expect(isFreshStartMode(), "unset").toBe(false);
+		// An ordinary launch still comes to the front.
+		expect(shouldOpenLaunchWindowInBackground(), "unset").toBe(false);
 		for (const v of ["0", "", "true", "yes", "2"]) {
 			process.env.DEV3_FRESH_START = v;
-			expect(isFreshStartMode()).toBe(false);
+			expect(isFreshStartMode(), v).toBe(false);
 		}
-	});
-});
-
-describe("shouldOpenLaunchWindowInBackground", () => {
-	it("an ordinary launch still comes to the front", () => {
-		delete process.env.DEV3_FRESH_START;
-		expect(shouldOpenLaunchWindowInBackground()).toBe(false);
-	});
-
-	it("a dev launch opens minimized in the background", () => {
+		// A dev launch opens minimized in the background.
 		process.env.DEV3_FRESH_START = "1";
+		expect(isFreshStartMode()).toBe(true);
 		expect(shouldOpenLaunchWindowInBackground()).toBe(true);
 	});
 });

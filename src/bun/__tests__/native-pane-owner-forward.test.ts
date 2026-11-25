@@ -195,8 +195,24 @@ function endpointRecord(port: number, token: string): string {
 	return path;
 }
 
+/**
+ * The dispatch phase a failure carries is load-bearing: a caller may only treat
+ * `before-dispatch` as "nothing happened". Everything else means the owner may
+ * have performed the whole delivery, so the caller must report an indeterminate
+ * outcome instead of resending.
+ */
+async function phaseOf(promise: Promise<unknown>): Promise<{ phase: string; message: string }> {
+	try {
+		await promise;
+		throw new Error("expected the forward to reject");
+	} catch (err) {
+		if (!isForwardToOwnerError(err)) throw new Error(`not a ForwardToOwnerError: ${String(err)}`);
+		return { phase: err.phase, message: err.message };
+	}
+}
+
 describe("forwardToOwner over a unix socket", () => {
-	it("hands the owner the whole delivery and returns what it answered", async () => {
+	it("hands the owner the whole delivery as one tokenless NDJSON line and returns what it answered", async () => {
 		const endpoint = await peer.listenOnUnixPath(socketPath());
 		peer.respond = (request, socket) => {
 			socket.write(`${JSON.stringify({ id: request.id, ok: true, data: { delivered: true, taskId: "t1" } })}\n`);
@@ -213,6 +229,8 @@ describe("forwardToOwner over a unix socket", () => {
 			method: "message.send",
 			params: { taskId: "t1", text: "hello pane-1" },
 		});
+		expect(peer.lines[0].indexOf("\n")).toBe(-1);
+		expect(JSON.parse(peer.lines[0])).not.toHaveProperty("token");
 	});
 
 	// The whole point of forwarding a request rather than the bytes: the owner
@@ -231,48 +249,41 @@ describe("forwardToOwner over a unix socket", () => {
 		expect(peer.connections).toBe(1);
 	});
 
-	it("frames the request as one NDJSON line and sends no token over a socket file", async () => {
-		const endpoint = await peer.listenOnUnixPath(socketPath());
-
-		await forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" });
-
-		expect(peer.lines[0].indexOf("\n")).toBe(-1);
-		expect(JSON.parse(peer.lines[0])).not.toHaveProperty("token");
-	});
-
-	it("surfaces the owner's refusal instead of pretending the write landed", async () => {
+	it("surfaces the owner's refusal as possibly-dispatched instead of pretending the write landed", async () => {
 		const endpoint = await peer.listenOnUnixPath(socketPath());
 		peer.respond = (request, socket) => {
 			socket.write(`${JSON.stringify({ id: request.id, ok: false, error: "pane-1 is gone" })}\n`);
 		};
 
-		await expect(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" })).rejects.toThrow(
-			"pane-1 is gone",
-		);
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" }));
+		expect(failure.message).toContain("pane-1 is gone");
+		expect(failure.phase).toBe("possibly-dispatched");
 	});
 
-	it("rejects when the owner hangs up before answering", async () => {
+	it("rejects as possibly-dispatched when the owner hangs up after taking the request", async () => {
 		const endpoint = await peer.listenOnUnixPath(socketPath());
 		peer.respond = (_request, socket) => socket.destroy();
 
-		await expect(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" })).rejects.toThrow(
-			`owner ${OWNER_PID} closed before answering message.send`,
-		);
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" }));
+		expect(failure.message).toContain(`owner ${OWNER_PID} closed before answering message.send`);
+		expect(failure.phase).toBe("possibly-dispatched");
+		expect(peer.requests).toHaveLength(1);
 	});
 
-	it("rejects a reply it cannot parse rather than guessing the outcome", async () => {
+	it("rejects a reply it cannot parse as possibly-dispatched rather than guessing the outcome", async () => {
 		const endpoint = await peer.listenOnUnixPath(socketPath());
 		peer.respond = (_request, socket) => socket.write("not json at all\n");
 
-		await expect(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" })).rejects.toThrow(
-			"unparseable reply",
-		);
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" }));
+		expect(failure.message).toContain("unparseable reply");
+		expect(failure.phase).toBe("possibly-dispatched");
 	});
 
-	it("rejects when the owner's socket is not there at all", async () => {
-		await expect(
+	it("rejects as before-dispatch when the owner's socket is not there at all", async () => {
+		const failure = await phaseOf(
 			forwardToOwner({ pid: OWNER_PID, endpoint: testSocketPath("missing.sock") }, "message.send", { text: "x" }),
-		).rejects.toThrow();
+		);
+		expect(failure.phase).toBe("before-dispatch");
 	});
 });
 
@@ -305,87 +316,24 @@ describe("forwardToOwner over a loopback endpoint record", () => {
 
 	// A corrupted record must fail before any dialling: a bad host or port is
 	// exactly the case the record parser exists to refuse.
-	it("refuses an unusable record without opening a connection", async () => {
+	it("refuses an unusable or missing record as before-dispatch, without opening a connection", async () => {
 		await peer.listenOnLoopback();
 		const endpoint = join(root, `${OWNER_PID}.endpoint.json`);
 		writeFileSync(endpoint, "{ this is not a record }");
 
-		await expect(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" })).rejects.toThrow(
-			`peer ${OWNER_PID} has an unusable endpoint record`,
-		);
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" }));
+		expect(failure.message).toContain(`peer ${OWNER_PID} has an unusable endpoint record`);
+		expect(failure.phase).toBe("before-dispatch");
 		expect(peer.connections).toBe(0);
-	});
 
-	it("refuses a record that is missing entirely", async () => {
-		const endpoint = join(root, "9999.endpoint.json");
-
-		await expect(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" })).rejects.toThrow(
+		const missing = join(root, "9999.endpoint.json");
+		await expect(forwardToOwner({ pid: OWNER_PID, endpoint: missing }, "message.send", { text: "x" })).rejects.toThrow(
 			"unusable endpoint record",
 		);
 	});
 });
 
-/**
- * The dispatch phase a failure carries is load-bearing: a caller may only treat
- * `before-dispatch` as "nothing happened". Everything else means the owner may
- * have performed the whole delivery, so the caller must report an indeterminate
- * outcome instead of resending.
- */
 describe("a forward failure says which side of dispatch it happened on", () => {
-	async function phaseOf(promise: Promise<unknown>): Promise<{ phase: string; message: string }> {
-		try {
-			await promise;
-			throw new Error("expected the forward to reject");
-		} catch (err) {
-			if (!isForwardToOwnerError(err)) throw new Error(`not a ForwardToOwnerError: ${String(err)}`);
-			return { phase: err.phase, message: err.message };
-		}
-	}
-
-	it("reports before-dispatch when the owner's socket is not there", async () => {
-		const failure = await phaseOf(
-			forwardToOwner({ pid: OWNER_PID, endpoint: testSocketPath("missing.sock") }, "m", { text: "x" }),
-		);
-		expect(failure.phase).toBe("before-dispatch");
-	});
-
-	it("reports before-dispatch for an unusable endpoint record, with nothing dialled", async () => {
-		await peer.listenOnLoopback();
-		const endpoint = join(root, `${OWNER_PID}.endpoint.json`);
-		writeFileSync(endpoint, "{ not a record }");
-
-		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
-		expect(failure.phase).toBe("before-dispatch");
-		expect(peer.connections).toBe(0);
-	});
-
-	it("reports possibly-dispatched when the owner hangs up after taking the request", async () => {
-		const endpoint = await peer.listenOnUnixPath(socketPath());
-		peer.respond = (_request, socket) => socket.destroy();
-
-		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
-		expect(failure.phase).toBe("possibly-dispatched");
-		expect(peer.requests).toHaveLength(1);
-	});
-
-	it("reports possibly-dispatched when the owner refuses the request", async () => {
-		const endpoint = await peer.listenOnUnixPath(socketPath());
-		peer.respond = (request, socket) => {
-			socket.write(`${JSON.stringify({ id: request.id, ok: false, error: "pane is gone" })}\n`);
-		};
-
-		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
-		expect(failure.phase).toBe("possibly-dispatched");
-	});
-
-	it("reports possibly-dispatched for a reply it cannot parse", async () => {
-		const endpoint = await peer.listenOnUnixPath(socketPath());
-		peer.respond = (_request, socket) => socket.write("not json\n");
-
-		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
-		expect(failure.phase).toBe("possibly-dispatched");
-	});
-
 	it("keeps a complete write on the dispatched side, so a later timeout is not resendable", async () => {
 		const endpoint = await peer.listenOnUnixPath(socketPath());
 		// Take the request and answer nothing; the caller's own timeout ends it.

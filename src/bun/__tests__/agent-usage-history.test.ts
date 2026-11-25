@@ -47,48 +47,62 @@ describe("retainUsageHistory", () => {
 		return statSync(path).mtimeMs;
 	}
 
-	it.each(["claude", "codex", "gemini", "cursor", "copilot"] as const)("leaves %s history bytes and mtime unchanged on repeated or missing-log refreshes", async (source) => {
-		await retainUsageHistory(additional(source, "one"));
-		const path = sourceFile(source);
-		const bytes = readFileSync(path, "utf8");
-		const modifiedAt = markPastWrite(path);
-		await retainUsageHistory(additional(source, "one"));
-		await retainUsageHistory(additional(source));
-		expect(readFileSync(path, "utf8")).toBe(bytes);
-		expect(statSync(path).mtimeMs).toBe(modifiedAt);
+	const ALL_SOURCES = ["claude", "codex", "gemini", "cursor", "copilot"] as const;
+	function resetHistory() {
+		rmSync(historyHome, { recursive: true, force: true });
+		mkdirSync(historyHome, { recursive: true });
+	}
+
+	it("leaves every source's history bytes and mtime unchanged on repeated or missing-log refreshes", async () => {
+		for (const source of ALL_SOURCES) {
+			resetHistory();
+			await retainUsageHistory(additional(source, "one"));
+			const path = sourceFile(source);
+			const bytes = readFileSync(path, "utf8");
+			const modifiedAt = markPastWrite(path);
+			await retainUsageHistory(additional(source, "one"));
+			await retainUsageHistory(additional(source));
+			expect(readFileSync(path, "utf8"), source).toBe(bytes);
+			expect(statSync(path).mtimeMs, source).toBe(modifiedAt);
+		}
 	});
 
-	it.each(["claude", "codex", "gemini", "cursor", "copilot"] as const)("writes changed %s snapshots and durable tombstones", async (source) => {
-		await retainUsageHistory(additional(source, "one"));
-		const path = sourceFile(source);
-		const initialMtime = markPastWrite(path);
-		const changed = additional(source, "one");
-		const identity = `${source}:one`;
-		changed[source].records.get(identity)!.counts.outputTokens = 30;
-		await retainUsageHistory(changed);
-		expect(statSync(path).mtimeMs).not.toBe(initialMtime);
-		const updated = await retainUsageHistory(additional(source));
-		expect(updated[source].records.get(identity)!.counts.outputTokens).toBe(30);
-		const updatedMtime = markPastWrite(path);
-		const correction = additional(source);
-		correction[source].superseded.add(identity);
-		await retainUsageHistory(correction);
-		expect(statSync(path).mtimeMs).not.toBe(updatedMtime);
-		const replay = await retainUsageHistory(additional(source, "one"));
-		expect(replay[source].superseded.has(identity)).toBe(true);
-		expect(replay[source].records.has(identity)).toBe(false);
+	it("writes changed snapshots and durable tombstones for every source", async () => {
+		for (const source of ALL_SOURCES) {
+			resetHistory();
+			await retainUsageHistory(additional(source, "one"));
+			const path = sourceFile(source);
+			const initialMtime = markPastWrite(path);
+			const changed = additional(source, "one");
+			const identity = `${source}:one`;
+			changed[source].records.get(identity)!.counts.outputTokens = 30;
+			await retainUsageHistory(changed);
+			expect(statSync(path).mtimeMs, source).not.toBe(initialMtime);
+			const updated = await retainUsageHistory(additional(source));
+			expect(updated[source].records.get(identity)!.counts.outputTokens, source).toBe(30);
+			const updatedMtime = markPastWrite(path);
+			const correction = additional(source);
+			correction[source].superseded.add(identity);
+			await retainUsageHistory(correction);
+			expect(statSync(path).mtimeMs, source).not.toBe(updatedMtime);
+			const replay = await retainUsageHistory(additional(source, "one"));
+			expect(replay[source].superseded.has(identity), source).toBe(true);
+			expect(replay[source].records.has(identity), source).toBe(false);
+		}
 	});
 
-	it.each(["gemini", "cursor", "copilot"] as const)("retains %s usage when its source files disappear", async (source) => {
-		await retainUsageHistory(additional(source, "one"));
-		const retained = await retainUsageHistory(additional(source));
-		expect(finalizeUsage(retained[source], source).days[0].inputTokens).toBe(100);
-	});
+	it("retains per-source usage when its files disappear and merges concurrent snapshots without losing disjoint responses", async () => {
+		for (const source of ["gemini", "cursor", "copilot"] as const) {
+			resetHistory();
+			await retainUsageHistory(additional(source, "one"));
+			const retained = await retainUsageHistory(additional(source));
+			expect(finalizeUsage(retained[source], source).days[0].inputTokens, `${source} after files vanish`).toBe(100);
 
-	it.each(["gemini", "cursor", "copilot"] as const)("merges concurrent %s snapshots without losing disjoint responses", async (source) => {
-		await Promise.all([retainUsageHistory(additional(source, "one")), retainUsageHistory(additional(source, "two"))]);
-		const retained = await retainUsageHistory(additional(source));
-		expect(finalizeUsage(retained[source], source).days[0].inputTokens).toBe(200);
+			resetHistory();
+			await Promise.all([retainUsageHistory(additional(source, "one")), retainUsageHistory(additional(source, "two"))]);
+			const merged = await retainUsageHistory(additional(source));
+			expect(finalizeUsage(merged[source], source).days[0].inputTokens, `${source} concurrent`).toBe(200);
+		}
 	});
 
 	it("keeps billing across refreshes, learns it for an already-retained record, and reads a foreign value as unknown", async () => {
@@ -193,10 +207,12 @@ describe("retainUsageHistory", () => {
 		expect(finalizeUsage(retained.claude, "claude").days[0]).toMatchObject({ inputTokens: 1_000_000, outputTokens: 1_000_000, costUsd: 18 });
 	});
 
-	it.each(["{truncated", JSON.stringify({ version: 2, claude: [], codex: [] })])("leaves unreadable or newer history intact", async (body) => {
-		writeFileSync(file, body);
-		const live = await retainUsageHistory(states("one"));
-		expect(finalizeUsage(live.claude, "claude").days[0].costUsd).toBe(3);
-		expect(readFileSync(file, "utf8")).toBe(body);
+	it("leaves unreadable or newer history intact", async () => {
+		for (const body of ["{truncated", JSON.stringify({ version: 2, claude: [], codex: [] })]) {
+			writeFileSync(file, body);
+			const live = await retainUsageHistory(states("one"));
+			expect(finalizeUsage(live.claude, "claude").days[0].costUsd, body).toBe(3);
+			expect(readFileSync(file, "utf8"), body).toBe(body);
+		}
 	});
 });

@@ -186,7 +186,7 @@ describe("opt-in local freeze diagnostics", () => {
 		for (const name of readdirSync(dir)) expect(statSync(join(dir, name)).size).toBeLessThanOrEqual(2 * 1024 * 1024);
 	});
 
-	it("retains five sessions and bounds files without touching unrelated logs", () => {
+	it("retains five sessions, terminal-output dumps rotating with them, without touching unrelated logs", () => {
 		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-store-"));
 		directories.push(dir);
 		writeFileSync(join(dir, "keep.log"), "user content");
@@ -194,18 +194,10 @@ describe("opt-in local freeze diagnostics", () => {
 			const store = createCaptureStore(dir, `freeze-${i}-10`);
 			store.log({ event: "started" });
 			store.save("1-host", "sample");
+			writeFileSync(join(dir, `freeze-${i}-10.1-pty.json`), "{}");
 		}
 		expect(readdirSync(dir).filter((name) => name.endsWith("jsonl"))).toHaveLength(5);
 		expect(readFileSync(join(dir, "keep.log"), "utf8")).toBe("user content");
-	});
-
-	it("rotates terminal-output dumps with the rest of their session", () => {
-		const dir = mkdtempSync(join(tmpdir(), "dev3-freeze-pty-rotate-"));
-		directories.push(dir);
-		for (let i = 1; i <= 6; i++) {
-			createCaptureStore(dir, `freeze-${i}-10`).log({ event: "started" });
-			writeFileSync(join(dir, `freeze-${i}-10.1-pty.json`), "{}");
-		}
 		expect(readdirSync(dir).filter((name) => name.endsWith("-pty.json")).sort()).toEqual(
 			[2, 3, 4, 5, 6].map((i) => `freeze-${i}-10.1-pty.json`),
 		);

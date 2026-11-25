@@ -64,73 +64,36 @@ describe("caffeinate", () => {
 	});
 
 	describe("isPreventSleepEnabled", () => {
-		it("returns the explicit setting when set to true", () => {
+		it("returns the explicit setting, else defaults to caffeinate availability", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
 			expect(isPreventSleepEnabled()).toBe(true);
-		});
-
-		it("returns the explicit setting when set to false", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
 			expect(isPreventSleepEnabled()).toBe(false);
-		});
-
-		it("defaults to caffeinate availability when setting is undefined", () => {
 			mockLoadSettingsSync.mockReturnValue({});
 			// caffeinateAvailable is cached from the first test
-			const result = isPreventSleepEnabled();
-			expect(typeof result).toBe("boolean");
+			expect(typeof isPreventSleepEnabled()).toBe("boolean");
 		});
 	});
 
 	describe("updateCaffeinateState", () => {
-		it("starts caffeinate when the setting is enabled (app running)", () => {
-			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
-			mockSpawn.mockReturnValue({
-				pid: 99999,
-				kill: vi.fn(),
-				exited: Promise.resolve(0),
-			});
+		const proc = () => ({ pid: 99999, kill: vi.fn(), exited: Promise.resolve(0) });
 
-			updateCaffeinateState(false);
-			expect(isCaffeinateRunning()).toBe(true);
-		});
-
-		it("does not start when the setting is disabled and remote is inactive", () => {
+		it("stays off when disabled with remote inactive, and is forced on by remote access", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
-			mockSpawn.mockReturnValue({
-				pid: 99999,
-				kill: vi.fn(),
-				exited: Promise.resolve(0),
-			});
+			mockSpawn.mockReturnValue(proc());
 
 			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(false);
-		});
-
-		it("is forced on by remote access even when the setting is disabled", () => {
-			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
-			mockSpawn.mockReturnValue({
-				pid: 99999,
-				kill: vi.fn(),
-				exited: Promise.resolve(0),
-			});
-
 			updateCaffeinateState(true);
 			expect(isCaffeinateRunning()).toBe(true);
 		});
 
-		it("stops caffeinate when the setting is toggled off and remote is inactive", () => {
-			// First start it
+		it("starts when enabled and stops when toggled off with remote inactive", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
-			mockSpawn.mockReturnValue({
-				pid: 99999,
-				kill: vi.fn(),
-				exited: Promise.resolve(0),
-			});
+			mockSpawn.mockReturnValue(proc());
 			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(true);
 
-			// Toggle off
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
 			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(false);
@@ -138,22 +101,16 @@ describe("caffeinate", () => {
 
 		it("does not double-start caffeinate", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
-			const proc = {
-				pid: 99999,
-				kill: vi.fn(),
-				exited: Promise.resolve(0),
-			};
-			mockSpawn.mockReturnValue(proc);
+			mockSpawn.mockReturnValue(proc());
 
 			updateCaffeinateState(false);
 			updateCaffeinateState(false);
-			// spawn should only be called once (not for the second update)
 			expect(mockSpawn).toHaveBeenCalledTimes(1);
 		});
 	});
 
 	describe("shutdownCaffeinate", () => {
-		it("kills the caffeinate process", () => {
+		it("kills the caffeinate process, and is a no-op with none running", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
 			const killFn = vi.fn();
 			mockSpawn.mockReturnValue({
@@ -168,11 +125,9 @@ describe("caffeinate", () => {
 			shutdownCaffeinate();
 			expect(killFn).toHaveBeenCalled();
 			expect(isCaffeinateRunning()).toBe(false);
-		});
 
-		it("does nothing when no process is running", () => {
-			shutdownCaffeinate(); // should not throw
-			expect(isCaffeinateRunning()).toBe(false);
+			shutdownCaffeinate(); // nothing running: a safe no-op
+			expect(killFn).toHaveBeenCalledTimes(1);
 		});
 	});
 });

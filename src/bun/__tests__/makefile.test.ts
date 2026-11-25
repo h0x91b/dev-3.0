@@ -16,20 +16,17 @@ describe("makefile", () => {
 	});
 
 	describe("parseMakefile", () => {
-		it("returns no-worktree when path is null", () => {
+		it("returns no-worktree, no-makefile, or no-targets for a file with only variables", () => {
 			const r = parseMakefile(null);
 			expect(r.exists).toBe(false);
 			expect(r.error).toBe("no-worktree");
 			expect(r.targets).toEqual([]);
+			expect(parseMakefile(tmp)).toMatchObject({ exists: false, error: "no-makefile" });
+			writeFileSync(join(tmp, "Makefile"), "CC := gcc\nFLAGS = -O2\n");
+			expect(parseMakefile(tmp)).toMatchObject({ exists: true, error: "no-targets", targets: [] });
 		});
 
-		it("returns no-makefile when none present", () => {
-			const r = parseMakefile(tmp);
-			expect(r.exists).toBe(false);
-			expect(r.error).toBe("no-makefile");
-		});
-
-		it("parses targets and reports the file name", () => {
+		it("parses targets, reports the file name, and prefers GNUmakefile over makefile over Makefile", () => {
 			writeFileSync(
 				join(tmp, "Makefile"),
 				["test:", "\tpytest", "build:", "\tgo build ./..."].join("\n"),
@@ -42,74 +39,52 @@ describe("makefile", () => {
 			expect(r.error).toBeNull();
 			expect(r.targets.map((t) => t.name)).toEqual(["test", "build"]);
 			expect(r.targets.find((t) => t.name === "build")?.command).toBe("go build ./...");
-		});
 
-		it("prefers GNUmakefile over makefile over Makefile", () => {
-			writeFileSync(join(tmp, "Makefile"), "a:\n\techo a\n");
+			// GNUmakefile wins over makefile over Makefile.
 			writeFileSync(join(tmp, "makefile"), "b:\n\techo b\n");
 			writeFileSync(join(tmp, "GNUmakefile"), "c:\n\techo c\n");
-			const r = parseMakefile(tmp);
-			expect(r.path).toBe("GNUmakefile");
-			expect(r.targets.map((t) => t.name)).toEqual(["c"]);
-		});
-
-		it("returns no-targets when file only has variables", () => {
-			writeFileSync(join(tmp, "Makefile"), "CC := gcc\nFLAGS = -O2\n");
-			const r = parseMakefile(tmp);
-			expect(r.exists).toBe(true);
-			expect(r.error).toBe("no-targets");
-			expect(r.targets).toEqual([]);
+			const preferred = parseMakefile(tmp);
+			expect(preferred.path).toBe("GNUmakefile");
+			expect(preferred.targets.map((t) => t.name)).toEqual(["c"]);
 		});
 	});
 
 	describe("extractMakeTargets", () => {
-		it("ignores every assignment operator flavour", () => {
+		it("ignores assignments of every flavour, dot-special targets, pattern rules, directives and comments", () => {
 			const mk = [
 				"SIMPLE := value",
 				"RECURSIVE = value",
 				"COND ?= value",
 				"APPEND += value",
 				"IMMEDIATE ::= value",
-				"real:",
-				"\techo hi",
-			].join("\n");
-			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["real"]);
-		});
-
-		it("keeps a target whose prereq contains a colon-ish value", () => {
-			const mk = "deploy: build\n\t./deploy.sh\nbuild:\n\tmake bundle\n";
-			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["deploy", "build"]);
-		});
-
-		it("skips dot-special targets and pattern rules", () => {
-			const mk = [
 				".PHONY: test build",
 				".SUFFIXES:",
 				"%.o: %.c",
 				"\t$(CC) -c $<",
-				"test:",
-				"\tpytest",
+				"# a comment",
+				"include common.mk",
+				"ifeq ($(OS),Linux)",
+				"real:",
+				"\techo hi",
+				"endif",
 			].join("\n");
-			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["test"]);
+			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["real"]);
 		});
 
-		it("splits multiple targets sharing one rule header", () => {
-			const mk = "lint format check:\n\techo running\n";
-			const targets = extractMakeTargets(mk);
+		it("keeps a target whose prereq contains a colon-ish value, and splits shared rule headers", () => {
+			const mk = "deploy: build\n\t./deploy.sh\nbuild:\n\tmake bundle\n";
+			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["deploy", "build"]);
+			// Multiple targets sharing one rule header are split.
+			const targets = extractMakeTargets("lint format check:\n\techo running\n");
 			expect(targets.map((t) => t.name)).toEqual(["lint", "format", "check"]);
 			expect(targets.every((t) => t.command === "echo running")).toBe(true);
 		});
 
-		it("dedupes repeated target names, first occurrence wins", () => {
-			const mk = "test:\n\tfirst\ntest:\n\tsecond\n";
+		it("dedupes repeated target names (double-colon rules included), first occurrence wins", () => {
+			const mk = "test:\n\tfirst\ntest:\n\tsecond\nall::\n\techo one\nall::\n\techo two\n";
 			const targets = extractMakeTargets(mk);
-			expect(targets.map((t) => t.name)).toEqual(["test"]);
+			expect(targets.map((t) => t.name)).toEqual(["test", "all"]);
 			expect(targets[0].command).toBe("first");
-		});
-
-		it("treats double-colon rules as targets", () => {
-			const mk = "all::\n\techo one\nall::\n\techo two\n";
-			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["all"]);
 		});
 
 		it("strips recipe modifiers from the preview", () => {
@@ -117,25 +92,10 @@ describe("makefile", () => {
 			const targets = extractMakeTargets(mk);
 			expect(targets.find((t) => t.name === "quiet")?.command).toBe("echo hidden");
 			expect(targets.find((t) => t.name === "ignore")?.command).toBe("rm -f x");
-		});
-
-		it("ignores directives and comments", () => {
-			const mk = [
-				"# a comment",
-				"include common.mk",
-				"ifeq ($(OS),Linux)",
-				"linux:",
-				"\techo linux",
-				"endif",
-			].join("\n");
-			expect(extractMakeTargets(mk).map((t) => t.name)).toEqual(["linux"]);
-		});
-
-		it("gives an empty preview when a target has no recipe", () => {
-			const mk = "docs: html pdf\n\nhtml:\n\tbuild-html\n";
-			const targets = extractMakeTargets(mk);
-			expect(targets.find((t) => t.name === "docs")?.command).toBe("");
-			expect(targets.find((t) => t.name === "html")?.command).toBe("build-html");
+			// A target with no recipe gets an empty preview.
+			const docs = extractMakeTargets("docs: html pdf\n\nhtml:\n\tbuild-html\n");
+			expect(docs.find((t) => t.name === "docs")?.command).toBe("");
+			expect(docs.find((t) => t.name === "html")?.command).toBe("build-html");
 		});
 	});
 
@@ -143,8 +103,6 @@ describe("makefile", () => {
 		it("builds a make invocation", () => {
 			expect(resolveMakeCommand("test")).toBe("make test");
 			expect(resolveMakeCommand("doc-ingest")).toBe("make doc-ingest");
-		});
-		it("allows colon, dot and slash in target names", () => {
 			expect(resolveMakeCommand("build.prod")).toBe("make build.prod");
 			expect(resolveMakeCommand("ci/test")).toBe("make ci/test");
 		});

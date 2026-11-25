@@ -55,6 +55,8 @@ describe("addVirtualProject", () => {
 		// Stored in the SEPARATE file, not projects.json.
 		expect(existsSync(VIRTUAL_FILE)).toBe(true);
 		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(false);
+		// The slug is derived from the board name.
+		expect((await addVirtualProject("Mail triage")).path).toBe(`${DEV3_HOME}/ops/mail-triage`);
 	});
 
 	it("allocates a non-colliding slug for a second board with the same name", async () => {
@@ -63,11 +65,6 @@ describe("addVirtualProject", () => {
 		expect(a.path).toBe(`${DEV3_HOME}/ops/operations`);
 		expect(b.path).toBe(`${DEV3_HOME}/ops/operations-2`);
 		expect(a.id).not.toBe(b.id);
-	});
-
-	it("derives the slug from the board name", async () => {
-		const project = await addVirtualProject("Mail triage");
-		expect(project.path).toBe(`${DEV3_HOME}/ops/mail-triage`);
 	});
 
 	it("never reuses a slug while its data/ dir survives", async () => {
@@ -90,18 +87,14 @@ describe("addVirtualProject", () => {
 });
 
 describe("loadVirtualProjects", () => {
-	it("returns only non-deleted virtual projects", async () => {
+	it("returns only non-deleted virtual projects, which never appear in loadProjects", async () => {
 		const a = await addVirtualProject("Operations");
 		await addVirtualProject("Experiments");
 		await removeProject(a.id);
 		const active = await loadVirtualProjects();
 		expect(active.map((p) => p.name)).toEqual(["Experiments"]);
-	});
-
-	it("does not appear in loadProjects (git list)", async () => {
-		await addVirtualProject("Operations");
-		const git = await loadProjects();
-		expect(git).toHaveLength(0);
+		// Virtual boards never appear in the git list.
+		expect(await loadProjects()).toHaveLength(0);
 	});
 });
 
@@ -121,40 +114,27 @@ describe("ensureBuiltinOperationsBoard", () => {
 		const all = await loadVirtualProjects();
 		expect(all.find((p) => p.id === board.id)).toBeTruthy();
 		expect(all.filter((p) => p.builtin)).toHaveLength(1);
-	});
 
-	it("still soft-deletes a NON-builtin virtual board", async () => {
-		const board = await addVirtualProject("Experiments");
-		expect(board.builtin).toBeFalsy();
-		await removeProject(board.id);
-		const all = await loadVirtualProjects();
-		expect(all.find((p) => p.id === board.id)).toBeFalsy();
+		// A NON-builtin virtual board is still soft-deleted.
+		const other = await addVirtualProject("Experiments");
+		expect(other.builtin).toBeFalsy();
+		await removeProject(other.id);
+		expect((await loadVirtualProjects()).find((p) => p.id === other.id)).toBeFalsy();
 	});
 });
 
 describe("getProject / updateProject / removeProject routing", () => {
-	it("getProject resolves a virtual project by id", async () => {
+	it("getProject resolves and updateProject routes virtual ids to the virtual file", async () => {
 		const project = await addVirtualProject("Operations");
 		const found = await getProject(project.id);
 		expect(found.id).toBe(project.id);
 		expect(found.kind).toBe("virtual");
-	});
-
-	it("updateProject routes virtual ids to the virtual file", async () => {
-		const project = await addVirtualProject("Operations");
 		const updated = await updateProject(project.id, { peerReviewEnabled: false });
 		expect(updated.peerReviewEnabled).toBe(false);
 		const reloaded = await loadVirtualProjects();
 		expect(reloaded[0].peerReviewEnabled).toBe(false);
 		// projects.json must not be created by a virtual update.
 		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(false);
-	});
-
-	it("git project ids still route to projects.json", async () => {
-		const git = await addProject("/tmp/some-repo", "Repo");
-		const updated = await updateProject(git.id, { autoReviewEnabled: true });
-		expect(updated.autoReviewEnabled).toBe(true);
-		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(true);
 	});
 
 	it("updateProjectWith routes virtual ids to the virtual file (labels/columns no longer throw)", async () => {
@@ -174,10 +154,13 @@ describe("getProject / updateProject / removeProject routing", () => {
 		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(false);
 	});
 
-	it("updateProjectWith for a git id still writes projects.json", async () => {
-		const git = await addProject("/tmp/some-repo-2", "Repo2");
-		const { result } = await updateProjectWith(git.id, () => ({ updates: { autoReviewEnabled: true }, result: 42 }));
-		expect(result).toBe(42);
+	it("git project ids still route to projects.json via updateProject and updateProjectWith", async () => {
+		const git = await addProject("/tmp/some-repo", "Repo");
+		const updated = await updateProject(git.id, { autoReviewEnabled: true });
+		expect(updated.autoReviewEnabled).toBe(true);
 		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(true);
+		const { result } = await updateProjectWith(git.id, () => ({ updates: { peerReviewEnabled: false }, result: 42 }));
+		expect(result).toBe(42);
+		expect((await getProject(git.id)).peerReviewEnabled).toBe(false);
 	});
 });

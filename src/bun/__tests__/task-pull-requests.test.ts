@@ -23,13 +23,11 @@ function mergedCache(number: number, title: string): TaskPRStatusCache {
 type LedgerTask = Pick<Task, "prNumber" | "prUrl" | "prStatusCache" | "pullRequests">;
 
 describe("recordPullRequestSighting", () => {
-	it("starts the ledger with the first PR a task is seen with", () => {
+	it("starts the ledger with the first PR, writes nothing for a repeated sighting, and keeps the state a finished PR reached", () => {
 		const ledger = recordPullRequestSighting({}, { number: 7, url: "https://github.com/o/r/pull/7", state: "open" }, SEEN);
 
 		expect(ledger).toEqual([{ number: 7, url: "https://github.com/o/r/pull/7", state: "OPEN", firstSeenAt: SEEN }]);
-	});
 
-	it("reports no change for a repeated sighting, so a poll writes nothing new", () => {
 		const task: LedgerTask = {
 			prNumber: 7,
 			prUrl: "https://github.com/o/r/pull/7",
@@ -37,21 +35,12 @@ describe("recordPullRequestSighting", () => {
 		};
 
 		expect(recordPullRequestSighting(task, { number: 7, url: "https://github.com/o/r/pull/7", state: "OPEN" }, LATER)).toBeNull();
+
+		const finished = recordPullRequestSighting(task, { number: 7, url: "https://github.com/o/r/pull/7", state: "MERGED", title: "First" }, LATER);
+		expect(finished).toEqual([{ number: 7, url: "https://github.com/o/r/pull/7", state: "MERGED", title: "First", firstSeenAt: SEEN }]);
 	});
 
-	it("keeps the state a finished PR reached", () => {
-		const task: LedgerTask = {
-			prNumber: 7,
-			prUrl: "https://github.com/o/r/pull/7",
-			pullRequests: [{ number: 7, url: "https://github.com/o/r/pull/7", state: "OPEN", firstSeenAt: SEEN }],
-		};
-
-		const ledger = recordPullRequestSighting(task, { number: 7, url: "https://github.com/o/r/pull/7", state: "MERGED", title: "First" }, LATER);
-
-		expect(ledger).toEqual([{ number: 7, url: "https://github.com/o/r/pull/7", state: "MERGED", title: "First", firstSeenAt: SEEN }]);
-	});
-
-	it("records the replaced PR from the fields about to be overwritten", () => {
+	it("records the replaced PR from the fields about to be overwritten, never borrowing another PR's cached state", () => {
 		// A task an older build tracked: legacy fields only, no ledger yet.
 		const task: LedgerTask = {
 			prNumber: 7,
@@ -65,19 +54,14 @@ describe("recordPullRequestSighting", () => {
 			{ number: 7, url: "https://github.com/o/r/pull/7", state: "MERGED", title: "First", firstSeenAt: LATER },
 			{ number: 9, url: "https://github.com/o/r/pull/9", state: "OPEN", firstSeenAt: LATER },
 		]);
-	});
 
-	it("does not borrow another PR's cached state for the replaced one", () => {
-		const task: LedgerTask = { prNumber: 7, prUrl: "https://github.com/o/r/pull/7", prStatusCache: mergedCache(5, "Other") };
-
-		const ledger = recordPullRequestSighting(task, { number: 9, url: "https://github.com/o/r/pull/9" }, SEEN);
-
-		expect(ledger?.[0]).toEqual({ number: 7, url: "https://github.com/o/r/pull/7", firstSeenAt: SEEN });
+		const stranger: LedgerTask = { prNumber: 7, prUrl: "https://github.com/o/r/pull/7", prStatusCache: mergedCache(5, "Other") };
+		expect(recordPullRequestSighting(stranger, { number: 9, url: "https://github.com/o/r/pull/9" }, SEEN)?.[0]).toEqual({ number: 7, url: "https://github.com/o/r/pull/7", firstSeenAt: SEEN });
 	});
 });
 
 describe("earlierPullRequests", () => {
-	it("lists every PR but the current one, newest first", () => {
+	it("lists every PR but the current one, newest first, and nothing without a ledger", () => {
 		const task = {
 			prNumber: 9,
 			pullRequests: [
@@ -88,9 +72,6 @@ describe("earlierPullRequests", () => {
 		};
 
 		expect(earlierPullRequests(task).map((entry) => entry.number)).toEqual([7, 5]);
-	});
-
-	it("is empty for a task without a ledger", () => {
 		expect(earlierPullRequests({ prNumber: 3 })).toEqual([]);
 	});
 });
@@ -99,26 +80,17 @@ describe("savedPrMergedFromBranch", () => {
 	const cache = { ...mergedCache(7, "PR"), headRefName: "feat/a" };
 	const task = (overrides: Partial<Pick<Task, "prNumber" | "prStatusCache">> = {}) => ({ prNumber: 7, prStatusCache: cache, ...overrides });
 
-	it("is true for a merged PR opened from the same branch", () => {
+	it("is true for a merged PR opened from the same branch, false for another branch or no branch", () => {
 		expect(savedPrMergedFromBranch(task(), "feat/a")).toBe(true);
-	});
-
-	it("is false for a cache written before the head branch was stored", () => {
-		expect(savedPrMergedFromBranch(task({ prStatusCache: { ...cache, headRefName: undefined } }), "feat/a")).toBe(false);
-	});
-
-	it("is false for another branch or no branch", () => {
 		expect(savedPrMergedFromBranch(task(), "feat/b")).toBe(false);
 		expect(savedPrMergedFromBranch(task(), "")).toBe(false);
 		expect(savedPrMergedFromBranch(task(), null)).toBe(false);
 	});
 
-	it("is false unless the saved state is MERGED", () => {
+	it("is false for a pre-head-branch cache, a non-MERGED state, another PR number, or no cache", () => {
+		expect(savedPrMergedFromBranch(task({ prStatusCache: { ...cache, headRefName: undefined } }), "feat/a")).toBe(false);
 		const closed = { ...cache, mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "CLOSED" } };
 		expect(savedPrMergedFromBranch(task({ prStatusCache: closed }), "feat/a")).toBe(false);
-	});
-
-	it("is false when the cache belongs to another PR number or there is none", () => {
 		expect(savedPrMergedFromBranch(task({ prNumber: 8 }), "feat/a")).toBe(false);
 		expect(savedPrMergedFromBranch(task({ prNumber: null }), "feat/a")).toBe(false);
 		expect(savedPrMergedFromBranch(task({ prStatusCache: null }), "feat/a")).toBe(false);

@@ -101,11 +101,14 @@ describe("resetEnvFromDev3Pane", () => {
 });
 
 describe("withoutLaunchTaskWiring", () => {
-	it("drops the launching task's keys but keeps dev3's launch settings and later values", () => {
+	it("drops the launching task's keys but keeps dev3's launch settings and values a caller set after the launch", () => {
 		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
 
 		expect(withoutLaunchTaskWiring({ HOME: "/Users/me", DEV3_HOME: "/Users/me/.dev3.0", DEV3_QA_SCOPE: "0", DEV3_TASK_ID: "task-a", DEV3_PORT0: "17747", DEV3_PROJECT_PATH: "/projects/a", DEV3_WORKTREE_ROOT: "/projects/a", DEV3_BRANCH_NAME: "fix/a", DEV3_PORTS: "17747,17748", DEV3_TASK_SEQ: "78-1" }))
 			.toEqual({ HOME: "/Users/me", DEV3_HOME: "/Users/me/.dev3.0", DEV3_QA_SCOPE: "0", DEV3_TASK_ID: undefined, DEV3_PORT0: undefined, DEV3_PROJECT_PATH: undefined, DEV3_WORKTREE_ROOT: undefined, DEV3_BRANCH_NAME: undefined, DEV3_PORTS: undefined, DEV3_TASK_SEQ: undefined });
+		// A wiring key a caller set to a new value after the launch is kept.
+		expect(withoutLaunchTaskWiring({ DEV3_TASK_ID: "task-b", DEV3_PORT0: "18000", DEV3_TASK_SEQ: "78-1" }))
+			.toEqual({ DEV3_TASK_ID: "task-b", DEV3_PORT0: "18000", DEV3_TASK_SEQ: undefined });
 	});
 
 	it("drops the artifact template mode, so an off project does not switch every other project off", () => {
@@ -114,13 +117,6 @@ describe("withoutLaunchTaskWiring", () => {
 		const env = withoutLaunchTaskWiring({ DEV3_ARTIFACT_TEMPLATE: "off", DEV3_ARTIFACT_TEMPLATE_DIR: "/projects/a/.dev3/artifact" });
 
 		expect(env).toEqual({ DEV3_ARTIFACT_TEMPLATE: undefined, DEV3_ARTIFACT_TEMPLATE_DIR: undefined });
-	});
-
-	it("keeps a wiring key a caller set to a new value after the launch", () => {
-		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
-
-		expect(withoutLaunchTaskWiring({ DEV3_TASK_ID: "task-b", DEV3_PORT0: "18000", DEV3_TASK_SEQ: "78-1" }))
-			.toEqual({ DEV3_TASK_ID: "task-b", DEV3_PORT0: "18000", DEV3_TASK_SEQ: undefined });
 	});
 
 		/** Runs `body` with the launching task's keys in process.env, as in an app started from a pane. */

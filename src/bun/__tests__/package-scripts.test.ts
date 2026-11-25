@@ -19,89 +19,45 @@ describe("package-scripts", () => {
 	});
 
 	describe("parsePackageScripts", () => {
-		it("returns no-worktree error when path is null", () => {
+		it("returns no-worktree for a null path, no-package-json when missing, parse-failed on invalid JSON", () => {
 			const r = parsePackageScripts(null);
 			expect(r.exists).toBe(false);
 			expect(r.error).toBe("no-worktree");
 			expect(r.scripts).toEqual([]);
+			expect(parsePackageScripts(tmp)).toMatchObject({ exists: false, error: "no-package-json" });
+			writeFileSync(join(tmp, "package.json"), "{not json");
+			expect(parsePackageScripts(tmp).exists).toBe(false);
+			expect(parsePackageScripts(tmp).error).toMatch(/^parse-failed:/);
 		});
 
-		it("returns no-package-json when missing", () => {
-			const r = parsePackageScripts(tmp);
-			expect(r.exists).toBe(false);
-			expect(r.error).toBe("no-package-json");
-		});
-
-		it("parses scripts correctly", () => {
+		it("parses string scripts and filters non-string values", () => {
 			writeFileSync(
 				join(tmp, "package.json"),
-				JSON.stringify({ name: "x", scripts: { dev: "vite", test: "vitest", build: "vite build" } }),
+				JSON.stringify({ name: "x", scripts: { dev: "vite", test: "vitest", build: "vite build", bad: 123, alsoBad: null } }),
 			);
 			const r = parsePackageScripts(tmp);
 			expect(r.exists).toBe(true);
 			expect(r.path).toBe("package.json");
-			expect(r.scripts).toHaveLength(3);
+			expect(r.scripts.map((s) => s.name)).toEqual(["dev", "test", "build"]);
 			expect(r.scripts.find((s) => s.name === "dev")?.command).toBe("vite");
 			expect(r.error).toBeNull();
 		});
 
-		it("filters non-string script values", () => {
-			writeFileSync(
-				join(tmp, "package.json"),
-				JSON.stringify({ scripts: { ok: "echo ok", bad: 123, alsoBad: null } }),
-			);
-			const r = parsePackageScripts(tmp);
-			expect(r.scripts.map((s) => s.name)).toEqual(["ok"]);
+		it("returns no-scripts when scripts is missing or empty", () => {
+			for (const pkg of [{ name: "x" }, { scripts: {} }]) {
+				writeFileSync(join(tmp, "package.json"), JSON.stringify(pkg));
+				const r = parsePackageScripts(tmp);
+				expect(r.exists).toBe(true);
+				expect(r.error).toBe("no-scripts");
+				expect(r.scripts).toEqual([]);
+			}
 		});
 
-		it("returns no-scripts when scripts field is missing", () => {
-			writeFileSync(join(tmp, "package.json"), JSON.stringify({ name: "x" }));
-			const r = parsePackageScripts(tmp);
-			expect(r.exists).toBe(true);
-			expect(r.error).toBe("no-scripts");
-			expect(r.scripts).toEqual([]);
-		});
-
-		it("returns no-scripts when scripts is empty object", () => {
-			writeFileSync(join(tmp, "package.json"), JSON.stringify({ scripts: {} }));
-			const r = parsePackageScripts(tmp);
-			expect(r.exists).toBe(true);
-			expect(r.error).toBe("no-scripts");
-		});
-
-		it("returns parse-failed on invalid JSON", () => {
-			writeFileSync(join(tmp, "package.json"), "{not json");
-			const r = parsePackageScripts(tmp);
-			expect(r.exists).toBe(false);
-			expect(r.error).toMatch(/^parse-failed:/);
-		});
-
-		it("detects bun runner from bun.lockb", () => {
+		it("falls back to npm with no lockfile, detects bun from bun.lockb, and flags multiple lockfiles", () => {
 			writeFileSync(join(tmp, "package.json"), JSON.stringify({ scripts: { dev: "x" } }));
+			expect(parsePackageScripts(tmp)).toMatchObject({ runner: "npm", runnerAutoDetected: false });
 			writeFileSync(join(tmp, "bun.lockb"), "");
-			const r = parsePackageScripts(tmp);
-			expect(r.runner).toBe("bun");
-			expect(r.runnerAutoDetected).toBe(true);
-			expect(r.lockfiles).toEqual(["bun.lockb"]);
-		});
-
-		it("detects pnpm runner", () => {
-			writeFileSync(join(tmp, "package.json"), JSON.stringify({ scripts: { dev: "x" } }));
-			writeFileSync(join(tmp, "pnpm-lock.yaml"), "");
-			const r = parsePackageScripts(tmp);
-			expect(r.runner).toBe("pnpm");
-		});
-
-		it("falls back to npm when no lockfile", () => {
-			writeFileSync(join(tmp, "package.json"), JSON.stringify({ scripts: { dev: "x" } }));
-			const r = parsePackageScripts(tmp);
-			expect(r.runner).toBe("npm");
-			expect(r.runnerAutoDetected).toBe(false);
-		});
-
-		it("flags multipleLockfiles when more than one detected", () => {
-			writeFileSync(join(tmp, "package.json"), JSON.stringify({ scripts: { dev: "x" } }));
-			writeFileSync(join(tmp, "bun.lockb"), "");
+			expect(parsePackageScripts(tmp)).toMatchObject({ runner: "bun", runnerAutoDetected: true, lockfiles: ["bun.lockb"] });
 			writeFileSync(join(tmp, "pnpm-lock.yaml"), "");
 			const r = parsePackageScripts(tmp);
 			expect(r.multipleLockfiles).toBe(true);
@@ -112,15 +68,13 @@ describe("package-scripts", () => {
 	});
 
 	describe("detectRunner", () => {
-		it("yarn from yarn.lock", () => {
-			writeFileSync(join(tmp, "yarn.lock"), "");
-			expect(detectRunner(tmp).runner).toBe("yarn");
-		});
-		it("npm from package-lock.json", () => {
-			writeFileSync(join(tmp, "package-lock.json"), "");
-			expect(detectRunner(tmp).runner).toBe("npm");
-		});
-		it("treats non-existent directory like no lockfiles", () => {
+		it("maps each lockfile to its runner, and an empty directory to npm", () => {
+			for (const [lock, runner] of [["yarn.lock", "yarn"], ["package-lock.json", "npm"], ["pnpm-lock.yaml", "pnpm"]]) {
+				const dir = join(tmp, runner);
+				mkdirSync(dir);
+				writeFileSync(join(dir, lock), "");
+				expect(detectRunner(dir).runner, lock).toBe(runner);
+			}
 			const ghost = join(tmp, "ghost");
 			mkdirSync(ghost);
 			const r = detectRunner(ghost);
@@ -130,13 +84,11 @@ describe("package-scripts", () => {
 	});
 
 	describe("resolveRunnerCommand", () => {
-		it("formats per runner", () => {
+		it("formats per runner, allowing colon and dot in script names", () => {
 			expect(resolveRunnerCommand("bun", "dev")).toBe("bun run dev");
 			expect(resolveRunnerCommand("pnpm", "dev")).toBe("pnpm run dev");
 			expect(resolveRunnerCommand("yarn", "dev")).toBe("yarn dev");
 			expect(resolveRunnerCommand("npm", "dev")).toBe("npm run dev");
-		});
-		it("allows colon and dot in script names", () => {
 			expect(resolveRunnerCommand("bun", "test:full")).toBe("bun run test:full");
 			expect(resolveRunnerCommand("bun", "build.prod")).toBe("bun run build.prod");
 		});
@@ -168,12 +120,10 @@ describe("package-scripts", () => {
 			expect(rootPkg.scripts.dev).not.toMatch(/[&|;$]/);
 		});
 
-		it("pins DEV3_REMOTE_PORT to $DEV3_PORT0 with a 0 fallback", () => {
+		it("pins DEV3_REMOTE_PORT to $DEV3_PORT0 with a 0 fallback, keeping the stable web-access code", () => {
 			expect(devRunEnv("dev", { staticCode: null, port0: "31337" }).DEV3_REMOTE_PORT).toBe("31337");
 			expect(devRunEnv("dev", { staticCode: null, port0: undefined }).DEV3_REMOTE_PORT).toBe("0");
-		});
-
-		it("still sets the stable dev web-access code", () => {
+			// It still sets the stable dev web-access code.
 			expect(devRunEnv("dev", { staticCode: "stable-code", port0: "0" }).DEV3_REMOTE_STATIC_CODE)
 				.toBe("stable-code");
 			expect(devPlan("dev", "bun").some((s) => s.command.includes("scripts/build-cli.ts"))).toBe(true);
@@ -188,18 +138,12 @@ describe("package-scripts", () => {
 		const noWebkit = () => false;
 		const desktopEnv = { DISPLAY: ":0" };
 
-		it("keeps the desktop window where it can open", () => {
+		it("keeps the desktop window where it can open, else goes headless (or on request)", () => {
 			expect(devShell([], desktopEnv, "linux", webkit).shell).toBe("desktop");
 			expect(devShell([], {}, "darwin", noWebkit).shell).toBe("desktop");
 			expect(devShell([], {}, "win32", noWebkit).shell).toBe("desktop");
-		});
-
-		it("goes headless on Linux without a display or without WebKitGTK", () => {
 			expect(devShell([], {}, "linux", webkit)).toEqual({ shell: "headless", reason: "no DISPLAY or WAYLAND_DISPLAY" });
 			expect(devShell([], { WAYLAND_DISPLAY: "wayland-0" }, "linux", noWebkit).shell).toBe("headless");
-		});
-
-		it("goes headless on request on any platform", () => {
 			expect(devShell(["--headless"], {}, "darwin", webkit).shell).toBe("headless");
 			expect(devShell([], { ...desktopEnv, DEV3_DEV_HEADLESS: "1" }, "linux", webkit).shell).toBe("headless");
 		});
@@ -218,11 +162,9 @@ describe("package-scripts", () => {
 
 		// A compiled dist/dev3 reads as an install to the managed-CLI guard and would
 		// overwrite the shared ~/.dev3.0/bin/dev3; a bun process is refused that write.
-		it("runs the server from source, never the compiled CLI", () => {
+		it("runs the server from source, never the compiled CLI, with its own port and views dir", () => {
 			expect(headlessCommand("/opt/bun")).toEqual(["/opt/bun", "src/cli/main.ts", "remote", "--no-detach"]);
-		});
-
-		it("overrides the installed server's inherited port and views dir", () => {
+			// ...and overrides the installed server's inherited port and views dir.
 			const env = headlessRunEnv("/repo", undefined);
 			expect(env).toMatchObject({ DEV3_REMOTE_PORT: "0", DEV3_REMOTE_HOST: "127.0.0.1", DEV3_REMOTE_NO_TUNNEL: "1" });
 			expect(env.DEV3_VIEWS_DIR).toBe(join("/repo", "dist"));

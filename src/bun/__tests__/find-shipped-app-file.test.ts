@@ -114,20 +114,14 @@ describe("release-build-macos.yml JIT entitlements gate", () => {
 	const end = workflow.indexOf("- name:", start + 1);
 	const step = workflow.slice(start, end);
 
-	it("exists", () => {
+	it("exists, looks up the CLI and worker through the helper payload-first, and never pipes find into head", () => {
 		expect(start, "the JIT entitlements gate step was renamed or removed — update this test, do not drop the gate").toBeGreaterThan(-1);
 		expect(step).toContain("set -euo pipefail");
-	});
-
-	it("looks up the shipped CLI and worker through the helper, payload first", () => {
 		for (const suffix of ["Resources/app/cli/dev3", "Resources/app/workers/clonefile-worker.js"]) {
 			expect(step).toContain(
 				`bash scripts/find-shipped-app-file.sh "${suffix}" "$RUNNER_TEMP/eb-payload" ./build`,
 			);
 		}
-	});
-
-	it("never pipes find into head under pipefail", () => {
 		expect(step).not.toMatch(/find[^\n]*\|\s*head/);
 	});
 });

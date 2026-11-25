@@ -234,7 +234,7 @@ describe("resolveResumableSessionIds — several panes (#1950)", () => {
 });
 
 describe("listResumableSessionIds", () => {
-	it("returns session ids newest first and ignores non-transcript files", () => {
+	it("returns session ids newest first, ignores non-transcript files, and nothing for an agent without a filename-keyed store", () => {
 		seedTranscript("aaaaaaaa-0000-0000-0000-000000000001", 7200);
 		seedTranscript("bbbbbbbb-0000-0000-0000-000000000002", 60);
 		seedTranscript("cccccccc-0000-0000-0000-000000000003", 3600);
@@ -246,29 +246,20 @@ describe("listResumableSessionIds", () => {
 			"cccccccc-0000-0000-0000-000000000003",
 			"aaaaaaaa-0000-0000-0000-000000000001",
 		]);
-	});
-
-	it("returns nothing for an agent without a filename-keyed store", () => {
-		seedTranscript("aaaaaaaa-0000-0000-0000-000000000001", 0);
-
-		expect(listResumableSessionIds("codex", WORKTREE, home)).toEqual([]);
+		expect(listResumableSessionIds("codex", WORKTREE, home), "agent without a filename-keyed store").toEqual([]);
 	});
 });
 
 describe("claudeConfigDirHasSession", () => {
-	it("finds a conversation in any project store of that config dir, and only there", () => {
+	it("finds a conversation in any project store of that config dir, only there, and never walks out of it", () => {
 		seedTranscriptFor("/elsewhere", "conv-1");
 		expect(claudeConfigDirHasSession(join(home, ".claude"), "conv-1")).toBe(true);
 		expect(claudeConfigDirHasSession(join(home, ".claude"), "conv-2")).toBe(false);
 		// An account with its own history folder cannot see the home store's conversations.
 		mkdirSync(join(home, "account", "projects", "other"), { recursive: true });
 		expect(claudeConfigDirHasSession(join(home, "account"), "conv-1")).toBe(false);
-	});
-
-	it("answers false for a folder with no projects store, and never walks out of it", () => {
-		expect(claudeConfigDirHasSession(join(home, "missing"), "conv-1")).toBe(false);
-		seedTranscriptFor("/elsewhere", "conv-1");
-		expect(claudeConfigDirHasSession(join(home, ".claude"), "../conv-1")).toBe(false);
+		expect(claudeConfigDirHasSession(join(home, "missing"), "conv-1"), "folder with no projects store").toBe(false);
+		expect(claudeConfigDirHasSession(join(home, ".claude"), "../conv-1"), "never walks out of the store").toBe(false);
 	});
 });
 

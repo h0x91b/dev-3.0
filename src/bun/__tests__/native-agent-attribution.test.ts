@@ -30,7 +30,7 @@ describe("listNativeTaskAgents", () => {
 		expect(await listNativeTaskAgents(task())).toEqual([{ ...attribution, paneId: "p1", shellPid: 1 }]);
 	});
 
-	it("skips dead, non-spawn and sidecar-less panes", async () => {
+	it("skips dead, non-spawn and sidecar-less panes, but lists a bug-hunter pane", async () => {
 		await writeNativeAgentAttribution(spawnScript(1), attribution);
 		await writeNativeAgentAttribution(spawnScript(2), attribution);
 		writeFileSync(`${spawnScript(3)}.json`, "not json");
@@ -43,26 +43,21 @@ describe("listNativeTaskAgents", () => {
 			pane("ok", spawnScript(2)),
 		]);
 		expect((await listNativeTaskAgents(task())).map((a) => a.paneId)).toEqual(["ok"]);
-	});
 
-	it("lists a bug-hunter pane, but not the main pane or an unrelated script", async () => {
+		// A bug-hunter pane is listed; the main pane and an unrelated script are not.
 		await writeNativeAgentAttribution(huntScript, attribution);
-		await writeNativeAgentAttribution(spawnScript(1), attribution);
-		const mainScript = dev3TaskTempPath(TASK_ID, "launch.sh");
 		mocks.nativeTaskPaneCommands.mockResolvedValue([
-			pane("main", mainScript),
+			pane("main", dev3TaskTempPath(TASK_ID, "launch.sh")),
 			pane("hunter", huntScript),
 			pane("other", dev3TaskTempPath(TASK_ID, "devserver-1.sh")),
 		]);
 		expect((await listNativeTaskAgents(task())).map((a) => a.paneId)).toEqual(["hunter"]);
 	});
 
-	it("returns nothing for a non-native task without reading panes", async () => {
+	it("returns nothing for a non-native task (without reading panes) or when the pane read fails", async () => {
 		expect(await listNativeTaskAgents(task({ terminalBackend: undefined }))).toEqual([]);
 		expect(mocks.nativeTaskPaneCommands).not.toHaveBeenCalled();
-	});
 
-	it("returns nothing when the pane read fails", async () => {
 		mocks.nativeTaskPaneCommands.mockRejectedValue(new Error("boom"));
 		expect(await listNativeTaskAgents(task())).toEqual([]);
 	});

@@ -31,6 +31,8 @@ describe("data dirs", () => {
 		expect(legacyProjectDataDir(HOME, "/src/repo")).toBe(`${HOME}/data/src-repo`);
 		expect(projectDataDir(HOME, HOME_PROJECT)).toBe(`${HOME}/data/src-repo`);
 		expect(projectTasksFile(HOME, HOME_PROJECT)).toBe(`${HOME}/data/src-repo/tasks.json`);
+		// A virtual board stays in the home layout even with the flag set.
+		expect(projectDataDir(HOME, { ...IN_PROJECT, kind: "virtual" })).toBe(`${HOME}/data/src-repo`);
 	});
 
 	it("resolves the project folder when the project stores in-project", () => {
@@ -39,19 +41,12 @@ describe("data dirs", () => {
 		expect(projectDataDir(HOME, IN_PROJECT)).toBe("/src/repo/.dev3/data");
 		expect(projectTasksFile(HOME, IN_PROJECT)).toBe("/src/repo/.dev3/data/tasks.json");
 	});
-
-	it("keeps a virtual board in the home layout even with the flag set", () => {
-		expect(projectDataDir(HOME, { ...IN_PROJECT, kind: "virtual" })).toBe(`${HOME}/data/src-repo`);
-	});
 });
 
 describe("worktrees roots", () => {
-	it("picks the root by location", () => {
+	it("picks the root by location and lists both roots", () => {
 		expect(projectWorktreesRoot(HOME, "/src/repo")).toBe(`${HOME}/worktrees/src-repo`);
 		expect(projectWorktreesRoot(HOME, "/src/repo", "project")).toBe("/src/repo/.dev3/worktrees");
-	});
-
-	it("lists both roots", () => {
 		expect(allProjectWorktreesRoots(HOME, "/src/repo")).toEqual([`${HOME}/worktrees/src-repo`, "/src/repo/.dev3/worktrees"]);
 	});
 });
@@ -62,16 +57,14 @@ describe("taskDirFor", () => {
 		expect(taskDirFor(HOME, HOME_PROJECT, { id: TASK_ID, taskDirLocation: "project" })).toBe("/src/repo/.dev3/worktrees/abcd1234");
 	});
 
-	it("prefers a stored worktreePath under either root", () => {
+	it("prefers a stored worktreePath under either root, ignoring one under neither", () => {
 		const inProjectStored = "/src/repo/.dev3/worktrees/abcd1234/worktree";
 		expect(taskDirFor(HOME, HOME_PROJECT, { id: TASK_ID, worktreePath: inProjectStored })).toBe("/src/repo/.dev3/worktrees/abcd1234");
 		const homeStored = `${HOME}/worktrees/src-repo/abcd1234/worktree`;
 		expect(taskDirFor(HOME, IN_PROJECT, { id: TASK_ID, taskDirLocation: "project", worktreePath: homeStored })).toBe(
 			`${HOME}/worktrees/src-repo/abcd1234`,
 		);
-	});
-
-	it("ignores a stored worktreePath that matches neither root", () => {
+		// A stored worktreePath under neither root is ignored.
 		expect(taskDirFor(HOME, HOME_PROJECT, { id: TASK_ID, worktreePath: "/elsewhere/abcd1234/worktree" })).toBe(
 			`${HOME}/worktrees/src-repo/abcd1234`,
 		);
@@ -83,16 +76,13 @@ describe("parseInProjectTaskPath", () => {
 		const expected = { projectPath: "/src/repo", shortId: "abcd1234", taskDir: "/src/repo/.dev3/worktrees/abcd1234" };
 		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234/worktree")).toEqual({ ...expected, inWorktree: true });
 		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234/worktree/src/a.ts")).toEqual({ ...expected, inWorktree: true });
+		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234/worktree/")?.projectPath).toBe("/src/repo"); // trailing slash
 	});
 
 	it("reports task-dir siblings as not inWorktree", () => {
 		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234/logs")?.inWorktree).toBe(false);
 		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234")?.inWorktree).toBe(false);
 		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234/worktree-old")?.inWorktree).toBe(false);
-	});
-
-	it("accepts a trailing slash", () => {
-		expect(parseInProjectTaskPath("/src/repo/.dev3/worktrees/abcd1234/worktree/")?.projectPath).toBe("/src/repo");
 	});
 
 	it("returns null for paths that are not in-project task dirs", () => {

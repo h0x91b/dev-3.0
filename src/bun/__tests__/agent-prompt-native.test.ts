@@ -103,31 +103,25 @@ afterEach(() => {
 });
 
 describe("resolveNativeAgentPane — discovery", () => {
-	it("finds the agent pane in a single-pane task", async () => {
-		await expect(resolveNativeAgentPane(TASK_ID)).resolves.toBe(NATIVE_AGENT_PANE_ID);
-	});
-
-	it("picks the agent pane, not a shell split, in a multi-pane task", async () => {
+	it("finds the agent pane in a single- or multi-pane task, never following focus to a shell split", async () => {
+		await expect(resolveNativeAgentPane(TASK_ID), "single pane").resolves.toBe(NATIVE_AGENT_PANE_ID);
 		// pane-2 is a plain shell AND the active pane — discovery must still land on
 		// the agent rather than following focus (the live seq 1371 repro).
 		const state = panesState([pane("pane-2"), pane(NATIVE_AGENT_PANE_ID)]);
 		vi.mocked(nativeTaskPanesState).mockResolvedValue({ ...state, activePaneId: "pane-2" });
-		await expect(resolveNativeAgentPane(TASK_ID)).resolves.toBe(NATIVE_AGENT_PANE_ID);
+		await expect(resolveNativeAgentPane(TASK_ID), "multi pane").resolves.toBe(NATIVE_AGENT_PANE_ID);
 	});
 
-	it("returns null when only shell panes survive the agent", async () => {
-		vi.mocked(nativeTaskPanesState).mockResolvedValue(panesState([pane("pane-2"), pane("pane-3")]));
-		await expect(resolveNativeAgentPane(TASK_ID)).resolves.toBeNull();
-	});
-
-	it("returns null when the agent pane is present but dead", async () => {
-		vi.mocked(nativeTaskPanesState).mockResolvedValue(panesState([pane(NATIVE_AGENT_PANE_ID, false)]));
-		await expect(resolveNativeAgentPane(TASK_ID)).resolves.toBeNull();
-	});
-
-	it("returns null for a stopped task with no pane set at all", async () => {
-		vi.mocked(nativeTaskPanesState).mockResolvedValue(null);
-		await expect(resolveNativeAgentPane(TASK_ID)).resolves.toBeNull();
+	it("returns null when only shells survive, the agent pane is dead, or a stopped task has no pane set", async () => {
+		const cases: Array<[string, NativeTaskPanesState | null]> = [
+			["only shells", panesState([pane("pane-2"), pane("pane-3")])],
+			["agent pane dead", panesState([pane(NATIVE_AGENT_PANE_ID, false)])],
+			["no pane set", null],
+		];
+		for (const [name, state] of cases) {
+			vi.mocked(nativeTaskPanesState).mockResolvedValue(state);
+			await expect(resolveNativeAgentPane(TASK_ID), name).resolves.toBeNull();
+		}
 	});
 });
 
@@ -263,57 +257,49 @@ describe("sendPromptToNativeAgentPane — another app process owns the lease", (
 		expect(forwardToOwner).toHaveBeenCalledTimes(1);
 	});
 
-	it("reports not-delivered when the owner says it did not deliver", async () => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-		vi.mocked(resolvePaneOwner).mockResolvedValue({ kind: "peer", pid: 4242, endpoint: "/sock/4242.sock" });
-		vi.mocked(forwardToOwner).mockResolvedValue({ delivered: false });
+	it("writes nothing locally when the owner did not deliver (not-delivered) or the forward failed (unconfirmed)", async () => {
+		const cases: Array<[string, () => void, object]> = [
+			["owner did not deliver", () => vi.mocked(forwardToOwner).mockResolvedValue({ delivered: false }), { status: "not-delivered" }],
+			["forward failed", () => vi.mocked(forwardToOwner).mockRejectedValue(new Error("owner 4242 closed before answering")), { status: "unconfirmed", reason: "owner-unreachable" }],
+		];
+		for (const [name, arrange, expected] of cases) {
+			const { terminal, writes } = fakeTerminal("observer");
+			vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+			vi.mocked(resolvePaneOwner).mockResolvedValue({ kind: "peer", pid: 4242, endpoint: "/sock/4242.sock" });
+			arrange();
 
-		await expect(sendPromptToNativeAgentPane(task(), "check CI")).resolves.toMatchObject({ status: "not-delivered" });
-		expect(writes).toEqual([]);
-	});
-
-	it("reports unconfirmed — and still writes nothing locally — when the forward fails", async () => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-		vi.mocked(resolvePaneOwner).mockResolvedValue({ kind: "peer", pid: 4242, endpoint: "/sock/4242.sock" });
-		vi.mocked(forwardToOwner).mockRejectedValue(new Error("owner 4242 closed before answering"));
-
-		await expect(sendPromptToNativeAgentPane(task(), "check CI")).resolves.toMatchObject({ status: "unconfirmed", reason: "owner-unreachable" });
-		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS * 2);
-		expect(writes).toEqual([]);
+			await expect(sendPromptToNativeAgentPane(task(), "check CI"), name).resolves.toMatchObject(expected);
+			await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS * 2);
+			expect(writes, name).toEqual([]);
+		}
 	});
 });
 
 describe("sendPromptToNativeAgentPane — vacant / unprovable lease", () => {
-	it("claims a vacant lease and then delivers", async () => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(terminal.claimHostWriter).mockResolvedValue("writer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-		vi.mocked(resolvePaneOwner).mockResolvedValue({ kind: "vacant" });
+	it("claims a vacant lease and delivers, or gives up when the lease is taken before the claim lands", async () => {
+		for (const [claimed, expected] of [["writer", ["check CI"]], ["observer", []]] as const) {
+			const { terminal, writes } = fakeTerminal("observer");
+			vi.mocked(terminal.claimHostWriter).mockResolvedValue(claimed);
+			vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+			vi.mocked(resolvePaneOwner).mockResolvedValue({ kind: "vacant" });
 
-		await expect(sendPromptToNativeAgentPane(task(), "check CI")).resolves.toMatchObject({ status: "unconfirmed" });
-		expect(terminal.claimHostWriter).toHaveBeenCalledTimes(1);
-		expect(writes).toEqual(["check CI"]);
+			await expect(sendPromptToNativeAgentPane(task(), "check CI"), `claim -> ${claimed}`).resolves.toMatchObject({
+				status: claimed === "writer" ? "unconfirmed" : "not-delivered",
+			});
+			expect(terminal.claimHostWriter).toHaveBeenCalledTimes(1);
+			expect(writes, `claim -> ${claimed}`).toEqual(expected);
+		}
 	});
 
-	it("gives up when the vacant lease is taken before the claim lands", async () => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(terminal.claimHostWriter).mockResolvedValue("observer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-		vi.mocked(resolvePaneOwner).mockResolvedValue({ kind: "vacant" });
+	it("refuses to guess when the owner is unknown or gone", async () => {
+		for (const kind of ["unknown", "gone"] as const) {
+			const { terminal, writes } = fakeTerminal("observer");
+			vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+			vi.mocked(resolvePaneOwner).mockResolvedValue({ kind });
 
-		await expect(sendPromptToNativeAgentPane(task(), "check CI")).resolves.toMatchObject({ status: "not-delivered" });
-		expect(writes).toEqual([]);
-	});
-
-	it.each(["unknown", "gone"] as const)("refuses to guess when the owner is %s", async (kind) => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-		vi.mocked(resolvePaneOwner).mockResolvedValue({ kind });
-
-		await expect(sendPromptToNativeAgentPane(task(), "check CI")).resolves.toMatchObject({ status: "not-delivered" });
-		expect(writes).toEqual([]);
+			await expect(sendPromptToNativeAgentPane(task(), "check CI"), kind).resolves.toMatchObject({ status: "not-delivered" });
+			expect(writes, kind).toEqual([]);
+		}
 		expect(forwardToOwner).not.toHaveBeenCalled();
 	});
 });
@@ -329,19 +315,16 @@ describe("sendPromptToNativePane — binding on demand", () => {
 		expect(writes).toEqual(["resume please"]);
 	});
 
-	it("fails honestly when the rebind cannot produce a binding", async () => {
-		await expect(sendPromptToNativeAgentPane(task(), "hello")).resolves.toMatchObject({ status: "not-delivered" });
+	it("fails honestly when the rebind produces no binding, throws, or has no worktree to rebind from", async () => {
+		await expect(sendPromptToNativeAgentPane(task(), "hello"), "no binding").resolves.toMatchObject({ status: "not-delivered" });
 		expect(resolvePaneOwner).not.toHaveBeenCalled();
-	});
 
-	it("does not attempt a rebind for a task with no worktree on record", async () => {
-		await expect(sendPromptToNativeAgentPane(task({ worktreePath: null }), "hello")).resolves.toMatchObject({ status: "not-delivered" });
+		vi.mocked(reattachNativeTaskSession).mockClear();
+		await expect(sendPromptToNativeAgentPane(task({ worktreePath: null }), "hello"), "no worktree").resolves.toMatchObject({ status: "not-delivered" });
 		expect(reattachNativeTaskSession).not.toHaveBeenCalled();
-	});
 
-	it("survives a throwing rebind and still reports the honest failure", async () => {
 		vi.mocked(reattachNativeTaskSession).mockRejectedValue(new Error("host image missing"));
-		await expect(sendPromptToNativeAgentPane(task(), "hello")).resolves.toMatchObject({ status: "not-delivered" });
+		await expect(sendPromptToNativeAgentPane(task(), "hello"), "throwing rebind").resolves.toMatchObject({ status: "not-delivered" });
 	});
 
 	it("registers a non-agent pane through its own PTY session, not the task reattach", async () => {
@@ -384,25 +367,16 @@ describe("deliverNativePromptAsOwner — the owner-side dead end", () => {
 		expect(forwardToOwner).not.toHaveBeenCalled();
 	});
 
-	it("claims the lease when it fell vacant between resolution and arrival", async () => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(terminal.claimHostWriter).mockResolvedValue("writer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+	it("claims a lease that fell vacant on the way, and refuses one no longer ours or a pane with no binding", async () => {
+		for (const [claimed, delivered] of [["writer", true], ["observer", false]] as const) {
+			const { terminal, writes } = fakeTerminal("observer");
+			vi.mocked(terminal.claimHostWriter).mockResolvedValue(claimed);
+			vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
 
-		await expect(deliverNativePromptAsOwner(params)).resolves.toBe(true);
-		expect(writes).toEqual(["check CI"]);
-	});
-
-	it("refuses when the lease is no longer ours", async () => {
-		const { terminal, writes } = fakeTerminal("observer");
-		vi.mocked(terminal.claimHostWriter).mockResolvedValue("observer");
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-
-		await expect(deliverNativePromptAsOwner(params)).resolves.toBe(false);
-		expect(writes).toEqual([]);
-	});
-
-	it("refuses when this process has no binding for the pane", async () => {
-		await expect(deliverNativePromptAsOwner(params)).resolves.toBe(false);
+			await expect(deliverNativePromptAsOwner(params), `claim -> ${claimed}`).resolves.toBe(delivered);
+			expect(writes, `claim -> ${claimed}`).toEqual(delivered ? ["check CI"] : []);
+		}
+		vi.mocked(nativePaneTerminal).mockReturnValue(null);
+		await expect(deliverNativePromptAsOwner(params), "no binding").resolves.toBe(false);
 	});
 });

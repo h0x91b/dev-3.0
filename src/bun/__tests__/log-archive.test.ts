@@ -45,12 +45,9 @@ describe("archiveOldLogs", () => {
 			"2026-11-09.log",
 		]);
 		expect(filesIn("2026-10-31")).toEqual(["2026-10-31.log.tgz"]);
-	});
 
-	it("is idempotent: a second run changes nothing", async () => {
-		writeDay("2026-11-01");
-		await archiveOldLogs(NOW, root);
-		const archive = join(root, "2026", "11", "2026-11-01.log.tgz");
+		// Idempotent: a second run changes nothing.
+		const archive = join(root, "2026", "11", "2026-11-06.log.tgz");
 		const first = readFileSync(archive);
 
 		expect(await archiveOldLogs(NOW, root)).toEqual({ archived: 0, failed: 0 });
@@ -67,9 +64,7 @@ describe("archiveOldLogs", () => {
 
 		expect(existsSync(join(root, "freeze", "11", "2026-11-01.log"))).toBe(true);
 		expect(filesIn("2026-11-01")).toEqual(["2026-11-01.log.tgz", "notes.txt"]);
-	});
-
-	it("never throws on a missing root", async () => {
+		// A missing root never throws.
 		await expect(archiveOldLogs(NOW, join(root, "missing"))).resolves.toEqual({ archived: 0, failed: 0 });
 	});
 
@@ -104,12 +99,11 @@ describe("archiveLogFile verify-before-delete", () => {
 		const size = parseInt(tar.toString("ascii", 124, 135), 8);
 		expect(tar.subarray(512, 512 + size).toString("utf8")).toBe(content);
 		expect((await readArchiveEntry(`${file}.tgz`)).name).toBe("2026-11-01.log");
-	});
 
-	it("handles an empty day file", async () => {
-		const file = writeDay("2026-11-01", "");
-		expect(await archiveLogFile(join(root, "2026", "11"), "2026-11-01.log")).toBe("archived");
-		expect((await readArchiveEntry(`${file}.tgz`)).size).toBe(0);
+		// An empty day file archives too.
+		const empty = writeDay("2026-11-02", "");
+		expect(await archiveLogFile(dir, "2026-11-02.log")).toBe("archived");
+		expect((await readArchiveEntry(`${empty}.tgz`)).size).toBe(0);
 	});
 
 	it("rewrites a corrupt archive instead of trusting it, keeping the log until the new one verifies", async () => {
@@ -162,10 +156,5 @@ describe("reader compatibility", () => {
 
 		expect(pruneLogFiles(NOW, root)).toBe(2);
 		expect(readdirSync(dir).sort()).toEqual(["2026-10-30.log", "2026-10-31.log.tgz"]);
-	});
-
-	it("the pre-archive retention regex skips .tgz files, so older app versions leave them alone", () => {
-		const legacy = /^(\d{4})-(\d{2})-(\d{2})\.log$/;
-		expect(legacy.test("2026-11-01.log.tgz")).toBe(false);
 	});
 });

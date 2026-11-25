@@ -48,69 +48,21 @@ describe("cow-clone", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns empty results for empty paths array", async () => {
+	it("returns nothing for no paths, and rejects absolute paths and traversal with or without glob characters", async () => {
 		const results = await clonePaths("/src", "/dst", []);
 		expect(results).toEqual([]);
 		expect(mockSpawn).not.toHaveBeenCalled();
-	});
-
-	it("skips non-existent source paths", async () => {
-		// test -e → exit 1 (not found)
-		mockSpawn.mockReturnValueOnce(makeProc(1));
-
-		const results = await clonePaths("/src", "/dst", ["node_modules"]);
-		expect(results).toHaveLength(1);
-		expect(results[0].skipped).toBe(true);
-		expect(results[0].path).toBe("node_modules");
-	});
-
-	it("rejects absolute paths", async () => {
-		await expect(
-			clonePaths("/src", "/dst", ["/etc/passwd"]),
-		).rejects.toThrow("Absolute path not allowed");
-	});
-
-	it("rejects path traversal with ..", async () => {
-		await expect(
-			clonePaths("/src", "/dst", ["../secret"]),
-		).rejects.toThrow("Path traversal not allowed");
-	});
-
-	it("rejects path traversal with embedded ..", async () => {
-		await expect(
-			clonePaths("/src", "/dst", ["foo/../../secret"]),
-		).rejects.toThrow("Path traversal not allowed");
-	});
-
-	it("processes multiple paths in parallel", async () => {
-		// For each path: test -e (exists), mkdir -p, rm -rf, then cp commands
-		// Path 1: node_modules — test exists, mkdir, rm, then platform-specific
-		// Path 2: .venv — test exists, mkdir, rm, then platform-specific
-		// We'll make everything fall through to regular cp -R
-
-		const callOrder: string[] = [];
-		mockSpawn.mockImplementation((cmd: string[]) => {
-			callOrder.push(cmd[0]);
-			if (cmd[0] === "test") return makeProc(0); // exists
-			if (cmd[0] === "mkdir") return makeProc(0);
-			if (cmd[0] === "rm") return makeProc(0);
-			if (cmd[0] === "cp") {
-				// Make clonefile-style cp fail, regular cp succeed
-				if (cmd.includes("-cR") || cmd.includes("--reflink=always")) {
-					return makeProc(1);
-				}
-				return makeProc(0);
-			}
-			return makeProc(0);
-		});
-
-		const results = await clonePaths("/src", "/dst", ["node_modules", ".venv"]);
-		expect(results).toHaveLength(2);
-		expect(results[0].path).toBe("node_modules");
-		expect(results[1].path).toBe(".venv");
-		// Both should have completed (not skipped)
-		expect(results[0].skipped).toBeUndefined();
-		expect(results[1].skipped).toBeUndefined();
+		{
+		for (const [path, message] of [
+			["/etc/passwd", "Absolute path not allowed"],
+			["/*.cache", "Absolute path not allowed"],
+			["../secret", "Path traversal not allowed"],
+			["foo/../../secret", "Path traversal not allowed"],
+			["../*.cache", "Path traversal not allowed"],
+		]) {
+			await expect(clonePaths("/src", "/dst", [path]), path).rejects.toThrow(message);
+		}
+		}
 	});
 
 	it("uses correct fallback chain on macOS", async () => {
@@ -138,35 +90,6 @@ describe("cow-clone", () => {
 		expect(results).toHaveLength(1);
 		// Should be either "apfs-clone" or "copy" depending on cp -cR success
 		expect(["apfs-clone", "copy"]).toContain(results[0].method);
-
-		Object.defineProperty(process, "platform", { value: origPlatform, writable: true });
-	});
-
-	it("uses correct fallback chain on Linux", async () => {
-		const origPlatform = process.platform;
-		Object.defineProperty(process, "platform", { value: "linux", writable: true });
-
-		const cpCalls: string[][] = [];
-		mockSpawn.mockImplementation((cmd: string[]) => {
-			if (cmd[0] === "test") return makeProc(0);
-			if (cmd[0] === "mkdir") return makeProc(0);
-			if (cmd[0] === "rm") return makeProc(0);
-			if (cmd[0] === "cp") {
-				cpCalls.push(cmd);
-				// reflink fails, fall to regular copy
-				if (cmd.includes("--reflink=always")) return makeProc(1);
-				return makeProc(0);
-			}
-			return makeProc(0);
-		});
-
-		const results = await clonePaths("/src", "/dst", ["node_modules"]);
-		expect(results).toHaveLength(1);
-		expect(results[0].method).toBe("copy");
-
-		// Verify reflink was tried first
-		const reflinkCall = cpCalls.find((c) => c.includes("--reflink=always"));
-		expect(reflinkCall).toBeDefined();
 
 		Object.defineProperty(process, "platform", { value: origPlatform, writable: true });
 	});
@@ -214,27 +137,27 @@ describe("cow-clone", () => {
 			});
 		}
 
-		it("reports success with no error when the plain copy succeeds", async () => {
+		it("reports success with no error when the plain copy succeeds, after trying reflink first", async () => {
 			cascade(0);
 			const results = await clonePaths("/src", "/dst", ["node_modules"]);
 			expect(results[0]).toMatchObject({ path: "node_modules", method: "copy" });
 			expect(results[0].error).toBeUndefined();
 			expect(results[0].skipped).toBeUndefined();
+			const cpCalls = mockSpawn.mock.calls.map((c: unknown[]) => c[0] as string[]).filter((c) => c[0] === "cp");
+			expect(cpCalls[0]).toContain("--reflink=always");
 		});
 
-		it("reports a failure with the exit code and stderr when the plain copy fails", async () => {
+		it("reports a failure with the exit code, and stderr when there is any", async () => {
 			cascade(1, "cp: /src/.env: Permission denied");
 			const results = await clonePaths("/src", "/dst", [".env"]);
 			expect(results).toHaveLength(1);
 			expect(results[0].error).toContain("Permission denied");
 			expect(results[0].error).toContain("exited 1");
 			expect(results[0].skipped).toBeUndefined();
-		});
 
-		it("still reports the exit code when the command wrote nothing to stderr", async () => {
 			cascade(2);
-			const results = await clonePaths("/src", "/dst", [".env"]);
-			expect(results[0].error).toBe("cp -R exited 2");
+			const [silent] = await clonePaths("/src", "/dst", [".env"]);
+			expect(silent.error).toBe("cp -R exited 2");
 		});
 
 		it("never marks a failed path as copied, even alongside a successful one", async () => {
@@ -255,16 +178,6 @@ describe("cow-clone", () => {
 			expect(results.filter((r) => !r.error && !r.skipped)).toHaveLength(1);
 		});
 
-		it("keeps a missing source a skip, not a failure", async () => {
-			mockSpawn.mockImplementation((cmd: string[]) => (
-				cmd[0] === "test" ? makeProc(1) : makeProc(0)
-			));
-			const results = await clonePaths("/src", "/dst", ["node_modules"]);
-			expect(results[0].skipped).toBe(true);
-			expect(results[0].error).toBeUndefined();
-			// Nothing was copied, so no cp ran at all.
-			expect(mockSpawn.mock.calls.some((c: unknown[]) => (c[0] as string[])[0] === "cp")).toBe(false);
-		});
 	});
 
 	describe("on Windows", () => {
@@ -278,23 +191,19 @@ describe("cow-clone", () => {
 			mockCp.mockImplementation((async () => undefined) as never);
 		});
 
-		it("copies through node:fs without spawning a POSIX binary", async () => {
-			const results = await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["node_modules"]);
+		it("copies through node:fs without spawning a POSIX binary, creating nested parents", async () => {
+			const results = await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["node_modules", "frontend/node_modules"]);
 
-			expect(results).toEqual([expect.objectContaining({ path: "node_modules", method: "copy" })]);
+			expect(results[0]).toEqual(expect.objectContaining({ path: "node_modules", method: "copy" }));
 			expect(results[0].skipped).toBeUndefined();
 			expect(mockCp).toHaveBeenCalledWith("D:\\src\\repo/node_modules", "C:/wt/worktree/node_modules", {
 				recursive: true,
 				force: true,
 			});
+			expect(mockMkdir).toHaveBeenCalledWith("C:/wt/worktree/frontend", { recursive: true });
 			// `cp`/`rm`/`mkdir`/`test` are not Windows binaries; only the git safety check spawns.
 			const binaries = mockSpawn.mock.calls.map((c: unknown[]) => (c[0] as string[])[0]);
 			expect(binaries.every((b) => b === "git")).toBe(true);
-		});
-
-		it("creates the destination parent for a nested path", async () => {
-			await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["frontend/node_modules"]);
-			expect(mockMkdir).toHaveBeenCalledWith("C:/wt/worktree/frontend", { recursive: true });
 		});
 
 		it("turns a copy error into a failed result instead of rejecting the whole clone", async () => {
@@ -309,24 +218,13 @@ describe("cow-clone", () => {
 });
 
 describe("WELL_KNOWN_CLONE_PATHS", () => {
-	it("contains common dependency directories", () => {
-		expect(WELL_KNOWN_CLONE_PATHS).toContain("node_modules");
-		expect(WELL_KNOWN_CLONE_PATHS).toContain(".venv");
-		expect(WELL_KNOWN_CLONE_PATHS).toContain("vendor/bundle");
-		expect(WELL_KNOWN_CLONE_PATHS).toContain("target");
-		expect(WELL_KNOWN_CLONE_PATHS).toContain(".env");
-		expect(WELL_KNOWN_CLONE_PATHS).toContain(".npmrc");
-	});
-
-	it("contains no absolute paths", () => {
-		for (const p of WELL_KNOWN_CLONE_PATHS) {
-			expect(p.startsWith("/")).toBe(false);
+	it("contains common dependency directories, all relative and traversal-free", () => {
+		for (const p of ["node_modules", ".venv", "vendor/bundle", "target", ".env", ".npmrc"]) {
+			expect(WELL_KNOWN_CLONE_PATHS).toContain(p);
 		}
-	});
-
-	it("contains no path traversal", () => {
 		for (const p of WELL_KNOWN_CLONE_PATHS) {
-			expect(p.split("/")).not.toContain("..");
+			expect(p.startsWith("/"), p).toBe(false);
+			expect(p.split("/"), p).not.toContain("..");
 		}
 	});
 });
@@ -356,17 +254,17 @@ describe("tracked destination guard (#2026)", () => {
 		expect(results.find((r) => r.path === "node_modules")!.error).toBeUndefined();
 	});
 
-	it("refuses a path holding a single tracked descendant", async () => {
-		rig({ "/dst": ["out/keep.txt"] });
-		const [result] = await clonePaths("/src", "/dst", ["out"]);
-		expect(result.error).toContain("out/keep.txt");
-	});
-
-	it("refuses a path only the project root tracks", async () => {
+	it("refuses a path only the project root tracks, and every path when git cannot answer, without touching anything", async () => {
 		rig({ "/src": ["build/old.txt"] });
 		const [result] = await clonePaths("/src", "/dst", ["build"]);
 		expect(result.error).toContain("in the project root");
 		expect(destructive()).toHaveLength(0);
+		{
+		rig({}, 128);
+		const [result] = await clonePaths("/src", "/dst", ["node_modules"]);
+		expect(result.error).toContain("Could not confirm with git");
+		expect(destructive()).toHaveLength(0);
+		}
 	});
 
 	it("does not mistake a sibling sharing a prefix for a descendant", async () => {
@@ -375,28 +273,20 @@ describe("tracked destination guard (#2026)", () => {
 		expect(result.error).toBeUndefined();
 	});
 
-	it("refuses every path when git cannot answer", async () => {
-		rig({}, 128);
-		const [result] = await clonePaths("/src", "/dst", ["node_modules"]);
-		expect(result.error).toContain("Could not confirm with git");
-		expect(destructive()).toHaveLength(0);
-	});
-
-	it("refuses a path that resolves outside the worktree through a symlink", async () => {
+	it("checks the symlink-resolved path, refusing one that leaves the worktree", async () => {
 		rig({});
 		mockRealpath.mockImplementation(async (p: string) => (p === "/dst/link" ? "/elsewhere" : p));
 		const [result] = await clonePaths("/src", "/dst", ["link/cache"]);
 		expect(result.error).toContain("does not resolve to a path inside the task worktree");
-	});
-
-	it("checks the symlink-resolved path, not the spelled one", async () => {
+		{
 		rig({ "/dst": ["src/gen/a.ts"] });
 		mockRealpath.mockImplementation(async (p: string) => (p === "/dst/link" ? "/dst/src" : p));
 		const [result] = await clonePaths("/src", "/dst", ["link/gen"]);
 		expect(result.error).toContain("src/gen/a.ts");
+		}
 	});
 
-	it("keeps a missing source a silent skip even when it is tracked", async () => {
+	it("keeps a missing source a silent skip, never a failure, even when it is tracked", async () => {
 		mockSpawn.mockImplementation((cmd: string[]) => {
 			if (cmd[0] === "git") return lsFiles(cmd, { "/dst": ["build/a.txt"] });
 			return makeProc(cmd[0] === "test" ? 1 : 0);
@@ -404,6 +294,16 @@ describe("tracked destination guard (#2026)", () => {
 		const [result] = await clonePaths("/src", "/dst", ["build"]);
 		expect(result.skipped).toBe(true);
 		expect(result.error).toBeUndefined();
+		{
+			mockSpawn.mockImplementation((cmd: string[]) => (
+				cmd[0] === "test" ? makeProc(1) : makeProc(0)
+			));
+			const results = await clonePaths("/src", "/dst", ["node_modules"]);
+			expect(results[0].skipped).toBe(true);
+			expect(results[0].error).toBeUndefined();
+			// Nothing was copied, so no cp ran at all.
+			expect(mockSpawn.mock.calls.some((c: unknown[]) => (c[0] as string[])[0] === "cp")).toBe(false);
+		}
 	});
 });
 
@@ -412,42 +312,14 @@ describe("glob patterns", () => {
 		vi.clearAllMocks();
 	});
 
-	it("rejects glob paths with traversal", async () => {
-		await expect(
-			clonePaths("/src", "/dst", ["../*.cache"]),
-		).rejects.toThrow("Path traversal not allowed");
-	});
-
-	it("allows valid glob patterns", async () => {
-		// Non-glob paths that exist → normal flow
-		// Glob patterns → expandGlob is called (which uses Bun.Glob)
-		// In vitest env, Bun.Glob doesn't exist, so expandGlob returns []
-		// That means no expanded paths → nothing to clone → empty results for the glob
-		mockSpawn.mockImplementation((cmd: string[]) => {
-			if (cmd[0] === "test") return makeProc(1); // nothing exists
-			return makeProc(0);
-		});
-
-		// Should not throw for valid glob patterns
-		const results = await clonePaths("/src", "/dst", ["*.cache"]);
-		// Glob expansion fails gracefully in vitest (no Bun.Glob) → empty results
-		expect(results).toHaveLength(0);
-	});
-
-	it("allows glob with directory prefix", async () => {
+	it("accepts valid glob patterns, with or without a directory prefix", async () => {
+		// In vitest Bun.Glob doesn't exist, so expandGlob returns [] → nothing to clone.
 		mockSpawn.mockImplementation(() => makeProc(1));
-		// Should not throw
-		const results = await clonePaths("/src", "/dst", ["src/**/node_modules"]);
-		expect(results).toHaveLength(0);
+		expect(await clonePaths("/src", "/dst", ["*.cache"])).toHaveLength(0);
+		expect(await clonePaths("/src", "/dst", ["src/**/node_modules"])).toHaveLength(0);
 	});
 
-	it("rejects absolute path even with glob characters", async () => {
-		await expect(
-			clonePaths("/src", "/dst", ["/*.cache"]),
-		).rejects.toThrow("Absolute path not allowed");
-	});
-
-	it("deduplicates expanded paths", async () => {
+	it("deduplicates repeated paths and mixes globs with literal paths", async () => {
 		// If two globs expand to the same path, it should be cloned only once
 		// Can't fully test with Bun.Glob in vitest, but we can test the non-glob dedup
 		mockSpawn.mockImplementation((cmd: string[]) => {
@@ -465,9 +337,7 @@ describe("glob patterns", () => {
 		const results = await clonePaths("/src", "/dst", ["node_modules", "node_modules"]);
 		expect(results).toHaveLength(1);
 		expect(results[0].path).toBe("node_modules");
-	});
-
-	it("mixes globs and literal paths", async () => {
+		{
 		mockSpawn.mockImplementation((cmd: string[]) => {
 			if (cmd[0] === "test") return makeProc(0);
 			if (cmd[0] === "mkdir") return makeProc(0);
@@ -484,7 +354,9 @@ describe("glob patterns", () => {
 		// node_modules is literal → cloned; *.cache is glob → Bun.Glob fails gracefully → 0 expanded
 		expect(results.length).toBeGreaterThanOrEqual(1);
 		expect(results.find((r) => r.path === "node_modules")).toBeDefined();
+		}
 	});
+
 });
 
 describe("detectClonePaths", () => {
@@ -492,7 +364,7 @@ describe("detectClonePaths", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns only paths that exist in the project", async () => {
+	it("returns only well-known paths that exist in the project, each once", async () => {
 		const existingPaths = new Set([
 			"/proj/node_modules",
 			"/proj/.env",
@@ -514,6 +386,19 @@ describe("detectClonePaths", () => {
 		// Something that doesn't exist should not be included
 		expect(detected).not.toContain("Pods");
 		expect(detected).not.toContain(".gradle");
+		{
+		// "vendor" and "build" appear for multiple ecosystems
+		// detectClonePaths should deduplicate
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "git") return makeProc(0);
+			if (cmd[0] === "test" && cmd[2] === "/proj/vendor") return makeProc(0);
+			return makeProc(1);
+		});
+
+		const detected = await detectClonePaths("/proj");
+		const vendorCount = detected.filter((p) => p === "vendor").length;
+		expect(vendorCount).toBe(1);
+		}
 	});
 
 	it("leaves out a well-known path that git tracks (#2026)", async () => {
@@ -535,24 +420,4 @@ describe("detectClonePaths", () => {
 		expect(await detectClonePaths("/proj")).toEqual([]);
 	});
 
-	it("returns empty array when nothing exists", async () => {
-		mockSpawn.mockImplementation(() => makeProc(1));
-
-		const detected = await detectClonePaths("/empty-proj");
-		expect(detected).toEqual([]);
-	});
-
-	it("deduplicates well-known paths", async () => {
-		// "vendor" and "build" appear for multiple ecosystems
-		// detectClonePaths should deduplicate
-		mockSpawn.mockImplementation((cmd: string[]) => {
-			if (cmd[0] === "git") return makeProc(0);
-			if (cmd[0] === "test" && cmd[2] === "/proj/vendor") return makeProc(0);
-			return makeProc(1);
-		});
-
-		const detected = await detectClonePaths("/proj");
-		const vendorCount = detected.filter((p) => p === "vendor").length;
-		expect(vendorCount).toBe(1);
-	});
 });

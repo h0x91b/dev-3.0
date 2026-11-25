@@ -267,19 +267,13 @@ describe("launchAfterRefusal", () => {
 		expect(launchAfterRefusal(b, a, "completed", [a, b])).toBeNull();
 	});
 
-	it("refuses a self-reference", () => {
-		expect(launchAfterRefusal(b, b, "completed", [a, b])).toMatch(/itself/);
-	});
-
-	it("refuses a direct cycle", () => {
-		const aWaits = task({ id: "a", status: "todo", launchAfter: cond({ taskId: "b", seq: 2 }) });
-		expect(launchAfterRefusal(b, aWaits, "completed", [aWaits, b])).toMatch(/never start/);
-	});
-
-	it("refuses a longer cycle", () => {
+	it("refuses a self-reference, a direct cycle and a longer cycle", () => {
+		expect(launchAfterRefusal(b, b, "completed", [a, b]), "self").toMatch(/itself/);
+		const aWaitsB = task({ id: "a", status: "todo", launchAfter: cond({ taskId: "b", seq: 2 }) });
+		expect(launchAfterRefusal(b, aWaitsB, "completed", [aWaitsB, b]), "direct").toMatch(/never start/);
 		const c = task({ id: "c", seq: 3, launchAfter: cond({ taskId: "b", seq: 2 }) });
-		const aWaits = task({ id: "a", status: "todo", launchAfter: cond({ taskId: "c", seq: 3 }) });
-		expect(launchAfterRefusal(b, aWaits, "completed", [aWaits, b, c])).toMatch(/never start/);
+		const aWaitsC = task({ id: "a", status: "todo", launchAfter: cond({ taskId: "c", seq: 3 }) });
+		expect(launchAfterRefusal(b, aWaitsC, "completed", [aWaitsC, b, c]), "longer").toMatch(/never start/);
 	});
 
 	it("refuses a cancelled prerequisite, a non-todo task, a draft and a Start-in task", () => {
@@ -384,19 +378,13 @@ describe("start-after with variants", () => {
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b" }));
 	});
 
-	it("keeps waiting while another variant still runs", () => {
+	it("waits while another variant runs, fires on any completion, abandons only when all are cancelled, probes every PR", () => {
 		const members = [v1({ status: "cancelled" }), v2({ status: "in-progress" })];
-		expect(evaluateLaunchAfter(cond(), members)).toEqual({ kind: "wait" });
-		expect(evaluateLaunchAfter(cond({ until: "merged" }), members)).toEqual({ kind: "wait" });
-	});
-
-	it("fires on completion of any variant, and abandons only when every one is cancelled", () => {
-		expect(evaluateLaunchAfter(cond(), [v1({ status: "cancelled" }), v2({ status: "completed" })])).toEqual({ kind: "fire" });
-		expect(evaluateLaunchAfter(cond(), [v1({ status: "cancelled" }), v2({ status: "cancelled" })])).toEqual({ kind: "abandon", reason: "cancelled" });
-	});
-
-	it("probes every completed variant's PR", () => {
-		expect(evaluateLaunchAfter(cond({ until: "merged" }), [v1({ status: "completed", prNumber: 7 }), v2({ status: "completed", prNumber: 8 })]))
+		expect(evaluateLaunchAfter(cond(), members), "running, completed").toEqual({ kind: "wait" });
+		expect(evaluateLaunchAfter(cond({ until: "merged" }), members), "running, merged").toEqual({ kind: "wait" });
+		expect(evaluateLaunchAfter(cond(), [v1({ status: "cancelled" }), v2({ status: "completed" })]), "one completed").toEqual({ kind: "fire" });
+		expect(evaluateLaunchAfter(cond(), [v1({ status: "cancelled" }), v2({ status: "cancelled" })]), "all cancelled").toEqual({ kind: "abandon", reason: "cancelled" });
+		expect(evaluateLaunchAfter(cond({ until: "merged" }), [v1({ status: "completed", prNumber: 7 }), v2({ status: "completed", prNumber: 8 })]), "probe")
 			.toEqual({ kind: "probe", prNumbers: [7, 8] });
 	});
 
@@ -405,13 +393,10 @@ describe("start-after with variants", () => {
 		expect(prerequisiteMembers(cond(), others).map((t) => t.id)).toEqual(["a2"]);
 	});
 
-	it("does not refuse waiting on a cancelled v1 while v2 still runs", () => {
+	it("judges a cancelled or already-finished prerequisite by the whole variant group", () => {
 		const board = [v1({ status: "cancelled" }), v2({ status: "in-progress" })];
-		expect(prerequisiteRefusal(board[0]!, "completed", board)).toBeNull();
+		expect(prerequisiteRefusal(board[0]!, "completed", board), "v1 cancelled, v2 runs").toBeNull();
 		expect(prerequisiteRefusal(board[0]!, "completed", [v1({ status: "cancelled" }), v2({ status: "cancelled" })])).toMatch(/cancelled/);
-	});
-
-	it("judges an already-finished prerequisite by the whole variant group", () => {
 		const oneDone = [v1({ status: "completed", prNumber: 7 }), v2({ status: "in-progress" })];
 		expect(prerequisiteRefusal(oneDone[1]!, "completed", oneDone)).toMatch(/already completed/);
 		expect(prerequisiteRefusal(oneDone[1]!, "merged", oneDone)).toBeNull();

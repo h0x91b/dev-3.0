@@ -140,7 +140,7 @@ describe("shared tmux PTY sizing", () => {
 		expect(ptySize()).toEqual({ cols: 200, rows: 50 });
 	});
 
-	it("does not let a viewer take over merely by connecting or resizing", () => {
+	it("does not let a viewer take over merely by connecting or resizing, but applies its viewport once used", () => {
 		startSession("task-size-no-flip");
 		const desk = connect("task-size-no-flip", 200, 50);
 		wsHandlers.message(desk, encodeViewerSignal("active"));
@@ -150,6 +150,10 @@ describe("shared tmux PTY sizing", () => {
 		expect(ptySize()).toEqual({ cols: 200, rows: 50 });
 		expect(tab.lastNotice()).toEqual({ cols: 200, rows: 50, sizing: false });
 		expect(desk.lastNotice()).toEqual({ cols: 200, rows: 50, sizing: true });
+
+		// The follower's own viewport was tracked, so taking over applies it at once.
+		wsHandlers.message(tab, encodeViewerSignal("active"));
+		expect(ptySize()).toEqual({ cols: 90, rows: 30 });
 	});
 
 	it("drops a hidden viewer out of sizing and lets it back in when used", () => {
@@ -183,19 +187,6 @@ describe("shared tmux PTY sizing", () => {
 		expect(a.lastNotice()).toEqual({ cols: 100, rows: 30, sizing: false });
 	});
 
-	it("tracks a follower's own viewport so taking over applies it at once", () => {
-		startSession("task-size-follower-resize");
-		const desk = connect("task-size-follower-resize", 200, 50);
-		const tab = connect("task-size-follower-resize", 80, 24);
-		wsHandlers.message(desk, encodeViewerSignal("active"));
-
-		wsHandlers.message(tab, encodeResizeSequence(150, 45));
-		expect(ptySize()).toEqual({ cols: 200, rows: 50 });
-
-		wsHandlers.message(tab, encodeViewerSignal("active"));
-		expect(ptySize()).toEqual({ cols: 150, rows: 45 });
-	});
-
 	it("never writes a viewer signal into the shell", () => {
 		startSession("task-size-no-leak");
 		const viewer = connect("task-size-no-leak", 100, 30);
@@ -205,19 +196,15 @@ describe("shared tmux PTY sizing", () => {
 		expect(terminal.write).not.toHaveBeenCalled();
 	});
 
-	it("sends each viewer a notice only when its own state changes", () => {
+	it("sends a notice only on a real state change, and never jiggles the PTY for a repeat", () => {
 		startSession("task-size-dedupe");
 		const desk = connect("task-size-dedupe", 200, 50);
 		wsHandlers.message(desk, encodeViewerSignal("active"));
 		wsHandlers.message(desk, encodeViewerSignal("active"));
 		wsHandlers.message(desk, encodeViewerSignal("active"));
 		expect(desk.sent.filter(isSizingNotice)).toEqual(["\x1b]dev3sizing;200;50;1\x07"]);
-	});
 
-	it("does not jiggle everyone's screen for a repeated identical report or a confirming signal", () => {
-		startSession("task-size-no-jiggle");
-		const desk = connect("task-size-no-jiggle", 200, 50);
-		wsHandlers.message(desk, encodeViewerSignal("active"));
+		// Nor does a repeated identical report or a confirming signal jiggle everyone's screen.
 		vi.advanceTimersByTime(50);
 		terminal.resize.mockClear();
 

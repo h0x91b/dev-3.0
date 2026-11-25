@@ -61,16 +61,15 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("launch with a custom executable", () => {
-	it("fails with the path in the message when the file is missing, without falling back to the system claude", async () => {
+	it("fails when the file is missing or not executable, without falling back to the system claude, for project launches too", async () => {
 		const missing = join(root, "missing-wrapper");
 		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, strictAgentCustomBinaryPaths: { "builtin-claude": missing } };
-		await expect(resolveCommandForAgent("builtin-claude", null, ctx)).rejects.toThrow(missing);
-	});
+		await expect(resolveCommandForAgent("builtin-claude", null, ctx), "missing").rejects.toThrow(missing);
+		await expect(resolveCommandForProject({ name: "p", path: "/p" } as Project, "t", "d", "/w"), "project launch").rejects.toThrow(missing);
 
-	it("fails when the file is not executable", async () => {
 		chmodSync(wrapper, 0o644);
-		state.settings = { ...state.settings, strictAgentCustomBinaryPaths: { "builtin-claude": wrapper } };
-		await expect(resolveCommandForAgent("builtin-claude", null, ctx)).rejects.toThrow(/not executable/);
+		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": wrapper }, strictAgentCustomBinaryPaths: { "builtin-claude": wrapper } };
+		await expect(resolveCommandForAgent("builtin-claude", null, ctx), "not executable").rejects.toThrow(/not executable/);
 	});
 
 	it("runs the wrapper as Claude with each picked account's own CLAUDE_CONFIG_DIR", async () => {
@@ -87,25 +86,16 @@ describe("launch with a custom executable", () => {
 		expect(second.extraEnv.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(b.id, paths));
 	});
 
-	it("fails the launch for an unknown account instead of running on the system login", async () => {
+	it("fails the launch for an unknown account, or one whose login never completed, instead of running on the system login", async () => {
 		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "no-such-account" })).rejects.toThrow("Unknown Claude account: no-such-account");
-	});
 
-	it("fails the launch for a managed account whose login never completed", async () => {
 		const paths = state.paths as AccountPaths;
 		mkdirSync(paths.claudeHome, { recursive: true });
 		writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: { emailAddress: "m@example.com", accountUuid: "u" } }));
 		writeFileSync(join(paths.claudeHome, ".credentials.json"), "{}");
 		const managed = await importCurrentClaudeAccount(paths);
 		rmSync(join(paths.accountsDir, "claude", managed.id, ".claude.json"));
-		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: managed.id })).rejects.toThrow(/not signed in/);
-	});
-
-	it("fails resolveCommandForProject for a broken custom path too", async () => {
-		const missing = join(root, "missing-wrapper");
-		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, strictAgentCustomBinaryPaths: { "builtin-claude": missing } };
-		const project = { name: "p", path: "/p" } as Project;
-		await expect(resolveCommandForProject(project, "t", "d", "/w")).rejects.toThrow(missing);
+		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: managed.id }), "login never completed").rejects.toThrow(/not signed in/);
 	});
 });
 
@@ -123,12 +113,6 @@ describe("a custom path saved before custom paths became strict", () => {
 		expect(push.mock.calls.filter(([name]) => name === "staleAgentPath")).toEqual([
 			["staleAgentPath", { agentId: "builtin-claude", agentName: expect.any(String), path: missing, command: "claude" }],
 		]);
-	});
-
-	it("still fails when it was re-chosen in a strict build but the strict entry names another path", async () => {
-		const missing = join(root, "missing-wrapper");
-		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, strictAgentCustomBinaryPaths: { "builtin-claude": missing } };
-		await expect(resolveCommandForAgent("builtin-claude", null, ctx)).rejects.toThrow(missing);
 	});
 
 	it("is used as before while it still works", async () => {
@@ -158,17 +142,15 @@ describe("a stored account that was removed", () => {
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(picked.id, paths));
 	});
 
-	it("still fails for the same id passed explicitly", async () => {
-		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "removed-account" })).rejects.toThrow("Unknown Claude account");
-	});
+	it("still fails for the same id passed explicitly, and for an existing account whose login never completed", async () => {
+		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "removed-account" }), "explicit id").rejects.toThrow("Unknown Claude account");
 
-	it("still fails for an existing account whose login never completed", async () => {
 		const paths = state.paths as AccountPaths;
 		mkdirSync(paths.claudeHome, { recursive: true });
 		const { accountId } = await prepareClaudeLogin(paths);
 		const account = registerStagedClaudeAccount(accountId, paths);
 		rmSync(claudeAccountDir(account.id, paths), { recursive: true });
-		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true })).rejects.toThrow(/config folder not found/);
+		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true }), "login never completed").rejects.toThrow(/config folder not found/);
 	});
 });
 
@@ -184,18 +166,14 @@ describe("a project that pins its own Claude folder", () => {
 		return { account, dir: claudeAccountDir(account.id, paths) };
 	}
 
-	it("keeps the project folder over the default account, set explicitly for panes that only get this env", async () => {
+	it("keeps the project folder over the default account, without clearing or obeying the project's own ANTHROPIC_*", async () => {
 		await defaultAccount();
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv });
+		// Set explicitly for panes that only get this env.
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe("/p/.claude");
 		expect(resolved.resolvedAccountId).toBeUndefined();
-	});
-
-	it("does not clear the project's own ANTHROPIC_* under a kept pin, nor let them steer --model", async () => {
-		await defaultAccount();
-		const kept = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv });
-		expect(kept.extraEnv.ANTHROPIC_MODEL).toBeUndefined();
-		expect(kept.command).not.toContain("project-model");
+		expect(resolved.extraEnv.ANTHROPIC_MODEL, "not cleared").toBeUndefined();
+		expect(resolved.command, "does not steer --model").not.toContain("project-model");
 	});
 
 	it("keeps every sentinel under an explicit pick, so no project credential joins that login", async () => {
@@ -222,22 +200,14 @@ describe("a project that pins its own Claude folder", () => {
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe("/p/.claude");
 	});
 
-	it("still uses an account picked for the task", async () => {
+	it("still uses a picked account, an explicitly picked system login, and the default account for an unpinned project", async () => {
 		const { account, dir } = await defaultAccount();
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
-	});
-
-	it("still uses the system login when it is picked explicitly", async () => {
-		await defaultAccount();
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: null, projectEnv });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
-	});
-
-	it("an unpinned project still gets the default account", async () => {
-		const { dir } = await defaultAccount();
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: { ANTHROPIC_MODEL: "x" } });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+		const picked = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(picked.extraEnv.CLAUDE_CONFIG_DIR, "picked account").toBe(dir);
+		const system = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: null, projectEnv });
+		expect(system.extraEnv.CLAUDE_CONFIG_DIR, "system login").toBe(ENV_UNSET);
+		const unpinned = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: { ANTHROPIC_MODEL: "x" } });
+		expect(unpinned.extraEnv.CLAUDE_CONFIG_DIR, "unpinned project").toBe(dir);
 	});
 });
 
@@ -260,19 +230,18 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		projectEnv = { CLAUDE_CONFIG_DIR: projectDir };
 	});
 
-	it("keeps the project folder on a fresh launch and records no account on the pane", async () => {
+	it("keeps the project folder on a fresh launch, records no account, and drops the project's Bedrock switch, model ids, credentials and base URL", async () => {
 		const { account } = await accountSignedInAs("person-1");
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		const env = {
+			...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x", ANTHROPIC_DEFAULT_OPUS_MODEL: "global.anthropic.y", AWS_PROFILE: "p",
+			ANTHROPIC_BASE_URL: "https://gateway.example", ANTHROPIC_AUTH_TOKEN: "t",
+		};
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
 		expect(resolved.projectLoginKept).toBe(true);
 		expect(resolved.resolvedAccountId).toBeUndefined();
-	});
-
-	it("keeps the folder but not the project's Bedrock switch or model ids", async () => {
-		const { account } = await accountSignedInAs("person-1");
-		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x", ANTHROPIC_DEFAULT_OPUS_MODEL: "global.anthropic.y", AWS_PROFILE: "p" };
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.extraEnv.ANTHROPIC_BASE_URL, "project base URL").toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_AUTH_TOKEN, "project credentials").toBe(ENV_UNSET);
 		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
 		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBe(ENV_UNSET);
 		expect(resolved.extraEnv.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(ENV_UNSET);
@@ -289,14 +258,6 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBe(ENV_UNSET);
 	});
 
-	it("drops the project's Bedrock switch for a picked account in its own folder too", async () => {
-		const { account, dir } = await accountSignedInAs("person-2");
-		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
-		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
-	});
-
 	it("leaves the project's Bedrock env alone when no account is picked", async () => {
 		await accountSignedInAs("person-1");
 		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x" };
@@ -305,65 +266,50 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBeUndefined();
 	});
 
-	it("drops the project's credentials and base URL under the project folder's own login too", async () => {
-		const { account } = await accountSignedInAs("person-1");
-		const env = { ...projectEnv, ANTHROPIC_BASE_URL: "https://gateway.example", ANTHROPIC_AUTH_TOKEN: "t" };
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
-		expect(resolved.projectLoginKept).toBe(true);
-		expect(resolved.extraEnv.ANTHROPIC_BASE_URL).toBe(ENV_UNSET);
-		expect(resolved.extraEnv.ANTHROPIC_AUTH_TOKEN).toBe(ENV_UNSET);
-	});
+	it("drops the project's Bedrock switch for a picked account in its own folder, Auto's pick, an explicit system login, and a project-default launch", async () => {
+		const { account: other, dir: otherDir } = await accountSignedInAs("person-2");
+		const ownFolder = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: other.id, projectEnv: { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" } });
+		expect(ownFolder.extraEnv.CLAUDE_CONFIG_DIR, "picked account, own folder").toBe(otherDir);
+		expect(ownFolder.extraEnv.CLAUDE_CODE_USE_BEDROCK, "picked account, own folder").toBe(ENV_UNSET);
 
-	it("drops the project's Bedrock switch for Auto's pick", async () => {
-		const { account } = await accountSignedInAs("person-2");
-		state.pickId = account.id;
+		state.pickId = other.id;
 		const routing = { exclusions: [], reservationKey: "k", claudeConfigPinned: false };
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "auto", autoRouting: routing as never, projectEnv: { CLAUDE_CODE_USE_BEDROCK: "1" } });
-		expect(resolved.accountPick?.accountId).toBe(account.id);
-		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
-	});
+		const auto = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "auto", autoRouting: routing as never, projectEnv: { CLAUDE_CODE_USE_BEDROCK: "1" } });
+		expect(auto.accountPick?.accountId, "auto").toBe(other.id);
+		expect(auto.extraEnv.CLAUDE_CODE_USE_BEDROCK, "auto").toBe(ENV_UNSET);
 
-	it("drops the project's Bedrock switch for an explicitly picked system login", async () => {
-		await accountSignedInAs("person-2");
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: null, projectEnv: { CLAUDE_CODE_USE_BEDROCK: "1" } });
-		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
-	});
+		const system = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: null, projectEnv: { CLAUDE_CODE_USE_BEDROCK: "1" } });
+		expect(system.extraEnv.CLAUDE_CODE_USE_BEDROCK, "system login").toBe(ENV_UNSET);
 
-	it("drops the project's Bedrock switch when the agent comes from the project default", async () => {
 		const { account } = await accountSignedInAs("person-1");
 		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
-		const resolved = await resolveCommandForProject({ name: "p", path: "/p" } as Project, "t", "d", "/w", null, { accountId: account.id, projectEnv: env });
-		expect(resolved.projectLoginKept).toBe(true);
-		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+		const fromProject = await resolveCommandForProject({ name: "p", path: "/p" } as Project, "t", "d", "/w", null, { accountId: account.id, projectEnv: env });
+		expect(fromProject.projectLoginKept, "project default").toBe(true);
+		expect(fromProject.extraEnv.CLAUDE_CODE_USE_BEDROCK, "project default").toBe(ENV_UNSET);
 	});
 
-	it("uses the account's own folder when the project folder is signed in to someone else", async () => {
+	it("uses the account's own folder when the project folder is signed in to someone else, or the same person in another org", async () => {
 		const { account, dir } = await accountSignedInAs("person-2");
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
 		expect(resolved.projectLoginKept).toBeUndefined();
+
+		const { account: otherOrg, dir: otherOrgDir } = await accountSignedInAs("person-1", "org-2");
+		const inOtherOrg = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: otherOrg.id, projectEnv });
+		expect(inOtherOrg.extraEnv.CLAUDE_CONFIG_DIR, "same person, another org").toBe(otherOrgDir);
 	});
 
-	it("treats the same person in another org as a different login", async () => {
-		const { account, dir } = await accountSignedInAs("person-1", "org-2");
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
-	});
-
-	it("resumes in the account's folder, where the conversation was written", async () => {
+	it("resumes in whichever folder the conversation was written to", async () => {
 		const { account, dir } = await accountSignedInAs("person-1");
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
-	});
+		const resumeS1 = () => resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
+		expect((await resumeS1()).extraEnv.CLAUDE_CONFIG_DIR, "account folder").toBe(dir);
 
-	it("resumes in the project folder when the conversation was written there", async () => {
-		const { account } = await accountSignedInAs("person-1");
 		const store = claudeTranscriptDir(projectDir, ctx.worktreePath);
 		mkdirSync(store, { recursive: true });
 		writeFileSync(join(store, "s-1.jsonl"), "{}\n");
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
-		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
-		expect(resolved.projectLoginKept).toBe(true);
+		const inProject = await resumeS1();
+		expect(inProject.extraEnv.CLAUDE_CONFIG_DIR, "project folder").toBe(projectDir);
+		expect(inProject.projectLoginKept).toBe(true);
 	});
 
 	function transcript(configDir: string, name: string, ageSeconds: number) {

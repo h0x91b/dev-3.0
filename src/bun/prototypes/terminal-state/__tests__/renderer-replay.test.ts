@@ -15,21 +15,21 @@ function loadFixture(name: string): TerminalCaptureFixture {
 }
 
 describe("terminal-state renderer replay", () => {
-	for (const name of [
-		"active-screen",
-		"alternate-screen",
-		"cursor-modes",
-		"scrollback",
-		"colors",
-		"unicode",
-		"line-wrapping",
-		"resize-history",
-		"real-nvim",
-		"real-powershell",
-		"real-cmd",
-		"real-pwsh7",
-	]) {
-		it(`replays the ${name} snapshot into a fresh Ghostty renderer core`, async () => {
+	it("replays every fixture snapshot into a fresh Ghostty renderer core", async () => {
+		for (const name of [
+			"active-screen",
+			"alternate-screen",
+			"cursor-modes",
+			"scrollback",
+			"colors",
+			"unicode",
+			"line-wrapping",
+			"resize-history",
+			"real-nvim",
+			"real-powershell",
+			"real-cmd",
+			"real-pwsh7",
+		]) {
 			const fixture = loadFixture(name);
 			const parser = await HeadlessTerminalState.create(fixture.initial);
 			const liveRenderer = await GhosttyRendererProbe.create(fixture.initial);
@@ -59,7 +59,7 @@ describe("terminal-state renderer replay", () => {
 
 			const freshRenderer = await GhosttyRendererProbe.create(snapshot.initial);
 			replaySnapshotIntoRenderer(snapshot, freshRenderer);
-			expect(freshRenderer.inspect()).toEqual(liveStateAtDetach);
+			expect(freshRenderer.inspect(), name).toEqual(liveStateAtDetach);
 			for (const event of fixture.afterReplay ?? []) {
 				if (event.type === "output") {
 					freshRenderer.ingest(decodeCaptureOutput(event));
@@ -67,10 +67,10 @@ describe("terminal-state renderer replay", () => {
 					freshRenderer.resize(event.cols, event.rows);
 				}
 			}
-			expect(freshRenderer.inspect()).toEqual(liveStateAfterReplay);
+			expect(freshRenderer.inspect(), name).toEqual(liveStateAfterReplay);
 
 			parser.dispose();
 			freshRenderer.dispose();
-		});
-	}
+		}
+	});
 });

@@ -24,14 +24,19 @@ describe("ensureDev3CliSymlink", () => {
 
 	const dest = () => join(home, "bin", "dev3");
 
-	it("creates the symlink when nothing exists yet", () => {
-		const result = ensureDev3CliSymlink(home, binExec);
-		expect(result).toBe("linked");
+	it("creates the symlink (and its bin dir) when missing, and is idempotent", () => {
+		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
 		expect(lstatSync(dest()).isSymbolicLink()).toBe(true);
+		expect(realpathSync(dest())).toBe(realpathSync(binExec));
+		expect(ensureDev3CliSymlink(home, binExec)).toBe("unchanged");
+
+		unlinkSync(dest());
+		rmSync(join(home, "bin"), { recursive: true, force: true });
+		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
 		expect(realpathSync(dest())).toBe(realpathSync(binExec));
 	});
 
-	it("resolves the running binary through an intermediate symlink (brew bin → cellar)", () => {
+	it("links the concrete binary behind an intermediate symlink (brew bin → cellar), replacing a stale link", () => {
 		// Simulate `which dev3` → /brew/bin/dev3 → …/cellar/dev3
 		const brewBin = join(root, "brewbin", "dev3");
 		mkdirSync(join(root, "brewbin"), { recursive: true });
@@ -40,11 +45,17 @@ describe("ensureDev3CliSymlink", () => {
 		expect(ensureDev3CliSymlink(home, brewBin)).toBe("linked");
 		// dest points at the concrete binary, not the intermediate symlink.
 		expect(realpathSync(dest())).toBe(realpathSync(binExec));
-	});
+		unlinkSync(dest());
+		{
+		const stale = join(root, "old", "dev3");
+		mkdirSync(join(root, "old"), { recursive: true });
+		writeFileSync(stale, "old", { mode: 0o755 });
+		mkdirSync(join(home, "bin"), { recursive: true });
+		symlinkSync(stale, dest());
 
-	it("is idempotent — a second call with the same binary changes nothing", () => {
 		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
-		expect(ensureDev3CliSymlink(home, binExec)).toBe("unchanged");
+		expect(realpathSync(dest())).toBe(realpathSync(binExec));
+		}
 	});
 
 	it("heals a DANGLING symlink (the reported bug: ls shows it, exec says not found)", () => {
@@ -56,19 +67,10 @@ describe("ensureDev3CliSymlink", () => {
 		expect(realpathSync(dest())).toBe(realpathSync(binExec)); // now valid
 	});
 
-	it("replaces a symlink that points at a different (stale) binary", () => {
-		const stale = join(root, "old", "dev3");
-		mkdirSync(join(root, "old"), { recursive: true });
-		writeFileSync(stale, "old", { mode: 0o755 });
-		mkdirSync(join(home, "bin"), { recursive: true });
-		symlinkSync(stale, dest());
-
-		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
-		expect(realpathSync(dest())).toBe(realpathSync(binExec));
-	});
-
-	it("skips when the running binary path can't be resolved", () => {
+	it("skips, never throws, when the running binary can't be resolved or the dev3 home is not writable", () => {
 		expect(ensureDev3CliSymlink(home, join(root, "does-not-exist"))).toBe("skipped");
+		expect(() => ensureDev3CliSymlink(join(binExec, "not-a-dir"), binExec, "win32")).not.toThrow();
+		expect(ensureDev3CliSymlink(join(binExec, "not-a-dir"), binExec, "win32")).toBe("skipped");
 	});
 
 	it("leaves a concrete binary dropped directly at dest untouched (no self-link)", () => {
@@ -97,18 +99,6 @@ describe("ensureDev3CliSymlink", () => {
 		expect(shim.startsWith("@echo off")).toBe(true);
 	});
 
-	it("never throws when the dev3 home is not writable", () => {
-		expect(() => ensureDev3CliSymlink(join(binExec, "not-a-dir"), binExec, "win32")).not.toThrow();
-		expect(ensureDev3CliSymlink(join(binExec, "not-a-dir"), binExec, "win32")).toBe("skipped");
-	});
-
-	it("recreates the bin dir if it was removed", () => {
-		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
-		unlinkSync(dest());
-		rmSync(join(home, "bin"), { recursive: true, force: true });
-		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
-		expect(realpathSync(dest())).toBe(realpathSync(binExec));
-	});
 });
 
 describe("writeDev3SelfShim", () => {
@@ -129,7 +119,7 @@ describe("writeDev3SelfShim", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("pins the task hosting this instance, by task id rather than pid", () => {
+	it("pins the task hosting this instance by task id rather than pid, or `primary` without one", () => {
 		const task = "6955b1dc-1111-2222-3333-444444444444";
 		const { path, selector } = writeDev3SelfShim(home, binExec, task);
 
@@ -139,14 +129,13 @@ describe("writeDev3SelfShim", () => {
 		expect(body).toContain(`--instance task:${task}`);
 		expect(body).toContain(realpathSync(binExec));
 		expect(body).toContain('"$@"');
-	});
 
-	it("arms `primary` when the installing app is not itself hosted by a task", () => {
+		// Not hosted by a task: arm `primary`.
 		expect(writeDev3SelfShim(home, binExec, null).selector).toBe("primary");
 		expect(readFileSync(join(home, "bin", "dev3-self"), "utf-8")).toContain("--instance primary");
 	});
 
-	it("execs the concrete binary, never the bin/dev3 entry that hooks invoke", () => {
+	it("execs the concrete binary, dereferencing any symlink chain — bin/dev3 included — instead of chaining through it", () => {
 		// The app hands us the bundled CLI reached through a symlink chain.
 		const indirect = join(root, "brewbin", "dev3");
 		mkdirSync(join(root, "brewbin"), { recursive: true });
@@ -155,14 +144,13 @@ describe("writeDev3SelfShim", () => {
 		const body = readFileSync(writeDev3SelfShim(home, indirect, null).path, "utf-8");
 		expect(body).toContain(realpathSync(binExec));
 		expect(body).not.toContain(join(home, "bin", "dev3\""));
-	});
-
-	it("dereferences bin/dev3 to the real binary instead of chaining through it", () => {
+		{
 		// Handed the very entry agent hooks invoke: follow it, never exec it.
 		ensureDev3CliSymlink(home, binExec);
 		const body = readFileSync(writeDev3SelfShim(home, join(home, "bin", "dev3"), null).path, "utf-8");
 		expect(body).toContain(realpathSync(binExec));
 		expect(body).not.toContain(`"${join(home, "bin", "dev3")}"`);
+		}
 	});
 
 	it("refuses a target that really lives in <dev3Home>/bin — that dir is first on PATH (ELOOP, decision 105)", () => {

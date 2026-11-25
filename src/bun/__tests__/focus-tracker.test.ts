@@ -14,26 +14,18 @@ import { FocusTracker, type FocusTrackerDeps, shouldCreditFocus } from "../focus
 describe("shouldCreditFocus", () => {
 	const base = { foreground: true, idleSeconds: 0, activeTaskId: "t1", activeProjectId: "p1" };
 
-	it("credits when foreground, a task is active, and not idle", () => {
-		expect(shouldCreditFocus(base, 60)).toEqual({ taskId: "t1", projectId: "p1" });
+	it("credits when foreground with a task active and not idle past the threshold, idle unknown included", () => {
+		expect(shouldCreditFocus(base, 60), "active").toEqual({ taskId: "t1", projectId: "p1" });
+		// Idle unknown (null): foreground is the best signal.
+		expect(shouldCreditFocus({ ...base, idleSeconds: null }, 60), "idle unknown").toEqual({ taskId: "t1", projectId: "p1" });
+		expect(shouldCreditFocus({ ...base, idleSeconds: 60 }, 60), "at threshold").toEqual({ taskId: "t1", projectId: "p1" });
 	});
 
-	it("credits when idle is unknown (null) — foreground is the best signal", () => {
-		expect(shouldCreditFocus({ ...base, idleSeconds: null }, 60)).toEqual({ taskId: "t1", projectId: "p1" });
-	});
-
-	it("does not credit when the app is backgrounded", () => {
-		expect(shouldCreditFocus({ ...base, foreground: false }, 60)).toBeNull();
-	});
-
-	it("does not credit when no task/project is on screen", () => {
-		expect(shouldCreditFocus({ ...base, activeTaskId: null }, 60)).toBeNull();
-		expect(shouldCreditFocus({ ...base, activeProjectId: null }, 60)).toBeNull();
-	});
-
-	it("does not credit when the user is idle past the threshold", () => {
-		expect(shouldCreditFocus({ ...base, idleSeconds: 120 }, 60)).toBeNull();
-		expect(shouldCreditFocus({ ...base, idleSeconds: 60 }, 60)).toEqual({ taskId: "t1", projectId: "p1" });
+	it("does not credit when backgrounded, with no task/project on screen, or idle past the threshold", () => {
+		expect(shouldCreditFocus({ ...base, foreground: false }, 60), "backgrounded").toBeNull();
+		expect(shouldCreditFocus({ ...base, activeTaskId: null }, 60), "no task").toBeNull();
+		expect(shouldCreditFocus({ ...base, activeProjectId: null }, 60), "no project").toBeNull();
+		expect(shouldCreditFocus({ ...base, idleSeconds: 120 }, 60), "idle").toBeNull();
 	});
 });
 
@@ -80,24 +72,20 @@ describe("FocusTracker", () => {
 		expect(addFocusMs).toHaveBeenCalledWith("p1", "t1", 2500, { "0": 2500 });
 	});
 
-	it("does not credit while backgrounded", async () => {
-		const { tracker, state, addFocusMs } = makeTracker({ flushEveryTicks: 1 });
-		state.foreground = false;
-		await tracker.tick();
-		state.nowMs = 2000;
-		await tracker.tick();
-		await tracker.flush();
-		expect(addFocusMs).not.toHaveBeenCalled();
-	});
-
-	it("does not credit while idle past the threshold", async () => {
-		const { tracker, state, addFocusMs } = makeTracker({ flushEveryTicks: 1 });
-		state.idle = 300;
-		await tracker.tick();
-		state.nowMs = 2000;
-		await tracker.tick();
-		await tracker.flush();
-		expect(addFocusMs).not.toHaveBeenCalled();
+	it("does not credit while backgrounded or idle past the threshold", async () => {
+		const cases = [
+			["backgrounded", (s: { foreground: boolean }) => { s.foreground = false; }],
+			["idle", (s: { idle: number | null }) => { s.idle = 300; }],
+		] as const;
+		for (const [name, apply] of cases) {
+			const { tracker, state, addFocusMs } = makeTracker({ flushEveryTicks: 1 });
+			apply(state);
+			await tracker.tick();
+			state.nowMs = 2000;
+			await tracker.tick();
+			await tracker.flush();
+			expect(addFocusMs, name).not.toHaveBeenCalled();
+		}
 	});
 
 	it("clamps a single tick's credit (sleep/blocked event loop guard)", async () => {

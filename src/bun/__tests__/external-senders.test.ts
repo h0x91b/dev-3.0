@@ -56,15 +56,12 @@ describe("the registry", () => {
 		]);
 	});
 
-	it("reads hand edits without a restart", () => {
+	it("reads hand edits without a restart, and names the file to edit when a sender is unknown", () => {
 		writeRegistry({ senders: {} });
 		expect(() => requireExternalSender("cli")).toThrow(UNKNOWN_EXTERNAL_SENDER_ERROR);
+		expect(() => requireExternalSender("ghost")).toThrow(/^Unknown external sender "ghost".*external-senders\.json/);
 		writeRegistry({ senders: { cli: { label: "CLI" } } });
 		expect(requireExternalSender("cli")).toEqual({ id: "cli", label: "CLI" });
-	});
-
-	it("names the file to edit when a sender is unknown", () => {
-		expect(() => requireExternalSender("ghost")).toThrow(/^Unknown external sender "ghost".*external-senders\.json/);
 	});
 });
 

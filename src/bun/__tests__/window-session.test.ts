@@ -126,7 +126,7 @@ beforeEach(() => {
 });
 
 describe("multi-window session persistence", () => {
-	it("remembers every open window, with its own frame and display", () => {
+	it("remembers every open window with its own frame and display, and forgets one the user closed", () => {
 		spawn();
 		spawn();
 		createdWindows[0].frame = { x: 10, y: 20, width: 800, height: 600 };
@@ -140,6 +140,11 @@ describe("multi-window session persistence", () => {
 		expect(session[0].displayId).toBe(1);
 		expect(session[1].frame).toEqual({ x: 2000, y: 100, width: 1200, height: 900 });
 		expect(session[1].displayId).toBe(2);
+
+		// Closing one window forgets it and keeps the rest.
+		createdWindows[1].handlers.close?.();
+		expect(savedSession()).toHaveLength(1);
+		expect(savedSession()[0].frame).toEqual({ x: 10, y: 20, width: 800, height: 600 });
 	});
 
 	it("records a fullscreen window with the frame it would exit into", () => {
@@ -157,20 +162,6 @@ describe("multi-window session persistence", () => {
 		const [state] = savedSession();
 		expect(state.fullscreen).toBe(true);
 		expect(state.frame).toEqual({ x: 100, y: 100, width: 900, height: 700 });
-	});
-
-	it("forgets a window the user closed, and keeps the rest", () => {
-		spawn();
-		spawn();
-		createdWindows[0].frame = { x: 10, y: 20, width: 800, height: 600 };
-		createdWindows[1].frame = { x: 2000, y: 100, width: 1200, height: 900 };
-		flushWindowState();
-
-		createdWindows[1].handlers.close?.();
-
-		const session = savedSession();
-		expect(session).toHaveLength(1);
-		expect(session[0].frame).toEqual({ x: 10, y: 20, width: 800, height: 600 });
 	});
 
 	it("keeps the whole session when the windows close as part of a quit", () => {
@@ -217,9 +208,11 @@ describe("restoring a saved session", () => {
 		displayBounds: EXTERNAL.bounds,
 	};
 
-	it("places a restored window on its saved screen", () => {
+	it("places a restored first window on its saved screen through the create option alone", () => {
 		spawn(onExternal);
 		expect(createdWindows[0].frame).toEqual(onExternal.frame);
+		domReady(createdWindows[0]);
+		expect(createdWindows[0].setFrame).not.toHaveBeenCalled();
 	});
 
 	it("re-enters fullscreen for a window saved fullscreen", () => {
@@ -257,12 +250,6 @@ describe("restoring a saved session", () => {
 		domReady(win);
 
 		expect(win.setFrame).toHaveBeenCalledWith(2100, 100, 1000, 800);
-	});
-
-	it("leaves the first window's frame to the create option", () => {
-		spawn(onExternal);
-		domReady(createdWindows[0]);
-		expect(createdWindows[0].setFrame).not.toHaveBeenCalled();
 	});
 
 	it("a window opened while others are up is not given the saved geometry", () => {

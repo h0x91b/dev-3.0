@@ -188,7 +188,7 @@ describe("artifact template provisioning", () => {
 		expect(existsSync(missing)).toBe(false);
 	});
 
-	it("names the mode in the launch env only when it is not the dev3 template", () => {
+	it("names the mode in the launch env only when it is not the dev3 template, and provisions the starter even when off", () => {
 		const root = tempDir("dev3-custom-env-");
 		const mine = join(root, "mine");
 		mkdirSync(mine);
@@ -198,15 +198,10 @@ describe("artifact template provisioning", () => {
 		expect(env.DEV3_ARTIFACT_TEMPLATE).toBe("custom");
 		expect(readFileSync(join(env.DEV3_ARTIFACT_TEMPLATE_DIR, "index.html"), "utf8")).toBe("<p>mine</p>");
 		expect(ensureArtifactTemplateEnv({ ...project("/repo"), artifactTemplate: "on" }, task(), worktreePath)).not.toHaveProperty("DEV3_ARTIFACT_TEMPLATE");
-	});
-
-	it("still provisions the starter when the template is off, so one artifact can ask for it", () => {
-		const root = tempDir("dev3-artifact-off-");
-		const worktreePath = join(root, "task-container", "worktree");
-		mkdirSync(worktreePath, { recursive: true });
-		const env = ensureArtifactTemplateEnv({ ...project("/repo"), artifactTemplate: "off" }, task(), worktreePath);
-		expect(env.DEV3_ARTIFACT_TEMPLATE).toBe("off");
-		expect(existsSync(join(env.DEV3_ARTIFACT_TEMPLATE_DIR, "AUTHORING.md"))).toBe(true);
+		// Off still provisions the starter, so one artifact can ask for it.
+		const off = ensureArtifactTemplateEnv({ ...project("/repo"), artifactTemplate: "off" }, task(), worktreePath);
+		expect(off.DEV3_ARTIFACT_TEMPLATE).toBe("off");
+		expect(existsSync(join(off.DEV3_ARTIFACT_TEMPLATE_DIR, "AUTHORING.md"))).toBe(true);
 	});
 
 	it("fails loudly when the bundled starter is incomplete", () => {
@@ -444,7 +439,7 @@ describe("bundled artifact starter contract", () => {
 		expect(html).not.toContain("crossorigin=");
 	});
 
-	it("uses the full width of a wide monitor while prose keeps a measure", () => {
+	it("uses the full width of a wide monitor, keeps a prose measure, and gives an unsized dashboard panel the whole row", () => {
 		const css = readFileSync(cssPath, "utf8");
 
 		expect(css).toContain("width: min(100%, clamp(1180px, 88vw, 1840px))");
@@ -452,12 +447,7 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain(".kpis { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }");
 		expect(css).toContain("@media (min-width: 1500px)");
 		expect(docs).toContain("`.prose`");
-	});
-
-	it("gives an unsized dashboard panel the whole row instead of a 1/12 sliver", () => {
-		const css = readFileSync(cssPath, "utf8");
-
-		// span 12 would overflow the narrow and print grids, which have fewer columns.
+		// An unsized dashboard panel takes the whole row, not a 1/12 sliver; span 12 would overflow the narrow and print grids, which have fewer columns.
 		expect(css).toContain(".dashboard-grid > * { min-width: 0; grid-column: 1 / -1; }");
 		expect(css).not.toContain(".dashboard-grid > * { min-width: 0; grid-column: span 12; }");
 		// The opt-in widths only exist where the 12 columns do.
@@ -469,7 +459,7 @@ describe("bundled artifact starter contract", () => {
 		expect(docs).toContain("`span-3` … `span-9`");
 	});
 
-	it("gives every table zebra rows, row hover, column rules, and a pinned header", () => {
+	it("gives every table zebra rows, row hover, column rules, a pinned header, shell sorting and typographic markers", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
 
@@ -489,9 +479,19 @@ describe("bundled artifact starter contract", () => {
 		expect(app).toContain("function initializeSortIndicators");
 		expect(app).toContain('setAttribute("aria-sort", next)');
 		expect(docs).toContain("## Tables");
+		// The shell sorts a data-sortable table's rows, so a static report needs no JavaScript.
+		expect(app).toContain("function sortRowsInPlace");
+		expect(app).toContain('table?.hasAttribute("data-sortable")');
+		expect(app).toContain("cell.dataset.sort ?? cell.textContent.trim()");
+		expect(docs).toContain("`<table data-sortable>`");
+		// Dense-table significance markers stay typographic.
+		const significanceRule = css.match(/\.evidence-table \.sig\s*\{([^}]*)\}/)?.[1] || "";
+		expect(significanceRule).toContain("font-weight: 700");
+		expect(significanceRule).not.toContain("background:");
+		expect(significanceRule).not.toContain("box-shadow:");
 	});
 
-	it("keeps media, controls, code and long text inside the panel that holds them", () => {
+	it("keeps media, controls, code and long text inside their panel, and stacked widgets from overlapping", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const body = css.match(/\n {4}body \{([^}]*)\}/)?.[1] || "";
 
@@ -505,11 +505,8 @@ describe("bundled artifact starter contract", () => {
 		const pill = css.match(/\n {4}\.pill \{([^}]*)\}/)?.[1] || "";
 		expect(pill).toContain("display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;");
 		expect(readFileSync(appPath, "utf8")).toContain("pill.title = pill.textContent.trim();");
-	});
 
-	it("keeps stacked card widgets and slider pip labels from overlapping", () => {
-		const css = readFileSync(cssPath, "utf8");
-
+		// Stacked card widgets and slider pip labels never overlap.
 		const widgets = "form, .controls, .option-group, .grid, .stack, .field, .check, .switch, .segmented, .choices, .form-actions, .chart-host, table, input, textarea, select";
 		expect(css).toContain(`.card > :is(${widgets}) + *, .card > * + :is(${widgets}) { margin-top: 14px; }`);
 		expect(css).toContain(".ui-range-control:has(.noUi-pips) { margin-bottom: 2.1em; }");
@@ -559,15 +556,6 @@ describe("bundled artifact starter contract", () => {
 		expect(app).toContain("function recordTouchesTable");
 		expect(app).toContain('node.matches("table") || node.querySelector("table")');
 		expect(docs).toContain("No table scrolls sideways");
-	});
-
-	it("keeps dense-table significance markers typographic", () => {
-		const css = readFileSync(cssPath, "utf8");
-		const significanceRule = css.match(/\.evidence-table \.sig\s*\{([^}]*)\}/)?.[1] || "";
-
-		expect(significanceRule).toContain("font-weight: 700");
-		expect(significanceRule).not.toContain("background:");
-		expect(significanceRule).not.toContain("box-shadow:");
 	});
 
 	it("uses native chart drawing motion and safe dropdown state precedence", () => {
@@ -694,14 +682,6 @@ describe("bundled artifact starter contract", () => {
 		]) {
 			expect(reference).toContain(section);
 		}
-	});
-
-	it("sorts a data-sortable table's rows in the shell so a static report needs no JavaScript", () => {
-		const app = readFileSync(appPath, "utf8");
-		expect(app).toContain("function sortRowsInPlace");
-		expect(app).toContain('table?.hasAttribute("data-sortable")');
-		expect(app).toContain("cell.dataset.sort ?? cell.textContent.trim()");
-		expect(docs).toContain("`<table data-sortable>`");
 	});
 
 	it("keeps each starter file small enough for targeted agent reads", () => {

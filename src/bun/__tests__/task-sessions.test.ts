@@ -56,17 +56,11 @@ describe("task sessions in a shared folder", () => {
 describe("transcriptInSessions", () => {
 	const ID = "11111111-1111-4111-8111-111111111111";
 
-	it("matches the id every store puts in the file name", () => {
+	it("matches the id every store puts in the file name, drops other or id-less files, and keeps everything with no scope", () => {
 		expect(transcriptInSessions(`/x/${ID}.jsonl`, [ID])).toBe(true);
 		expect(transcriptInSessions(`/x/rollout-2026-10-04T10-00-00-${ID}.jsonl`, [ID.toUpperCase()])).toBe(true);
-	});
-
-	it("drops a file of another session, and one with no id in its name", () => {
 		expect(transcriptInSessions(`/x/${ID}.jsonl`, ["22222222-2222-4222-8222-222222222222"])).toBe(false);
 		expect(transcriptInSessions("/x/chat.json", [ID])).toBe(false);
-	});
-
-	it("keeps everything when there is no scope", () => {
 		expect(transcriptInSessions("/x/chat.json", null)).toBe(true);
 	});
 });

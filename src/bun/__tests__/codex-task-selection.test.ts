@@ -98,18 +98,16 @@ describe("chooseTaskCodexConversations", () => {
 		expect(store.get("t1")!.sessionState!.panes[0]).toMatchObject({ sessionId: ID, accountId: "acct-a" });
 	});
 
-	it("scans nothing for an Operations task, even when its folder matches", async () => {
+	it("scans nothing for an Operations task, or when the task's folder is not its managed worktree", async () => {
 		conversation(join(home, ".codex"), ID);
 		const t = task([codexPane()]);
 		await expect(chooseTaskCodexConversations({ ...project, kind: "virtual" } as Project, t, t.sessionState!.panes, "explicit-resume", { persist: false }))
 			.rejects.toThrow(/No Codex conversation/);
-	});
 
-	it("scans nothing when the task's folder is not its managed worktree", async () => {
 		const shared = join(home, "Downloads");
-		conversation(join(home, ".codex"), ID, shared);
-		const t = task([codexPane()], { worktreePath: shared });
-		await expect(chooseTaskCodexConversations(project, t, t.sessionState!.panes, "explicit-resume", { persist: false }))
+		conversation(join(home, ".codex"), OTHER, shared);
+		const elsewhere = task([codexPane()], { worktreePath: shared });
+		await expect(chooseTaskCodexConversations(project, elsewhere, elsewhere.sessionState!.panes, "explicit-resume", { persist: false }))
 			.rejects.toThrow(/No Codex conversation/);
 	});
 
@@ -134,17 +132,17 @@ describe("chooseTaskCodexConversations", () => {
 		expect((await chooseTaskCodexConversations(project, t, t.sessionState!.panes, "explicit-resume", { persist: true })).size).toBe(0);
 	});
 
-	it("refuses automatic recovery, which needs real pane liveness the wrapper does not have", async () => {
+	it("refuses automatic recovery (it needs real pane liveness) and honours the restart floor written on the task", async () => {
 		conversation(join(home, ".codex"), ID);
 		const t = task([codexPane()]);
 		await expect(chooseTaskCodexConversations(project, t, t.sessionState!.panes, "automatic-recovery" as never, { persist: false })).rejects.toThrow(/real pane liveness/);
-	});
-
-	it("uses the restart floor written on the task", async () => {
+		{
 		conversation(join(home, ".codex"), ID);
 		const t = task([codexPane()], { codexScanFloorAt: "2026-09-12T07:45:00.000Z" });
 		await expect(chooseTaskCodexConversations(project, t, t.sessionState!.panes, "explicit-resume", { persist: false })).rejects.toThrow(/No Codex conversation/);
+		}
 	});
+
 });
 
 describe("isCodexPane", () => {

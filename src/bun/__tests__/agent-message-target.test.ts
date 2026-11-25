@@ -94,22 +94,18 @@ describe("resolveMainAgentTarget — where a task-addressed message goes", () =>
 		await expect(resolveMainAgentTarget(task())).resolves.toEqual({ ok: true, paneId: "%1", author: null });
 	});
 
-	it("uses the oldest tmux pane for a legacy task, or a first entry with no pane id yet", async () => {
+	it("uses the oldest tmux pane without a registry, even after a swap reorders the list, and refuses with no live pane", async () => {
 		live = ["%7", "%8"];
-		await expect(resolveMainAgentTarget(task(null))).resolves.toMatchObject({ ok: true, paneId: "%7" });
-		await expect(resolveMainAgentTarget(task([entry(null), entry("%8")]))).resolves.toMatchObject({ ok: true, paneId: "%7" });
-	});
+		await expect(resolveMainAgentTarget(task(null)), "legacy task").resolves.toMatchObject({ ok: true, paneId: "%7" });
+		await expect(resolveMainAgentTarget(task([entry(null), entry("%8")])), "first entry without a pane id").resolves.toMatchObject({ ok: true, paneId: "%7" });
 
-	it("keeps the oldest tmux pane with no registry after a swap reorders the list", async () => {
 		// swap-pane turns `0 %7, 1 %8` into `0 %8, 1 %7`; pane ids stay, and %10 sorts after %9.
 		live = ["%10", "%8", "%9"];
 		expect(mainAgentPaneId(task(null), live)).toBe("%8");
-		await expect(resolveMainAgentTarget(task(null))).resolves.toMatchObject({ ok: true, paneId: "%8" });
-	});
+		await expect(resolveMainAgentTarget(task(null)), "after a swap").resolves.toMatchObject({ ok: true, paneId: "%8" });
 
-	it("refuses a task with no live pane at all", async () => {
 		live = [];
-		await expect(resolveMainAgentTarget(task(null))).resolves.toMatchObject({ ok: false, detail: expect.stringContaining("is not running") });
+		await expect(resolveMainAgentTarget(task(null)), "no live pane").resolves.toMatchObject({ ok: false, detail: expect.stringContaining("is not running") });
 	});
 
 	it("is pane-1 on native, and refuses when that pane is not alive", async () => {
@@ -125,13 +121,9 @@ describe("native extra agents (sidecar panes)", () => {
 	const native = () => task(null, { terminalBackend: "native" } as Partial<Task>);
 	const extra = { paneId: "pane-2", agentCmd: "claude", agentId: null, configId: null, shellPid: 2 };
 
-	it("agentPaneRoles marks sidecar panes as agents", async () => {
+	it("marks sidecar panes as agents and gives them an agent handle", async () => {
 		vi.mocked(listNativeTaskAgents).mockResolvedValue([extra]);
 		expect((await agentPaneRoles(native())).get("pane-2")).toBe("agent");
-	});
-
-	it("withAgentPanes gives a sidecar pane an agent handle", async () => {
-		vi.mocked(listNativeTaskAgents).mockResolvedValue([extra]);
 		const listing = { backend: "native", screenReadable: true, screenReadableDetail: "", selfPaneId: null, runs: [],
 			panes: [{ paneId: "pane-2", index: 2, label: "", active: false, self: false, alive: true, runId: null }] } as PaneRunListing;
 		const out = await withAgentPanes(native(), listing);
@@ -150,11 +142,8 @@ describe("native extra agents (sidecar panes)", () => {
 });
 
 describe("agentPaneRoles", () => {
-	it("labels the main agent, the extras and the unregistered AI Review agent", async () => {
+	it("labels the main agent, the extras and the unregistered AI Review agent, never relabelling a registered agent as reviewer", async () => {
 		expect([...(await agentPaneRoles(task()))]).toEqual([["%1", "main"], ["%2", "agent"], ["%3", "review"]]);
-	});
-
-	it("never relabels a registered agent as the reviewer", async () => {
 		vi.mocked(findAuxPanes).mockResolvedValue([{ backend: "tmux", paneId: "%2" }] as never);
 		expect((await agentPaneRoles(task())).get("%2")).toBe("agent");
 	});
@@ -186,16 +175,13 @@ describe("withAgentPanes — what `dev3 pane list` adds", () => {
 });
 
 describe("addressedAgentRefusal — asked again at release", () => {
-	it("is null while that agent is still the one in the pane", async () => {
-		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%3" });
-		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toBeNull();
-	});
-
-	it("refuses when the agent is gone, or now lives in another pane", async () => {
+	it("is null while that agent is still in the pane, and refuses once it is gone or moved", async () => {
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: true, paneId: "%3" });
+		await expect(addressedAgentRefusal(task(), author("%3"), "%3"), "still there").resolves.toBeNull();
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: false, detail: "the addressed agent (pane %3) is no longer running" });
-		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toBe("the addressed agent (pane %3) is no longer running");
+		await expect(addressedAgentRefusal(task(), author("%3"), "%3"), "gone").resolves.toBe("the addressed agent (pane %3) is no longer running");
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: true, paneId: "%9" });
-		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toContain("moved to pane %9");
+		await expect(addressedAgentRefusal(task(), author("%3"), "%3"), "moved").resolves.toContain("moved to pane %9");
 	});
 });
 
@@ -210,34 +196,27 @@ describe("isSoleMainAgent — may a reply to this agent drop --agent?", () => {
 		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(true);
 	});
 
-	it("no while an extra agent or the AI Review agent also runs", async () => {
+	it("no while another agent runs, or for a lone extra or reviewer (a task-addressed reply would reach the main agent)", async () => {
 		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1", "%2"]);
-		await expect(isSoleMainAgent(task(), author("%1"))).resolves.toBe(false);
+		await expect(isSoleMainAgent(task(), author("%1")), "extra agent beside").resolves.toBe(false);
 		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1"]);
 		live = ["%1", "%3"];
-		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
-	});
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1")), "reviewer beside").resolves.toBe(false);
 
-	it("no for a lone extra or reviewer: a task-addressed reply would go to the main agent instead", async () => {
 		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%2"]);
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%2" });
-		await expect(isSoleMainAgent(task(), author("%2"))).resolves.toBe(false);
+		await expect(isSoleMainAgent(task(), author("%2")), "lone extra").resolves.toBe(false);
 		vi.mocked(liveAgentPaneIds).mockResolvedValue([]);
-		live = ["%1", "%3"];
-		await expect(isSoleMainAgent(task([entry("%1")]), author("%3"))).resolves.toBe(false);
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%3")), "lone reviewer").resolves.toBe(false);
 	});
 
-	it("no when the main pane now runs another agent than the sender", async () => {
-		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: false, detail: "gone" });
-		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
-	});
-
-	it("no when the agents cannot be counted", async () => {
-		vi.mocked(liveAgentPaneIds).mockResolvedValue(null);
-		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
-		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1"]);
+	it("no when the main pane now runs another agent, or the agents cannot be counted", async () => {
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: false, detail: "gone" });
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1")), "another agent").resolves.toBe(false);
+		vi.mocked(liveAgentPaneIds).mockResolvedValueOnce(null);
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1")), "uncountable").resolves.toBe(false);
 		vi.mocked(findAuxPanes).mockRejectedValue(new Error("tmux down"));
-		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1")), "tmux down").resolves.toBe(false);
 	});
 
 	it("on native: yes for pane-1 alone, no beside a second agent pane", async () => {

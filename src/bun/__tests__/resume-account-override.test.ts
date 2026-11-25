@@ -176,45 +176,33 @@ describe("resume with an account override", () => {
 		expect(vi.mocked(data.updateTask).mock.calls.some((call) => "accountId" in call[2])).toBe(false);
 	});
 
-	it("refuses, before waking anything, an account that cannot see the conversation", async () => {
+	it("refuses, before waking anything, an account that cannot see the conversation — keeping its folder out of the message", async () => {
 		arrange([claudePane]);
 		vi.mocked(claudeConfigDirHasSession).mockReturnValue(false);
-		await expect(resumeTaskSession("t1", { accountId: "acct-split" })).rejects.toMatchObject({ reason: "account-cannot-see-conversation" });
+		const err = await resumeTaskSession("t1", { accountId: "acct-split" }).catch((e: Error) => e);
+		expect(err).toMatchObject({ reason: "account-cannot-see-conversation" });
+		// The refusal reaches toasts and other agents.
+		expect((err as Error).message).not.toContain("/accounts/acct-split");
 		expect(claudeConfigDirHasSession).toHaveBeenCalledWith("/accounts/acct-split", "s-claude");
 		expect(wakeIfHibernated).not.toHaveBeenCalled();
 		expect(launchTaskPty).not.toHaveBeenCalled();
 	});
 
-	it("accepts the project folder's own login when the conversation lives in that folder", async () => {
+	it("accepts the project folder's own login when the conversation lives there, for a saved id or a --continue pane", async () => {
 		arrange([{ ...claudePane, accountId: undefined }]);
 		vi.mocked(claudeConfigDirHasSession).mockReturnValue(false);
 		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
 		await resumeTaskSession("t1", { accountId: "acct-project-login" });
 		expect(agents.claudeLaunchKeepsProjectFolder).toHaveBeenCalledWith("acct-project-login", expect.objectContaining({ resume: true, sessionId: "s-claude", worktreePath: "/wt" }));
 		expect(launchedAccount()).toBe("acct-project-login");
-	});
 
-	it("still refuses --continue onto the project login for a pane that ran on another account", async () => {
-		arrange([{ ...claudePane, sessionId: null }]);
-		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
-		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
-		await expect(resumeTaskSession("t1", { accountId: "acct-project-login" })).rejects.toMatchObject({ reason: "account-cannot-see-conversation" });
-	});
-
-	it("lets --continue onto the project login through for a pane that ran in the project folder", async () => {
+		vi.mocked(launchTaskPty).mockClear();
 		arrange([{ ...claudePane, sessionId: null, accountId: undefined }]);
 		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
 		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
 		await resumeTaskSession("t1", { accountId: "acct-project-login" });
 		expect(agents.claudeLaunchKeepsProjectFolder).toHaveBeenCalledWith("acct-project-login", expect.objectContaining({ resume: true, sessionId: undefined }));
 		expect(launchedAccount()).toBe("acct-project-login");
-	});
-
-	it("keeps the account's folder out of the refusal, which reaches toasts and other agents", async () => {
-		arrange([claudePane]);
-		vi.mocked(claudeConfigDirHasSession).mockReturnValue(false);
-		const err = await resumeTaskSession("t1", { accountId: "acct-split" }).catch((e: Error) => e);
-		expect((err as Error).message).not.toContain("/accounts/acct-split");
 	});
 
 	it("treats a re-pick of the pane's own account as no switch", async () => {
@@ -225,27 +213,29 @@ describe("resume with an account override", () => {
 		expect(data.updateTask).not.toHaveBeenCalledWith(project, task.id, { accountId: "acct-old" });
 	});
 
-	it.each([
-		["Auto", "auto", [claudePane]],
-		["a Codex-only task", "acct-new", [codexPane]],
-	] as const)("refuses %s as a resume account", async (_label, accountId, panes) => {
-		arrange([...panes]);
-		await expect(resumeTaskSession("t1", { accountId })).rejects.toMatchObject({ reason: "account-invalid" });
+	it("refuses Auto, a Codex-only task, and an account that cannot launch (with its own reason) as a resume account", async () => {
+		const invalid: Array<[string, PaneSessionEntry[]]> = [["auto", [claudePane]], ["acct-new", [codexPane]]];
+		for (const [accountId, panes] of invalid) {
+			arrange([...panes]);
+			await expect(resumeTaskSession("t1", { accountId }), accountId).rejects.toMatchObject({ reason: "account-invalid" });
+		}
 		expect(launchTaskPty).not.toHaveBeenCalled();
-	});
 
-	it("refuses an account that cannot launch, with its own reason", async () => {
 		arrange([claudePane]);
 		vi.mocked(getActiveClaudeConfigDir).mockRejectedValueOnce(new Error("Unknown Claude account: nope"));
 		await expect(resumeTaskSession("t1", { accountId: "nope" })).rejects.toMatchObject({ reason: "account-invalid", message: "Unknown Claude account: nope" });
 		expect(wakeIfHibernated).not.toHaveBeenCalled();
 	});
 
-	it("refuses a Claude pane with no conversation id: --continue would open the other account's latest", async () => {
+	it("refuses a Claude pane with no conversation id: --continue would open the other account's latest, even onto the project login", async () => {
 		arrange([{ ...claudePane, sessionId: null }]);
 		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
 		await expect(resumeTaskSession("t1", { accountId: "acct-new" })).rejects.toMatchObject({ reason: "account-cannot-see-conversation" });
 		expect(launchTaskPty).not.toHaveBeenCalled();
+
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
+		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
+		await expect(resumeTaskSession("t1", { accountId: "acct-project-login" })).rejects.toMatchObject({ reason: "account-cannot-see-conversation" });
 	});
 
 	it("judges only the main pane on the native backend, which relaunches nothing else", async () => {
@@ -277,20 +267,16 @@ describe("claudeResumePickTarget", () => {
 		const task = arrange([codexPane, { ...claudePane, main: false, sessionId: "s-stale" }]);
 		expect(claudeResumePickTarget(task)).toEqual({ sessionId: "s-newest", agentLatest: false, savedAccountId: "acct-old" });
 		expect(log.warn).not.toHaveBeenCalled();
-	});
 
-	it("reports a pane the harness resumes with --continue, and the account it ran on", () => {
+		// A pane the harness resumes with --continue, and the account it ran on.
 		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }] as never);
-		const task = arrange([{ ...claudePane, sessionId: null, accountId: undefined }]);
-		expect(claudeResumePickTarget(task)).toEqual({ sessionId: null, agentLatest: true, savedAccountId: undefined });
+		const latest = arrange([{ ...claudePane, sessionId: null, accountId: undefined }]);
+		expect(claudeResumePickTarget(latest)).toEqual({ sessionId: null, agentLatest: true, savedAccountId: undefined });
 	});
 
-	it("names no conversation for a pane that starts over", () => {
+	it("names no conversation for a pane that starts over, and is null when no saved pane runs Claude", () => {
 		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: true, verified: false }] as never);
 		expect(claudeResumePickTarget(arrange([claudePane]))).toEqual({ sessionId: null, agentLatest: false, savedAccountId: "acct-old" });
-	});
-
-	it("is null when no saved pane runs Claude", () => {
 		expect(claudeResumePickTarget(arrange([codexPane]))).toBeNull();
 	});
 });

@@ -33,14 +33,13 @@ const ATTACH = {
 };
 
 describe("native stream framing", () => {
-	it("round-trips an attach with its replay payload", () => {
+	it("round-trips an attach with its replay payload, carrying a reset reason only when the screen is replaced", () => {
 		const decoded = decodeNativeStreamMessage(attachMessage(ATTACH, "hello\r\n"));
 
 		expect(decoded?.header).toEqual({ t: "attach", v: NATIVE_STREAM_PROTOCOL_VERSION, ...ATTACH });
 		expect(decoded?.payload).toBe("hello\r\n");
-	});
 
-	it("carries a reset reason only when the screen is being replaced", () => {
+		// A reset reason rides along only when the screen is being replaced.
 		const rebuilt = decodeNativeStreamMessage(
 			attachMessage({ ...ATTACH, resumed: false, reset: "pressure" }, "screen"),
 		);
@@ -88,12 +87,10 @@ describe("native stream framing", () => {
 });
 
 describe("resume addressing", () => {
-	it("leaves a URL untouched when there is no watermark (the tmux path)", () => {
+	it("leaves a URL untouched without a watermark (the tmux path), and appends one with the right separator", () => {
 		expect(ptyUrlWithSince("ws://host/pty?session=t1", null)).toBe("ws://host/pty?session=t1");
 		expect(ptyUrlWithSince("ws://host/pty?session=t1", -1)).toBe("ws://host/pty?session=t1");
-	});
-
-	it("appends the watermark with the right separator", () => {
+		// With one, it is appended with the right separator.
 		expect(ptyUrlWithSince("ws://host/pty?session=t1", 12)).toBe("ws://host/pty?session=t1&since=12");
 		expect(ptyUrlWithSince("ws://host/pty", 0)).toBe("ws://host/pty?since=0");
 	});

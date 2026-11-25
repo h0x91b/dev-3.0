@@ -15,41 +15,30 @@ describe("electrobun macOS entitlements", () => {
 });
 
 describe("electrobun bundled resources", () => {
-	it("ships the canonical artifact starter beside the app resources", () => {
+	it("ships the artifact starter and the freeze observer without a repository checkout", () => {
 		expect(config.build.copy["src/assets/artifact-template"]).toBe("artifact-template");
-	});
-
-	it("ships the freeze observer and its imports without a repository checkout", () => {
 		expect(config.build.copy["src/bun/freeze-diagnostics"]).toBe("freeze-diagnostics");
 		for (const name of ["worker.ts", "protocol.ts", "monitor.ts", "capture.ts"]) {
 			expect(readdirSync(fileURLToPath(new URL("../freeze-diagnostics", import.meta.url)))).toContain(name);
 		}
 	});
 
-	it("ships the handoff worker as the bundle build-cli writes, at the path the host loads", () => {
+	it("ships each worker as the bundle build-cli writes, at the path its host entries load", () => {
 		expect(config.build.copy["dist/workers"]).toBe("workers");
 		const buildCli = readFileSync(fileURLToPath(new URL("../../../scripts/build-cli.ts", import.meta.url)), "utf-8");
+		const read = (entry: string) => readFileSync(fileURLToPath(new URL(entry, import.meta.url)), "utf-8");
+		const workerSources = readdirSync(fileURLToPath(new URL("../workers", import.meta.url)));
 		expect(buildCli).toContain('"--outdir", "dist/workers"');
-		const index = readFileSync(fileURLToPath(new URL("../index.ts", import.meta.url)), "utf-8");
-		expect(index).toContain('"workers", "conversation-handoff-worker.js"');
-		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("conversation-handoff-worker.ts");
-	});
-
-	it("ships the clonefile worker to the path both host entries load", () => {
-		const buildCli = readFileSync(fileURLToPath(new URL("../../../scripts/build-cli.ts", import.meta.url)), "utf-8");
-		expect(buildCli).toContain('"src/bun/workers/clonefile-worker.ts"');
-		for (const entry of ["../index.ts", "../headless-entry.ts"]) {
-			expect(readFileSync(fileURLToPath(new URL(entry, import.meta.url)), "utf-8")).toContain('"workers", "clonefile-worker.js"');
+		const workers: Array<[string, string[], string?]> = [
+			["conversation-handoff-worker", ["../index.ts"]],
+			["clonefile-worker", ["../index.ts", "../headless-entry.ts"]],
+			["clipboard-image-worker", ["../index.ts"], "cause: Linux clipboard reads fell back to the host thread in packaged builds. fix: configureClipboardImageWorker with the workers/ path"],
+		];
+		for (const [worker, entries, hint] of workers) {
+			expect(workerSources).toContain(`${worker}.ts`);
+			if (worker !== "conversation-handoff-worker") expect(buildCli).toContain(`"src/bun/workers/${worker}.ts"`);
+			for (const entry of entries) expect(read(entry), hint ?? `${worker} in ${entry}`).toContain(`"workers", "${worker}.js"`);
 		}
-		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("clonefile-worker.ts");
-	});
-
-	it("ships the clipboard image worker to the path the desktop host loads", () => {
-		const buildCli = readFileSync(fileURLToPath(new URL("../../../scripts/build-cli.ts", import.meta.url)), "utf-8");
-		expect(buildCli).toContain('"src/bun/workers/clipboard-image-worker.ts"');
-		const index = readFileSync(fileURLToPath(new URL("../index.ts", import.meta.url)), "utf-8");
-		expect(index, "cause: Linux clipboard reads fell back to the host thread in packaged builds. fix: configureClipboardImageWorker with the workers/ path").toContain('"workers", "clipboard-image-worker.js"');
-		expect(readdirSync(fileURLToPath(new URL("../workers", import.meta.url)))).toContain("clipboard-image-worker.ts");
 	});
 
 	// The copy map is an allow-list, so a public asset absent from it is served as
@@ -88,9 +77,7 @@ describe("electrobun packaged Bun runtime", () => {
 		expect(config.scripts.preBuild).toBe("./scripts/free-build-folder.ts");
 		expect(config.scripts.postBuild).toBe("./scripts/package-native-host.ts");
 		expect(config.build.copy["dist/native"]).toBe("native");
-	});
-
-	it("does not make the production build depend on the removable detached-PTY prototype", () => {
+		// The production build must not depend on the removable detached-PTY prototype.
 		const source = readFileSync(fileURLToPath(new URL("../../../electrobun.config.ts", import.meta.url)), "utf8");
 		expect(source).not.toContain("prototypes/detached-pty");
 	});
@@ -104,17 +91,15 @@ describe("electrobun 3D engines stay out of the bundles", () => {
 	const electrobunApi = () =>
 		readFileSync(fileURLToPath(new URL("../../../node_modules/electrobun/dist/api/bun/index.ts", import.meta.url)), "utf8");
 
-	it("the installed electrobun/bun entry imports neither three nor @babylonjs/core", () => {
+	it("neither the installed electrobun/bun entry nor dev3 code reaches three or @babylonjs/core", () => {
 		const source = electrobunApi();
 		expect(source).toContain("export {");
 		expect(source).not.toMatch(/from\s+["']three["']/);
 		expect(source).not.toMatch(/from\s+["']@babylonjs\/core["']/);
-	});
-
-	it("dev3 code never reaches for the stripped namespaces", () => {
+		// dev3 code never reaches for the stripped namespaces.
 		for (const entry of ["../index.ts", "../window-manager.ts"]) {
-			const source = readFileSync(fileURLToPath(new URL(entry, import.meta.url)), "utf8");
-			expect(source).not.toMatch(/Electrobun\.(three|babylon)\b/);
+			const own = readFileSync(fileURLToPath(new URL(entry, import.meta.url)), "utf8");
+			expect(own).not.toMatch(/Electrobun\.(three|babylon)\b/);
 		}
 	});
 });

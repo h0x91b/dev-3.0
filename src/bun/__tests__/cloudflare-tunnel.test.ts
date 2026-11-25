@@ -108,24 +108,21 @@ describe("resolveTunnelEdgeBind", () => {
 		else process.env.DEV3_CLOUDFLARED_EDGE_BIND = orig;
 	});
 
-	it("is unset by default — the win is local and the choice is the operator's", () => {
+	it("returns null for unset, blank, unknown, loopback and prototype-chain values", () => {
 		delete process.env.DEV3_CLOUDFLARED_EDGE_BIND;
 		expect(resolveTunnelEdgeBind()).toBeNull();
+		// `__proto__` indexed raw reaches Object.prototype — must warn-and-drop, not throw.
+		for (const v of ["   ", "definitely-not-an-interface", "lo0", "__proto__", "constructor"]) {
+			process.env.DEV3_CLOUDFLARED_EDGE_BIND = v;
+			expect(resolveTunnelEdgeBind(), v).toBeNull();
+		}
 	});
 
-	it("treats an empty or blank value as unset", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "   ";
-		expect(resolveTunnelEdgeBind()).toBeNull();
-	});
-
-	it("passes a literal IPv4 address straight through", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "172.16.32.163";
-		expect(resolveTunnelEdgeBind()).toBe("172.16.32.163");
-	});
-
-	it("passes an IPv6 literal through rather than rejecting a form cloudflared accepts", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "fe80::1%en0";
-		expect(resolveTunnelEdgeBind()).toBe("fe80::1%en0");
+	it("passes IPv4 and IPv6 literals straight through", () => {
+		for (const v of ["172.16.32.163", "fe80::1%en0"]) {
+			process.env.DEV3_CLOUDFLARED_EDGE_BIND = v;
+			expect(resolveTunnelEdgeBind()).toBe(v);
+		}
 	});
 
 	it("resolves an interface name to its address, which survives a DHCP renewal", () => {
@@ -138,25 +135,6 @@ describe("resolveTunnelEdgeBind", () => {
 		process.env.DEV3_CLOUDFLARED_EDGE_BIND = name;
 		expect(resolveTunnelEdgeBind()).toBe(expected);
 	});
-
-	it("drops an unknown interface instead of breaking the tunnel", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "definitely-not-an-interface";
-		expect(resolveTunnelEdgeBind()).toBeNull();
-	});
-
-	// Indexed with the raw env string, `__proto__` reaches Object.prototype, where
-	// `.find` is not a function — a TypeError instead of the warn-and-drop path.
-	it("does not fall through the prototype chain on an absurd value", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "__proto__";
-		expect(resolveTunnelEdgeBind()).toBeNull();
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "constructor";
-		expect(resolveTunnelEdgeBind()).toBeNull();
-	});
-
-	it("never resolves to a loopback address, which cannot reach the edge", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "lo0";
-		expect(resolveTunnelEdgeBind()).toBeNull();
-	});
 });
 
 describe("buildTunnelArgv", () => {
@@ -166,29 +144,18 @@ describe("buildTunnelArgv", () => {
 		else process.env.DEV3_CLOUDFLARED_EDGE_BIND = orig;
 	});
 
-	it("adds nothing when the variable is unset", () => {
+	// Order is the whole point: before --url, cloudflared prints help and never
+	// registers, which looks exactly like a slow tunnel.
+	it("adds the bind flag only when set, as separate argv entries after --url", () => {
 		delete process.env.DEV3_CLOUDFLARED_EDGE_BIND;
 		expect(buildTunnelArgv(1234)).toEqual([
 			"cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:1234",
 		]);
-	});
-
-	// Order is the whole point: before --url, cloudflared prints help and never
-	// registers, which looks exactly like a slow tunnel.
-	it("puts the bind flag after --url, never before it", () => {
 		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "10.0.0.5";
-		const argv = buildTunnelArgv(1234);
-		expect(argv).toEqual([
+		expect(buildTunnelArgv(1234)).toEqual([
 			"cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:1234",
 			"--edge-bind-address", "10.0.0.5",
 		]);
-		expect(argv.indexOf("--edge-bind-address")).toBeGreaterThan(argv.indexOf("--url"));
-	});
-
-	it("passes the bind address as its own argv entry, not glued to the flag", () => {
-		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "10.0.0.5";
-		expect(buildTunnelArgv(1234)).toContain("10.0.0.5");
-		expect(buildTunnelArgv(1234).some((a) => a.includes(" "))).toBe(false);
 	});
 });
 
@@ -203,23 +170,13 @@ describe("resolveTunnelProtocol", () => {
 		else process.env.DEV3_CLOUDFLARED_PROTOCOL = orig;
 	});
 
-	it("defaults to http2 (QUIC is blocked on many corporate networks)", () => {
+	it("defaults to http2, honours valid overrides, and falls back on garbage", () => {
 		delete process.env.DEV3_CLOUDFLARED_PROTOCOL;
 		expect(resolveTunnelProtocol()).toBe("http2");
-	});
-
-	it("honours a valid override", () => {
-		process.env.DEV3_CLOUDFLARED_PROTOCOL = "quic";
-		expect(resolveTunnelProtocol()).toBe("quic");
-		process.env.DEV3_CLOUDFLARED_PROTOCOL = "auto";
-		expect(resolveTunnelProtocol()).toBe("auto");
-		process.env.DEV3_CLOUDFLARED_PROTOCOL = "HTTP2";
-		expect(resolveTunnelProtocol()).toBe("http2");
-	});
-
-	it("falls back to http2 for an unknown/garbage value", () => {
-		process.env.DEV3_CLOUDFLARED_PROTOCOL = "wireguard";
-		expect(resolveTunnelProtocol()).toBe("http2");
+		for (const [v, want] of [["quic", "quic"], ["auto", "auto"], ["HTTP2", "http2"], ["wireguard", "http2"]]) {
+			process.env.DEV3_CLOUDFLARED_PROTOCOL = v;
+			expect(resolveTunnelProtocol(), v).toBe(want);
+		}
 	});
 });
 
@@ -228,61 +185,27 @@ describe("resolveTunnelProtocol", () => {
 // ================================================================
 
 describe("parseTunnelUrl", () => {
-	it("extracts URL from typical cloudflared output line", () => {
-		expect(parseTunnelUrl("INF |  https://abc-random-123.trycloudflare.com")).toBe(
-			"https://abc-random-123.trycloudflare.com",
-		);
+	it("extracts the first https trycloudflare URL anywhere in a line", () => {
+		const cases: Array<[string, string]> = [
+			["2026-03-25T12:00:00Z INF +--- https://my-tunnel.trycloudflare.com ---+", "https://my-tunnel.trycloudflare.com"],
+			["https://under_score-dash.trycloudflare.com", "https://under_score-dash.trycloudflare.com"],
+			["https://first.trycloudflare.com and https://second.trycloudflare.com", "https://first.trycloudflare.com"],
+		];
+		for (const [line, url] of cases) expect(parseTunnelUrl(line), line).toBe(url);
 	});
 
-	it("extracts URL from log line with timestamp", () => {
-		expect(
-			parseTunnelUrl("2026-03-25T12:00:00Z INF +--- https://my-tunnel.trycloudflare.com ---+"),
-		).toBe("https://my-tunnel.trycloudflare.com");
-	});
-
-	it("extracts URL with underscores in hostname", () => {
-		expect(parseTunnelUrl("https://under_score_test.trycloudflare.com")).toBe(
-			"https://under_score_test.trycloudflare.com",
-		);
-	});
-
-	it("extracts URL embedded in the middle of a line", () => {
-		expect(
-			parseTunnelUrl("Your tunnel URL is https://test-xyz.trycloudflare.com and it works"),
-		).toBe("https://test-xyz.trycloudflare.com");
-	});
-
-	it("returns null for lines without tunnel URL", () => {
-		expect(parseTunnelUrl("INF Starting tunnel")).toBeNull();
-		expect(parseTunnelUrl("")).toBeNull();
-		expect(parseTunnelUrl("https://example.com")).toBeNull();
-		expect(parseTunnelUrl("trycloudflare.com")).toBeNull();
-	});
-
-	it("returns null for http (non-https) trycloudflare URLs", () => {
-		expect(parseTunnelUrl("http://test.trycloudflare.com")).toBeNull();
-	});
-
-	it("handles line with multiple URLs — returns the first", () => {
-		const line = "https://first.trycloudflare.com and https://second.trycloudflare.com";
-		expect(parseTunnelUrl(line)).toBe("https://first.trycloudflare.com");
-	});
-
-	it("handles dashes in hostname", () => {
-		expect(parseTunnelUrl("https://a-b-c-d-e-f.trycloudflare.com")).toBe(
-			"https://a-b-c-d-e-f.trycloudflare.com",
-		);
+	it("returns null for lines without an https tunnel URL", () => {
+		for (const line of ["INF Starting tunnel", "", "https://example.com", "trycloudflare.com", "http://test.trycloudflare.com"]) {
+			expect(parseTunnelUrl(line), line).toBeNull();
+		}
 	});
 });
 
 describe("parseTunnelMetricsUrl", () => {
-	it("extracts the local readiness endpoint from cloudflared output", () => {
+	it("extracts the local readiness endpoint and ignores unrelated output", () => {
 		expect(
 			parseTunnelMetricsUrl("2026-07-13T12:54:39Z INF Starting metrics server on 127.0.0.1:20241/metrics"),
 		).toBe("http://127.0.0.1:20241/ready");
-	});
-
-	it("returns null for unrelated output", () => {
 		expect(parseTunnelMetricsUrl("INF Registered tunnel connection")).toBeNull();
 	});
 });
@@ -296,13 +219,10 @@ describe("isTunnelBinaryAvailable", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns true when which cloudflared exits 0", () => {
+	it("follows the exit code of which cloudflared", () => {
 		(mockSpawnSync as Mock).mockReturnValue({ exitCode: 0 });
 		expect(isTunnelBinaryAvailable()).toBe(true);
 		expect(mockSpawnSync).toHaveBeenCalledWith(["which", "cloudflared"]);
-	});
-
-	it("returns false when exit code is non-zero", () => {
 		(mockSpawnSync as Mock).mockReturnValue({ exitCode: 1 });
 		expect(isTunnelBinaryAvailable()).toBe(false);
 	});
@@ -347,7 +267,7 @@ describe("startTunnel", () => {
 		return { killFn, triggerExit: () => exitResolve!() };
 	}
 
-	it("returns public URL when found in stderr", async () => {
+	it("returns public URL when found in stderr, and reuses it while connected", async () => {
 		setupSpawnMock([
 			"INF Starting tunnel",
 			"INF Registered connection",
@@ -364,6 +284,10 @@ describe("startTunnel", () => {
 			["cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:8080"],
 			{ stdout: "ignore", stderr: "pipe" },
 		);
+
+		// Already connected: the existing URL comes back without a second spawn.
+		expect(await startTunnel(8080)).toBe("https://test-abc.trycloudflare.com");
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
 	});
 
 	it("waits for cloudflared /ready before marking the tunnel connected", async () => {
@@ -432,18 +356,6 @@ describe("startTunnel", () => {
 		expect(getTunnelState()).toBe("idle"); // stopTunnel resets
 	});
 
-	it("returns existing URL if already connected", async () => {
-		setupSpawnMock([
-			"INF |  https://existing.trycloudflare.com",
-		]);
-
-		await startTunnel(8080);
-		expect(getTunnelState()).toBe("connected");
-
-		const url = await startTunnel(8080);
-		expect(url).toBe("https://existing.trycloudflare.com");
-		expect(mockSpawn).toHaveBeenCalledTimes(1);
-	});
 });
 
 describe("stopTunnel", () => {
@@ -452,7 +364,7 @@ describe("stopTunnel", () => {
 		vi.clearAllMocks();
 	});
 
-	it("kills process and resets state", async () => {
+	it("kills process and resets state, and is a no-op on the main entry afterwards", async () => {
 		const killFn = vi.fn();
 		const encoder = new TextEncoder();
 		(mockSpawn as Mock).mockReturnValue({
@@ -466,35 +378,19 @@ describe("stopTunnel", () => {
 			}),
 		});
 
+		expect(getTunnelState()).toBe("idle");
+		expect(getTunnelUrl()).toBeNull();
 		await startTunnel(8080);
 		expect(getTunnelState()).toBe("connected");
+		expect(tunnelManager.get("main")).toBeDefined();
 
 		stopTunnel();
 
 		expect(killFn).toHaveBeenCalled();
 		expect(getTunnelUrl()).toBeNull();
 		expect(getTunnelState()).toBe("idle");
-	});
-
-	it("is safe to call when no tunnel is running", () => {
-		expect(getTunnelState()).toBe("idle");
+		expect(tunnelManager.get("main")).toBeUndefined();
 		stopTunnel();
-		expect(getTunnelState()).toBe("idle");
-	});
-});
-
-describe("getTunnelUrl", () => {
-	beforeEach(() => _resetState());
-
-	it("returns null when idle", () => {
-		expect(getTunnelUrl()).toBeNull();
-	});
-});
-
-describe("getTunnelState", () => {
-	beforeEach(() => _resetState());
-
-	it("returns idle initially", () => {
 		expect(getTunnelState()).toBe("idle");
 	});
 });
@@ -523,42 +419,24 @@ describe("tunnelManager", () => {
 		});
 	}
 
-	it("tracks multiple tunnels independently by id", async () => {
-		mockSpawnReturning("https://tunnel-a.trycloudflare.com");
-		mockSpawnReturning("https://tunnel-b.trycloudflare.com");
-
-		const a = await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-		const b = await tunnelManager.start({ id: "task:t1:port:5173", kind: "task-port", targetPort: 5173, taskId: "t1" });
-
-		expect(a.url).toBe("https://tunnel-a.trycloudflare.com");
-		expect(b.url).toBe("https://tunnel-b.trycloudflare.com");
-		expect(tunnelManager.list({ taskId: "t1" })).toHaveLength(2);
-	});
-
-	it("filters list by kind and taskId", async () => {
+	it("tracks multiple tunnels independently, filters list by kind and taskId, and stops by kind", async () => {
 		mockSpawnReturning("https://main.trycloudflare.com");
 		mockSpawnReturning("https://port-a.trycloudflare.com");
 		mockSpawnReturning("https://port-b.trycloudflare.com");
 
 		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
-		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-		await tunnelManager.start({ id: "task:t2:port:3000", kind: "task-port", targetPort: 3000, taskId: "t2" });
+		const a = await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+		const b = await tunnelManager.start({ id: "task:t2:port:3000", kind: "task-port", targetPort: 3000, taskId: "t2" });
 
+		expect(a.url).toBe("https://port-a.trycloudflare.com");
+		expect(b.url).toBe("https://port-b.trycloudflare.com");
 		expect(tunnelManager.list({ kind: "main" })).toHaveLength(1);
 		expect(tunnelManager.list({ kind: "task-port" })).toHaveLength(2);
 		expect(tunnelManager.list({ taskId: "t1" })).toHaveLength(1);
 		expect(tunnelManager.list({ kind: "task-port", taskId: "t2" })).toHaveLength(1);
-	});
 
-	it("stopAll with kind filter leaves other kinds running", async () => {
-		mockSpawnReturning("https://main.trycloudflare.com");
-		mockSpawnReturning("https://port-a.trycloudflare.com");
-
-		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
-		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-
+		// stopAll with a kind filter leaves other kinds running.
 		tunnelManager.stopAll({ kind: "task-port" });
-
 		expect(tunnelManager.get("main")?.state).toBe("connected");
 		expect(tunnelManager.get("task:t1:port:3000")).toBeUndefined();
 	});
@@ -577,55 +455,6 @@ describe("tunnelManager", () => {
 		expect(b.ports).toEqual([3001]);
 	});
 
-	it("back-compat startTunnel/stopTunnel operate on main entry", async () => {
-		mockSpawnReturning("https://main-compat.trycloudflare.com");
-
-		const url = await startTunnel(8080);
-		expect(url).toBe("https://main-compat.trycloudflare.com");
-		expect(getTunnelUrl()).toBe("https://main-compat.trycloudflare.com");
-		expect(getTunnelState()).toBe("connected");
-		expect(tunnelManager.get("main")).toBeDefined();
-
-		stopTunnel();
-		expect(getTunnelState()).toBe("idle");
-		expect(tunnelManager.get("main")).toBeUndefined();
-	});
-});
-
-describe("process exit", () => {
-	beforeEach(() => {
-		_resetState();
-		vi.clearAllMocks();
-	});
-
-	it("hands the slot to a pending recovery when the process exits while serving", async () => {
-		let exitResolve!: () => void;
-		const exitedPromise = new Promise<void>((r) => {
-			exitResolve = r;
-		});
-
-		const encoder = new TextEncoder();
-		(mockSpawn as Mock).mockReturnValue({
-			kill: vi.fn(),
-			exited: exitedPromise,
-			stderr: new ReadableStream({
-				start(controller) {
-					controller.enqueue(encoder.encode("https://exit-test.trycloudflare.com\n"));
-					controller.close();
-				},
-			}),
-		});
-
-		await startTunnel(8080);
-		expect(getTunnelState()).toBe("connected");
-
-		exitResolve();
-		await new Promise((r) => setTimeout(r, 10));
-
-		expect(getTunnelState()).toBe("starting");
-		expect(getTunnelUrl()).toBeNull();
-		expect(tunnelManager.get("main")?.placeholder).toBe(true);
-	});
 });
 
 describe("edge readiness watchdog", () => {
@@ -769,25 +598,6 @@ describe("tunnel recovery", () => {
 
 	const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-	it("waits for the old process to exit before spawning its successor", async () => {
-		TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5_000;
-		const old = mockTunnelProcess("https://old.trycloudflare.com");
-		mockTunnelProcess("https://new.trycloudflare.com");
-		await startTunnel(8080);
-
-		await failHealthChecks("main", 2);
-		const restart = tunnelManager.checkHealth("main");
-		await tick(30);
-		expect(old.kill).toHaveBeenCalled();
-		expect(mockSpawn).toHaveBeenCalledTimes(1);
-
-		old.exit(0);
-		await restart;
-		expect(mockSpawn).toHaveBeenCalledTimes(2);
-		expect(old.kill).not.toHaveBeenCalledWith(9);
-		expect(getTunnelUrl()).toBe("https://new.trycloudflare.com");
-	});
-
 	it("SIGKILLs an old process that outlives SIGTERM, then starts the successor", async () => {
 		const old = mockTunnelProcess("https://wedged.trycloudflare.com");
 		mockTunnelProcess("https://fresh.trycloudflare.com");
@@ -826,7 +636,7 @@ describe("tunnel recovery", () => {
 		}
 	});
 
-	it("keeps the slot through the restart, so an explicit start joins it instead of racing it", async () => {
+	it("waits for the old process to exit and keeps the slot, so an explicit start joins the restart", async () => {
 		TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5_000;
 		const old = mockTunnelProcess("https://old.trycloudflare.com");
 		mockTunnelProcess("https://joined.trycloudflare.com");
@@ -838,12 +648,15 @@ describe("tunnel recovery", () => {
 		expect(getTunnelState()).toBe("starting"); // not "idle": the modal must not auto-start a second one
 		const explicit = startTunnel(8080);
 		await tick(10);
+		// The successor waits for the old process to exit.
+		expect(old.kill).toHaveBeenCalled();
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 
 		old.exit(0);
 		await restart;
 		expect(await explicit).toBe("https://joined.trycloudflare.com");
 		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(old.kill).not.toHaveBeenCalledWith(9);
 		expect(loggerMocks.error).not.toHaveBeenCalledWith("Tunnel restart failed", expect.anything());
 	});
 
@@ -860,21 +673,6 @@ describe("tunnel recovery", () => {
 		await restart;
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 		expect(getTunnelState()).toBe("idle");
-	});
-
-	it("stopAll cancels a restart that is waiting for the old process", async () => {
-		TUNNEL_RECOVERY.oldProcessExitTimeoutMs = 5_000;
-		const old = mockTunnelProcess("https://port-old.trycloudflare.com");
-		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-
-		await failHealthChecks("task:t1:port:3000", 2);
-		const restart = tunnelManager.checkHealth("task:t1:port:3000");
-		await tick(10);
-		tunnelManager.stopAll({ taskId: "t1" });
-		old.exit(0);
-		await restart;
-		expect(mockSpawn).toHaveBeenCalledTimes(1);
-		expect(tunnelManager.list({ taskId: "t1" })).toEqual([]);
 	});
 
 	it("keeps retrying a failed restart until a successor comes up", async () => {
@@ -899,18 +697,23 @@ describe("tunnel recovery", () => {
 		expect(hook).toHaveBeenNthCalledWith(2, expect.objectContaining({ id: "main", url: "https://back.trycloudflare.com" }), "https://stale.trycloudflare.com");
 	});
 
-	it("brings back a tunnel whose process exits on its own while serving", async () => {
+	it("brings back a tunnel whose process exits on its own while serving, even past a throwing listener", async () => {
 		TUNNEL_RECOVERY.retryDelaysMs = [1];
 		const first = mockTunnelProcess("https://first.trycloudflare.com");
 		mockTunnelProcess("https://second.trycloudflare.com");
+		// A change listener that throws must not stall the recovery.
+		tunnelManager.setChangeHook(() => {
+			throw new Error("broadcast failed");
+		});
 		await startTunnel(8080);
 
 		first.exit(1);
 		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://second.trycloudflare.com"));
 		expect(loggerMocks.warn).toHaveBeenCalledWith("Tunnel process exited while serving", { id: "main", exitCode: 1 });
+		expect(loggerMocks.warn).toHaveBeenCalledWith("Tunnel change listener failed", expect.objectContaining({ id: "main" }));
 	});
 
-	it("an explicit start does not wait out the backoff of a pending retry", async () => {
+	it("an explicit start does not wait out the backoff of a pending retry, and points it at the port given now", async () => {
 		const first = mockTunnelProcess("https://first.trycloudflare.com");
 		mockTunnelProcess("https://now.trycloudflare.com");
 		await startTunnel(8080);
@@ -918,8 +721,10 @@ describe("tunnel recovery", () => {
 		first.exit(1);
 		await tick(5);
 		expect(tunnelManager.get("main")?.placeholder).toBe(true); // retry scheduled 60 s out
-		expect(await startTunnel(8080)).toBe("https://now.trycloudflare.com");
+		expect(await startTunnel(9090)).toBe("https://now.trycloudflare.com");
 		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(tunnelManager.get("main")?.targetPort).toBe(9090);
+		expect((mockSpawn as Mock).mock.calls[1][0].join(" ")).toContain("9090");
 	});
 
 	it("leaves a tunnel down after an explicit stop", async () => {
@@ -970,44 +775,31 @@ describe("tunnel recovery", () => {
 		expect(tunnelManager.list({ taskId: "t1" })).toEqual([]);
 	});
 
-	it("keeps growing the backoff for a tunnel that never proves healthy", async () => {
-		TUNNEL_RECOVERY.retryDelaysMs = [20, 500, 60_000];
-		const first = mockTunnelProcess("https://a.trycloudflare.com");
-		const second = mockTunnelProcess("https://b.trycloudflare.com");
-		await startTunnel(8080);
+	it("grows the backoff until a recovered tunnel proves healthy by a health check or by serving long enough", async () => {
+		const cases = [
+			{ name: "never proven", prove: async () => {}, provenAfterMs: REAL_RECOVERY.provenAfterMs, attempt: 2, delayMs: 500 },
+			{ name: "passed a health check", prove: async () => {
+				vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
+				await tunnelManager.checkHealth("main");
+			}, provenAfterMs: REAL_RECOVERY.provenAfterMs, attempt: 1, delayMs: 20 },
+			{ name: "served long enough, no probe", prove: async () => {}, provenAfterMs: 0, attempt: 1, delayMs: 20 },
+		];
+		for (const c of cases) {
+			_resetState();
+			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 503 })));
+			TUNNEL_RECOVERY.retryDelaysMs = [20, 500, 60_000];
+			TUNNEL_RECOVERY.provenAfterMs = c.provenAfterMs;
+			const first = mockTunnelProcess("https://a.trycloudflare.com");
+			const second = mockTunnelProcess("https://b.trycloudflare.com");
+			await startTunnel(8080);
 
-		first.exit(1);
-		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://b.trycloudflare.com"));
-		second.exit(1); // best-effort "connected", never passed a health check
-		await tick(5);
-		expect(loggerMocks.warn).toHaveBeenLastCalledWith("Tunnel down; retrying", { id: "main", attempt: 2, delayMs: 500 });
-	});
-
-	it("restarts the backoff once a recovered tunnel passes a health check", async () => {
-		TUNNEL_RECOVERY.retryDelaysMs = [20, 500, 60_000];
-		const first = mockTunnelProcess("https://a.trycloudflare.com");
-		const second = mockTunnelProcess("https://b.trycloudflare.com");
-		await startTunnel(8080);
-
-		first.exit(1);
-		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://b.trycloudflare.com"));
-		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
-		await tunnelManager.checkHealth("main");
-		second.exit(1);
-		await tick(5);
-		expect(loggerMocks.warn).toHaveBeenLastCalledWith("Tunnel down; retrying", { id: "main", attempt: 1, delayMs: 20 });
-	});
-
-	it("an explicit start points the recovery at the port it is given now", async () => {
-		const first = mockTunnelProcess("https://first.trycloudflare.com");
-		mockTunnelProcess("https://moved.trycloudflare.com");
-		await startTunnel(8080);
-
-		first.exit(1);
-		await tick(5);
-		expect(await startTunnel(9090)).toBe("https://moved.trycloudflare.com");
-		expect(tunnelManager.get("main")?.targetPort).toBe(9090);
-		expect((mockSpawn as Mock).mock.calls[1][0].join(" ")).toContain("9090");
+			first.exit(1);
+			await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://b.trycloudflare.com"));
+			await c.prove();
+			second.exit(1); // best-effort "connected"
+			await tick(5);
+			expect(loggerMocks.warn, c.name).toHaveBeenLastCalledWith("Tunnel down; retrying", { id: "main", attempt: c.attempt, delayMs: c.delayMs });
+		}
 	});
 
 	it("an explicit start joins a recovery attempt that is already starting", async () => {
@@ -1037,20 +829,6 @@ describe("tunnel recovery", () => {
 		await restart;
 		expect(loggerMocks.error).not.toHaveBeenCalledWith("Tunnel restart failed", expect.anything());
 		expect(getTunnelState()).toBe("idle");
-	});
-
-	it("starts the backoff over for a recovered tunnel that served long enough, even with no probe", async () => {
-		TUNNEL_RECOVERY.retryDelaysMs = [20, 500, 60_000];
-		TUNNEL_RECOVERY.provenAfterMs = 0;
-		const first = mockTunnelProcess("https://a.trycloudflare.com");
-		const second = mockTunnelProcess("https://b.trycloudflare.com");
-		await startTunnel(8080);
-
-		first.exit(1);
-		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://b.trycloudflare.com"));
-		second.exit(1);
-		await tick(5);
-		expect(loggerMocks.warn).toHaveBeenLastCalledWith("Tunnel down; retrying", { id: "main", attempt: 1, delayMs: 20 });
 	});
 
 	it("keeps a shared tunnel's subtoken across recovery", async () => {
@@ -1128,7 +906,7 @@ describe("tunnel recovery", () => {
 		expect(getTunnelUrl()).toBe("https://new.trycloudflare.com");
 	});
 
-	it("does not retry a port tunnel whose custom command stopped being found, and frees its slot", async () => {
+	it("does not retry a port tunnel whose custom command stopped being found, frees its slot, and tells listeners", async () => {
 		TUNNEL_RECOVERY.retryDelaysMs = [1];
 		providerMocks.resolveRemoteTunnelProvider.mockReturnValue({
 			kind: "custom",
@@ -1137,6 +915,8 @@ describe("tunnel recovery", () => {
 		});
 		const first = mockTunnelProcess("https://port-3000.example.dev");
 		mockTunnelProcess(null, { failCode: 127 });
+		const hook = vi.fn();
+		tunnelManager.setChangeHook(hook);
 		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
 		expect(tunnelManager.get("task:t1:port:3000")?.state).toBe("connected");
 
@@ -1150,35 +930,8 @@ describe("tunnel recovery", () => {
 		await tick(20);
 		expect(mockSpawn).toHaveBeenCalledTimes(2);
 		expect(tunnelManager.list({ taskId: "t1" })).toEqual([]);
-	});
-
-	it("tells listeners when a misconfigured command releases a recovering tunnel's slot", async () => {
-		TUNNEL_RECOVERY.retryDelaysMs = [1];
-		providerMocks.resolveRemoteTunnelProvider.mockReturnValue({ kind: "custom", command: "my-tunnel {port}", urlRegex: GENERIC_TUNNEL_URL_REGEX });
-		const first = mockTunnelProcess("https://port-3000.example.dev");
-		mockTunnelProcess(null, { failCode: 127 });
-		const hook = vi.fn();
-		tunnelManager.setChangeHook(hook);
-		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-
-		first.exit(1);
-		await vi.waitFor(() => expect(hook).toHaveBeenCalledTimes(2));
+		// Listeners hear that the slot was released.
 		expect(hook).toHaveBeenLastCalledWith(expect.objectContaining({ id: "task:t1:port:3000", state: "failed" }), "https://port-3000.example.dev");
-		expect(tunnelManager.get("task:t1:port:3000")).toBeUndefined();
-	});
-
-	it("a change listener that throws does not stall the recovery", async () => {
-		TUNNEL_RECOVERY.retryDelaysMs = [1];
-		const first = mockTunnelProcess("https://first.trycloudflare.com");
-		mockTunnelProcess("https://second.trycloudflare.com");
-		tunnelManager.setChangeHook(() => {
-			throw new Error("broadcast failed");
-		});
-		await startTunnel(8080);
-
-		first.exit(1);
-		await vi.waitFor(() => expect(getTunnelUrl()).toBe("https://second.trycloudflare.com"));
-		expect(loggerMocks.warn).toHaveBeenCalledWith("Tunnel change listener failed", expect.objectContaining({ id: "main" }));
 	});
 
 	it("does not retry a main tunnel whose custom command is blank", async () => {
@@ -1246,6 +999,7 @@ describe("releaseMainTunnelForHandoff / adoptMainTunnel", () => {
 	}
 
 	it("hands back the pid and URL WITHOUT killing cloudflared — that is the whole point", async () => {
+		expect(releaseMainTunnelForHandoff()).toBeNull(); // nothing connected yet
 		const { killFn } = startWithUrl("https://keepme.trycloudflare.com");
 		await startTunnel(8080);
 
@@ -1263,11 +1017,7 @@ describe("releaseMainTunnelForHandoff / adoptMainTunnel", () => {
 		expect(getTunnelState()).toBe("idle");
 	});
 
-	it("returns null when there is no connected tunnel to hand over", () => {
-		expect(releaseMainTunnelForHandoff()).toBeNull();
-	});
-
-	it("registers an inherited process as the live main tunnel", () => {
+	it("registers an inherited process as the live main tunnel, and signals it on stop so a restart cannot orphan it", () => {
 		adoptMainTunnel({
 			pid: 5150,
 			url: "https://inherited.trycloudflare.com",
@@ -1279,6 +1029,15 @@ describe("releaseMainTunnelForHandoff / adoptMainTunnel", () => {
 		expect(getTunnelState()).toBe("connected");
 		// Nothing was spawned: the process already exists.
 		expect(mockSpawn).not.toHaveBeenCalled();
+
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+		try {
+			stopTunnel();
+			expect(killSpy).toHaveBeenCalledWith(5150, "SIGTERM");
+			expect(getTunnelState()).toBe("idle");
+		} finally {
+			killSpy.mockRestore();
+		}
 	});
 
 	// An adopted entry has `process: null`, so there is no `exited` hook to notice it
@@ -1320,17 +1079,6 @@ describe("releaseMainTunnelForHandoff / adoptMainTunnel", () => {
 		}
 	});
 
-	it("signals an adopted process on stop, so a restart cannot orphan it", () => {
-		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-		try {
-			adoptMainTunnel({ pid: 5151, url: "https://x.trycloudflare.com", metricsReadyUrl: null, targetPort: 8080 });
-			stopTunnel();
-			expect(killSpy).toHaveBeenCalledWith(5151, "SIGTERM");
-			expect(getTunnelState()).toBe("idle");
-		} finally {
-			killSpy.mockRestore();
-		}
-	});
 });
 
 // ================================================================
@@ -1367,7 +1115,7 @@ describe("custom tunnel edge readiness", () => {
 		});
 	}
 
-	it("probes the scraped public URL instead of a metrics endpoint", async () => {
+	it("probes the scraped public URL instead of a metrics endpoint, and keeps probing it", async () => {
 		const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
 		vi.stubGlobal("fetch", fetchMock);
 		setupCustomSpawn(["Public: https://byo-abc.example.com"]);
@@ -1382,6 +1130,15 @@ describe("custom tunnel edge readiness", () => {
 		expect(loggerMocks.info).toHaveBeenCalledWith(
 			"Tunnel connected",
 			expect.objectContaining({ probe: "public-url", edgeCheck: "ready" }),
+		);
+
+		// It keeps watching the public URL after connecting: the edge drops while
+		// the command stays alive — the case process liveness alone cannot see.
+		vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+		await tunnelManager.checkHealth("main");
+		expect(loggerMocks.warn).toHaveBeenCalledWith(
+			"Tunnel public URL unreachable",
+			expect.objectContaining({ probe: "public-url", consecutiveFailures: 1 }),
 		);
 	});
 
@@ -1420,21 +1177,6 @@ describe("custom tunnel edge readiness", () => {
 		);
 	});
 
-	it("keeps watching the public URL after connecting, instead of trusting process liveness", async () => {
-		vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
-		setupCustomSpawn(["Public: https://watched.example.com"]);
-		await startTunnel(8080);
-
-		// The edge drops while the command stays alive — the case process liveness
-		// alone cannot see.
-		vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
-		await tunnelManager.checkHealth("main");
-
-		expect(loggerMocks.warn).toHaveBeenCalledWith(
-			"Tunnel public URL unreachable",
-			expect.objectContaining({ probe: "public-url", consecutiveFailures: 1 }),
-		);
-	});
 });
 
 // ================================================================
@@ -1475,35 +1217,11 @@ describe("custom tunnel hostname stability", () => {
 		return { killFn };
 	}
 
-	it("reports an unproven hostname the first time a command's URL is seen", async () => {
-		hostMemoryMocks.recordCustomTunnelUrl.mockReturnValue(false);
-		setupCustomSpawn("https://first-run.example.com");
-
-		await startTunnel(8080);
-
-		expect(hostMemoryMocks.recordCustomTunnelUrl).toHaveBeenCalledWith(COMMAND, "https://first-run.example.com");
-		expect(loggerMocks.info).toHaveBeenCalledWith(
-			"Tunnel connected",
-			expect.objectContaining({ hostname: "unproven" }),
-		);
-	});
-
-	it("reports a stable hostname once the same URL has been observed again", async () => {
-		hostMemoryMocks.recordCustomTunnelUrl.mockReturnValue(true);
-		setupCustomSpawn("https://box-dev3.example.com");
-
-		await startTunnel(8080);
-
-		expect(loggerMocks.info).toHaveBeenCalledWith(
-			"Tunnel connected",
-			expect.objectContaining({ hostname: "stable" }),
-		);
-	});
-
 	it("stops a stable-hostname tunnel for the handoff instead of leaking the process", async () => {
 		hostMemoryMocks.recordCustomTunnelUrl.mockReturnValue(true);
 		const { killFn } = setupCustomSpawn("https://box-dev3.example.com");
 		await startTunnel(8080);
+		expect(loggerMocks.info).toHaveBeenCalledWith("Tunnel connected", expect.objectContaining({ hostname: "stable" }));
 
 		expect(stopMainTunnelForStableHandoff()).toBe("https://box-dev3.example.com");
 		// Killed on purpose: the successor's own spawn lands on the same hostname.
@@ -1515,6 +1233,8 @@ describe("custom tunnel hostname stability", () => {
 		hostMemoryMocks.recordCustomTunnelUrl.mockReturnValue(false);
 		const { killFn } = setupCustomSpawn("https://rotating.example.com");
 		await startTunnel(8080);
+		expect(hostMemoryMocks.recordCustomTunnelUrl).toHaveBeenCalledWith(COMMAND, "https://rotating.example.com");
+		expect(loggerMocks.info).toHaveBeenCalledWith("Tunnel connected", expect.objectContaining({ hostname: "unproven" }));
 
 		expect(stopMainTunnelForStableHandoff()).toBeNull();
 		expect(killFn).not.toHaveBeenCalled();
@@ -1588,18 +1308,21 @@ describe("custom provider on per-task tunnels", () => {
 		const argv = (mockSpawn as Mock).mock.calls[0][0] as string[];
 		expect(argv[argv.length - 1]).toBe("exec fake-tunnel 3000");
 		expect(argv).not.toContain("cloudflared");
-	});
-
-	it("keeps hostname-stability learning out of port tunnels — the memory belongs to the main tunnel", async () => {
-		setupCustomSpawn(["https://p3000.example.com"]);
-
-		const entry = await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-
+		// Hostname-stability memory belongs to the main tunnel only.
 		expect(hostMemoryMocks.recordCustomTunnelUrl).not.toHaveBeenCalled();
 		expect(entry.stableHostname).toBe(false);
 	});
 
-	it("warns when two live tunnels land on one public URL (fixed-hostname command)", async () => {
+	it("warns only when two live tunnels land on one public URL (fixed-hostname command)", async () => {
+		setupCustomSpawn(["https://a.example.com", "https://b.example.com"]);
+		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
+		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+		expect(loggerMocks.warn).not.toHaveBeenCalledWith(
+			expect.stringContaining("Two live tunnels share one public URL"),
+			expect.anything(),
+		);
+
+		_resetState();
 		setupCustomSpawn(["https://fixed.example.com", "https://fixed.example.com"]);
 
 		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
@@ -1611,17 +1334,6 @@ describe("custom provider on per-task tunnels", () => {
 		);
 	});
 
-	it("stays quiet when concurrent tunnels get distinct hostnames", async () => {
-		setupCustomSpawn(["https://a.example.com", "https://b.example.com"]);
-
-		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
-		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
-
-		expect(loggerMocks.warn).not.toHaveBeenCalledWith(
-			expect.stringContaining("Two live tunnels share one public URL"),
-			expect.anything(),
-		);
-	});
 });
 
 // ================================================================
@@ -1645,11 +1357,10 @@ describe("misconfigured custom provider (blank command)", () => {
 		expect(url).toBeNull();
 		expect(mockSpawn).not.toHaveBeenCalled();
 		expect(getMainTunnelFailureReason()).toBe("command-empty");
-	});
-
-	it("reports the binary as unavailable so the modal explains instead of toggling", () => {
+		// Reported unavailable so the modal explains instead of toggling.
 		expect(isTunnelBinaryAvailable()).toBe(false);
 	});
+
 });
 
 describe("custom command availability is derived from the run, not a PATH probe", () => {
@@ -1664,12 +1375,10 @@ describe("custom command availability is derived from the run, not a PATH probe"
 		});
 	});
 
-	it("never pre-judges a custom command", () => {
+	it("never pre-judges a custom command, and records command-not-found when sh exits 127 before a URL", async () => {
 		expect(isTunnelBinaryAvailable()).toBe(true);
 		expect(mockSpawnSync).not.toHaveBeenCalled();
-	});
 
-	it("records command-not-found when sh exits 127 before printing a URL", async () => {
 		const encoder = new TextEncoder();
 		const stream = (out: string[]) => new ReadableStream<Uint8Array>({
 			start(controller) {

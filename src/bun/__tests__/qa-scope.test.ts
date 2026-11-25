@@ -7,21 +7,16 @@ import { devRunEnv, qaScopeMode } from "../../../scripts/dev";
 import { testScopedPath } from "../../../test-scoped-path";
 
 describe("QA scope selection", () => {
-	it("stays off unless explicitly asked", () => {
+	it("stays off unless asked, accepts the flag and the env var in both modes, and refuses an unknown mode", () => {
 		expect(qaScopeMode([], {})).toBeNull();
 		expect(qaScopeMode(["--start"], {})).toBeNull();
 		expect(qaScopeMode([], { DEV3_QA_SCOPE: "0" })).toBeNull();
-	});
-
-	it("accepts the flag and the env var, in both modes", () => {
 		expect(qaScopeMode(["--qa"], {})).toBe("seeded");
 		expect(qaScopeMode(["--qa=seeded"], {})).toBe("seeded");
 		expect(qaScopeMode(["--qa=virgin"], {})).toBe("virgin");
 		expect(qaScopeMode([], { DEV3_QA_SCOPE: "1" })).toBe("seeded");
 		expect(qaScopeMode([], { DEV3_QA_SCOPE: "virgin" })).toBe("virgin");
-	});
-
-	it("refuses an unknown mode instead of silently picking one", () => {
+		// Never silently pick a mode.
 		expect(() => qaScopeMode(["--qa=readonly"], {})).toThrow(/unknown QA scope mode/);
 	});
 
@@ -34,26 +29,25 @@ describe("QA scope selection", () => {
 		expect(qaScopeRoot("/repo/worktree", "seeded", "/tmp")).toBe(seeded);
 	});
 
-	it("redirects the data root, logs and tmux server, and nothing else", () => {
-		expect(Object.keys(qaScopeEnv("/tmp/scope")).sort()).toEqual(["DEV3_HOME", "DEV3_LOG_DIR", "TMUX_TMPDIR"]);
-		// HOME staying real is load-bearing: the agent's dev3 CLI and git read it.
-		expect(qaScopeEnv("/tmp/scope")).not.toHaveProperty("HOME");
-	});
-
-	it("carries the scope into the app's launch environment for both entry points", () => {
-		const scope = { DEV3_HOME: "/tmp/scope/home/.dev3.0", DEV3_LOG_DIR: "/tmp/scope/logs" };
-		for (const mode of ["dev", "start"] as const) {
-			const env = devRunEnv(mode, { staticCode: null, port0: undefined, qaScope: scope });
-			expect(env.DEV3_HOME).toBe(scope.DEV3_HOME);
-			expect(env.DEV3_LOG_DIR).toBe(scope.DEV3_LOG_DIR);
-		}
-	});
-
-	it("gives the instance its own tmux server, so its panes never join the real app's", () => {
+	it("redirects the data root, logs and its own tmux server, and nothing else", () => {
 		const scope = qaScopeEnv("/tmp/scope");
+		expect(Object.keys(scope).sort()).toEqual(["DEV3_HOME", "DEV3_LOG_DIR", "TMUX_TMPDIR"]);
+		// HOME staying real is load-bearing: the agent's dev3 CLI and git read it.
+		expect(scope).not.toHaveProperty("HOME");
+		// Its own tmux server, so its panes never join the real app's.
 		expect(scope.TMUX_TMPDIR).toBe("/tmp/scope/t");
 		const env = devRunEnv("dev", { staticCode: null, port0: undefined, qaScope: scope });
 		expect(env.TMUX_TMPDIR).toBe("/tmp/scope/t");
+	});
+
+	it("carries the scope into the app's launch environment for both entry points, and only when requested", () => {
+		const scope = { DEV3_HOME: "/tmp/scope/home/.dev3.0", DEV3_LOG_DIR: "/tmp/scope/logs" };
+		for (const mode of ["dev", "start"] as const) {
+			const env = devRunEnv(mode, { staticCode: null, port0: undefined, qaScope: scope });
+			expect(env.DEV3_HOME, mode).toBe(scope.DEV3_HOME);
+			expect(env.DEV3_LOG_DIR, mode).toBe(scope.DEV3_LOG_DIR);
+		}
+		expect(devRunEnv("dev", { staticCode: null, port0: "1234" })).not.toHaveProperty("DEV3_HOME");
 	});
 
 	it("keeps the scoped tmux socket path under the macOS limit", () => {
@@ -61,11 +55,6 @@ describe("QA scope selection", () => {
 		const root = qaScopeRoot("/repo/worktree", "seeded", "/var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T");
 		const env = qaScopeEnv(root);
 		expect(`${qaTmuxSocketDir(env, 99999)}/${DEFAULT_TMUX_SOCKET}`.length).toBeLessThan(104);
-	});
-
-	it("leaves DEV3_HOME unset when no scope was requested", () => {
-		const env = devRunEnv("dev", { staticCode: null, port0: "1234" });
-		expect(env).not.toHaveProperty("DEV3_HOME");
 	});
 });
 
@@ -117,8 +106,12 @@ describe("QA scope seeding", () => {
 });
 
 describe("QA scope tmux lifecycle", () => {
-	it("kills every server in the scoped socket dir, and only there", () => {
+	it("does nothing before any server started or on Windows, then kills every server in the scoped socket dir, and only there", () => {
 		const env = seedQaScope(testScopedPath("qa-tmux-stop"), "virgin");
+		const idle: string[][] = [];
+		expect(stopQaScopeTmux(env, (command) => idle.push(command), "darwin")).toEqual([]);
+		expect(stopQaScopeTmux(env, (command) => idle.push(command), "win32")).toEqual([]);
+		expect(idle).toEqual([]);
 		const dir = qaTmuxSocketDir(env);
 		mkdirSync(dir, { recursive: true });
 		for (const name of ["dev3", "dev3-live-test-1"]) writeFileSync(join(dir, name), "");
@@ -142,14 +135,6 @@ describe("QA scope tmux lifecycle", () => {
 		calls.length = 0;
 		stopQaScopeTmux(env, (command) => calls.push(command), "darwin");
 		expect(calls[0][0]).toBe(join(env.DEV3_HOME, "bin", "tmux"));
-	});
-
-	it("does nothing when no server ever started, or on Windows", () => {
-		const env = seedQaScope(testScopedPath("qa-tmux-none"), "virgin");
-		const calls: string[][] = [];
-		expect(stopQaScopeTmux(env, (command) => calls.push(command), "darwin")).toEqual([]);
-		expect(stopQaScopeTmux(env, (command) => calls.push(command), "win32")).toEqual([]);
-		expect(calls).toEqual([]);
 	});
 
 	it("puts kill-server before rm -rf in the reset hint", () => {

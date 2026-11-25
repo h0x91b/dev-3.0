@@ -42,100 +42,77 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("refreshClaudeHooksForTask", () => {
-	it("re-installs the hooks for a Claude task", async () => {
+	it("re-installs the hooks for a Claude task, one on the global default, and a wrapper declaring the Claude family", async () => {
 		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
-	});
+		expect(writeClaudeHooks, "claude").toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
 
-	it("re-installs the hooks for a task on the global default, whose agent lives on its main pane", async () => {
+		// The global default's agent lives on the task's main pane.
+		vi.mocked(writeClaudeHooks).mockClear();
 		const pane = { agentCmd: "claude", sessionId: null, agentId: "agent-1", configId: null, agentFromDefault: true };
 		await refreshClaudeHooksForTask(task({ agentId: null, sessionState: { panes: [pane] } }));
-		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
-	});
+		expect(writeClaudeHooks, "global default").toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
 
-	it("leaves a folder dev3 does not own alone: its hooks travel in --settings", async () => {
-		vi.mocked(isDev3OwnedFolder).mockReturnValue(false);
-		await refreshClaudeHooksForTask(task({ worktreePath: "/home/me/notes" }));
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
-	});
-
-	it("carries the project's auto-review setting into the Stop target", async () => {
-		vi.mocked(getProject).mockResolvedValue({ id: "project-1", autoReviewEnabled: true } as Project);
-		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-ai" });
-	});
-
-	// #2127: a task promoted to coordinator mid-session gets its Stop target fixed on the next prompt.
-	it("keeps a coordinator task out of automatic AI review", async () => {
-		vi.mocked(getProject).mockResolvedValue({ id: "project-1", autoReviewEnabled: true } as Project);
-		await refreshClaudeHooksForTask(task({ taskType: "coordinator" }));
-		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
-	});
-
-	it("honours a configuration's baseCommandOverride", async () => {
-		vi.mocked(findConfig).mockReturnValue({ id: "c1", baseCommandOverride: "codex" } as never);
-		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
-	});
-
-	// Codex reads its dev3 hooks from a -c override fixed at launch, so rewriting
-	// its hooks file mid-session would change nothing.
-	it("does nothing for a non-Claude agent", async () => {
-		vi.mocked(getAllAgents).mockResolvedValue([
-			{ id: "agent-1", baseCommand: "codex", configurations: [] } as unknown as CodingAgent,
-		]);
-		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
-	});
-
-	// A wrapper script or shell alias cannot be recognized by name; the agent's
-	// declared CLI family is what makes it get hooks at all.
-	it("re-installs the hooks for a wrapper command that declares the Claude family", async () => {
+		// A wrapper script or shell alias cannot be recognized by name; the agent's
+		// declared CLI family is what makes it get hooks at all.
+		vi.mocked(writeClaudeHooks).mockClear();
 		vi.mocked(getAllAgents).mockResolvedValue([
 			{ id: "agent-1", baseCommand: "my-claude", configurations: [], agentFamily: "claude" } as unknown as CodingAgent,
 		]);
 		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
+		expect(writeClaudeHooks, "declared wrapper").toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
 	});
 
-	it("writes nothing for a wrapper command with no declared family", async () => {
-		vi.mocked(getAllAgents).mockResolvedValue([
-			{ id: "agent-1", baseCommand: "my-claude", configurations: [] } as unknown as CodingAgent,
+	// #2127: a task promoted to coordinator mid-session gets its Stop target fixed on the next prompt.
+	it("carries auto-review into the Stop target, but keeps a coordinator task out of it", async () => {
+		vi.mocked(getProject).mockResolvedValue({ id: "project-1", autoReviewEnabled: true } as Project);
+		await refreshClaudeHooksForTask(task());
+		expect(writeClaudeHooks).toHaveBeenLastCalledWith("/tmp/worktree", { stopTarget: "review-by-ai" });
+		await refreshClaudeHooksForTask(task({ taskType: "coordinator" }));
+		expect(writeClaudeHooks).toHaveBeenLastCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
+	});
+
+	it("writes nothing for a folder dev3 does not own, or an agent that is not (or no longer) Claude", async () => {
+		const agentWith = (fields: Record<string, unknown>) => () => vi.mocked(getAllAgents).mockResolvedValue([
+			{ id: "agent-1", configurations: [], ...fields } as unknown as CodingAgent,
 		]);
-		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
+		const cases: [string, () => void, Partial<Task>?][] = [
+			// Its hooks travel in --settings.
+			["a folder dev3 does not own", () => vi.mocked(isDev3OwnedFolder).mockReturnValue(false), { worktreePath: "/home/me/notes" }],
+			["a configuration's baseCommandOverride", () => vi.mocked(findConfig).mockReturnValue({ id: "c1", baseCommandOverride: "codex" } as never)],
+			// Codex reads its dev3 hooks from a -c override fixed at launch.
+			["a non-Claude agent", agentWith({ baseCommand: "codex" })],
+			["a wrapper with no declared family", agentWith({ baseCommand: "my-claude" })],
+			["an explicit opt-out on a recognized command", agentWith({ baseCommand: "claude", agentFamily: "none" })],
+			["an agent id that no longer resolves", () => vi.mocked(getAllAgents).mockResolvedValue([])],
+		];
+		for (const [label, arrange, overrides] of cases) {
+			vi.mocked(getAllAgents).mockResolvedValue([CLAUDE_AGENT]);
+			vi.mocked(findConfig).mockReturnValue(undefined);
+			vi.mocked(isDev3OwnedFolder).mockReturnValue(true);
+			arrange();
+			await refreshClaudeHooksForTask(task(overrides));
+			expect(writeClaudeHooks, label).not.toHaveBeenCalled();
+		}
 	});
 
-	it("honours an explicit opt-out on a recognized command", async () => {
-		vi.mocked(getAllAgents).mockResolvedValue([
-			{ id: "agent-1", baseCommand: "claude", configurations: [], agentFamily: "none" } as unknown as CodingAgent,
-		]);
-		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
-	});
-
-	it.each([
-		["the task has no worktree", { worktreePath: null }],
-		["the task has no agent", { agentId: null }],
-	])("does nothing and reads nothing when %s", async (_label, overrides) => {
-		await refreshClaudeHooksForTask(task(overrides as Partial<Task>));
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
-		expect(getProject).not.toHaveBeenCalled();
-	});
-
-	it("does nothing when the agent id no longer resolves", async () => {
-		vi.mocked(getAllAgents).mockResolvedValue([]);
-		await refreshClaudeHooksForTask(task());
-		expect(writeClaudeHooks).not.toHaveBeenCalled();
+	it("does nothing and reads nothing when the task has no worktree or no agent", async () => {
+		for (const overrides of [{ worktreePath: null }, { agentId: null }]) {
+			await refreshClaudeHooksForTask(task(overrides as Partial<Task>));
+			expect(writeClaudeHooks, JSON.stringify(overrides)).not.toHaveBeenCalled();
+			expect(getProject, JSON.stringify(overrides)).not.toHaveBeenCalled();
+		}
 	});
 
 	// A failure here must never swallow the user's message.
-	it.each([
-		["the agent registry", () => vi.mocked(getAllAgents).mockRejectedValue(new Error("boom"))],
-		["the project lookup", () => vi.mocked(getProject).mockRejectedValue(new Error("boom"))],
-		["the write itself", () => vi.mocked(writeClaudeHooks).mockImplementation(() => { throw new Error("EACCES"); })],
-	])("does not throw when %s fails", async (_label, breakIt) => {
-		breakIt();
-		await expect(refreshClaudeHooksForTask(task())).resolves.toBeUndefined();
+	it("does not throw when the agent registry, the project lookup or the write itself fails", async () => {
+		const breakers: [string, () => void][] = [
+			["the agent registry", () => vi.mocked(getAllAgents).mockRejectedValueOnce(new Error("boom"))],
+			["the project lookup", () => vi.mocked(getProject).mockRejectedValueOnce(new Error("boom"))],
+			["the write itself", () => vi.mocked(writeClaudeHooks).mockImplementationOnce(() => { throw new Error("EACCES"); })],
+		];
+		for (const [label, breakIt] of breakers) {
+			breakIt();
+			await expect(refreshClaudeHooksForTask(task()), label).resolves.toBeUndefined();
+		}
 	});
 });

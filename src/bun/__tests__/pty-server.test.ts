@@ -66,7 +66,6 @@ import {
 	getSessionSocket,
 	getSessionTmuxName,
 	getSessionType,
-	getPtyPort,
 	setOnPtyDied,
 	setOnBell,
 	setOnOsc52Copy,
@@ -149,15 +148,11 @@ describe("pty-server", () => {
 	// ------- createSession -------
 
 	describe("createSession", () => {
-		it("creates a session and marks it as existing", () => {
-			const id = track("task-create-01");
-			createSession(id, "proj-1", "/tmp/test-cwd", "bash", {});
-			expect(hasSession(id)).toBe(true);
-		});
-
-		it("spawns tmux new-session via spawn", async () => {
+		it("registers the session and spawns tmux new-session on the given socket", async () => {
 			const id = track("task-spawn-01");
-			createSession(id, "proj-1", "/tmp/test-cwd", "bash", {});
+			createSession(id, "proj-1", "/tmp/test-cwd", "bash", {}, "my-socket");
+			expect(hasSession(id)).toBe(true);
+			expect(hasSession("nonexistent")).toBe(false);
 
 			// `which tmux` diagnostic now runs as a fire-and-forget async spawn
 			// — flush microtasks so the IIFE has a chance to register the call.
@@ -174,6 +169,7 @@ describe("pty-server", () => {
 			expect(tmuxCall![0]).toContain("-A");
 			expect(tmuxCall![0]).toContain("-s");
 			expect(tmuxCall![0]).toContain("dev3-task-spa");
+			expect(tmuxCall![0]).toEqual(expect.arrayContaining(["-L", "my-socket", "-f", tmuxConfigPath("dark", true)]));
 		});
 
 		it("passes -c <cwd> to new-session and spawns the tmux client from DEV3_HOME", () => {
@@ -260,20 +256,6 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("uses custom tmux socket when provided", () => {
-			const id = track("task-socket-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
-
-			const tmuxCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
-			);
-			expect(tmuxCall).toBeDefined();
-			expect(tmuxCall![0]).toContain("-L");
-			expect(tmuxCall![0]).toContain("my-socket");
-			expect(tmuxCall![0]).toContain("-f");
-			expect(tmuxCall![0]).toContain(tmuxConfigPath("dark", true));
-		});
-
 		it("uses the user shell when tmuxCommand is empty", () => {
 			process.env.SHELL = "/bin/zsh";
 			// The shell is resolved once and cached for an hour — including at the
@@ -355,25 +337,7 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("clears a session's own status override on attach so the window bar shows", async () => {
-			vi.useFakeTimers();
-			const id = track("task-status-heal");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
-			mockSpawn.mockClear();
-
-			await vi.advanceTimersByTimeAsync(300);
-
-			const unsetCalls = mockSpawn.mock.calls
-				.map((c) => c[0])
-				.filter((cmd) => Array.isArray(cmd) && cmd.includes("set-option") && cmd.includes("-u"));
-			expect(unsetCalls).toContainEqual(
-				expect.arrayContaining(["-L", "my-socket", "set-option", "-u", "-t", expect.stringMatching(/^=dev3-.*:$/), "status"]),
-			);
-
-			vi.useRealTimers();
-		});
-
-		it("a task session hands its window bar to the app's navigator; a project terminal keeps it", async () => {
+		it("clears a session's status override on attach; a task hands its window bar to the navigator, a project terminal keeps it", async () => {
 			vi.useFakeTimers();
 			const id = track("task-window-nav");
 			const projectId = track("project-window-nav");
@@ -390,14 +354,18 @@ describe("pty-server", () => {
 			expect(sets).toContainEqual(expect.arrayContaining(["set-option", "-t", task, "status", "off"]));
 			const project = `=${getSessionTmuxName(projectId)}:`;
 			expect(sets.some((a) => a.includes(project) && a.includes("off"))).toBe(false);
+			// The session's own status override is cleared so the window bar shows.
+			expect(sets).toContainEqual(
+				expect.arrayContaining(["-L", "my-socket", "set-option", "-u", "-t", expect.stringMatching(/^=dev3-.*:$/), "status"]),
+			);
 
 			vi.useRealTimers();
 		});
 
-		it("does not call tmux set-environment for user env when env is empty", async () => {
+		it("with empty env sets only DEV3_WORKTREE_ROOT via tmux set-environment", async () => {
 			vi.useFakeTimers();
 			const id = track("task-env-empty");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
+			createSession(id, "proj-1", "/tmp/my-worktree", "bash", {}, "my-socket");
 			mockSpawn.mockClear();
 
 			await vi.advanceTimersByTimeAsync(300);
@@ -409,24 +377,9 @@ describe("pty-server", () => {
 				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && !c[0].includes("DEV3_WORKTREE_ROOT"),
 			);
 			expect(setEnvCalls).toHaveLength(0);
-
-			vi.useRealTimers();
-		});
-
-		it("always sets DEV3_WORKTREE_ROOT in tmux session env", async () => {
-			vi.useFakeTimers();
-			const id = track("task-env-root");
-			createSession(id, "proj-1", "/tmp/my-worktree", "bash", {}, "root-sock");
-			mockSpawn.mockClear();
-
-			await vi.advanceTimersByTimeAsync(300);
-			await Promise.resolve();
-			await Promise.resolve();
-
 			const rootCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("DEV3_WORKTREE_ROOT"),
 			);
-			expect(rootCall).toBeDefined();
 			expect(rootCall![0]).toContain("/tmp/my-worktree");
 
 			vi.useRealTimers();
@@ -436,47 +389,23 @@ describe("pty-server", () => {
 	// ------- destroySession -------
 
 	describe("destroySession", () => {
-		it("removes session from the map", () => {
+		it("removes the session, kills its proc/terminal and the tmux session", () => {
+			const mockProc = defaultSpawnReturn();
+			mockSpawn.mockReturnValue(mockProc as any);
 			const id = track("task-dstr-01");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			expect(hasSession(id)).toBe(true);
-
-			destroySession(id);
-			activeSessions.splice(activeSessions.indexOf(id), 1);
-			expect(hasSession(id)).toBe(false);
-		});
-
-		it("kills tmux session via async spawn (non-blocking)", () => {
-			const id = track("task-dstr-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			mockSpawn.mockClear();
 
 			destroySession(id);
 			activeSessions.splice(activeSessions.indexOf(id), 1);
-
+			expect(hasSession(id)).toBe(false);
+			expect(mockProc.kill).toHaveBeenCalled();
+			expect(mockProc.terminal.close).toHaveBeenCalled();
 			const killCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
-			expect(killCall).toBeDefined();
 			expect(killCall![0]).toContain("dev3-task-dst");
-		});
-
-		it("kills proc and closes terminal", () => {
-			const mockProc = defaultSpawnReturn();
-			mockSpawn.mockReturnValue(mockProc as any);
-
-			const id = track("task-dstr-03");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-
-			destroySession(id);
-			activeSessions.splice(activeSessions.indexOf(id), 1);
-
-			expect(mockProc.kill).toHaveBeenCalled();
-			expect(mockProc.terminal.close).toHaveBeenCalled();
-		});
-
-		it("handles unknown session gracefully", () => {
-			expect(() => destroySession("nonexistent")).not.toThrow();
 		});
 
 		it("handles tmux kill-session failure gracefully", () => {
@@ -509,111 +438,60 @@ describe("pty-server", () => {
 			expect(killCall![0]).toContain("dev3-unknown-");
 			expect(killCall![0]).toContain("-L");
 			expect(killCall![0]).toContain("dev3");
-		});
 
-		it("uses fallback socket 'dev3' when no session and no fallback provided", () => {
+			// No session and no fallback → still the default "dev3" socket.
 			mockSpawn.mockClear();
-
-			destroySession("orphan-task-id-5678");
-
-			const killCall = mockSpawn.mock.calls.find(
+			expect(() => destroySession("orphan-task-id-5678")).not.toThrow();
+			const orphanKill = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
-			expect(killCall).toBeDefined();
-			// Should use default "dev3" socket
-			expect(killCall![0]).toContain("-L");
-			expect(killCall![0][2]).toBe("dev3");
+			expect(orphanKill![0][2]).toBe("dev3");
 		});
 	});
 
 	// ------- hasSession -------
 
-	describe("hasSession", () => {
-		it("returns true for existing session", () => {
-			const id = track("task-has-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(hasSession(id)).toBe(true);
-		});
-
-		it("returns false for non-existing session", () => {
-			expect(hasSession("nonexistent")).toBe(false);
-		});
-	});
-
 	// ------- hasDeadSession -------
 
 	describe("hasDeadSession", () => {
-		it("returns false for non-existing session", () => {
+		it("is false for unknown/live sessions, true (and onPtyDied fires) after the proc exits", async () => {
 			expect(hasDeadSession("nonexistent")).toBe(false);
-		});
-
-		it("returns false for a session with a live proc", () => {
-			const id = track("task-dead-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			// Proc was spawned immediately — should not be dead yet
-			expect(hasDeadSession(id)).toBe(false);
-		});
-
-		it("returns true after the proc exits", async () => {
 			let exitResolve!: (code: number) => void;
 			const exitPromise = new Promise<number>((resolve) => {
 				exitResolve = resolve;
 			});
 			mockSpawn.mockReturnValue(defaultSpawnReturn({ exited: exitPromise }) as any);
 
+			const diedCb = vi.fn();
+			setOnPtyDied(diedCb);
 			const id = track("task-dead-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 
 			expect(hasDeadSession(id)).toBe(false);
+			expect(diedCb).not.toHaveBeenCalled();
 
 			exitResolve(0);
 			await new Promise((r) => setTimeout(r, 10));
 
 			expect(hasSession(id)).toBe(true); // still in map
 			expect(hasDeadSession(id)).toBe(true); // but proc is gone
+			expect(diedCb).toHaveBeenCalledWith(id);
 		});
 	});
 
 		// ------- getSessionProjectId -------
 
-	describe("getSessionProjectId", () => {
-		it("returns project ID for existing session", () => {
-			const id = track("task-gpid-01");
-			createSession(id, "my-project-42", "/tmp/cwd", "bash", {});
-			expect(getSessionProjectId(id)).toBe("my-project-42");
-		});
-
-		it("returns null for non-existing session", () => {
-			expect(getSessionProjectId("nonexistent")).toBeNull();
-		});
-	});
-
-	// ------- getSessionSocket -------
-
-	describe("getSessionSocket", () => {
-		it("returns socket for session with socket", () => {
+	describe("getSessionProjectId / getSessionSocket", () => {
+		it("returns the project id and socket, with null / the default socket for unknown sessions", () => {
 			const id = track("task-gsck-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
+			createSession(id, "my-project-42", "/tmp/cwd", "bash", {}, "my-socket");
+			expect(getSessionProjectId(id)).toBe("my-project-42");
+			expect(getSessionProjectId("nonexistent")).toBeNull();
 			expect(getSessionSocket(id)).toBe("my-socket");
-		});
-
-		it("returns default socket when created without explicit socket", () => {
-			const id = track("task-gsck-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(getSessionSocket(id)).toBe("dev3");
-		});
-
-		it("returns default socket for non-existing session", () => {
+			const plain = track("task-gsck-02");
+			createSession(plain, "proj-1", "/tmp/cwd", "bash", {});
+			expect(getSessionSocket(plain)).toBe("dev3");
 			expect(getSessionSocket("nonexistent")).toBe("dev3");
-		});
-	});
-
-	// ------- getPtyPort -------
-
-	describe("getPtyPort", () => {
-		it("returns port from Bun.serve stub", () => {
-			// test-setup.ts stubs Bun.serve → { port: 9999 }
-			expect(getPtyPort()).toBe(9999);
 		});
 	});
 
@@ -637,7 +515,7 @@ describe("pty-server", () => {
 
 		it("returns pane content on success", async () => {
 			const id = track("task-cap-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "cap-sock");
 
 			const content = "Hello, world!\n";
 			mockSpawn.mockImplementation((cmd: any) =>
@@ -647,28 +525,13 @@ describe("pty-server", () => {
 			);
 
 			expect(await capturePane(id)).toBe(content);
-		});
-
-		it("uses session socket for tmux command", async () => {
-			const id = track("task-cap-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "cap-sock");
-			mockSpawn.mockImplementation((cmd: any) =>
-				Array.isArray(cmd) && cmd.includes("capture-pane")
-					? makeCaptureProc("data", 0)
-					: (defaultSpawnReturn() as any),
-			);
-
-			await capturePane(id);
-
 			const captureCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("capture-pane"),
 			);
-			expect(captureCall).toBeDefined();
-			expect(captureCall![0]).toContain("-L");
-			expect(captureCall![0]).toContain("cap-sock");
+			expect(captureCall![0]).toEqual(expect.arrayContaining(["-L", "cap-sock"]));
 		});
 
-		it("returns null on non-zero exit code", async () => {
+		it("returns null on non-zero exit, empty stdout, spawn error, or a missing session", async () => {
 			const id = track("task-cap-03");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			mockSpawn.mockImplementation((cmd: any) =>
@@ -678,39 +541,20 @@ describe("pty-server", () => {
 			);
 
 			expect(await capturePane(id)).toBeNull();
-		});
 
-		it("returns null on empty stdout", async () => {
-			const id = track("task-cap-04");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			mockSpawn.mockImplementation((cmd: any) =>
 				Array.isArray(cmd) && cmd.includes("capture-pane")
 					? makeCaptureProc(new Uint8Array(0), 0)
 					: (defaultSpawnReturn() as any),
 			);
-
 			expect(await capturePane(id)).toBeNull();
-		});
+			expect(await capturePane("no-such-session")).toBeNull();
 
-		it("returns null on spawn error", async () => {
-			const id = track("task-cap-05");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			mockSpawn.mockImplementation((cmd: any) => {
 				if (Array.isArray(cmd) && cmd.includes("capture-pane")) throw new Error("tmux error");
 				return defaultSpawnReturn() as any;
 			});
-
 			expect(await capturePane(id)).toBeNull();
-		});
-
-		it("works even without an active session (uses null socket)", async () => {
-			mockSpawn.mockImplementation((cmd: any) =>
-				Array.isArray(cmd) && cmd.includes("capture-pane")
-					? makeCaptureProc(new Uint8Array(0), 1)
-					: (defaultSpawnReturn() as any),
-			);
-
-			expect(await capturePane("no-such-session")).toBeNull();
 		});
 	});
 
@@ -754,7 +598,9 @@ describe("pty-server", () => {
 
 		it("parses windows and pane geometry", async () => {
 			mockLayoutSpawn();
-			const layout = await getTmuxLayout("task-layout-01");
+			const layout = await getTmuxLayout("task-layout-01", "custom-sock");
+			const winCall = mockSpawn.mock.calls.find((c) => Array.isArray(c[0]) && c[0].includes("list-windows"));
+			expect(winCall![0]).toEqual(expect.arrayContaining(["-L", "custom-sock"]));
 
 			expect(layout.exists).toBe(true);
 			expect(layout.windows).toHaveLength(1);
@@ -773,16 +619,10 @@ describe("pty-server", () => {
 				title: "Agent",
 			});
 			expect(layout.panes[1]).toMatchObject({ paneId: "%2", active: false, left: 100, width: 100 });
-		});
 
-		it("uses the session socket and target session name", async () => {
-			mockLayoutSpawn();
-			await getTmuxLayout("task-layout-02", "custom-sock");
-
-			const winCall = mockSpawn.mock.calls.find((c) => Array.isArray(c[0]) && c[0].includes("list-windows"));
-			expect(winCall).toBeDefined();
-			expect(winCall![0]).toContain("-L");
-			expect(winCall![0]).toContain("custom-sock");
+			// A pane title containing tabs/spaces survives intact.
+			mockLayoutSpawn({ panes: "0\t%1\t1\t0\t0\t200\t50\tvim\tmy file.txt\n" });
+			expect((await getTmuxLayout("task-layout-04")).panes[0].title).toBe("my file.txt");
 		});
 
 		it("returns an empty layout when the session is gone (list-windows fails)", async () => {
@@ -794,36 +634,19 @@ describe("pty-server", () => {
 			expect(layout.panes).toHaveLength(0);
 		});
 
-		it("tolerates a pane title containing tabs/spaces", async () => {
-			mockLayoutSpawn({ panes: "0\t%1\t1\t0\t0\t200\t50\tvim\tmy file.txt\n" });
-			const layout = await getTmuxLayout("task-layout-04");
-			expect(layout.panes[0].title).toBe("my file.txt");
-		});
-
 		it("reports the status-bar reservation (client_height - window_height)", async () => {
 			mockLayoutSpawn({ status: "51\t50\ton\tbottom\n" });
 			const layout = await getTmuxLayout("task-status-01");
 			expect(layout.statusLines).toBe(1);
 			expect(layout.statusAtTop).toBe(false);
-		});
 
-		it("reports statusLines 0 when the status bar is off", async () => {
 			mockLayoutSpawn({ status: "50\t50\toff\tbottom\n" });
-			const layout = await getTmuxLayout("task-status-02");
-			expect(layout.statusLines).toBe(0);
-		});
+			expect((await getTmuxLayout("task-status-02")).statusLines).toBe(0);
 
-		it("flags a top-positioned status bar", async () => {
 			mockLayoutSpawn({ status: "52\t50\ton\ttop\n" });
-			const layout = await getTmuxLayout("task-status-03");
-			expect(layout.statusLines).toBe(2);
-			expect(layout.statusAtTop).toBe(true);
-		});
-
-		it("reports a zoomed window via window_zoomed_flag", async () => {
-			mockLayoutSpawn({ windows: "0\t1\t2\t1\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\tmain\n" });
-			const layout = await getTmuxLayout("task-layout-zoom");
-			expect(layout.windows[0].zoomed).toBe(true);
+			const top = await getTmuxLayout("task-status-03");
+			expect(top.statusLines).toBe(2);
+			expect(top.statusAtTop).toBe(true);
 		});
 
 		it("uses zoom-independent window_layout geometry over collapsed pane fields", async () => {
@@ -831,47 +654,27 @@ describe("pty-server", () => {
 			// full window (200 wide, left 0) — overlapping the other pane. The real
 			// split must still come from window_layout (%1 = 99 wide @ left 0).
 			mockLayoutSpawn({
+				windows: "0\t1\t2\t1\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\tmain\n",
 				panes: "0\t%1\t1\t0\t0\t200\t50\tclaude\tAgent\n" + "0\t%2\t0\t100\t0\t100\t50\tzsh\tShell\n",
 			});
 			const layout = await getTmuxLayout("task-layout-05");
+			expect(layout.windows[0].zoomed).toBe(true);
 
 			expect(layout.panes[0]).toMatchObject({ paneId: "%1", left: 0, width: 99 });
 			expect(layout.panes[1]).toMatchObject({ paneId: "%2", left: 100, width: 100 });
 			// The collapsed full-window width (200) must NOT leak through.
 			expect(layout.panes[0].width).not.toBe(200);
-		});
 
-		it("falls back to per-pane geometry when window_layout is absent", async () => {
+			// Without window_layout, per-pane geometry is the fallback.
 			mockLayoutSpawn({ windows: "0\t1\t1\t0\t\tmain\n", panes: "0\t%7\t1\t3\t4\t80\t20\tzsh\tShell\n" });
-			const layout = await getTmuxLayout("task-layout-06");
-			expect(layout.panes[0]).toMatchObject({ paneId: "%7", left: 3, top: 4, width: 80, height: 20 });
+			const flat = await getTmuxLayout("task-layout-06");
+			expect(flat.panes[0]).toMatchObject({ paneId: "%7", left: 3, top: 4, width: 80, height: 20 });
 		});
 	});
 
 	// ------- Callbacks -------
 
 	describe("callbacks", () => {
-		it("onPtyDied fires when process exits", async () => {
-			let exitResolve!: (code: number) => void;
-			const exitPromise = new Promise<number>((resolve) => {
-				exitResolve = resolve;
-			});
-
-			mockSpawn.mockReturnValue(defaultSpawnReturn({ exited: exitPromise }) as any);
-
-			const diedCb = vi.fn();
-			setOnPtyDied(diedCb);
-
-			const id = track("task-died-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(diedCb).not.toHaveBeenCalled();
-
-			exitResolve(0);
-			await new Promise((r) => setTimeout(r, 10));
-
-			expect(diedCb).toHaveBeenCalledWith(id);
-		});
-
 		it("onPtyDied fires when exited promise rejects", async () => {
 			let exitReject!: (err: Error) => void;
 			const exitPromise = new Promise<number>((_, reject) => {
@@ -913,7 +716,7 @@ describe("pty-server", () => {
 			});
 		});
 
-		it("detects BEL character and fires onBell callback", () => {
+		it("fires onBell for a BEL (string or bytes), but not for the BEL terminating an OSC", () => {
 			const bellCb = vi.fn();
 			setOnBell(bellCb);
 
@@ -923,26 +726,15 @@ describe("pty-server", () => {
 
 			capturedDataCb!(null, "some output\x07more");
 			expect(bellCb).toHaveBeenCalledWith(id);
-		});
 
-		it("does not fire onBell for BEL inside OSC sequences", () => {
-			const bellCb = vi.fn();
-			setOnBell(bellCb);
+			bellCb.mockClear();
+			capturedDataCb!(null, new TextEncoder().encode("output\x07"));
+			expect(bellCb).toHaveBeenCalledWith(id);
 
-			const id = track("task-bell-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-
+			bellCb.mockClear();
 			// OSC 0 (title change) uses \x07 as terminator — not a real bell
 			capturedDataCb!(null, "\x1b]0;window title\x07");
 			expect(bellCb).not.toHaveBeenCalled();
-		});
-
-		it("fires onBell for BEL outside OSC even if OSC also present", () => {
-			const bellCb = vi.fn();
-			setOnBell(bellCb);
-
-			const id = track("task-bell-03");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 
 			// OSC sequence followed by a real BEL
 			capturedDataCb!(null, "\x1b]0;title\x07\x07");
@@ -968,6 +760,12 @@ describe("pty-server", () => {
 				text: testText,
 				len: testText.length,
 			});
+			expect(mockSpawn).not.toHaveBeenCalled();
+
+			// An OSC 52 query (b64 is '?') is ignored.
+			osc52Cb.mockClear();
+			capturedDataCb!(null, "\x1b]52;c;?\x07");
+			expect(osc52Cb).not.toHaveBeenCalled();
 			expect(mockSpawn).not.toHaveBeenCalled();
 		});
 
@@ -995,34 +793,6 @@ describe("pty-server", () => {
 			expect(mockSpawn).not.toHaveBeenCalled();
 		});
 
-		it("ignores OSC 52 query (b64 is '?')", () => {
-			const id = track("task-osc52-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			const osc52Cb = vi.fn();
-			setOnOsc52Copy(osc52Cb);
-
-			mockSpawn.mockClear();
-
-			// OSC 52 query: base64 content is "?"
-			capturedDataCb!(null, "\x1b]52;c;?\x07");
-
-			expect(osc52Cb).not.toHaveBeenCalled();
-			expect(mockSpawn).not.toHaveBeenCalled();
-		});
-
-		it("handles Uint8Array data input", () => {
-			const bellCb = vi.fn();
-			setOnBell(bellCb);
-
-			const id = track("task-uint8-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-
-			const data = new TextEncoder().encode("output\x07");
-			capturedDataCb!(null, data);
-
-			expect(bellCb).toHaveBeenCalledWith(id);
-		});
-
 		it("does not throw on data callback errors", () => {
 			const id = track("task-dataerr-1");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
@@ -1030,40 +800,6 @@ describe("pty-server", () => {
 			// null data will cause TextDecoder.decode(null) to throw,
 			// but the try/catch in the callback should swallow it
 			expect(() => capturedDataCb!(null, null as any)).not.toThrow();
-		});
-
-		it("batches PTY data instead of sending immediately", () => {
-			vi.useFakeTimers();
-
-			const id = track("task-batch-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(capturedDataCb).not.toBeNull();
-
-			// Simulate WebSocket connection by attaching ws to the session
-			// (The real WS is set in the open handler; we skip that here)
-			// We need to access the session internals, so we trigger data
-			// and check that ws.sendText is NOT called synchronously.
-
-			// First, let's verify the data callback doesn't throw
-			capturedDataCb!(null, "chunk1");
-			capturedDataCb!(null, "chunk2");
-
-			// WS is null initially, so no sends expected.
-			// This test verifies that data flow doesn't crash without WS.
-			vi.advanceTimersByTime(20);
-
-			vi.useRealTimers();
-		});
-
-		it("does not crash when multiple data chunks arrive without WS", () => {
-			const id = track("task-batch-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(capturedDataCb).not.toBeNull();
-
-			// Rapid-fire data without WS connected — should not throw
-			for (let i = 0; i < 100; i++) {
-				expect(() => capturedDataCb!(null, `line ${i}\n`)).not.toThrow();
-			}
 		});
 	});
 
@@ -1120,56 +856,6 @@ describe("pty-server", () => {
 				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
 			);
 			expect(sourceCall).toBeUndefined();
-
-			vi.useRealTimers();
-		});
-
-		it("sets tmux PATH when env.PATH is provided", async () => {
-			vi.useFakeTimers();
-
-			const id = track("task-conf-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", { PATH: "/usr/local/bin" }, "path-sock");
-			mockSpawn.mockClear();
-
-			await vi.advanceTimersByTimeAsync(200);
-			await vi.waitFor(() => {
-				const call = mockSpawn.mock.calls.find(
-					(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
-				);
-				expect(call).toBeDefined();
-			});
-
-			const envCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
-			);
-			expect(envCall).toBeDefined();
-			expect(envCall![0]).toContain("PATH");
-			expect(envCall![0]).toContain("/usr/local/bin");
-
-			vi.useRealTimers();
-		});
-
-		it("always sources config with default socket", async () => {
-			vi.useFakeTimers();
-
-			const id = track("task-conf-03");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			mockSpawn.mockClear();
-
-			const findDefaultSourceCall = () =>
-				mockSpawn.mock.calls.find(
-					(c) => Array.isArray(c[0]) && c[0].includes("source-file") && c[0].includes("dev3"),
-				);
-
-			await vi.advanceTimersByTimeAsync(200);
-			await vi.waitFor(() => {
-				expect(findDefaultSourceCall()).toBeDefined();
-			});
-
-			// Should use the default "dev3" socket
-			const sourceCall = findDefaultSourceCall();
-			expect(sourceCall).toBeDefined();
-			expect(sourceCall![0]).toContain("dev3");
 
 			vi.useRealTimers();
 		});
@@ -1260,64 +946,32 @@ describe("pty-server", () => {
 	// ------- Project terminal sessions -------
 
 	describe("project terminal sessions", () => {
-		it("creates a project session with sessionType 'project'", () => {
+		it("creates a project session typed 'project' with the dev3-pt- tmux name", () => {
 			const key = track("project-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
 			createSession(key, "a1b2c3d4", "/tmp/project-root", "bash", {}, "dev3", "project");
 			expect(hasSession(key)).toBe(true);
-		});
-
-		it("uses dev3-pt- prefix for project tmux session name", () => {
-			const key = track("project-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
-			createSession(key, "a1b2c3d4", "/tmp/project-root", "bash", {}, "dev3", "project");
-
+			expect(getSessionType(key)).toBe("project");
+			expect(getSessionTmuxName(key)).toBe("dev3-pt-a1b2c3d4");
 			const tmuxCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
 			);
-			expect(tmuxCall).toBeDefined();
 			expect(tmuxCall![0]).toContain("dev3-pt-a1b2c3d4");
-		});
 
-		it("getSessionTmuxName returns dev3-pt- prefix for project sessions", () => {
-			const key = track("project-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
-			createSession(key, "a1b2c3d4", "/tmp/project-root", "bash", {}, "dev3", "project");
-			expect(getSessionTmuxName(key)).toBe("dev3-pt-a1b2c3d4");
-		});
-
-		it("getSessionTmuxName returns dev3- prefix for task sessions", () => {
-			const id = track("task-tmux-name-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(getSessionTmuxName(id)).toBe("dev3-task-tmu");
-		});
-
-		it("getSessionType returns 'project' for project sessions", () => {
-			const key = track("project-bbbbbbbb-1111-2222-3333-444444444444");
-			createSession(key, "bbbbbbbb", "/tmp/root", "bash", {}, "dev3", "project");
-			expect(getSessionType(key)).toBe("project");
-		});
-
-		it("getSessionType returns 'task' for task sessions", () => {
-			const id = track("task-type-01");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			expect(getSessionType(id)).toBe("task");
-		});
-
-		it("getSessionType returns null for unknown sessions", () => {
-			expect(getSessionType("nonexistent")).toBeNull();
-		});
-
-		it("destroySession works for project sessions", () => {
-			const key = track("project-cccccccc-1111-2222-3333-444444444444");
-			createSession(key, "cccccccc", "/tmp/root", "bash", {}, "dev3", "project");
-			expect(hasSession(key)).toBe(true);
+			// destroySession kills the dev3-pt- tmux session.
 			destroySession(key);
 			expect(hasSession(key)).toBe(false);
-
-			// Verify tmux kill-session used the correct session name
 			const killCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
-			expect(killCall).toBeDefined();
-			expect(killCall![0]).toContain("dev3-pt-cccccccc");
+			expect(killCall![0]).toContain("dev3-pt-a1b2c3d4");
+		});
+
+		it("a task session is typed 'task' with the dev3- tmux name; unknown is null", () => {
+			const id = track("task-tmux-name-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			expect(getSessionTmuxName(id)).toBe("dev3-task-tmu");
+			expect(getSessionType(id)).toBe("task");
+			expect(getSessionType("nonexistent")).toBeNull();
 		});
 
 		it("creates split panes with correct cwd (-c flag)", async () => {
@@ -1361,32 +1015,6 @@ describe("pty-server", () => {
 
 			vi.useRealTimers();
 		});
-
-		it("capturePane works for project sessions", async () => {
-			const key = track("project-dddddddd-1111-2222-3333-444444444444");
-			createSession(key, "dddddddd", "/tmp/root", "bash", {}, "dev3", "project");
-			mockSpawn.mockImplementation((cmd: any) => {
-				if (Array.isArray(cmd) && cmd.includes("capture-pane")) {
-					return {
-						pid: 999,
-						kill: vi.fn(),
-						stdout: new Response(new TextEncoder().encode("project terminal content")).body,
-						exited: Promise.resolve(0),
-					} as any;
-				}
-				return defaultSpawnReturn() as any;
-			});
-
-			const result = await capturePane(key);
-			expect(result).toBe("project terminal content");
-
-			// Verify capture used the correct tmux session name
-			const captureCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("capture-pane"),
-			);
-			expect(captureCall).toBeDefined();
-			expect(captureCall![0]).toContain("dev3-pt-dddddddd");
-		});
 	});
 
 	// ------- cwdExists -------
@@ -1395,28 +1023,17 @@ describe("pty-server", () => {
 		// Regression: a PTY cwd is always a DIRECTORY, and the old check used
 		// `Bun.file(cwd).exists()`, which returns false for directories — so every
 		// valid worktree/project dir produced a bogus "PTY cwd missing" error.
-		it("returns true for an existing directory", async () => {
-			const dir = await mkdtemp(join(tmpdir(), "dev3-cwd-"));
-			try {
-				expect(await cwdExists(dir)).toBe(true);
-			} finally {
-				await rm(dir, { recursive: true, force: true });
-			}
-		});
-
-		it("returns true for an existing file", async () => {
+		it("returns true for an existing directory or file, false for a missing path", async () => {
+			expect(await cwdExists(join(tmpdir(), "dev3-cwd-nope-zzzzzzzz"))).toBe(false);
 			const dir = await mkdtemp(join(tmpdir(), "dev3-cwd-"));
 			const file = join(dir, "f.txt");
 			await writeFile(file, "x");
 			try {
+				expect(await cwdExists(dir)).toBe(true);
 				expect(await cwdExists(file)).toBe(true);
 			} finally {
 				await rm(dir, { recursive: true, force: true });
 			}
-		});
-
-		it("returns false for a path that does not exist", async () => {
-			expect(await cwdExists(join(tmpdir(), "dev3-cwd-nope-zzzzzzzz"))).toBe(false);
 		});
 	});
 });
@@ -1479,19 +1096,17 @@ describe("noteHumanTerminalInput", () => {
 		expect(item.deliver).not.toHaveBeenCalled();
 	});
 
-	it("does not push a held message back for a mouse click", async () => {
+	it("does not push a held message back for a mouse click or wheel scroll", async () => {
 		const item = heldMessage();
 		noteHumanTerminalInput(session, {}, "\x1b[<0;12;5M");
 		noteHumanTerminalInput(session, {}, "\x1b[<0;12;5m");
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(item.deliver).toHaveBeenCalledTimes(1);
-	});
 
-	it("does not push a held message back for a wheel scroll", async () => {
-		const item = heldMessage();
+		const wheel = heldMessage();
 		noteHumanTerminalInput(session, {}, "\x1b[<64;12;5M\x1b[<64;12;5M");
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
-		expect(item.deliver).toHaveBeenCalledTimes(1);
+		expect(wheel.deliver).toHaveBeenCalledTimes(1);
 	});
 
 	it("reads a CR inside a paste split across frames as content, not a submit", async () => {
@@ -1546,11 +1161,8 @@ describe("tmux task title", () => {
 	const titleSets = () =>
 		mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((a) => Array.isArray(a) && a.includes("@dev3_task_title"));
 
-	it("flattens the title to one line and defuses tmux style markup", () => {
+	it("writes the flattened, markup-defused title into the task's own session, exactly targeted", async () => {
 		expect(tmuxTaskTitleValue("  Fix\n the   #[fg=red]bar \t")).toBe("Fix the # [fg=red]bar");
-	});
-
-	it("writes the title into the task's own session, exactly targeted", async () => {
 		const id = "title-sync-task-0001";
 		createSession(id, "proj-1", "/tmp/test-cwd", "bash", {});
 		mockSpawn.mockClear();

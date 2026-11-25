@@ -49,7 +49,7 @@ const get = projectSettingsHandlers["projects.settings.get"]!;
 const set = projectSettingsHandlers["projects.settings.set"]!;
 
 describe("projects.settings.get", () => {
-	it("fills in the defaults an absent field means", async () => {
+	it("fills in the defaults an absent field means, and reports the stored switches", async () => {
 		expect(await get({ projectId: "proj-1" })).toEqual({
 			name: "App",
 			gitWorkflow: true,
@@ -58,9 +58,6 @@ describe("projects.settings.get", () => {
 			boardCopy: false,
 			boardCopyMessages: false,
 		});
-	});
-
-	it("reports the stored switches", async () => {
 		stored = makeProject({ gitWorkflow: false, storageRoot: "project", useRepoConfig: false, boardCopy: true });
 		expect(await get({ projectId: "proj-1" })).toMatchObject({ gitWorkflow: false, storageRoot: "project", useRepoConfig: false, boardCopy: true });
 	});
@@ -71,9 +68,7 @@ describe("projects.settings.set", () => {
 		const result = await set({ projectId: "proj-1", key: "gitWorkflow", value: false });
 		expect(update).toHaveBeenCalledWith({ projectId: "proj-1", gitWorkflow: false });
 		expect(result).toEqual({ key: "gitWorkflow", previous: true, value: false });
-	});
-
-	it("takes on/off words from a raw socket caller", async () => {
+		// On/off words from a raw socket caller are typed too.
 		await set({ projectId: "proj-1", key: "boardCopy", value: "on" });
 		expect(update).toHaveBeenCalledWith({ projectId: "proj-1", boardCopy: true });
 	});

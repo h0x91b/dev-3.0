@@ -16,14 +16,11 @@ import {
 const PROJECT = "a1c9fe4e-8389-4214-9018-4a2580c261f0";
 
 describe("formatters", () => {
-	it("emits the canonical tokens", () => {
+	it("emits the canonical tokens, qualifying only across projects", () => {
 		expect(formatTaskRef(115)).toBe("<seq:115>");
 		expect(formatPrRef(42)).toBe("<pr:42>");
 		expect(formatTaskRef(115, PROJECT)).toBe("<seq:a1c9fe4e/115>");
 		expect(formatPrRef(42, PROJECT)).toBe("<pr:a1c9fe4e/42>");
-	});
-
-	it("qualifies only across projects", () => {
 		expect(formatTaskRefFor(7, PROJECT, PROJECT)).toBe("<seq:7>");
 		expect(formatTaskRefFor(7, PROJECT, "other")).toBe("<seq:a1c9fe4e/7>");
 		expect(formatTaskRefFor(7, PROJECT, undefined)).toBe("<seq:a1c9fe4e/7>");
@@ -39,7 +36,7 @@ describe("formatters", () => {
 });
 
 describe("findRefsInText", () => {
-	it("finds canonical task and PR tokens with positions", () => {
+	it("finds canonical task and PR tokens with positions and project qualifiers", () => {
 		const text = "Done in <seq:115>, opened <pr:2187>.";
 		const found = findRefsInText(text);
 		expect(found.map((m) => m.ref)).toEqual([
@@ -48,9 +45,6 @@ describe("findRefsInText", () => {
 		]);
 		expect(text.slice(found[0].start, found[0].end)).toBe("<seq:115>");
 		expect(text.slice(found[1].start, found[1].end)).toBe("<pr:2187>");
-	});
-
-	it("reads the project qualifier", () => {
 		expect(findRefsInText("<seq:a1c9fe4e/115>")[0].ref).toEqual({ kind: "task", number: 115, project: "a1c9fe4e" });
 		expect(findRefsInText("<pr:dev-3.0/9>")[0].ref).toEqual({ kind: "pr", number: 9, project: "dev-3.0" });
 	});
@@ -73,20 +67,14 @@ describe("findRefsInText", () => {
 		expect(findRefsInText("seq:aaaaaaaa/7 --project bbbbbbbb")[0].ref.project).toBe("aaaaaaaa");
 	});
 
-	it("does not teach or match the legacy prose forms", () => {
+	it("ignores the legacy prose forms, empty input, and look-alikes glued to words, paths and URLs", () => {
 		expect(findRefsInText("#115 and seq 115 and task 115 and PR #3")).toEqual([]);
-	});
-
-	it("ignores look-alikes glued to words, paths and URLs", () => {
+		expect(findRefsInText("")).toEqual([]);
 		expect(findRefsInText("https://example.com/seq:1")).toEqual([]);
 		expect(findRefsInText("foo-seq:1 bar_pr:2 x.seq:3")).toEqual([]);
 		expect(findRefsInText("seq:12abc seq:0 seq:")).toEqual([]);
 		expect(findRefsInText("<seq:12")).toEqual([]);
 		expect(findRefsInText("seq:12345678901")).toEqual([]);
-	});
-
-	it("returns nothing for empty input", () => {
-		expect(findRefsInText("")).toEqual([]);
 	});
 });
 
@@ -97,14 +85,15 @@ describe("qualifyRefsFor", () => {
 		expect(qualifyRefsFor("<seq:12> is blocked on <pr:34>.", PROJECT, OTHER))
 			.toBe("<seq:a1c9fe4e/12> is blocked on <pr:a1c9fe4e/34>.");
 		expect(qualifyRefsFor("<seq:12>", PROJECT, undefined)).toBe("<seq:a1c9fe4e/12>");
+		// Same project, unknown writer project, or no refs: nothing changes.
+		expect(qualifyRefsFor("<seq:12>", PROJECT, PROJECT)).toBe("<seq:12>");
+		expect(qualifyRefsFor("<seq:12>", undefined, OTHER)).toBe("<seq:12>");
+		expect(qualifyRefsFor("no refs here", PROJECT, OTHER)).toBe("no refs here");
 	});
 
-	it("keeps qualified tokens as written", () => {
+	it("qualifies bare refs written in prose, keeping already-qualified tokens as written", () => {
 		expect(qualifyRefsFor("see <seq:bbbbbbbb/3>, run dev3 task show --task seq:4", PROJECT, OTHER))
 			.toBe("see <seq:bbbbbbbb/3>, run dev3 task show --task seq:a1c9fe4e/4");
-	});
-
-	it("qualifies bare refs written in prose", () => {
 		expect(qualifyRefsFor("Source (seq:60 split it); see pr:7.", PROJECT, OTHER))
 			.toBe("Source (seq:a1c9fe4e/60 split it); see pr:a1c9fe4e/7.");
 		expect(qualifyRefsFor("SEQ:3 first\nthen seq:4", PROJECT, OTHER)).toBe("seq:a1c9fe4e/3 first\nthen seq:a1c9fe4e/4");
@@ -121,33 +110,21 @@ describe("qualifyRefsFor", () => {
 		for (const [text, expected] of cases) expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(expected);
 	});
 
-	it("leaves a CLI handle that already names its board through --project", () => {
+	it("is idempotent, and leaves a CLI handle that already names its board through --project", () => {
 		const text = "dev3 message --task seq:4 --project bbbbbbbb hi";
 		expect(qualifyRefsFor(text, PROJECT, OTHER)).toBe(text);
-	});
-
-	it("is idempotent", () => {
 		const once = qualifyRefsFor("seq:1, <seq:2> and pr:3", PROJECT, OTHER);
 		expect(qualifyRefsFor(once, PROJECT, OTHER)).toBe(once);
-	});
-
-	it("changes nothing on the same project or when the writer's project is unknown", () => {
-		expect(qualifyRefsFor("<seq:12>", PROJECT, PROJECT)).toBe("<seq:12>");
-		expect(qualifyRefsFor("<seq:12>", undefined, OTHER)).toBe("<seq:12>");
-		expect(qualifyRefsFor("no refs here", PROJECT, OTHER)).toBe("no refs here");
 	});
 });
 
 describe("qualifyEditedRefsFor", () => {
 	const OTHER = "bbbbbbbb-1111-2222-3333-444455556666";
 
-	it("keeps lines the writer read back and qualifies only the lines it added", () => {
+	it("qualifies only added lines, everything with no previous text, and nothing on the same project", () => {
 		const previous = "Goal: ship it.\nAfter seq:3 lands.";
 		expect(qualifyEditedRefsFor(`${previous}\nAlso see seq:7.`, previous, PROJECT, OTHER))
 			.toBe("Goal: ship it.\nAfter seq:3 lands.\nAlso see seq:a1c9fe4e/7.");
-	});
-
-	it("qualifies everything when there was no previous text, and nothing on the same project", () => {
 		expect(qualifyEditedRefsFor("see seq:3", null, PROJECT, OTHER)).toBe("see seq:a1c9fe4e/3");
 		expect(qualifyEditedRefsFor("see seq:3", "", PROJECT, OTHER)).toBe("see seq:a1c9fe4e/3");
 		expect(qualifyEditedRefsFor("see seq:3", "old", PROJECT, PROJECT)).toBe("see seq:3");
@@ -155,12 +132,9 @@ describe("qualifyEditedRefsFor", () => {
 });
 
 describe("parseRefUri", () => {
-	it("accepts hrefs with and without brackets", () => {
+	it("accepts hrefs with and without brackets, and rejects anything else", () => {
 		expect(parseRefUri("seq:115")).toEqual({ kind: "task", number: 115 });
 		expect(parseRefUri("<pr:a1c9fe4e/7>")).toEqual({ kind: "pr", number: 7, project: "a1c9fe4e" });
-	});
-
-	it("rejects anything else", () => {
 		expect(parseRefUri("https://github.com/x/y/pull/1")).toBeNull();
 		expect(parseRefUri("seq:abc")).toBeNull();
 		expect(parseRefUri("seq:1 trailing")).toBeNull();
@@ -169,12 +143,10 @@ describe("parseRefUri", () => {
 
 describe("projectMatchesQualifier", () => {
 	const project = { id: PROJECT, name: "dev-3.0" };
-	it("matches an id prefix or the name", () => {
+	it("matches an id prefix or the name, and refuses a too-short prefix and strangers", () => {
 		expect(projectMatchesQualifier(project, "a1c9fe4e")).toBe(true);
 		expect(projectMatchesQualifier(project, "A1C9")).toBe(true);
 		expect(projectMatchesQualifier(project, "DEV-3.0")).toBe(true);
-	});
-	it("refuses a too-short prefix and strangers", () => {
 		expect(projectMatchesQualifier(project, "a1c")).toBe(false);
 		expect(projectMatchesQualifier(project, "homebrew-dev3")).toBe(false);
 	});

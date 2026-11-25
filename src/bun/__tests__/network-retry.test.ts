@@ -24,12 +24,16 @@ const NOT_NETWORK_LINES = [
 ];
 
 describe("networkFailureIn", () => {
-	it.each(NETWORK_LINES)("recognises a real network failure: %s", (line) => {
-		expect(networkFailureIn(`building...\n${line}\nerror: script "build" exited with code 1`)).toBe(line.trim());
+	it("recognises every captured network failure", () => {
+		for (const line of NETWORK_LINES) {
+			expect(networkFailureIn(`building...\n${line}\nerror: script "build" exited with code 1`), line).toBe(line.trim());
+		}
 	});
 
-	it.each(NOT_NETWORK_LINES)("never retries a real failure: %s", (line) => {
-		expect(networkFailureIn(`building...\n${line}\n`)).toBeNull();
+	it("never retries a real failure", () => {
+		for (const line of NOT_NETWORK_LINES) {
+			expect(networkFailureIn(`building...\n${line}\n`), line).toBeNull();
+		}
 	});
 });
 

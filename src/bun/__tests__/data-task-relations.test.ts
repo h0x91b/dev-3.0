@@ -50,24 +50,17 @@ function readSavedTasks(): Task[] {
 }
 
 describe("task relation persistence", () => {
-	it("exposes the reserved relation kinds", () => {
-		expect(TASK_RELATION_TYPES).toEqual(["blocked-by", "relates-to"]);
-	});
-
-	it("initializes an empty relation collection for new tasks", async () => {
-		const task = await addTask(testProject, "Fresh task");
-
-		expect(task.relations).toEqual([]);
-		expect(readSavedTasks()[0].relations).toEqual([]);
-	});
-
-	it("persists blocked-by and relates-to relation records", async () => {
+	it("initializes new tasks with an empty relation collection and persists every reserved relation kind", async () => {
 		const blockedTask = await addTask(testProject, "Blocked task");
+		expect(blockedTask.relations).toEqual([]);
+		expect(readSavedTasks()[0].relations).toEqual([]);
+
 		const relatedTask = await addTask(testProject, "Related task");
-		const relations: TaskRelation[] = [
-			{ type: "blocked-by", taskId: relatedTask.id },
-			{ type: "relates-to", taskId: blockedTask.id },
-		];
+		const relations: TaskRelation[] = TASK_RELATION_TYPES.map((type, i) => ({
+			type,
+			taskId: i === 0 ? relatedTask.id : blockedTask.id,
+		}));
+		expect(relations.map((r) => r.type)).toEqual(["blocked-by", "relates-to"]);
 
 		await updateTask(testProject, blockedTask.id, { relations });
 

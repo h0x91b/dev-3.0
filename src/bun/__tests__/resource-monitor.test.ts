@@ -121,7 +121,7 @@ function paneMap(entries: Record<string, number[]>): Map<string, number[]> {
 }
 
 describe("aggregateResources", () => {
-	it("sums RSS and CPU for given PIDs", () => {
+	it("sums RSS and CPU for given PIDs, ignoring unknown ones", () => {
 		const resources = new Map([
 			[100, { rss: 204800 * 1024, cpu: 5.2 }],
 			[200, { rss: 102400 * 1024, cpu: 2.1 }],
@@ -131,19 +131,11 @@ describe("aggregateResources", () => {
 		const result = aggregateResources(new Set([100, 200, 300]), resources);
 		expect(result.rss).toBe(358400 * 1024);
 		expect(result.cpu).toBeCloseTo(7.8, 1);
-	});
 
-	it("returns zeros for empty PID set", () => {
-		const resources = new Map([[100, { rss: 1024, cpu: 5.0 }]]);
-		const result = aggregateResources(new Set(), resources);
-		expect(result).toEqual({ rss: 0, cpu: 0 });
-	});
-
-	it("ignores PIDs not in resources map", () => {
-		const resources = new Map([[100, { rss: 1024, cpu: 5.0 }]]);
-		const result = aggregateResources(new Set([100, 999]), resources);
-		expect(result.rss).toBe(1024);
-		expect(result.cpu).toBe(5.0);
+		// Empty PID set → zeros; PIDs missing from the map are ignored.
+		const single = new Map([[100, { rss: 1024, cpu: 5.0 }]]);
+		expect(aggregateResources(new Set(), single)).toEqual({ rss: 0, cpu: 0 });
+		expect(aggregateResources(new Set([100, 999]), single)).toEqual({ rss: 1024, cpu: 5.0 });
 	});
 });
 
@@ -168,16 +160,13 @@ describe("resource-monitor poller", () => {
 		vi.useRealTimers();
 	});
 
-	it("getResourceUsage returns undefined when no data collected", () => {
-		expect(getResourceUsage("task-12345678-abcd")).toBeUndefined();
-	});
-
 	it("polls and pushes resource usage after interval", async () => {
 		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({ "dev3-abc12345": [100] }));
 		mockSpawn.mockReturnValueOnce(makeProc(
 			"  100     1   204800   5.2\n  200   100   102400   2.1\n",
 		)); // collectProcessInfo (single ps call)
 
+		expect(getResourceUsage("abc12345-full-task-id")).toBeUndefined();
 		const push = vi.fn();
 		startResourceMonitor(push);
 		await vi.advanceTimersByTimeAsync(10_000);
@@ -197,19 +186,9 @@ describe("resource-monitor poller", () => {
 		expect(usage!.cpu).toBeCloseTo(7.3, 1);
 	});
 
-	it("skips session with no PIDs", async () => {
-		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({ "dev3-nopids00": [] }));
-		mockSpawn.mockReturnValueOnce(makeProc("  1     0   1000   0.1\n")); // collectProcessInfo
-
-		const push = vi.fn();
-		startResourceMonitor(push);
-		await vi.advanceTimersByTimeAsync(10_000);
-
-		expect(push).not.toHaveBeenCalled();
-	});
-
-	it("excludes cleanup, dev-server, and project-terminal sessions", async () => {
+	it("skips sessions with no PIDs and excludes cleanup, dev-server, and project-terminal sessions", async () => {
 		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({
+			"dev3-nopids00": [],
 			"dev3-cl-abc12345": [10],
 			"dev3-dev-abc12345": [20],
 			"dev3-pt-abc12345": [30],
@@ -442,17 +421,9 @@ describe("resource-monitor fast tick (boost)", () => {
 
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		// Three ticks inside the 5s TTL: the shared process-info cache would have made them one ps.
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(mockSpawn).toHaveBeenCalledTimes(3);
-	});
-
-	it("re-reads the process table instead of the shared 5s cache", async () => {
-		startResourceMonitor(vi.fn());
-		boostResourceMonitor();
-
-		// Three ticks inside the 5s TTL: served from the cache they would be one ps.
-		await vi.advanceTimersByTimeAsync(4_100);
-		expect(mockSpawn.mock.calls.length).toBeGreaterThanOrEqual(3);
 	});
 
 	it("lapses back to the slow tick when nobody renews it", async () => {
@@ -480,7 +451,7 @@ describe("resource-monitor fast tick (boost)", () => {
 		expect(mockSpawn.mock.calls.length).toBeGreaterThan(10);
 	});
 
-	it("drops the boost when the watcher goes away", async () => {
+	it("drops the boost when the watcher goes away or the monitor stops", async () => {
 		startResourceMonitor(vi.fn());
 		boostResourceMonitor();
 		await vi.advanceTimersByTimeAsync(0);
@@ -492,10 +463,8 @@ describe("resource-monitor fast tick (boost)", () => {
 		const afterPending = mockSpawn.mock.calls.length;
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(mockSpawn).toHaveBeenCalledTimes(afterPending);
-	});
 
-	it("forgets the boost when the monitor stops", async () => {
-		startResourceMonitor(vi.fn());
+		// Stopping the monitor forgets the boost too.
 		boostResourceMonitor();
 		stopResourceMonitor();
 		expect(isResourceMonitorBoosted()).toBe(false);
@@ -537,10 +506,11 @@ describe("system memory snapshot", () => {
 		});
 	});
 
-	it("is taken with zero active tasks, so an empty board still shows memory", async () => {
+	it("is taken with zero active tasks, so an empty board still shows memory, and reaches the RPC getter", async () => {
 		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
 		mockSpawn.mockReturnValueOnce(makeProc("  100     1   204800   5.2 /usr/bin/node other.js\n"));
 
+		expect(getSystemMemorySnapshot()).toBeNull();
 		const push = vi.fn();
 		startResourceMonitor(push);
 		await vi.advanceTimersByTimeAsync(10_000);
@@ -548,23 +518,14 @@ describe("system memory snapshot", () => {
 		const snapshots = memoryPushes(push);
 		expect(snapshots).toHaveLength(1);
 		expect(snapshots[0]).toMatchObject({ activeTaskCount: 0, tasksRssApprox: 0, medianTaskRss: null });
-	});
-
-	it("exposes the snapshot to the RPC getter", async () => {
-		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
-		mockSpawn.mockReturnValueOnce(makeProc("  100     1   1000   0.1 /usr/bin/node x.js\n"));
-
-		expect(getSystemMemorySnapshot()).toBeNull();
-		startResourceMonitor(vi.fn());
-		await vi.advanceTimersByTimeAsync(10_000);
-
 		expect(getSystemMemorySnapshot()).toMatchObject({ total: 64 * GIB });
 	});
 
-	it("keeps the task subtotal as a sum of task tree RSS", async () => {
+	it("keeps the task subtotal as a sum of task tree RSS and excludes task processes from consumers", async () => {
 		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({ "dev3-aaa00000": [100], "dev3-bbb00000": [200] }));
 		mockSpawn.mockReturnValueOnce(makeProc(
-			"  100     1   1048576   1.0 /usr/bin/node a.js\n  200     1   2097152   2.0 /usr/bin/node b.js\n",
+			"  100     1   1048576   1.0 /usr/bin/node a.js\n  200     1   2097152   2.0 /usr/bin/node b.js\n" +
+			"  700     1   500000   1.0 /usr/local/bin/dockerd --host=fd://\n",
 		));
 
 		const push = vi.fn();
@@ -575,20 +536,8 @@ describe("system memory snapshot", () => {
 		// 1048576 KB + 2097152 KB, and the median of the two task figures.
 		expect(snapshot.tasksRssApprox).toBe((1048576 + 2097152) * 1024);
 		expect(snapshot.medianTaskRss).toBe(Math.round((1048576 + 2097152) * 1024 / 2));
-	});
-
-	it("excludes task processes from the system-wide consumer list", async () => {
-		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({ "dev3-abc12345": [100] }));
-		mockSpawn.mockReturnValueOnce(makeProc(
-			"  100     1   900000   1.0 /usr/bin/node agent-of-a-task.js\n" +
-			"  700     1   500000   1.0 /usr/local/bin/dockerd --host=fd://\n",
-		));
-
-		const push = vi.fn();
-		startResourceMonitor(push);
-		await vi.advanceTimersByTimeAsync(10_000);
-
-		const names = memoryPushes(push)[0].topConsumers.map((c: { name: string }) => c.name);
+		// Task processes stay out of the system-wide consumer list.
+		const names = snapshot.topConsumers.map((c: { name: string }) => c.name);
 		expect(names).toContain("Docker");
 		expect(names).not.toContain("node");
 	});
@@ -635,7 +584,7 @@ describe("system memory snapshot", () => {
 		expect(memoryPushes(push)).toHaveLength(1);
 	});
 
-	it("pushes when the pressure level changes", async () => {
+	it("pushes when the pressure level changes or headroom moves past the threshold", async () => {
 		const push = vi.fn();
 		startResourceMonitor(push);
 
@@ -652,6 +601,14 @@ describe("system memory snapshot", () => {
 		const snapshots = memoryPushes(push);
 		expect(snapshots).toHaveLength(2);
 		expect(snapshots[1].pressure).toBe("critical");
+
+		// Headroom moving past the threshold pushes too.
+		mockProbe.mockResolvedValue(makeFacts({ osPressure: "critical", headroom: 4 * GIB, used: 60 * GIB }));
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
+		mockSpawn.mockReturnValueOnce(makeProc("  100     1   1000   0.1 /usr/bin/node x.js\n"));
+		clearProcessInfoCache();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(memoryPushes(push)).toHaveLength(3);
 	});
 
 	it("pushes when the machine starts swapping, and escalates the pressure", async () => {
@@ -673,23 +630,6 @@ describe("system memory snapshot", () => {
 		const latest = memoryPushes(push)[1];
 		expect(latest.swapping).toBe(true);
 		expect(latest.pressure).toBe("warn");
-	});
-
-	it("pushes when headroom moves past the threshold", async () => {
-		const push = vi.fn();
-		startResourceMonitor(push);
-
-		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
-		mockSpawn.mockReturnValueOnce(makeProc("  100     1   1000   0.1 /usr/bin/node x.js\n"));
-		await vi.advanceTimersByTimeAsync(10_000);
-
-		mockProbe.mockResolvedValue(makeFacts({ headroom: 4 * GIB, used: 60 * GIB }));
-		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
-		mockSpawn.mockReturnValueOnce(makeProc("  100     1   1000   0.1 /usr/bin/node x.js\n"));
-		clearProcessInfoCache();
-		await vi.advanceTimersByTimeAsync(10_000);
-
-		expect(memoryPushes(push)).toHaveLength(2);
 	});
 
 	it("a failing probe costs the snapshot, not the per-task push", async () => {

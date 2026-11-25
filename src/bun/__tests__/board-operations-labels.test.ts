@@ -150,7 +150,7 @@ describe("board operations — the user's labels survive an agent", () => {
 });
 
 describe("board operations — project labels", () => {
-	it("create picks an unused colour, trims the name, and pushes projectUpdated", async () => {
+	it("create picks an unused colour, trims the name, and pushes projectUpdated; create and rename refuse an empty name", async () => {
 		board = await createBoard({ labels: LABELS });
 		const { labels, data } = await ops();
 		const ports = recordingPorts();
@@ -161,17 +161,10 @@ describe("board operations — project labels", () => {
 		expect(label.name).toBe("urgent");
 		expect(LABELS.map((l) => l.color)).not.toContain(label.color);
 		expect((await data.getProject("proj-1")).labels?.map((l) => l.name)).toEqual(["a", "b", "urgent"]);
-		expect(ports.pushes.map((p) => p.name)).toEqual(["projectUpdated"]);
-	});
-
-	it("create and rename refuse an empty name", async () => {
-		board = await createBoard({ labels: LABELS });
-		const { labels } = await ops();
-		const ports = recordingPorts();
 
 		await expect(labels.createLabel(ports, "proj-1", { name: "   " })).rejects.toThrow("name is required");
 		await expect(labels.updateLabel(ports, "proj-1", "lbl-a", { name: "" })).rejects.toThrow("name must not be empty");
-		expect(ports.pushes).toEqual([]);
+		expect(ports.pushes.map((p) => p.name)).toEqual(["projectUpdated"]);
 	});
 
 	it("update applies a change, is a no-op on the same values, and rejects an unknown id", async () => {
@@ -189,13 +182,18 @@ describe("board operations — project labels", () => {
 		await expect(labels.updateLabel(ports, "proj-1", "nope", { name: "x" })).rejects.toThrow("Label not found: nope");
 	});
 
-	it("delete strips the id from every task and pushes a single projectUpdated", async () => {
+	it("delete strips the id from every task and pushes a single projectUpdated; an id that exists nowhere is a no-op", async () => {
 		board = await createBoard({
 			labels: LABELS,
 			tasks: [makeTask({ labelIds: ["lbl-a", "lbl-b"] }), makeTask({ id: "task-2", seq: 2, labelIds: ["lbl-a"] }), makeTask({ id: "task-3", seq: 3 })],
 		});
 		const { labels, data } = await ops();
 		const ports = recordingPorts();
+		const inodes = [board.projectsInode(), board.tasksInode()];
+
+		expect((await labels.deleteLabel(ports, "proj-1", "never-existed")).verdict).toBe("noop");
+		expect([board.projectsInode(), board.tasksInode()], "no-op writes nothing").toEqual(inodes);
+		expect(ports.pushes).toEqual([]);
 
 		const { verdict, result } = await labels.deleteLabel(ports, "proj-1", "lbl-a");
 
@@ -204,19 +202,6 @@ describe("board operations — project labels", () => {
 		expect((await data.getProject("proj-1")).labels?.map((l) => l.id)).toEqual(["lbl-b"]);
 		expect((await data.loadTasks(board.project)).map((t) => t.labelIds ?? [])).toEqual([["lbl-b"], [], []]);
 		expect(ports.pushes.map((p) => p.name)).toEqual(["projectUpdated"]);
-	});
-
-	it("deleting a label that no longer exists anywhere is a no-op", async () => {
-		board = await createBoard({ labels: LABELS });
-		const { labels } = await ops();
-		const ports = recordingPorts();
-		const inodes = [board.projectsInode(), board.tasksInode()];
-
-		const { verdict } = await labels.deleteLabel(ports, "proj-1", "never-existed");
-
-		expect(verdict).toBe("noop");
-		expect([board.projectsInode(), board.tasksInode()]).toEqual(inodes);
-		expect(ports.pushes).toEqual([]);
 	});
 
 	it("reorder applies once and is a no-op when the order already matches", async () => {

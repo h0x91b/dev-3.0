@@ -25,24 +25,22 @@ function task(overrides: Partial<Task> = {}): Task {
 const SESSION = "dev3-task-11111111-2222-3333-4444-555555555555-pane-1";
 
 describe("task lifecycle env — DEV3_TASK_SEQ", () => {
-	it("carries the human task number", () => {
+	it("carries the human task number (with a variant's suffix) and keeps every var the env already had", () => {
 		expect(buildTaskLifecycleEnv(project, task(), "/worktree").DEV3_TASK_SEQ).toBe("1383");
-	});
-
-	it("carries a variant's suffix, which is part of its human number", () => {
-		expect(buildTaskLifecycleEnv(project, task({ variantIndex: 2 }), "/worktree").DEV3_TASK_SEQ).toBe("1383-2");
-	});
-
-	it("keeps every var the env already had", () => {
-		const env = buildTaskLifecycleEnv(project, task(), "/worktree", "feat/x");
-		expect(env).toMatchObject({
-			DEV3_PROJECT_PATH: "/repo",
-			DEV3_PROJECT_NAME: "dev-3.0",
-			DEV3_TASK_ID: "11111111-2222-3333-4444-555555555555",
-			DEV3_TASK_TITLE: "Rotate the production secret",
-			DEV3_WORKTREE_PATH: "/worktree",
-			DEV3_BRANCH_NAME: "feat/x",
-		});
+		{
+			expect(buildTaskLifecycleEnv(project, task({ variantIndex: 2 }), "/worktree").DEV3_TASK_SEQ).toBe("1383-2");
+		}
+		{
+			const env = buildTaskLifecycleEnv(project, task(), "/worktree", "feat/x");
+			expect(env).toMatchObject({
+				DEV3_PROJECT_PATH: "/repo",
+				DEV3_PROJECT_NAME: "dev-3.0",
+				DEV3_TASK_ID: "11111111-2222-3333-4444-555555555555",
+				DEV3_TASK_TITLE: "Rotate the production secret",
+				DEV3_WORKTREE_PATH: "/worktree",
+				DEV3_BRANCH_NAME: "feat/x",
+			});
+		}
 	});
 
 	it("is what makes a native host readable in a process viewer", () => {
@@ -60,16 +58,15 @@ describe("task lifecycle env — DEV3_TASK_SEQ", () => {
 describe("Repo terminal env — its own project, no task", () => {
 	const base44 = { id: "p2", name: "base44", path: "/src/base44" } as Project;
 
-	it("names its own project and removes every task-scoped key", () => {
+	it("names its own project, removes every task-scoped key, and repo env cannot override the identity", () => {
 		const env = buildProjectTerminalEnv(base44, { API_URL: "https://x" });
 		expect(env).toMatchObject({ API_URL: "https://x", DEV3_PROJECT_PATH: "/src/base44", DEV3_PROJECT_NAME: "base44" });
 		for (const key of TASK_SCOPED_ENV_KEYS) expect(env[key]).toBe(ENV_UNSET);
-	});
-
-	it("does not let repo env override the project identity", () => {
-		const env = buildProjectTerminalEnv(base44, { DEV3_PROJECT_NAME: "video-edit", DEV3_TASK_SEQ: "14-1" });
-		expect(env.DEV3_PROJECT_NAME).toBe("base44");
-		expect(env.DEV3_TASK_SEQ).toBe(ENV_UNSET);
+		{
+			const env = buildProjectTerminalEnv(base44, { DEV3_PROJECT_NAME: "video-edit", DEV3_TASK_SEQ: "14-1" });
+			expect(env.DEV3_PROJECT_NAME).toBe("base44");
+			expect(env.DEV3_TASK_SEQ).toBe(ENV_UNSET);
+		}
 	});
 
 	it("removes every task lifecycle key that is not the project's", () => {
@@ -91,16 +88,14 @@ describe("agent env — FORCE_HYPERLINK", () => {
 		};
 	}
 
-	it("opts agents into OSC 8 hyperlink emission by default", () => {
+	it("opts agents into OSC 8 hyperlinks by default; project env overrides it and per-agent env overrides both", () => {
 		expect(assembled({}).FORCE_HYPERLINK).toBe("1");
-	});
-
-	it("lets project env override the opt-in", () => {
-		expect(assembled({ FORCE_HYPERLINK: "0" }).FORCE_HYPERLINK).toBe("0");
-	});
-
-	it("lets per-agent-config env override both", () => {
-		expect(assembled({ FORCE_HYPERLINK: "0" }, { FORCE_HYPERLINK: "1" }).FORCE_HYPERLINK).toBe("1");
+		{
+			expect(assembled({ FORCE_HYPERLINK: "0" }).FORCE_HYPERLINK).toBe("0");
+		}
+		{
+			expect(assembled({ FORCE_HYPERLINK: "0" }, { FORCE_HYPERLINK: "1" }).FORCE_HYPERLINK).toBe("1");
+		}
 	});
 
 	it("keeps the opt-in out of buildAgentEnv, whose output outranks project env", () => {

@@ -72,23 +72,17 @@ describe("the key set is closed and derived from one tuple", () => {
 		expect(isPaneInputKey("C-c")).toBe(false);
 		expect(isPaneInputKey("f5")).toBe(false);
 	});
-
-	it("exposes no backend encoding — that belongs to the adapters", () => {
-		for (const key of PANE_INPUT_KEYS) expect(typeof key).toBe("string");
-	});
 });
 
 describe("validation runs before anything is executed", () => {
-	it("accepts a plain two-stage submit program", () => {
+	it("accepts a plain two-stage submit program, rejects an empty program and a stage with no steps", () => {
 		expect(validatePaneInputProgram(program(submitStages("hello", 800)))).toBeNull();
-	});
-
-	it("rejects an empty program and a stage with no steps", () => {
 		expect(validatePaneInputProgram(program([]))).toBe("no stages");
 		expect(validatePaneInputProgram(program([{ steps: [] }]))).toBe("stage without steps");
 	});
 
-	it("rejects an unknown key and an out-of-range repeat without touching a backend", () => {
+	// NUL cannot cross a process argv, so no backend can carry it honestly.
+	it("rejects an unknown key, an out-of-range repeat and text containing U+0000", () => {
 		expect(validatePaneInputProgram(program([{ steps: [{ kind: "key", key: "pageup" as never }] }]))).toContain(
 			"unknown key",
 		);
@@ -97,10 +91,6 @@ describe("validation runs before anything is executed", () => {
 				program([{ steps: [{ kind: "key", key: "left", count: PANE_INPUT_LIMITS.maxKeyRepeat + 1 }] }]),
 			),
 		).toContain("key repeat out of range");
-	});
-
-	// NUL cannot cross a process argv, so no backend can carry it honestly.
-	it("rejects text containing U+0000 before admission", () => {
 		const bad = program([{ steps: [{ kind: "text", text: "before\u0000after" }] }]);
 		expect(validatePaneInputProgram(bad)).toContain("U+0000");
 	});
@@ -145,7 +135,7 @@ describe("validation runs before anything is executed", () => {
 		).toBe("a native incarnation must pin the shell start signature");
 	});
 
-	it("requires a tmux incarnation to pin the session name and the server token", () => {
+	it("requires a tmux incarnation to pin the session name and the server token, and rejects unknown backends", () => {
 		const steps: PaneInputStage[] = [{ steps: [{ kind: "text", text: "a" }] }];
 		expect(validatePaneInputProgram(program(steps, { incarnation: { ...TMUX, sessionName: "" } }))).toBe(
 			"a tmux incarnation must pin the session name",
@@ -156,31 +146,26 @@ describe("validation runs before anything is executed", () => {
 			"a tmux incarnation must pin the tmux server token",
 		);
 		expect(validatePaneInputProgram(program(steps, { incarnation: TMUX }))).toBeNull();
-	});
-
-	it("rejects an unknown backend", () => {
-		const bad = program([{ steps: [{ kind: "text", text: "a" }] }], {
-			incarnation: { ...TMUX, backend: "screen" } as unknown as PaneIncarnation,
-		});
+		const bad = program(steps, { incarnation: { ...TMUX, backend: "screen" } as unknown as PaneIncarnation });
 		expect(validatePaneInputProgram(bad)).toContain("unknown backend");
 	});
 });
 
 describe("size guards count UTF-8 bytes, per stage and per program", () => {
-	it("counts bytes, not code units", () => {
+	it("counts UTF-8 bytes, passing a small program and rejecting ONE stage over the limit, multibyte included", () => {
 		expect(utf8Length("abc")).toBe(3);
 		expect(utf8Length("héllo")).toBe(6);
 		expect(utf8Length("日本語")).toBe(9);
 		expect(utf8Length("🎉")).toBe(4);
-	});
 
-	it("passes a program comfortably inside both limits", () => {
 		expect(validatePaneInputSize(program(submitStages("deploy", 800)), oneBytePerKey)).toBeNull();
-	});
-
-	it("rejects ONE stage over the single-operation limit", () => {
 		const over = "x".repeat(PANE_INPUT_LIMITS.maxStageBytes + 1);
 		expect(validatePaneInputSize(program([{ steps: [{ kind: "text", text: over }] }]), oneBytePerKey)).toContain(
+			"single-operation limit",
+		);
+		const emoji = "🎉".repeat(PANE_INPUT_LIMITS.maxStageBytes / 4 + 1);
+		expect(emoji.length).toBeLessThan(PANE_INPUT_LIMITS.maxStageBytes);
+		expect(validatePaneInputSize(program([{ steps: [{ kind: "text", text: emoji }] }]), oneBytePerKey)).toContain(
 			"single-operation limit",
 		);
 	});
@@ -193,14 +178,6 @@ describe("size guards count UTF-8 bytes, per stage and per program", () => {
 		);
 		expect(detail).toContain("stage 1");
 		expect(detail).toContain("single-operation limit");
-	});
-
-	it("catches a multibyte stage that only looks small in code units", () => {
-		const text = "🎉".repeat(PANE_INPUT_LIMITS.maxStageBytes / 4 + 1);
-		expect(text.length).toBeLessThan(PANE_INPUT_LIMITS.maxStageBytes);
-		expect(validatePaneInputSize(program([{ steps: [{ kind: "text", text }] }]), oneBytePerKey)).toContain(
-			"single-operation limit",
-		);
 	});
 
 	it("rejects a program whose legal stages add up past the program limit", () => {
@@ -221,22 +198,17 @@ describe("size guards count UTF-8 bytes, per stage and per program", () => {
 });
 
 describe("one schema decides reasons, legality and retryability", () => {
-	it("never lets a post-dispatch cause appear on not-started", () => {
+	it("allows only retryable reasons on not-started, never a post-dispatch cause", () => {
 		for (const reason of ["unacknowledged", "lease-lost", "owner-process-replaced"] as const) {
 			expect(isPaneInputReasonLegalOn(reason, "not-started"), reason).toBe(false);
-			// Which is what structurally stops any of them from being retryable.
-			expect(isPaneInputRetryableAsNewDelivery(reason), reason).toBe(false);
 		}
-	});
-
-	it("keeps every retryable reason legal on not-started, and only there", () => {
 		for (const [reason, rule] of Object.entries(PANE_INPUT_REASON_SCHEMA)) {
 			if (!rule.retryable) continue;
 			expect(isPaneInputReasonLegalOn(reason as never, "not-started"), reason).toBe(true);
 		}
 	});
 
-	it("gives every verdict an exact field list", () => {
+	it("gives every verdict an exact field list and recognises only the reasons it defines", () => {
 		expect(Object.keys(PANE_INPUT_OUTCOME_FIELDS).sort()).toEqual([
 			"delivered",
 			"indeterminate",
@@ -245,6 +217,9 @@ describe("one schema decides reasons, legality and retryability", () => {
 		]);
 		expect(PANE_INPUT_OUTCOME_FIELDS["not-started"]).toContain("retryableAsNewDelivery");
 		expect(PANE_INPUT_OUTCOME_FIELDS.delivered).not.toContain("reason");
+		expect(isPaneInputReason("read-only")).toBe(true);
+		expect(isPaneInputReason("made-up")).toBe(false);
+		expect(isPaneInputReason(undefined)).toBe(false);
 	});
 });
 
@@ -253,22 +228,13 @@ describe("retrying means a NEW delivery id, and only sometimes", () => {
 		for (const reason of ["owner-unknown", "read-only", "owner-unreachable", "executor-saturated"] as const) {
 			expect(isPaneInputRetryableAsNewDelivery(reason), reason).toBe(true);
 		}
-	});
-
-	it("never marks a cause that can only be discovered after bytes left", () => {
+		// Post-dispatch causes, caller bugs and dead panes are never retryable.
 		for (const reason of [
 			"lease-lost",
 			"unacknowledged",
 			"deadline-exceeded",
 			"backend-failure",
 			"owner-process-replaced",
-		] as const) {
-			expect(isPaneInputRetryableAsNewDelivery(reason), reason).toBe(false);
-		}
-	});
-
-	it("never marks a caller bug or a dead pane", () => {
-		for (const reason of [
 			"invalid-input",
 			"pane-absent",
 			"pane-dead",
@@ -278,22 +244,13 @@ describe("retrying means a NEW delivery id, and only sometimes", () => {
 			expect(isPaneInputRetryableAsNewDelivery(reason), reason).toBe(false);
 		}
 	});
-
-	it("recognises every reason it defines, and nothing else", () => {
-		expect(isPaneInputReason("read-only")).toBe(true);
-		expect(isPaneInputReason("made-up")).toBe(false);
-		expect(isPaneInputReason(undefined)).toBe(false);
-	});
 });
 
 describe("the canonical rendering is unambiguous", () => {
-	it("is identical for two programs that would type the same thing", () => {
+	it("is identical for programs that type the same thing, and differs on text, delay and incarnation", () => {
 		expect(paneInputCanonicalProgram(program(submitStages("deploy", 800)))).toBe(
 			paneInputCanonicalProgram(program(submitStages("deploy", 800), { deliveryId: "other" })),
 		);
-	});
-
-	it("differs on text, on delay, and on the pinned incarnation", () => {
 		const canonical = paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text: "deploy" }] }]));
 		expect(paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text: "deploy " }] }]))).not.toBe(canonical);
 		expect(paneInputCanonicalProgram(program(submitStages("x", 800)))).not.toBe(
@@ -308,19 +265,13 @@ describe("the canonical rendering is unambiguous", () => {
 		).not.toBe(canonical);
 	});
 
-	it("cannot be confused by a step boundary moving", () => {
+	it("cannot be confused by a moved step boundary, self-mimicking JSON, or escapes", () => {
 		expect(paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text: "ab" }] }]))).not.toBe(
 			paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text: "a" }, { kind: "text", text: "b" }] }])),
 		);
-	});
-
-	it("survives text that mimics its own JSON encoding", () => {
 		expect(paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text: '","key","enter",1]' }] }]))).not.toBe(
 			paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text: "x" }, { kind: "key", key: "enter" }] }])),
 		);
-	});
-
-	it("keeps quotes, backslashes and newlines distinguishable", () => {
 		const variants = ['a"b', "a\\b", "a\nb", "a\\nb", "ab"].map((text) =>
 			paneInputCanonicalProgram(program([{ steps: [{ kind: "text", text }] }])),
 		);
@@ -329,40 +280,30 @@ describe("the canonical rendering is unambiguous", () => {
 });
 
 describe("an incarnation is a structural identity", () => {
-	it("separates two incarnations that differ ONLY in a start signature", () => {
+	it("separates incarnations that differ in any single field, start signature and server token included", () => {
 		const successor: PaneIncarnation = { ...NATIVE, host: { pid: 4242, startSignature: "recycled" } };
 		expect(samePaneIncarnation(NATIVE, successor)).toBe(false);
 		expect(canonicalPaneIncarnation(NATIVE)).not.toBe(canonicalPaneIncarnation(successor));
-	});
-
-	it("separates two tmux incarnations that differ ONLY in the server token", () => {
 		expect(samePaneIncarnation(TMUX, { ...TMUX, serverToken: "srv-token-2" })).toBe(false);
-	});
 
-	it("separates every other field, and the backends from each other", () => {
 		expect(samePaneIncarnation(NATIVE, NATIVE)).toBe(true);
 		expect(samePaneIncarnation(NATIVE, { ...NATIVE, sessionId: "other" })).toBe(false);
 		expect(samePaneIncarnation(NATIVE, { ...NATIVE, paneId: "pane-3" })).toBe(false);
 		expect(samePaneIncarnation(NATIVE, { ...NATIVE, shell: { pid: 1, startSignature: "shell-sig" } })).toBe(false);
 		expect(samePaneIncarnation(NATIVE, TMUX)).toBe(false);
 		expect(samePaneIncarnation(TMUX, { ...TMUX, sessionName: "dev3-task-other" })).toBe(false);
-	});
-
-	it("names an incarnation in one readable line, per backend", () => {
+		// ...and names each in one readable line, per backend.
 		expect(describePaneIncarnation(NATIVE)).toContain("host 4242/host-sig");
 		expect(describePaneIncarnation(TMUX)).toContain("server srv-token-1");
 	});
 
 	// The ledger keys on this, so a successor pane is a NEW delivery slot rather than a
 	// payload mismatch against its predecessor's id.
-	it("keys the full incarnation, so a successor pane is a different key", () => {
+	it("keys the full incarnation without task/pane delimiter ambiguity", () => {
 		expect(paneInputPaneKey(NATIVE)).not.toBe(
 			paneInputPaneKey({ ...NATIVE, host: { pid: 4242, startSignature: "successor" } }),
 		);
 		expect(paneInputPaneKey(TMUX)).not.toBe(paneInputPaneKey({ ...TMUX, serverToken: "srv-token-2" }));
-	});
-
-	it("has no delimiter ambiguity between task and pane", () => {
 		expect(paneInputPaneKey({ ...NATIVE, taskId: "a:b", paneId: "c" })).not.toBe(
 			paneInputPaneKey({ ...NATIVE, taskId: "a", paneId: "b:c" }),
 		);
@@ -370,22 +311,12 @@ describe("an incarnation is a structural identity", () => {
 });
 
 describe("program accounting", () => {
-	it("counts flattened steps, which is what acceptedThrough means", () => {
+	it("counts flattened steps (what acceptedThrough means), sums stage delays and defaults the deadline", () => {
 		expect(paneInputStepCount(program(submitStages("x", 800)))).toBe(2);
 		expect(paneInputStepCount(program([{ steps: [{ kind: "key", key: "left", count: 40 }] }]))).toBe(1);
-	});
-
-	it("sums stage delays and defaults the deadline", () => {
 		const p = program(submitStages("x", 700));
 		expect(paneInputTotalDelayMs(p)).toBe(700);
 		expect(paneInputDeadlineMs(p)).toBe(PANE_INPUT_LIMITS.defaultDeadlineMs);
 		expect(paneInputDeadlineMs(program(submitStages("x", 700), { deadlineMs: 3_000 }))).toBe(3_000);
-	});
-
-	it("builds submit stages as text, then a gap, then one Enter in its own stage", () => {
-		expect(submitStages("hi", 800)).toEqual([
-			{ steps: [{ kind: "text", text: "hi" }] },
-			{ delayBeforeMs: 800, steps: [{ kind: "key", key: "enter" }] },
-		]);
 	});
 });

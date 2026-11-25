@@ -34,57 +34,42 @@ describe("projectStorageKey on POSIX", () => {
 });
 
 describe("projectStorageKey on Windows", () => {
-	it("turns a drive-qualified path into a legal directory name", () => {
+	it("turns a drive-qualified path into a legal directory name, with no character Win32 rejects", () => {
 		expect(projectStorageKey("D:\\src\\dev-3.0", "win32")).toBe("D-src-dev-3.0");
 		expect(projectStorageKey("C:/Users/user/repo", "win32")).toBe("C-Users-user-repo");
-	});
-
-	it("produces a key with no character Win32 rejects", () => {
 		const key = projectStorageKey("D:\\src\\dev-3.0", "win32");
 		for (const illegal of ["<", ">", ":", '"', "/", "\\", "|", "?", "*"]) {
-			expect(key).not.toContain(illegal);
+			expect(key, illegal).not.toContain(illegal);
 		}
 	});
 
-	it("flattens a UNC path without leaving leading separators", () => {
-		expect(projectStorageKey("\\\\build-server\\share\\repo", "win32")).toBe("build-server-share-repo");
-	});
-
-	it("replaces characters that are illegal inside a component", () => {
-		expect(projectStorageKey('C:\\src\\we"ird?name', "win32")).toBe("C-src-we_ird_name");
-	});
-
-	it("drops a trailing dot or space, which Win32 would silently strip on write", () => {
-		expect(projectStorageKey("C:\\src\\repo. ", "win32")).toBe("C-src-repo");
-	});
-
-	it("escapes a reserved device name so the directory can be created", () => {
-		expect(projectStorageKey("C:\\", "win32")).toBe("C");
-		expect(projectStorageKey("\\\\?\\nul", "win32")).toBe("_-nul");
-	});
-
-	it("never returns an empty key", () => {
-		expect(projectStorageKey("", "win32")).toBe("_");
+	it("flattens UNC paths, illegal component characters, trailing dots, reserved device names and an empty path", () => {
+		const cases: Array<[name: string, input: string, expected: string]> = [
+			["UNC path without leading separators", "\\\\build-server\\share\\repo", "build-server-share-repo"],
+			["characters illegal inside a component", 'C:\\src\\we"ird?name', "C-src-we_ird_name"],
+			// Win32 would silently strip them on write.
+			["trailing dot or space", "C:\\src\\repo. ", "C-src-repo"],
+			["bare drive", "C:\\", "C"],
+			["reserved device name, escaped so the directory can be created", "\\\\?\\nul", "_-nul"],
+			["never an empty key", "", "_"],
+		];
+		for (const [name, input, expected] of cases) {
+			expect(projectStorageKey(input, "win32"), name).toBe(expected);
+		}
 	});
 });
 
 describe("toPosixSeparators", () => {
-	it("rewrites backslashes on Windows so one directory has one spelling", () => {
+	it("rewrites backslashes on Windows so one directory has one spelling, leaving POSIX paths (backslash included) untouched", () => {
 		expect(toPosixSeparators("C:\\Users\\user\\.dev3.0\\worktrees", "win32")).toBe("C:/Users/user/.dev3.0/worktrees");
-	});
-
-	it("leaves POSIX paths untouched, backslash included", () => {
 		expect(toPosixSeparators("/Users/a/we\\ird", "darwin")).toBe("/Users/a/we\\ird");
 	});
 });
 
 describe("listFilesystemRoots", () => {
-	it("offers every present drive so a repo off the home drive is reachable", () => {
+	it("offers every present drive so a repo off the home drive is reachable, omitting unmounted ones", () => {
 		const present = new Set(["C:\\", "D:\\"]);
 		expect(listFilesystemRoots("win32", (p) => present.has(p))).toEqual(["C:\\", "D:\\"]);
-	});
-
-	it("omits drives that are not mounted", () => {
 		expect(listFilesystemRoots("win32", (p) => p === "C:\\")).toEqual(["C:\\"]);
 	});
 
@@ -95,22 +80,16 @@ describe("listFilesystemRoots", () => {
 });
 
 describe("pathBasename", () => {
-	it("names a project from a Windows path", () => {
+	it("names a project from a Windows path, or falls back to the input when there is no separator", () => {
 		expect(pathBasename("D:\\src\\dev-3.0", "win32")).toBe("dev-3.0");
 		expect(pathBasename("D:/src/dev-3.0", "win32")).toBe("dev-3.0");
 		expect(pathBasename("D:\\src\\dev-3.0\\", "win32")).toBe("dev-3.0");
+		expect(pathBasename("repo", "win32")).toBe("repo");
 	});
 
-	it("names a project from a POSIX path", () => {
+	it("names a project from a POSIX path, keeping a backslash inside a file name", () => {
 		expect(pathBasename("/Users/a/dev-3.0", "darwin")).toBe("dev-3.0");
 		expect(pathBasename("/Users/a/repo/", "darwin")).toBe("repo");
-	});
-
-	it("keeps a backslash inside a POSIX file name", () => {
 		expect(pathBasename("/Users/a/we\\ird", "darwin")).toBe("we\\ird");
-	});
-
-	it("falls back to the input when there is no separator", () => {
-		expect(pathBasename("repo", "win32")).toBe("repo");
 	});
 });

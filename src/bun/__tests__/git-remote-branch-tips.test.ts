@@ -78,22 +78,15 @@ describe("getRemoteBranchTips", () => {
 		expect(await getRemoteBranchTips(dir, "feat/x")).toEqual({ tips: [two], ambiguous: false });
 	});
 
-	it("returns a single ref as is", async () => {
-		const [two] = sh("git rev-list HEAD", dir).split("\n");
-		setRef("origin/feat/x", two, 2_000);
+	it("is empty for a never-pushed branch, ignores a deeper path that only ends the same way, and returns a single ref as is", async () => {
+		expect(await getRemoteBranchTips(dir, "feat/x"), "never pushed").toEqual({ tips: [], ambiguous: false });
 
-		expect(await getRemoteBranchTips(dir, "feat/x")).toEqual({ tips: [two], ambiguous: false });
-	});
-
-	it("ignores a deeper path that only ends the same way", async () => {
 		const [two] = sh("git rev-list HEAD", dir).split("\n");
 		setRef("a/b/feat/x", two, 2_000);
+		expect(await getRemoteBranchTips(dir, "feat/x"), "deeper path").toEqual({ tips: [], ambiguous: false });
 
-		expect(await getRemoteBranchTips(dir, "feat/x")).toEqual({ tips: [], ambiguous: false });
-	});
-
-	it("is empty when the branch was never pushed", async () => {
-		expect(await getRemoteBranchTips(dir, "feat/x")).toEqual({ tips: [], ambiguous: false });
+		setRef("origin/feat/x", two, 2_000);
+		expect(await getRemoteBranchTips(dir, "feat/x"), "single ref").toEqual({ tips: [two], ambiguous: false });
 	});
 });
 

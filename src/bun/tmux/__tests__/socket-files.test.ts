@@ -30,19 +30,11 @@ function sweep(files: ReturnType<typeof facts>[]) {
 }
 
 describe("tmuxSocketDir", () => {
-	it("mirrors tmux: /tmp plus tmux-<uid>, and TMPDIR is deliberately ignored", () => {
+	it("mirrors tmux: /tmp plus tmux-<uid> (TMPDIR ignored), or TMUX_TMPDIR when set and non-empty", () => {
 		expect(tmuxSocketDir({ TMPDIR: "/var/folders/zz/" }, 501)).toBe("/tmp/tmux-501");
-	});
-
-	it("follows TMUX_TMPDIR when tmux would, so a scoped instance sweeps its own dir", () => {
+		// A scoped instance sweeps its own dir.
 		expect(tmuxSocketDir({ TMUX_TMPDIR: "/scratch" }, 501)).toBe("/scratch/tmux-501");
-	});
-
-	it("treats an empty TMUX_TMPDIR as unset", () => {
 		expect(tmuxSocketDir({ TMUX_TMPDIR: "" }, 7)).toBe("/tmp/tmux-7");
-	});
-
-	it("composes a full socket path", () => {
 		expect(tmuxSocketPath("dev3-live-test-42", {}, 501)).toBe("/tmp/tmux-501/dev3-live-test-42");
 	});
 });
@@ -58,8 +50,11 @@ describe("isSweepCandidate", () => {
 });
 
 describe("selectSweepableSockets", () => {
-	it("removes a dev3 socket of ours with nothing listening on it", () => {
+	it("removes dev3 sockets of ours with nothing listening, counting kept as everything else", () => {
 		expect(sweep([facts("dev3-live-test-99")]).remove).toEqual(["dev3-live-test-99"]);
+		const decision = sweep([facts("dev3-seam-1"), facts("default"), facts("dev3-seam-2")]);
+		expect(decision.remove).toEqual(["dev3-seam-1", "dev3-seam-2"]);
+		expect(decision.kept).toBe(1);
 	});
 
 	// The guard this whole module exists to keep. Break the liveness check in
@@ -78,25 +73,10 @@ describe("selectSweepableSockets", () => {
 		expect(sweep([facts("dev3", { liveness: "listening" })]).remove).toEqual([]);
 	});
 
-	it("never touches a socket that is not dev3-prefixed", () => {
+	it("never touches a non-dev3 socket, another user's, a non-socket, or a fresh one whose server may still be binding", () => {
 		expect(sweep([facts("default"), facts("claude-swarm"), facts("mysocket")]).remove).toEqual([]);
-	});
-
-	it("never touches a socket belonging to another user", () => {
 		expect(sweep([facts("dev3-seam-1", { uid: 502 })]).remove).toEqual([]);
-	});
-
-	it("never touches something in that directory that is not a socket", () => {
 		expect(sweep([facts("dev3-seam-1", { isSocket: false })]).remove).toEqual([]);
-	});
-
-	it("leaves a freshly created socket alone — its server may still be binding", () => {
 		expect(sweep([facts("dev3-seam-1", { mtimeMs: NOW - 1_000 })]).remove).toEqual([]);
-	});
-
-	it("counts kept as everything it did not remove", () => {
-		const decision = sweep([facts("dev3-seam-1"), facts("default"), facts("dev3-seam-2")]);
-		expect(decision.remove).toEqual(["dev3-seam-1", "dev3-seam-2"]);
-		expect(decision.kept).toBe(1);
 	});
 });

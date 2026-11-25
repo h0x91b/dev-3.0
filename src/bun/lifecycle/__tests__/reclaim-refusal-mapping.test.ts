@@ -11,17 +11,18 @@ import { isWorkspaceReclaimRefusal } from "../service";
 // The refusal crosses the effect boundary as an Error; the compensating
 // preparationFailed carries `preserveWorkspace` only when it is this one.
 describe("isWorkspaceReclaimRefusal", () => {
-	it("recognises the typed refusal, and nothing else", () => {
+	it("recognises the typed refusal and nothing else, naming the leftover and saying nothing was deleted", () => {
 		expect(isWorkspaceReclaimRefusal(new WorkspaceReclaimRefusedError("unique-commits", { branch: "dev3/task-x", sha: "abc", commits: 2 }))).toBe(true);
 		expect(isWorkspaceReclaimRefusal(new Error("Failed to create worktree"))).toBe(false);
 		expect(isWorkspaceReclaimRefusal("WorkspaceReclaimRefusedError")).toBe(false);
-	});
 
-	it("names the leftover and says nothing was deleted", () => {
-		const error = new WorkspaceReclaimRefusedError("unique-commits", { branch: "dev3/task-x", sha: "abc", commits: 2 });
-		expect(error.message).toContain("branch dev3/task-x (tip abc)");
-		expect(error.message).toContain("2 commit(s) found on no other branch");
-		expect(error.message).toContain("Nothing was started or deleted");
+		{
+			// Names the leftover and says nothing was deleted.
+			const error = new WorkspaceReclaimRefusedError("unique-commits", { branch: "dev3/task-x", sha: "abc", commits: 2 });
+			expect(error.message).toContain("branch dev3/task-x (tip abc)");
+			expect(error.message).toContain("2 commit(s) found on no other branch");
+			expect(error.message).toContain("Nothing was started or deleted");
+		}
 	});
 });
 

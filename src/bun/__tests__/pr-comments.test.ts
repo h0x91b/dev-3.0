@@ -117,12 +117,10 @@ describe("parsePrComment", () => {
 		});
 	});
 
-	it("flags bots via __typename and the [bot] login suffix", () => {
+	it("flags bots via __typename and the [bot] login suffix, and keeps a null author for ghost accounts", () => {
 		expect(parsePrComment(commentNode({ author: { login: "cursor", __typename: "Bot" } }))?.isBot).toBe(true);
 		expect(parsePrComment(commentNode({ author: { login: "claude[bot]", __typename: "User" } }))?.isBot).toBe(true);
-	});
-
-	it("keeps a null author for ghost accounts", () => {
+		// Ghost accounts keep a null author.
 		expect(parsePrComment(commentNode({ author: null }))?.author).toBeNull();
 	});
 
@@ -134,7 +132,7 @@ describe("parsePrComment", () => {
 });
 
 describe("parsePrReviewThread", () => {
-	it("normalizes a full node", () => {
+	it("normalizes a full node, mapping LEFT diffSide and a null line", () => {
 		expect(parsePrReviewThread(threadNode())).toMatchObject({
 			id: "th1",
 			path: "src/app.ts",
@@ -145,20 +143,14 @@ describe("parsePrReviewThread", () => {
 			isResolved: false,
 			isOutdated: false,
 		});
+		const left = parsePrReviewThread(threadNode({ diffSide: "LEFT", line: null }));
+		expect(left?.diffSide).toBe("LEFT");
+		expect(left?.line).toBeNull();
 	});
 
-	it("maps LEFT diffSide and null line", () => {
-		const thread = parsePrReviewThread(threadNode({ diffSide: "LEFT", line: null }));
-		expect(thread?.diffSide).toBe("LEFT");
-		expect(thread?.line).toBeNull();
-	});
-
-	it("drops threads with no usable comments", () => {
+	it("drops threads with no usable comments or no path", () => {
 		expect(parsePrReviewThread(threadNode({ comments: { nodes: [] } }))).toBeNull();
 		expect(parsePrReviewThread(threadNode({ comments: { nodes: [{ id: "broken" }] } }))).toBeNull();
-	});
-
-	it("drops nodes without id or path", () => {
 		expect(parsePrReviewThread(threadNode({ path: undefined }))).toBeNull();
 	});
 });
@@ -219,39 +211,29 @@ describe("getTaskPrComments", () => {
 		expect(runGitHub).toHaveBeenCalledTimes(4);
 	});
 
-	it("throws when GraphQL reports errors", async () => {
-		runGitHub.mockResolvedValue({
-			ok: true,
-			code: 0,
-			stderr: "",
-			stdout: JSON.stringify({ errors: [{ message: "Field 'reviewThreads' is broken" }] }),
-		});
-		await expect(prCommentsHandlers.getTaskPrComments({ taskId: "t1", projectId: "p1" }))
-			.rejects.toThrow(/broken/);
-	});
-
-	it("throws when the gh command fails", async () => {
-		runGitHub.mockResolvedValue({ ok: false, code: 1, stderr: "gh: not authenticated", stdout: "" });
-		await expect(prCommentsHandlers.getTaskPrComments({ taskId: "t1", projectId: "p1" }))
-			.rejects.toThrow(/not authenticated/);
+	it("throws when GraphQL reports errors or the gh command fails", async () => {
+		const cases: Array<[response: object, error: RegExp]> = [
+			[{ ok: true, code: 0, stderr: "", stdout: JSON.stringify({ errors: [{ message: "Field 'reviewThreads' is broken" }] }) }, /broken/],
+			[{ ok: false, code: 1, stderr: "gh: not authenticated", stdout: "" }, /not authenticated/],
+		];
+		for (const [response, error] of cases) {
+			_resetPrCommentsCache();
+			runGitHub.mockResolvedValue(response);
+			await expect(prCommentsHandlers.getTaskPrComments({ taskId: "t1", projectId: "p1" }), String(error)).rejects.toThrow(error);
+		}
 	});
 });
 
 // The spill itself lives in agent-message-spill.ts and is covered there; this
 // handler only hands the review over whole and reports back where it landed.
 describe("sendAgentMessageNow", () => {
-	it("delivers the text to the task's live agent", async () => {
-		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
-		await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
-		expect(sendMessageImmediately).toHaveBeenCalledWith(task, "fix it", null, null, { hold: false, origin: "user" });
-	});
-
 	// The user clicked the button and is watching the terminal: a held message would
 	// type nothing at all, which is exactly what "the button does nothing" looked like.
-	it("never holds the send — the review text goes in while the user watches", async () => {
+	it("delivers the text to the task's live agent, never held, reporting no spill path for text", async () => {
 		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
-		await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
-		expect(sendMessageImmediately.mock.calls[0]?.[4]).toMatchObject({ hold: false });
+		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
+		expect(sendMessageImmediately).toHaveBeenCalledWith(task, "fix it", null, null, { hold: false, origin: "user" });
+		expect(result).toEqual({ spilledPath: null, status: "delivered" });
 	});
 
 	it("propagates delivery failures", async () => {
@@ -260,22 +242,15 @@ describe("sendAgentMessageNow", () => {
 			.rejects.toThrow(/no live agent/);
 	});
 
-	it("returns no spill path when the review travelled as text", async () => {
-		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
-		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
-		expect(result).toEqual({ spilledPath: null, status: "delivered" });
-	});
-
 	// The click surface must not say "sent" for text that waits behind the agent's prompt.
-	it("passes a verdict held behind a prompt through to the renderer", async () => {
+	it("passes a verdict held behind a prompt, or the spill file of an oversized review, through to the renderer", async () => {
 		sendMessageImmediately.mockResolvedValue({ status: "held", reason: "behind-prompt", spilledPath: null, paneId: "%1", messageId: "m" });
 		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
 		expect(result).toEqual({ spilledPath: null, status: "held", reason: "behind-prompt" });
-	});
 
-	it("reports the file an oversized review was spilled to", async () => {
+		// An oversized review reports the file it was spilled to.
 		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: `${taskDirRoot}/messages/message-x.md` });
-		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "y".repeat(9000) });
-		expect(result).toEqual({ spilledPath: `${taskDirRoot}/messages/message-x.md`, status: "delivered" });
+		const spilled = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "y".repeat(9000) });
+		expect(spilled).toEqual({ spilledPath: `${taskDirRoot}/messages/message-x.md`, status: "delivered" });
 	});
 });

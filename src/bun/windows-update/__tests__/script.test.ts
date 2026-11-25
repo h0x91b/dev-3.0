@@ -21,13 +21,19 @@ describe("windows swap script", () => {
 		expect(script).not.toMatch(/bun Helper/);
 	});
 
-	it("waits on the app's own pid and gives up after a bounded time", () => {
+	it("waits on the app's own pid and gives up after the configured bounded time", () => {
 		expect(script).toContain('tasklist /FI "PID eq 4321"');
 		expect(script).toContain("if !waited! GEQ 60 goto forceclose");
+		// The configured waits are honoured.
+		const short = buildWindowsSwapScript({ ...OPTS, exitWaitSeconds: 3, removeRetries: 2 });
+		expect(short).toContain("if !waited! GEQ 3 goto forceclose");
+		expect(short).toContain("if !rmtry! GEQ 2 goto rmfailed");
 	});
 
-	it("force-closes only processes running from the folder being replaced", () => {
+	it("force-closes only processes running from the folder being replaced, written as a windows path", () => {
 		expect(script).toContain("$_.Path -like 'C:\\Users\\a\\AppData\\Local\\sh.dev3\\canary\\app\\*'");
+		// Windows paths, never forward slashes.
+		expect(script).not.toMatch(/[A-Z]:\//);
 	});
 
 	it("reports progress instead of showing a blank console", () => {
@@ -64,16 +70,5 @@ describe("windows swap script", () => {
 		// deletes nothing and orphaned tasks pile up (blackboardsh/electrobun#300).
 		expect(script).toContain('for /f "tokens=2" %%t in');
 		expect(script).not.toContain('for /f "tokens=1" %%t in');
-	});
-
-	it("writes windows paths, never forward slashes", () => {
-		expect(script).not.toMatch(/[A-Z]:\//);
-		expect(script).toContain("C:\\Users\\a\\AppData\\Local\\sh.dev3\\canary\\app");
-	});
-
-	it("honours the configured waits", () => {
-		const short = buildWindowsSwapScript({ ...OPTS, exitWaitSeconds: 3, removeRetries: 2 });
-		expect(short).toContain("if !waited! GEQ 3 goto forceclose");
-		expect(short).toContain("if !rmtry! GEQ 2 goto rmfailed");
 	});
 });

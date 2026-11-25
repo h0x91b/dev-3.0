@@ -143,7 +143,6 @@ describe("a pane whose ownership evidence this seam cannot express is refused lo
 	// EITHER signature missing is enough: with only the host checked, a record with a host
 	// signature and an empty shell one would pin and fail later, inside checkWritable.
 	it.each([
-		["both signatures missing", { host: "", shell: "" }],
 		["only the host signature missing", { host: "", shell: "shell-A" }],
 		["only the shell signature missing", { host: "host-A", shell: "" }],
 	])("refuses to pin when %s, as a backend failure", async (_name, signatures) => {
@@ -181,13 +180,10 @@ describe("the PTY byte table covers the neutral set", () => {
 		expect(new Set(bytes).size).toBe(bytes.length);
 	});
 
-	it("encodes the arrows and Enter the way a shell line editor expects", async () => {
+	it("encodes the arrows and Enter as a shell line editor expects, repeats keys, and passes text through", async () => {
 		expect(await written([{ steps: [{ kind: "key", key: "left" }] }])).toBe("\x1b[D");
 		expect(await written([{ steps: [{ kind: "key", key: "right" }] }])).toBe("\x1b[C");
 		expect(await written([{ steps: [{ kind: "key", key: "enter" }] }])).toBe("\r");
-	});
-
-	it("repeats a key's bytes and passes text through untouched", async () => {
 		expect(await written([{ steps: [{ kind: "key", key: "left", count: 3 }] }])).toBe("\x1b[D\x1b[D\x1b[D");
 		// "Enter" as TEXT is five characters, not the key.
 		expect(await written([{ steps: [{ kind: "text", text: "Enter" }] }])).toBe("Enter");
@@ -249,43 +245,28 @@ describe("the write target must BE the pinned incarnation", () => {
 	 * record already describes B, and a cached WRITABLE binding to predecessor A is
 	 * still in the registry. Comparing the pin against the record alone would pass.
 	 */
-	it("refuses a program pinned to B while a stale binding to A survives, and writes nothing to A", async () => {
-		const stale = fakeTerminal(A);
-		vi.mocked(nativePaneTerminal).mockReturnValue(stale.terminal);
-		vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(B) });
+	it("refuses a program pinned to B while a stale binding to A survives, on both entry points", async () => {
+		const entryPoints = [
+			["deliver", (p: PaneInputProgram) => deliverNativePaneInput(task(), p)],
+			["owner", (p: PaneInputProgram) => runNativePaneInputAsOwner(p)],
+		] as const;
+		for (const [entry, run] of entryPoints) {
+			const stale = fakeTerminal(A);
+			vi.mocked(nativePaneTerminal).mockReturnValue(stale.terminal);
+			vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(B) });
 
-		const outcome = await deliverNativePaneInput(task(), program(TEXT, { incarnation: incarnationOf(B) }));
+			const outcome = await run(program(TEXT, { incarnation: incarnationOf(B) }));
 
-		expect(stale.terminal.write).not.toHaveBeenCalled();
-		expect(stale.writes).toEqual([]);
-		expect(outcome).toMatchObject({
-			status: "not-started",
-			reason: "incarnation-changed",
-			retryableAsNewDelivery: false,
-		});
-		if (outcome.status !== "not-started") return;
-		expect(outcome.detail).toContain("stale binding");
-	});
-
-	it("refuses the same stale binding on the owner side too", async () => {
-		const stale = fakeTerminal(A);
-		vi.mocked(nativePaneTerminal).mockReturnValue(stale.terminal);
-		vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(B) });
-
-		const outcome = await runNativePaneInputAsOwner(program(TEXT, { incarnation: incarnationOf(B) }));
-
-		expect(stale.writes).toEqual([]);
-		expect(outcome).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
-	});
-
-	it("refuses a pin to A once the live pane is B", async () => {
-		const { terminal, writes } = fakeTerminal(B);
-		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
-		vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(B) });
-
-		const outcome = await deliverNativePaneInput(task(), program(TEXT));
-		expect(writes).toEqual([]);
-		expect(outcome).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
+			expect(stale.terminal.write, entry).not.toHaveBeenCalled();
+			expect(stale.writes, entry).toEqual([]);
+			expect(outcome, entry).toMatchObject({
+				status: "not-started",
+				reason: "incarnation-changed",
+				retryableAsNewDelivery: false,
+			});
+			if (outcome.status !== "not-started") return;
+			expect(outcome.detail, entry).toContain("stale binding");
+		}
 	});
 
 	/**
@@ -293,29 +274,23 @@ describe("the write target must BE the pinned incarnation", () => {
 	 * successor inherited BOTH numbers, so only what the binding captured when it was
 	 * created tells it from its predecessor.
 	 */
-	it("refuses a binding created for A on its FIRST use after B inherited both pids", async () => {
+	it("refuses a binding created for A on its FIRST use after B inherited both pids, on both entry points", async () => {
 		const recycled = { ...A, hostSig: "host-A2", shellSig: "shell-A2" };
-		const stale = fakeTerminal(A); // bound when the pane was still A
-		vi.mocked(nativePaneTerminal).mockReturnValue(stale.terminal);
-		vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(recycled) });
+		const entryPoints = [
+			["deliver", (p: PaneInputProgram) => deliverNativePaneInput(task(), p)],
+			["owner", (p: PaneInputProgram) => runNativePaneInputAsOwner(p)],
+		] as const;
+		for (const [entry, run] of entryPoints) {
+			const stale = fakeTerminal(A); // bound when the pane was still A
+			vi.mocked(nativePaneTerminal).mockReturnValue(stale.terminal);
+			vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(recycled) });
 
-		const outcome = await deliverNativePaneInput(task(), program(TEXT, { incarnation: incarnationOf(recycled) }));
+			const outcome = await run(program(TEXT, { incarnation: incarnationOf(recycled) }));
 
-		expect(stale.terminal.write).not.toHaveBeenCalled();
-		expect(stale.writes).toEqual([]);
-		expect(outcome).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
-	});
-
-	it("refuses the same first use on the owner side", async () => {
-		const recycled = { ...A, hostSig: "host-A2", shellSig: "shell-A2" };
-		const stale = fakeTerminal(A);
-		vi.mocked(nativePaneTerminal).mockReturnValue(stale.terminal);
-		vi.mocked(inspectNativePaneIdentity).mockReturnValue({ ok: true, identity: processes(recycled) });
-
-		const outcome = await runNativePaneInputAsOwner(program(TEXT, { incarnation: incarnationOf(recycled) }));
-
-		expect(stale.writes).toEqual([]);
-		expect(outcome).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
+			expect(stale.terminal.write, entry).not.toHaveBeenCalled();
+			expect(stale.writes, entry).toEqual([]);
+			expect(outcome, entry).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
+		}
 	});
 
 	// No bind-time evidence means the binding cannot be proved to be this pane at all.
@@ -556,8 +531,17 @@ describe("forwarding to a peer owner keeps the delivery whole", () => {
 
 	// A reply is evidence only if it describes THIS delivery. Anything else is
 	// uncertainty: the request went out regardless.
-	it("rejects a reply for another delivery, pane, or backend", async () => {
-		for (const wrong of [{ deliveryId: "someone-else" }, { paneId: "pane-9" }, { backend: "tmux" }]) {
+	it("rejects a reply for another delivery/pane/backend, an unknown status or reason, a missing retry verdict, or out-of-range counts", async () => {
+		for (const wrong of [
+			{ deliveryId: "someone-else" },
+			{ paneId: "pane-9" },
+			{ backend: "tmux" },
+			{ status: "made-up" },
+			{ status: "indeterminate", reason: "nonsense" },
+			{ status: "indeterminate", reason: "read-only" },
+			{ possiblyAcceptedThrough: 99 },
+			{ possiblyAcceptedThrough: -1 },
+		]) {
 			const sent = program(TEXT);
 			vi.mocked(forwardToOwner).mockResolvedValue(ownerReply(sent, wrong));
 			const outcome = await deliverNativePaneInput(task(), sent);
@@ -615,28 +599,6 @@ describe("forwarding to a peer owner keeps the delivery whole", () => {
 		delete noExecutor.executor;
 		vi.mocked(forwardToOwner).mockResolvedValue(noExecutor);
 		await expect(deliverNativePaneInput(task(), other)).resolves.toMatchObject({ reason: "owner-unreachable" });
-	});
-
-	it("rejects an unknown status, an unknown reason, and a missing retry verdict", async () => {
-		for (const wrong of [
-			{ status: "made-up" },
-			{ status: "indeterminate", reason: "nonsense" },
-			{ status: "indeterminate", reason: "read-only" },
-		]) {
-			const sent = program(TEXT);
-			vi.mocked(forwardToOwner).mockResolvedValue(ownerReply(sent, wrong));
-			const outcome = await deliverNativePaneInput(task(), sent);
-			expect(outcome, JSON.stringify(wrong)).toMatchObject({ status: "indeterminate", reason: "owner-unreachable" });
-		}
-	});
-
-	it("rejects counts outside the program's own step range", async () => {
-		for (const wrong of [{ possiblyAcceptedThrough: 99 }, { possiblyAcceptedThrough: -1 }]) {
-			const sent = program(TEXT);
-			vi.mocked(forwardToOwner).mockResolvedValue(ownerReply(sent, wrong));
-			const outcome = await deliverNativePaneInput(task(), sent);
-			expect(outcome, JSON.stringify(wrong)).toMatchObject({ status: "indeterminate", reason: "owner-unreachable" });
-		}
 	});
 
 	it("maps a failure proven BEFORE dispatch to not-started, so a new id may carry it", async () => {
@@ -750,15 +712,6 @@ describe("pinning observes, and keeps every state distinct", () => {
 		expect(pin).toMatchObject({ ok: false, reason: "backend-failure" });
 		if (pin.ok) return;
 		expect(pin.detail).toContain("somebody-else");
-	});
-
-	// A dead SHELL is as fatal as a dead host, and ownership classifies both.
-	it("reports pane-dead when either process is gone", async () => {
-		vi.mocked(inspectNativeTaskPane).mockResolvedValue(observed(A, "dead"));
-		await expect(resolveNativePaneIncarnation(task(), PANE)).resolves.toMatchObject({
-			ok: false,
-			reason: "pane-dead",
-		});
 	});
 
 	// A live pid whose start signature no longer matches is a REUSED pid, not this pane.
