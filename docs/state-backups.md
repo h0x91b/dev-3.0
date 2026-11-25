@@ -99,6 +99,12 @@ The same four steps work for `projects.json`, `virtual-projects.json`,
 at `~/.dev3.0/data/<project-slug>/tasks.json`, with their copies beside them in
 `tasks-backups/`.
 
+`agents.json` also restores itself in one case: when it exists but does not parse,
+dev3 copies the unreadable bytes to `agents.json.corrupt-<timestamp>`, logs an error,
+and rewrites the file from `agents-last-known-good.json` if that copy parses. Without
+a usable good copy it serves the built-in presets from memory and leaves the broken
+file untouched, so nothing is lost while you restore it by hand.
+
 **Restoring `model-catalog.json` does not restore its API keys** — they were never
 copied. Re-paste them in Settings once the catalog is back.
 

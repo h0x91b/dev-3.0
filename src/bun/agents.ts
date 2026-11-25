@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { claudeTranscriptDir } from "../shared/conversation-search-core";
@@ -12,6 +12,9 @@ import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
 import { DEV3_HOME } from "./paths";
+import { atomicWriteFile } from "./atomic-write";
+import { withFileLock } from "./file-lock";
+import { backupCorruptFile, readJsonFallback, readJsonGuarded } from "./json-store-guard";
 import { resolveAccountHome } from "../shared/user-home";
 import { notifyStaleCustomPath } from "./stale-agent-path";
 // Writer and pruner share one path constant: whatever registers an entry must
@@ -359,47 +362,85 @@ function migrateHooksIntegrationField(agent: any): any {
 	return { ...rest, ...(rest.agentFamily ? {} : { agentFamily: hooksIntegration }) };
 }
 
-async function loadStoredAgents(): Promise<CodingAgent[]> {
-	try {
-		const file = Bun.file(AGENTS_FILE);
-		if (!(await file.exists())) return [];
-		const data = await file.json();
-		return migrateOldFormat(data);
-	} catch (err) {
-		log.error("Failed to load agents", { error: String(err) });
-		return [];
+const AGENTS_LAST_KNOWN_GOOD_FILE = `${DEV3_HOME}/agents-last-known-good.json`;
+
+interface StoredAgentsLoad {
+	agents: CodingAgent[];
+	/** False when agents.json exists but cannot be read: it must not be overwritten. */
+	writable: boolean;
+	/** The agents came from the last-known-good copy, so agents.json needs rewriting. */
+	recovered: boolean;
+}
+
+function isAgentArray(data: unknown): data is any[] {
+	return Array.isArray(data);
+}
+
+/**
+ * Never report an unreadable agents.json as "no agents": the caller would merge
+ * defaults into nothing and save that over the user's presets (#2434). Unreadable
+ * bytes are copied aside, then the last-known-good snapshot is used when it parses;
+ * without one, defaults are served from memory and the file is left untouched.
+ */
+async function loadStoredAgents(): Promise<StoredAgentsLoad> {
+	const read = await readJsonGuarded(AGENTS_FILE, isAgentArray);
+	if (read.kind === "missing") return { agents: [], writable: true, recovered: false };
+	if (read.kind === "ok") return { agents: migrateOldFormat(read.data), writable: true, recovered: false };
+
+	const backup = await backupCorruptFile(AGENTS_FILE, read.raw);
+	const lastKnownGood = await readJsonFallback(AGENTS_LAST_KNOWN_GOOD_FILE, isAgentArray);
+	if (lastKnownGood && lastKnownGood.length > 0) {
+		log.error("agents.json is unreadable; restoring it from the last-known-good copy", { error: read.error, bytes: read.raw.length, backup });
+		return { agents: migrateOldFormat(lastKnownGood), writable: true, recovered: true };
 	}
+	log.error("agents.json is unreadable; serving defaults without overwriting it", { error: read.error, bytes: read.raw.length, backup });
+	return { agents: [], writable: false, recovered: false };
 }
 
 async function saveAgents(agents: CodingAgent[]): Promise<void> {
-	await Bun.write(AGENTS_FILE, JSON.stringify(agents, null, 2));
+	await atomicWriteFile(AGENTS_FILE, JSON.stringify(agents, null, 2));
 	log.info(`Saved ${agents.length} agent(s)`);
 }
 
-export async function getAllAgents(): Promise<CodingAgent[]> {
+/** Run `fn` holding the cross-process agents.json lock (its parent dir must exist first). */
+async function withAgentsFileLock<T>(fn: () => Promise<T>): Promise<T> {
+	await mkdir(DEV3_HOME, { recursive: true });
+	return withFileLock(AGENTS_FILE, fn);
+}
+
+async function resolveAgents() {
 	const stored = await loadStoredAgents();
-	const merged = mergeWithDefaults(stored);
-	const mergedChanged = JSON.stringify(merged) !== JSON.stringify(stored);
-
+	const merged = mergeWithDefaults(stored.agents);
+	const mergedChanged = JSON.stringify(merged) !== JSON.stringify(stored.agents);
 	const settings = await loadSettings();
-	if ((settings.agentsLayoutRevision ?? 0) >= AGENTS_LAYOUT_REVISION) {
-		// Merge is also the migration path for removed presets and versioned
-		// built-in updates. Persist it even when no layout resync is due so an
-		// older parallel app instance reads the canonical current data from disk.
-		if (mergedChanged) await saveAgents(merged);
-		return merged;
-	}
-
 	// One-time resync: existing installs otherwise keep whatever stale order
 	// their configs happened to have from whenever they first ran, forever.
-	const resynced = migrateRetiredAgentDefaults(applyLayoutResync(merged));
-	await saveAgents(resynced);
-	await saveSettings({ ...settings, agentsLayoutRevision: AGENTS_LAYOUT_REVISION });
-	return resynced;
+	const layoutDue = (settings.agentsLayoutRevision ?? 0) < AGENTS_LAYOUT_REVISION;
+	const agents = layoutDue ? migrateRetiredAgentDefaults(applyLayoutResync(merged)) : merged;
+	// Merge is also the migration path for removed presets and versioned built-in
+	// updates. Persist it even when no layout resync is due so an older parallel
+	// app instance reads the canonical current data from disk.
+	const persist = stored.writable && (layoutDue || mergedChanged || stored.recovered);
+	return { agents, persist, layoutDue, settings };
+}
+
+export async function getAllAgents(): Promise<CodingAgent[]> {
+	const first = await resolveAgents();
+	if (!first.persist) return first.agents;
+	// Read-merge-write must not interleave with another writer: re-resolve under
+	// the lock so the save is computed from what is on disk right now.
+	return withAgentsFileLock(async () => {
+		const fresh = await resolveAgents();
+		if (fresh.persist) await saveAgents(fresh.agents);
+		if (fresh.persist && fresh.layoutDue) {
+			await saveSettings({ ...fresh.settings, agentsLayoutRevision: AGENTS_LAYOUT_REVISION });
+		}
+		return fresh.agents;
+	});
 }
 
 export async function saveAllAgents(agents: CodingAgent[]): Promise<void> {
-	await saveAgents(agents);
+	await withAgentsFileLock(() => saveAgents(agents));
 }
 
 // ---- Command Resolution ----
