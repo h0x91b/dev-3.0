@@ -1,5 +1,6 @@
 import { findRefsInText, refUri } from "../../../shared/task-refs";
 import { findPathCandidates } from "../../../shared/path-candidates";
+import { findPathRefsInText, parsePathRefUri, pathRefUri } from "../../../shared/path-refs";
 
 /**
  * Remark plugins for agent-written plain text rendered as Markdown (task
@@ -59,23 +60,36 @@ export function parsePathLinkUrl(url: string): { path: string; line?: number } {
 	return line ? { path: url.slice(0, hash), line: Number(line) } : { path: url.slice(0, hash) };
 }
 
-function splitPaths(value: string): MdNode[] | null {
-	const candidates = findPathCandidates(value);
-	if (candidates.length === 0) return null;
-	const parts: MdNode[] = [];
+function splitCandidates(value: string, parts: MdNode[]): void {
 	let cursor = 0;
-	for (const candidate of candidates) {
+	for (const candidate of findPathCandidates(value)) {
 		if (candidate.start > cursor) parts.push({ type: "text", value: value.slice(cursor, candidate.start) });
 		parts.push({ type: "link", url: pathLinkUrl(candidate.cleanPath, candidate.line), children: [{ type: "text", value: candidate.raw }] });
 		cursor = candidate.end + 1;
 	}
 	if (cursor < value.length) parts.push({ type: "text", value: value.slice(cursor) });
+}
+
+function splitPaths(value: string): MdNode[] | null {
+	const tokens = findPathRefsInText(value);
+	if (tokens.length === 0 && findPathCandidates(value).length === 0) return null;
+	const parts: MdNode[] = [];
+	let cursor = 0;
+	for (const token of tokens) {
+		splitCandidates(value.slice(cursor, token.start), parts);
+		const uri = pathRefUri(token.ref);
+		parts.push({ type: "link", url: uri, children: [{ type: "text", value: uri }] });
+		cursor = token.end;
+	}
+	splitCandidates(value.slice(cursor), parts);
 	return parts;
 }
 
-/** An inline code span that is one whole path, as agents usually write them. */
+/** An inline code span that is one whole path or path token, as agents usually write them. */
 function wrapCodePath(node: MdNode): MdNode | null {
 	const value = node.value?.trim() ?? "";
+	const token = parsePathRefUri(value);
+	if (token) return { type: "link", url: pathRefUri(token), children: [node] };
 	const [candidate] = findPathCandidates(value);
 	if (!candidate || candidate.start !== 0 || candidate.end !== value.length - 1) return null;
 	return { type: "link", url: pathLinkUrl(candidate.cleanPath, candidate.line), children: [node] };

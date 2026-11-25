@@ -327,6 +327,7 @@ const terminal = {
 	"terminal.restartImpactTask": "#{seq} {title} · {project}",
 	"terminal.fileLinkNotFound": "Can't open {path} — it's missing, or outside the allowed folders.",
 	"terminal.fileLinkUnreadable": "That link isn't a readable file path: {uri}",
+	"terminal.pathRefNotFound": "Nothing to open for {uri}: the file or its project is gone.",
 	"terminal.deepLinkNotFound": "Nothing to open for {uri} — that task, project or space is gone.",
 	"terminal.deepLinkBad": "That isn't a dev3 link this app knows: {uri}",
 	// Touch link sheet: a tap on a terminal link (no Cmd/Ctrl on a phone)

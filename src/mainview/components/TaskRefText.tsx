@@ -9,6 +9,7 @@ import { TaskRefHoverCard } from "./TaskRefPreviewCard";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import Tooltip from "./Tooltip";
 import { findPathCandidates } from "../../shared/path-candidates";
+import { findPathRefsInText, pathRefUri } from "../../shared/path-refs";
 import { activateTerminalPath } from "../terminal-path-open";
 import { pathLinkLabel, useResolvedTextPath } from "../text-path-links";
 
@@ -154,9 +155,9 @@ const PATH_CHIP_CLASS = REF_CHIP_CLASS.replace("font-semibold", "font-medium");
 type TextPart =
 	| string
 	| { kind: "ref"; ref: TaskPrRef; key: number }
-	| { kind: "path"; raw: string; path: string; line?: number; key: number };
+	| { kind: "path"; raw: string; path: string; line?: number; key: number; label?: string };
 
-/** Split plain text into strings, reference links and path candidates. Pure, so it is unit-testable. */
+/** Split plain text into strings, reference links, path tokens and path candidates. Pure, so it is unit-testable. */
 export function splitTaskText(text: string, paths = true): TextPart[] {
 	const parts: TextPart[] = [];
 	const pushText = (chunk: string, offset: number) => {
@@ -173,11 +174,28 @@ export function splitTaskText(text: string, paths = true): TextPart[] {
 		}
 		if (cursor < chunk.length) parts.push(chunk.slice(cursor));
 	};
+	const tokens: Array<{ start: number; end: number; part: TextPart }> = findRefsInText(text).map((match) => ({
+		start: match.start,
+		end: match.end,
+		part: { kind: "ref", ref: match.ref, key: match.start },
+	}));
+	if (paths) {
+		for (const match of findPathRefsInText(text)) {
+			const { line, ...file } = match.ref;
+			tokens.push({
+				start: match.start,
+				end: match.end,
+				part: { kind: "path", raw: match.raw, path: pathRefUri(file), line, key: match.start, label: `${file.path}${line ? `:${line}` : ""}` },
+			});
+		}
+		tokens.sort((a, b) => a.start - b.start);
+	}
 	let cursor = 0;
-	for (const match of findRefsInText(text)) {
-		pushText(text.slice(cursor, match.start), cursor);
-		parts.push({ kind: "ref", ref: match.ref, key: match.start });
-		cursor = match.end;
+	for (const token of tokens) {
+		if (token.start < cursor) continue;
+		pushText(text.slice(cursor, token.start), cursor);
+		parts.push(token.part);
+		cursor = token.end;
 	}
 	pushText(text.slice(cursor), cursor);
 	return parts;
@@ -205,7 +223,7 @@ export function TaskRefText({ text, contextProjectId, taskId, preview, pathLinks
 		if (part.kind === "ref") {
 			return <TaskRefLink key={`r${part.key}`} taskRef={part.ref} contextProjectId={contextProjectId} taskId={taskId} preview={preview} />;
 		}
-		const label = pathLinkLabel(part.raw);
+		const label = part.label ?? pathLinkLabel(part.raw);
 		return (
 			<PathLink key={`p${part.key}`} path={part.path} line={part.line} contextProjectId={contextProjectId} taskId={taskId} label={label === part.raw ? undefined : label}>
 				{part.raw}

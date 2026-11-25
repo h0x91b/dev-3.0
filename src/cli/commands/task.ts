@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { withAbsolutePaths } from "../path-refs";
 import { formatPrRef, formatTaskRef, formatTaskRefFor } from "../../shared/task-refs";
 import { resolve } from "node:path";
 import { CLI_FAILURE_WORKTREE_HALF_REMOVED, type CliResponse, type Task, type TaskStatus, type TaskType, type TaskHistoryEntry, type TaskNote } from "../../shared/types";
@@ -188,7 +189,7 @@ function formatDate(iso: string): string {
 /** Print a titled block of indented body lines, preceded by a blank line. */
 function printSection(title: string, body: string): void {
 	process.stdout.write(`\n${title}\n`);
-	for (const line of body.split("\n")) {
+	for (const line of withAbsolutePaths(body).split("\n")) {
 		process.stdout.write(`  ${line}\n`);
 	}
 }
@@ -222,7 +223,7 @@ function printNotes(notes: TaskNote[]): void {
 	process.stdout.write(`\nNotes (${notes.length}):\n`);
 	for (const note of notes) {
 		process.stdout.write(`  [${note.id.slice(0, 8)}] ${note.source} · ${formatDate(note.createdAt)}\n`);
-		for (const line of note.content.split("\n")) {
+		for (const line of withAbsolutePaths(note.content).split("\n")) {
 			process.stdout.write(`    ${line}\n`);
 		}
 	}

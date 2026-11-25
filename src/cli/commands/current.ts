@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { withAbsolutePaths } from "../path-refs";
 import type { Task } from "../../shared/types";
 import { STATUS_LABELS, getTaskTitle, hasGitWorkflow, taskCompletesManually, taskProtocolMode } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
@@ -113,7 +114,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 						process.stdout.write("\nDescription: hidden (--brief) — see your initial task prompt, or re-run without --brief.\n");
 					} else {
 						process.stdout.write("\nDescription:\n");
-						for (const line of task.description.split("\n")) {
+						for (const line of withAbsolutePaths(task.description).split("\n")) {
 							process.stdout.write(`  ${line}\n`);
 						}
 					}
@@ -184,7 +185,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 				process.stdout.write("\nDescription: hidden (--brief) — see your initial task prompt, or re-run without --brief.\n");
 			} else {
 				process.stdout.write("\nDescription:\n");
-				for (const line of desc.split("\n")) {
+				for (const line of withAbsolutePaths(desc).split("\n")) {
 					process.stdout.write(`  ${line}\n`);
 				}
 			}

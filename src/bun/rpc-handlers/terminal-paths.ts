@@ -8,6 +8,8 @@ import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_CONTENT_TYPES, FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt, previewMediaKind } from "../../shared/file-link-types";
+import { parsePathRefUri } from "../../shared/path-refs";
+import { resolvePathRefIn } from "../../shared/path-ref-resolve";
 import { allProjectWorktreesRoots } from "../../shared/project-storage";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
@@ -244,9 +246,17 @@ async function resolveTerminalPaths(params: {
 	const bases = await terminalPathBases(params);
 	// Hoisted: one projects.json lookup per call, not per candidate.
 	const roots = await allowedRoots();
+	let projects: Awaited<ReturnType<typeof data.loadProjects>> | null = null;
 	for (const raw of candidates) {
 		resolved[raw] = null;
 		if (!raw || raw.length > TERMINAL_PATH_MAX_LEN || raw.includes("\0")) continue;
+		const token = parsePathRefUri(raw);
+		if (token) {
+			projects ??= await data.loadProjects();
+			const absolute = resolvePathRefIn(projects, token);
+			resolved[raw] = absolute ? await statPathKind(absolute, roots) : null;
+			continue;
+		}
 		const expanded = raw === "~" || raw.startsWith("~/") || raw.startsWith("~\\") ? join(homedir(), raw.slice(2)) : raw;
 		if (isAbsolute(expanded)) {
 			resolved[raw] = await statPathKind(resolvePath(expanded), roots);

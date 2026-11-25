@@ -328,6 +328,7 @@ const terminal = {
 	"terminal.restartImpactTask": "#{seq} {title} · {project}",
 	"terminal.fileLinkNotFound": "No se puede abrir {path}: no existe o está fuera de las carpetas permitidas.",
 	"terminal.fileLinkUnreadable": "Ese enlace no es una ruta de archivo legible: {uri}",
+	"terminal.pathRefNotFound": "No hay nada que abrir para {uri}: el archivo o su proyecto ya no existe.",
 	"terminal.deepLinkNotFound": "No hay nada que abrir en {uri}: esa tarea, proyecto o espacio ya no existe.",
 	"terminal.deepLinkBad": "Ese no es un enlace de dev3 que la app reconozca: {uri}",
 	// Touch link sheet: a tap on a terminal link (no Cmd/Ctrl on a phone)

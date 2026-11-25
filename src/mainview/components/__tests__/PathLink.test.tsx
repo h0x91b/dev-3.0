@@ -29,6 +29,7 @@ const ON_DISK: Record<string, { path: string; kind: "file" | "directory" }> = {
 	"src/app.ts": { path: "/repo/src/app.ts", kind: "file" },
 	"/home/me/notes/plan.md": { path: "/home/me/notes/plan.md", kind: "file" },
 	"docs/api/": { path: "/repo/docs/api", kind: "directory" },
+	"path:a1c9fe4e/todo/x.md": { path: "/other/todo/x.md", kind: "file" },
 };
 
 const wrap = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nProvider>);
@@ -57,6 +58,12 @@ describe("splitTaskText", () => {
 	it("keeps a :line suffix in the text and strips it from the path", () => {
 		const [, part] = splitTaskText("at src/app.ts:12.");
 		expect(part).toEqual({ kind: "path", raw: "src/app.ts:12", path: "src/app.ts", line: 12, key: 3 });
+	});
+
+	it("reads a path token as one link labelled by its project path", () => {
+		const parts = splitTaskText("brief path:a1c9fe4e/todo/x.md:4, see todo/brief.md");
+		expect(parts[1]).toEqual({ kind: "path", raw: "path:a1c9fe4e/todo/x.md:4", path: "path:a1c9fe4e/todo/x.md", line: 4, key: 6, label: "todo/x.md:4" });
+		expect(parts[3]).toMatchObject({ kind: "path", path: "todo/brief.md" });
 	});
 
 	it("finds no paths when path links are off", () => {
@@ -124,6 +131,24 @@ describe("TaskRefText path links", () => {
 		wrap(<TaskRefText text="read todo/brief.md" contextProjectId="p1" />);
 		await waitFor(() => expect(resolveTerminalPaths).toHaveBeenCalled());
 		expect(screen.queryByRole("button")).toBeNull();
+	});
+});
+
+describe("path tokens", () => {
+	it("render as a chip showing the project path and copying the token", async () => {
+		wrap(<TaskRefText text="brief: <path:a1c9fe4e/todo/x.md>" contextProjectId="p1" />);
+		const chip = await screen.findByRole("button", { name: /\/other\/todo\/x\.md/ });
+		expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
+		expect(chip.querySelector(".sr-only")?.textContent).toBe("<path:a1c9fe4e/todo/x.md>");
+	});
+
+	it("survive the markdown sanitizer as autolinks, bare text and code spans", async () => {
+		wrap(<TaskDescriptionMarkdown body={"A <path:a1c9fe4e/todo/x.md>. B path:a1c9fe4e/todo/x.md. C `path:a1c9fe4e/todo/x.md`."} projectId="p1" taskId="t1" />);
+		await waitFor(() => expect(screen.getAllByRole("button", { name: /\/other\/todo\/x\.md/ })).toHaveLength(3));
+		for (const chip of screen.getAllByRole("button", { name: /\/other\/todo\/x\.md/ })) {
+			expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
+		}
+		expect(resolveTerminalPaths.mock.calls.flatMap(([arg]) => arg.paths)).toContain("path:a1c9fe4e/todo/x.md");
 	});
 });
 

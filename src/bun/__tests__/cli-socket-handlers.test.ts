@@ -4099,6 +4099,27 @@ describe("task.update", () => {
 			.toEqual(["blocked on seq:proj-2/60", "blocked on seq:60", "blocked on seq:60"]);
 	});
 
+	it("turns a writer board's existing relative path into a path token", async () => {
+		const writerRoot = "/boards/other";
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/boards/other/todo/brief.md");
+		const project = makeProject();
+		const other = makeProject({ id: "proj-2-0000-4000", name: "Other", path: writerRoot });
+		const task = makeTask({ customTitle: "Mine" });
+		const writer = makeTask({ id: "writer-00-1111-2222-333333333333", projectId: other.id, seq: 9 });
+		vi.mocked(data.getProject).mockImplementation(async (id) => (id === other.id ? other : project));
+		vi.mocked(data.loadProjects).mockResolvedValue([project, other]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === other.id ? [writer] : [task]));
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...task, ...change }));
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "Brief: todo/brief.md, not todo/none.md", sourceTaskId: writer.id }));
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "Brief: todo/brief.md" }));
+		expect(vi.mocked(data.updateTask).mock.calls.map((c) => c[2].description))
+			.toEqual(["Brief: path:proj-2-0/todo/brief.md, not todo/none.md", "Brief: todo/brief.md"]);
+		vi.mocked(existsSync).mockImplementation(() => false);
+	});
+
 	it("leaves the target board's own refs alone when another board's agent edits its description", async () => {
 		const project = makeProject();
 		const task = makeTask({ customTitle: "Mine", description: "Goal.\nAfter seq:3 lands." });

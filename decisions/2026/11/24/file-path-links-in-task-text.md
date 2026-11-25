@@ -15,6 +15,8 @@ Agents name files in task descriptions, notes and overviews ("Brief: todo/x.md",
 - **Folders** link only in the desktop app. The browser cannot open a host folder, so there a folder stays text instead of linking to a toast.
 - **Chips are selectable.** The global `button { user-select: none }` dropped every ref chip from a copied sentence. Inline ref and path chips are prose that happens to be clickable, so they opt back in with `select-text`.
 
+A path into another project is a `path:` token: `cross-project-path-tokens`.
+
 ## 3. Risks
 
 - A word that happens to match a file name (`README.md`) links, the same as in the terminal. The unique-suffix rule keeps an ambiguous name unlinked.

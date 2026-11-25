@@ -2,6 +2,7 @@ import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant,
 import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import { taskDeepLinkNav } from "../../shared/deep-link";
 import { qualifyEditedRefsFor, qualifyRefsFor } from "../../shared/task-refs";
+import { qualifyEditedWriterPaths, qualifyWriterPaths } from "../path-refs-agent";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
 import * as labelOps from "../board-operations/labels";
@@ -355,7 +356,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// refs the writer's project, or they would resolve on this board.
 		const writerProjectId = origin?.kind === "task" ? origin.projectId : undefined;
 		const title = qualifyRefsFor(params.title as string, writerProjectId, project.id);
-		const description = qualifyRefsFor((params.description as string | undefined)?.trim() || "", writerProjectId, project.id);
+		const description = await qualifyWriterPaths(qualifyRefsFor((params.description as string | undefined)?.trim() || "", writerProjectId, project.id), writerProjectId, project.id);
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -480,7 +481,10 @@ export const taskHandlers: Record<string, Handler> = {
 		if (params.title !== undefined) {
 			change.title = { value: qualifyEditedRefsFor(params.title as string, getTaskTitle(task), writerProjectId, project.id) || null, force: Boolean(params.force) };
 		}
-		if (params.description !== undefined) change.description = qualifyEditedRefsFor(params.description as string, task.description, writerProjectId, project.id);
+		if (params.description !== undefined) {
+			const refsQualified = qualifyEditedRefsFor(params.description as string, task.description, writerProjectId, project.id);
+			change.description = await qualifyEditedWriterPaths(refsQualified, task.description, writerProjectId, project.id);
+		}
 		// Task type and the preamble in the description move together, always — in the
 		// same write. The preset prompt is frozen into the description at creation, so
 		// flipping the field alone would produce a task the data calls a coordinator while

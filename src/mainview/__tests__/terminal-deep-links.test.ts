@@ -43,6 +43,17 @@ describe("createDeepLinkProvider", () => {
 		]);
 	});
 
+	it("linkifies a cross-project path token, bracketed or bare", () => {
+		const provider = createDeepLinkProvider({
+			term: makeTerm([{ spec: "see <path:a1c9fe4e/todo/x.md> and path:a1c9fe4e/src/a.ts:3.", cols: 80 }]),
+			onActivate: vi.fn(),
+		});
+		expect(linksOn(provider, 0)!.map((l) => [l.text, l.range.start.x, l.range.end.x])).toEqual([
+			["<path:a1c9fe4e/todo/x.md>", 4, 28],
+			["path:a1c9fe4e/src/a.ts:3", 34, 57],
+		]);
+	});
+
 	it("leaves the legacy #N form alone", () => {
 		const provider = createDeepLinkProvider({
 			term: makeTerm([{ spec: "see #115 and task 115", cols: 80 }]),

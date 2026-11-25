@@ -98,7 +98,8 @@ export const PROJECT_REF_PREFIX_LENGTH = 8;
 const KIND_BY_TAG: Record<string, RefKind> = { seq: "task", pr: "pr" };
 const TAG_BY_KIND: Record<RefKind, string> = { task: "seq", pr: "pr" };
 
-const QUALIFIER = String.raw`[A-Za-z0-9][\w.-]{0,63}`;
+/** A project qualifier as written: an id prefix or a project name. Shared with `path-refs.ts`. */
+export const QUALIFIER = String.raw`[A-Za-z0-9][\w.-]{0,63}`;
 const BODY = String.raw`(seq|pr):(?:(${QUALIFIER})\/)?(\d{1,9})`;
 // Canonical `<seq:…>` first; otherwise a bare `seq:…` not glued to a word, a
 // path or a URL on either side (so `https://x/seq:1` and `foo-seq:1` stay text).

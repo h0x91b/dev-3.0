@@ -15,6 +15,7 @@ import { isRelativeUrl, remarkProtectRelativeUrls, safeLinkHref, unprotect } fro
 import { parsePathLinkUrl, remarkBarePathLinks, remarkBareTaskRefs, remarkHtmlAsText } from "./markdown-task-text";
 import { pathLinkLabel } from "../../text-path-links";
 import { parseRefUri } from "../../../shared/task-refs";
+import { parsePathRefUri, pathRefUri } from "../../../shared/path-refs";
 import { PathLink, TaskRefLink, TaskRefScopeContext } from "../TaskRefText";
 
 const mermaidPlugin = createMermaidPlugin();
@@ -170,6 +171,14 @@ export function MarkdownContent({
 			const target = unprotect(href);
 			const taskRef = target ? parseRefUri(target) : null;
 			if (taskRef) return <TaskRefLink taskRef={taskRef}>{children}</TaskRefLink>;
+			const pathRef = target ? parsePathRefUri(target) : null;
+			if (pathRef) {
+				const { line, ...file } = pathRef;
+				// An author's own link text stays; the token itself (bare or in code) shows its path.
+				const text = typeof children === "string" ? children : undefined;
+				const label = text === undefined || parsePathRefUri(text) ? `${file.path}${line ? `:${line}` : ""}` : undefined;
+				return <PathLink path={pathRefUri(file)} line={line} label={label}>{children}</PathLink>;
+			}
 			if (taskText && target && isRelativeUrl(target) && !target.startsWith("#")) {
 				const { path, line } = parsePathLinkUrl(target);
 				const text = typeof children === "string" ? children : undefined;
