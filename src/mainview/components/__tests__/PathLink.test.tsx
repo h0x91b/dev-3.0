@@ -35,6 +35,7 @@ const ON_DISK: Record<string, { path: string; kind: "file" | "directory" }> = {
 	"src/__init__.py": { path: "/repo/src/__init__.py", kind: "file" },
 	"C:\\Users\\me\\.claude\\x.md": { path: "C:\\Users\\me\\.claude\\x.md", kind: "file" },
 	"src\\_gen\\a.ts": { path: "C:\\repo\\src\\_gen\\a.ts", kind: "file" },
+	"src/my_file.py": { path: "/repo/src/my_file.py", kind: "file" },
 };
 
 const wrap = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nProvider>);
@@ -182,6 +183,13 @@ describe("TaskDescriptionMarkdown path links", () => {
 		await screen.findByRole("button", { name: /\.claude\\x\.md/ });
 		await screen.findByRole("button", { name: /_gen/ });
 		expect(container.textContent).toContain("C:\\Users\\me\\.claude\\x.md");
+	});
+
+	it("reads an author's escaped underscore as one escape, not a Windows separator", async () => {
+		const { container } = wrap(<TaskDescriptionMarkdown body={"Rename my\\_file.py and src/my\\_file.py"} projectId="p1" taskId="t1" />);
+		await screen.findByRole("button", { name: /src\/my_file\.py/ });
+		expect(container.textContent).toContain("Rename my_file.py and src/my_file.py");
+		expect(container.textContent).not.toContain("\\");
 	});
 
 	it("links a dunder file name that markdown would otherwise read as emphasis", async () => {
