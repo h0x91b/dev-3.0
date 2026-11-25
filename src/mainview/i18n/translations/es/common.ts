@@ -157,6 +157,7 @@ const common = {
 	"toast.staleAgentPathResetDone": "Ruta restablecida. {agent} ahora ejecuta {command} desde el PATH.",
 	"toast.agentsStoreRecovered": "No se pudo leer el archivo de presets de agentes (agents.json), así que dev3 lo restauró desde su última copia válida. Pueden faltar cambios recientes en los presets.",
 	"toast.agentsStoreUnreadable": "No se puede leer el archivo de presets de agentes (agents.json), así que dev3 muestra los presets integrados. Guardar ahora los ajustes de agentes reemplaza ese archivo.",
+	"toast.agentsStoreUnreadableNoBackup": "No se puede leer el archivo de presets de agentes (agents.json) y dev3 no pudo hacer una copia, así que muestra los presets integrados y no guardará los ajustes de agentes hasta que el archivo se corrija o se elimine.",
 	"toast.agentsStoreBackup": "El archivo ilegible se guardó como {file} en la carpeta de datos de dev3.",
 	"toast.agentsStoreSettings": "Ajustes de agentes",
 	"toast.agent.sender": "Remitente #{seq}",

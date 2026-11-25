@@ -381,8 +381,11 @@ function isAgentArray(data: unknown): data is any[] {
 /** The last storage problem worth telling the user about, kept for a renderer that mounts after it happened. */
 let agentsStoreNotice: AgentsStoreNotice | null = null;
 
+/** A recovery is reported to the first renderer that asks; an unreadable file stays reported until it is fixed. */
 export function getAgentsStoreNotice(): AgentsStoreNotice | null {
-	return agentsStoreNotice;
+	const notice = agentsStoreNotice;
+	if (notice?.kind === "recovered") agentsStoreNotice = null;
+	return notice;
 }
 
 function raiseAgentsStoreNotice(notice: AgentsStoreNotice): void {
@@ -412,9 +415,9 @@ async function statKey(file: string): Promise<string | null> {
 /**
  * Never report an unreadable agents.json as "no agents": the caller would merge
  * defaults into nothing and save that over the user's presets (#2434). Unreadable
- * bytes are copied aside, then the last-known-good snapshot is used when it parses;
- * without one, defaults are served from memory and nothing is written until the
- * user saves agent settings themselves. Either way the user is told, once.
+ * bytes are copied aside first; only once that copy exists may the file be
+ * rewritten from the last-known-good snapshot. Otherwise defaults are served from
+ * memory and nothing is written on dev3's own initiative. The user is told, once.
  */
 async function loadStoredAgents(): Promise<StoredAgentsLoad> {
 	if (unreadableVerdict && unreadableVerdict.key === (await statKey(AGENTS_FILE))) return unreadableVerdict.load;
@@ -427,22 +430,34 @@ async function loadStoredAgents(): Promise<StoredAgentsLoad> {
 		return { agents: migrateOldFormat(read.data), writable: true, recovered: false };
 	}
 
-	const backup = await backupCorruptFile(AGENTS_FILE, read.raw);
+	const backup = await backupCorruptFile(AGENTS_FILE, read.bytes);
 	const backupFile = backup ? basename(backup) : null;
-	const lastKnownGood = await readJsonFallback(AGENTS_LAST_KNOWN_GOOD_FILE, isAgentArray);
+	const lastKnownGood = backup ? await readJsonFallback(AGENTS_LAST_KNOWN_GOOD_FILE, isAgentArray) : null;
 	if (lastKnownGood && lastKnownGood.length > 0) {
-		log.error("agents.json is unreadable; restoring it from the last-known-good copy", { error: read.error, bytes: read.raw.length, backup });
+		log.error("agents.json is unreadable; restoring it from the last-known-good copy", { error: read.error, bytes: read.bytes.length, backup });
 		raiseAgentsStoreNotice({ kind: "recovered", backupFile });
 		return { agents: migrateOldFormat(lastKnownGood), writable: true, recovered: true };
 	}
 
-	log.error("agents.json is unreadable; serving defaults without overwriting it", { error: read.error, bytes: read.raw.length, backup });
+	log.error("agents.json is unreadable; serving defaults without overwriting it", { error: read.error, bytes: read.bytes.length, backup });
 	const load: StoredAgentsLoad = { agents: [], writable: false, recovered: false };
 	const key = await statKey(AGENTS_FILE);
 	// Cache only when the stat still describes the bytes we judged; a file mid-change gets re-read next time.
-	if (key && key.split(":")[1] === String(Buffer.byteLength(read.raw))) unreadableVerdict = { key, load };
+	if (key && key.split(":")[1] === String(read.bytes.length)) unreadableVerdict = { key, load };
 	raiseAgentsStoreNotice({ kind: "unreadable", backupFile });
 	return load;
+}
+
+/**
+ * A user save may replace an unreadable agents.json only once its bytes are
+ * copied aside — otherwise that save would destroy the only copy. Runs under the
+ * agents lock, so the file cannot change between this check and the write.
+ */
+async function ensureUnreadableFileBackedUp(): Promise<void> {
+	const read = await readJsonGuarded(AGENTS_FILE, isAgentArray, []);
+	if (read.kind !== "corrupt") return;
+	if (await backupCorruptFile(AGENTS_FILE, read.bytes)) return;
+	throw new Error("agents.json is unreadable and dev3 could not back it up, so it was not overwritten. Fix or remove the file, then save again.");
 }
 
 async function saveAgents(agents: CodingAgent[]): Promise<void> {
@@ -488,7 +503,10 @@ export async function getAllAgents(): Promise<CodingAgent[]> {
 }
 
 export async function saveAllAgents(agents: CodingAgent[]): Promise<void> {
-	await withAgentsFileLock(() => saveAgents(agents));
+	await withAgentsFileLock(async () => {
+		await ensureUnreadableFileBackedUp();
+		await saveAgents(agents);
+	});
 }
 
 // ---- Command Resolution ----

@@ -157,6 +157,7 @@ const common = {
 	"toast.staleAgentPathResetDone": "Custom path cleared. {agent} now runs {command} from PATH.",
 	"toast.agentsStoreRecovered": "Your agent presets file (agents.json) could not be read, so dev3 restored it from its last good backup. Recent preset changes may be missing.",
 	"toast.agentsStoreUnreadable": "Your agent presets file (agents.json) cannot be read, so dev3 is showing the built-in presets. Saving agent settings now replaces that file.",
+	"toast.agentsStoreUnreadableNoBackup": "Your agent presets file (agents.json) cannot be read and dev3 could not back it up, so it is showing the built-in presets and will not save agent settings until the file is fixed or removed.",
 	"toast.agentsStoreBackup": "The unreadable file was kept as {file} in the dev3 data folder.",
 	"toast.agentsStoreSettings": "Agent settings",
 	"toast.agent.sender": "Sender #{seq}",

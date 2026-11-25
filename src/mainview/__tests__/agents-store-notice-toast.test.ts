@@ -29,13 +29,13 @@ describe("showAgentsStoreNoticeToast", () => {
 		expect(warning.mock.calls[0][0]).toContain("toast.agentsStoreRecovered");
 	});
 
-	it("omits the backup sentence when no copy could be written, and opens Agent settings", () => {
+	it("says saves are blocked when no copy could be written, and opens Agent settings", () => {
 		const warning = vi.spyOn(toast, "warning").mockImplementation(() => 1 as never);
 		const opened = vi.fn();
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
 		showAgentsStoreNoticeToast({ kind: "unreadable", backupFile: null }, t);
 		const [message, opts] = warning.mock.calls[0];
-		expect(message).not.toContain("toast.agentsStoreBackup");
+		expect(message).toBe("toast.agentsStoreUnreadableNoBackup");
 		opts!.actions![0].onClick();
 		expect((opened.mock.calls[0][0] as CustomEvent).detail).toBe("agents");
 		window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);

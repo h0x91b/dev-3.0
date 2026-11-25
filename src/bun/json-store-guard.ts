@@ -21,7 +21,8 @@ const log = createLogger("json-store-guard");
 export type GuardedJsonRead<T> =
 	| { kind: "missing" }
 	| { kind: "ok"; data: T }
-	| { kind: "corrupt"; raw: string; error: string };
+	/** `bytes` are exactly what is on disk — decoding to `raw` turns invalid UTF-8 into U+FFFD. */
+	| { kind: "corrupt"; raw: string; bytes: Buffer; error: string };
 
 /** Backoff between re-reads of an unparsable file. An in-place writer (an older
  *  app version still running) finishes a few-hundred-KB write well inside this. */
@@ -48,16 +49,17 @@ export async function readJsonGuarded<T>(
 	retryDelaysMs: readonly number[] = TORN_READ_RETRY_DELAYS_MS,
 ): Promise<GuardedJsonRead<T>> {
 	for (let attempt = 0; ; attempt++) {
-		let raw: string;
+		let bytes: Buffer;
 		try {
-			raw = await readFile(file, "utf8");
+			bytes = await readFile(file);
 		} catch (err: any) {
 			if (err?.code === "ENOENT") return { kind: "missing" };
 			throw err;
 		}
+		const raw = bytes.toString("utf8");
 		const parsed = parseAs(raw, isValid);
 		if (parsed.ok) return { kind: "ok", data: parsed.data };
-		if (attempt >= retryDelaysMs.length) return { kind: "corrupt", raw, error: parsed.error };
+		if (attempt >= retryDelaysMs.length) return { kind: "corrupt", raw, bytes, error: parsed.error };
 		await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
 	}
 }
@@ -75,7 +77,7 @@ export async function readJsonFallback<T>(file: string, isValid: (data: unknown)
  * their own copy. Returns the backup path (the existing one for a repeat), or
  * null when the copy could not be written.
  */
-export async function backupCorruptFile(file: string, raw: string, now: Date = new Date()): Promise<string | null> {
+export async function backupCorruptFile(file: string, bytes: Buffer, now: Date = new Date()): Promise<string | null> {
 	const dir = dirname(file);
 	const prefix = `${basename(file)}.corrupt-`;
 	try {
@@ -83,13 +85,14 @@ export async function backupCorruptFile(file: string, raw: string, now: Date = n
 			for (const name of await readdir(dir)) {
 				if (!name.startsWith(prefix)) continue;
 				const existing = join(dir, name);
-				if ((await readFile(existing, "utf8").catch(() => null)) === raw) return existing;
+				const copy = await readFile(existing).catch(() => null);
+				if (copy && copy.equals(bytes)) return existing;
 			}
 			const stamp = now.toISOString().replace(/[:.]/g, "-");
 			for (let n = 0; ; n++) {
 				const target = join(dir, `${prefix}${stamp}${n === 0 ? "" : `-${n}`}`);
 				try {
-					await writeFile(target, raw, { flag: "wx" });
+					await writeFile(target, bytes, { flag: "wx" });
 					return target;
 				} catch (err: any) {
 					if (err?.code !== "EEXIST" || n >= 50) throw err;

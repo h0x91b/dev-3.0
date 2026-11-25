@@ -11,6 +11,15 @@ const { TEST_HOME, AGENTS_FILE, LKG_FILE } = vi.hoisted(() => {
 
 vi.mock("../paths", () => ({ DEV3_HOME: TEST_HOME }));
 const push = vi.hoisted(() => vi.fn());
+const guard = vi.hoisted(() => ({ backupFails: false }));
+vi.mock("../json-store-guard", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../json-store-guard")>();
+	return {
+		...actual,
+		backupCorruptFile: (...args: Parameters<typeof actual.backupCorruptFile>) =>
+			guard.backupFails ? Promise.resolve(null) : actual.backupCorruptFile(...args),
+	};
+});
 vi.mock("../rpc-handlers/shared-pure", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../rpc-handlers/shared-pure")>()),
 	getPushMessage: () => push,
@@ -70,6 +79,7 @@ beforeEach(() => {
 	mkdirSync(TEST_HOME, { recursive: true });
 	resetAgentsStoreStateForTests();
 	push.mockReset();
+	guard.backupFails = false;
 	originalBunWrite = (globalThis as any).Bun.write;
 	(globalThis as any).Bun.write = chunkedInPlaceWrite;
 });
@@ -228,10 +238,55 @@ describe("agents.json integrity (h0x91b/dev-3.0#2434)", () => {
 	});
 
 	it("writes one backup when many callers back up the same bytes at once", async () => {
-		const paths = await Promise.all(Array.from({ length: 10 }, () => backupCorruptFile(AGENTS_FILE, "same bytes")));
+		const paths = await Promise.all(Array.from({ length: 10 }, () => backupCorruptFile(AGENTS_FILE, Buffer.from("same bytes"))));
 		expect(new Set(paths).size).toBe(1);
 		expect(paths[0]).not.toBeNull();
 		expect(corruptBackups()).toHaveLength(1);
+	});
+
+	it("memoizes a truncated non-ASCII file and backs up its exact bytes", async () => {
+		const bytes = Buffer.from('["П', "utf8").subarray(0, 3); // cut mid-character
+		writeFileSync(AGENTS_FILE, bytes);
+		await getAllAgents();
+
+		const started = Date.now();
+		await getAllAgents();
+		expect(Date.now() - started).toBeLessThan(100);
+		expect(readFileSync(`${TEST_HOME}/${corruptBackups()[0]}`).equals(bytes)).toBe(true);
+		expect(readFileSync(AGENTS_FILE).equals(bytes)).toBe(true);
+	});
+
+	it("does not restore over an unreadable file it could not back up, even with a good copy", async () => {
+		guard.backupFails = true;
+		writeFileSync(LKG_FILE, JSON.stringify(storedWithCustomPreset()));
+		writeFileSync(AGENTS_FILE, "torn");
+
+		await getAllAgents();
+
+		expect(readFileSync(AGENTS_FILE, "utf8")).toBe("torn");
+		expect(getAgentsStoreNotice()).toEqual({ kind: "unreadable", backupFile: null });
+	});
+
+	it("refuses a user save that would replace the only copy of an unreadable file", async () => {
+		guard.backupFails = true;
+		writeFileSync(AGENTS_FILE, "torn");
+		await getAllAgents();
+
+		await expect(saveAllAgents(storedWithCustomPreset())).rejects.toThrow(/could not back it up/);
+		expect(readFileSync(AGENTS_FILE, "utf8")).toBe("torn");
+
+		guard.backupFails = false;
+		await saveAllAgents(storedWithCustomPreset());
+		expect(hasCustomPreset(JSON.parse(readFileSync(AGENTS_FILE, "utf8")))).toBe(true);
+		expect(readFileSync(`${TEST_HOME}/${corruptBackups()[0]}`, "utf8")).toBe("torn");
+	});
+
+	it("serves a recovery notice to the first renderer that asks, then forgets it", async () => {
+		writeFileSync(LKG_FILE, JSON.stringify(storedWithCustomPreset()));
+		writeFileSync(AGENTS_FILE, "]");
+		await getAllAgents();
+		expect(getAgentsStoreNotice()?.kind).toBe("recovered");
+		expect(getAgentsStoreNotice()).toBeNull();
 	});
 
 	it("still seeds defaults when agents.json does not exist", async () => {
