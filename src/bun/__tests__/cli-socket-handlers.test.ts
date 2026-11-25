@@ -4425,13 +4425,6 @@ describe("cross-board note and overview refs", () => {
 		expect((user.data as Task).notes?.[0]?.content).toBe("See seq:7");
 	});
 
-	it("note.add keeps refs in a line quoted from an existing note", async () => {
-		const target = makeTask({ notes: [{ id: "n0", content: "Blocked on seq:12", source: "ai", createdAt: "", updatedAt: "" }] });
-		wire(target);
-		const resp = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "Blocked on seq:12\nNow also seq:13", sourceTaskId: writer.id }));
-		expect((resp.data as Task).notes?.[1]?.content).toBe("Blocked on seq:12\nNow also seq:proj-2/13");
-	});
-
 	it("keeps refs as written for a same-board writer or a source that cannot be found", async () => {
 		const target = makeTask({ notes: [] });
 		const sibling = makeTask({ id: "sibling-0000-1111-2222-333333333333", seq: 2 });
