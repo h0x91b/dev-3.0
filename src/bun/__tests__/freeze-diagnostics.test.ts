@@ -124,6 +124,15 @@ describe("opt-in local freeze diagnostics", () => {
 		monitor.receive({ kind: "beat", windowId: 1, beat: { ...beat, animationFrameAgeMs: 15_000 } }, 23_000);
 		expect(monitor.check(23_000).capture?.reasons).toEqual(["window-1-animation-frame-missing"]);
 	});
+	it("does not read the frame gap of a page just back from hidden as a stall", () => {
+		const monitor = fixture();
+		monitor.receive({ kind: "host" }, 23_000);
+		monitor.receive({ kind: "beat", windowId: 1, beat: { ...beat, hiddenSinceLastBeat: true, sinceLastBeatMs: 0, animationFrameAgeMs: 274_000 } }, 23_000);
+		expect(monitor.check(23_000).capture).toBeNull();
+		monitor.receive({ kind: "host" }, 25_000);
+		monitor.receive({ kind: "beat", windowId: 1, beat: { ...beat, animationFrameAgeMs: 276_000 } }, 25_000);
+		expect(monitor.check(25_000).capture?.reasons).toEqual(["window-1-animation-frame-missing"]);
+	});
 	it("limits repeated sampling and bounds the history", () => {
 		const monitor = fixture();
 		let captures = 0;
