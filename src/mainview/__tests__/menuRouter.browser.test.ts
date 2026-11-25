@@ -41,6 +41,10 @@ describe("BROWSER_HANDLED_ACTIONS", () => {
 		expect(BROWSER_HANDLED_ACTIONS.has("term-swap-prev")).toBe(true);
 	});
 
+	it("shows every View destination in the browser menu bar, Library included", () => {
+		for (const a of ["view-stats", "view-sessions", "view-library", "view-changelog"]) expect(BROWSER_HANDLED_ACTIONS.has(a)).toBe(true);
+	});
+
 	it("excludes bun-only / unhandled actions", () => {
 		for (const a of ["new-window", "check-for-updates", "toggle-devtools", "zoom-in", "open-logs-directory", "show-remote-qr", "task-rename"]) {
 			expect(BROWSER_HANDLED_ACTIONS.has(a)).toBe(false);

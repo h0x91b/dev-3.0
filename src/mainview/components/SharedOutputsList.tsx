@@ -29,7 +29,9 @@ function artifactMeta(artifact: SharedArtifact, t: TFunction): string {
 	const version = latestArtifactVersion(artifact);
 	if (version > 1) parts.push(`v${version}`);
 	parts.push(formatBytes(artifact.bundleBytes ?? artifact.bytes));
-	if (artifact.assets.length > 0) parts.push(t.plural("infoPanel.artifactAssets", artifact.assets.length));
+	// Records written before assets existed have none.
+	const assets = artifact.assets?.length ?? 0;
+	if (assets > 0) parts.push(t.plural("infoPanel.artifactAssets", assets));
 	return parts.join(" · ");
 }
 

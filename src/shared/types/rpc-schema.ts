@@ -6,6 +6,7 @@ import type { ImportConversationsResult, ImportableConversationView } from "../c
 import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-model";
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
+import type { LibraryReport } from "../library";
 import type { AutoAccountPreview } from "../account-routing";
 import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudePickLaunches, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
@@ -545,6 +546,11 @@ export type AppRPCSchema = {
 			getProductivityStats: {
 				params: void;
 				response: ProductivityStats;
+			};
+			/** Every artifact and shown media record across all projects and task statuses (the Library screen). */
+			getLibrary: {
+				params: void;
+				response: LibraryReport;
 			};
 			getAgentUsage: {
 				/** `since` (ISO) skips transcripts last written before that local day. */

@@ -4,6 +4,7 @@ import type { ChangelogProps } from "../components/Changelog";
 import type { DashboardProps } from "../components/Dashboard";
 import type { ProductivityStatsViewProps } from "../components/ProductivityStatsView";
 import type { SessionsScreenProps } from "../components/SessionsScreen";
+import type { LibraryScreenProps } from "../components/library/LibraryScreen";
 import { defineAppSlot } from "../plugins/root";
 import type { ReplaceSlotItem } from "../plugins/SlotHost";
 import { SlotRegistry } from "../plugins/slot-registry";
@@ -22,6 +23,7 @@ declare module "cordis" {
  */
 export interface DestinationBodyProps {
 	sessions: SessionsScreenProps;
+	library: LibraryScreenProps;
 	stats: ProductivityStatsViewProps;
 	changelog: ChangelogProps;
 	"agent-traffic": AgentTrafficScreenProps;
