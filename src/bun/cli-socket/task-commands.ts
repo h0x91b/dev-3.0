@@ -24,7 +24,7 @@ import { addDependencies, planDependencyChange, writeDependencyPlan } from "../t
 import { dependencyInfo, indexDependencies, summarizeDependencies, type DependencyBoard, type TaskDependencyInfo } from "../../shared/task-dependencies";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskMatchesSeqRef, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, sourceTaskProjectId, taskMatchesSeqRef, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
@@ -89,18 +89,6 @@ async function resolveCreator(params: Record<string, unknown>): Promise<{ origin
 	}
 	log.warn("Creator task not found; recording the user as origin", { sourceId });
 	return { creator: null };
-}
-
-/** The project of the task the CLI ran in, when it can be found. */
-async function sourceTaskProjectId(params: Record<string, unknown>): Promise<string | undefined> {
-	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
-	if (!sourceId) return undefined;
-	try {
-		return (await resolveTaskAcrossProjects(sourceId))?.project.id;
-	} catch (err) {
-		log.warn("Source task lookup failed; refs stay as written", { sourceId, error: String(err) });
-		return undefined;
-	}
 }
 
 /** `--start-after` as validated input, resolved before anything is written. */

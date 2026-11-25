@@ -91,6 +91,7 @@ describe("overview set", () => {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 			overview: "Short summary of the task",
+			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Overview set");
 		expect(stdoutOutput).toContain("aaaaaaaa");
@@ -155,6 +156,8 @@ describe("overview set", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.taskId).toBe("bbbbbbbb-2222-3333-4444-555555555555");
+		// The writer is the task the CLI runs in, not the one it writes to.
+		expect(params.sourceTaskId).toBe(CTX.taskId);
 	});
 
 	it("--task-id flag overrides context", async () => {

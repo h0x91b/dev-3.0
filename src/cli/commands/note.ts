@@ -46,6 +46,8 @@ async function addNote(args: ParsedArgs, socketPath: string, context: CliContext
 	}
 
 	const params: Record<string, unknown> = { taskId, content, source };
+	// A note written from a task on another board gets that board's refs qualified.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 
