@@ -53,6 +53,8 @@ const keymap = {
 	"keymap.shortcut.reviewCommentSend": "Enviar el comentario de review al agente",
 	"keymap.shortcut.mediaFrameBack": "Visor de medios: retroceder un fotograma",
 	"keymap.shortcut.mediaFrameForward": "Visor de medios: avanzar un fotograma",
+	"keymap.shortcut.mediaJumpBack": "Visor de medios: retroceder 15 segundos",
+	"keymap.shortcut.mediaJumpForward": "Visor de medios: avanzar 15 segundos",
 	"keymap.shortcut.mediaSpeedDown": "Visor de medios: reproducción más lenta",
 	"keymap.shortcut.mediaSpeedUp": "Visor de medios: reproducción más rápida",
 	"keymap.shortcut.mediaCommentAtPlayhead": "Visor de medios: comentar el momento actual del vídeo",

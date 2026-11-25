@@ -635,6 +635,8 @@ const common = {
 	"imageViewer.videoPause": "Pausar",
 	"imageViewer.frameBack": "Fotograma anterior",
 	"imageViewer.frameForward": "Fotograma siguiente",
+	"imageViewer.jumpBack": "Retroceder 15 segundos",
+	"imageViewer.jumpForward": "Avanzar 15 segundos",
 	"imageViewer.frameNumber": "fotograma {frame}",
 	"imageViewer.videoSeek": "Posición de reproducción",
 	"imageViewer.playbackSpeed": "Velocidad de reproducción",

@@ -18,7 +18,7 @@ import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 import VideoFrameThumb from "./VideoFrameThumb";
 import { primeFirstFrame } from "../utils/video-first-frame";
-import VideoReviewBar, { SEEK_STEP_SECONDS, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
+import VideoReviewBar, { SEEK_STEP_SECONDS, jumpVideo, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
 import { frameAt, frameSeekTime } from "../utils/video-playback";
 import { matchesShortcut } from "../keymap";
 
@@ -329,10 +329,12 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			const video = playerRef.current instanceof HTMLVideoElement ? playerRef.current : null;
 			if (video) {
 				// The viewer is itself a dialog, which the matcher reads as "typing"; text
-				// fields already returned above, and the speed menu has no use for , . < > c.
+				// fields already returned above, and the speed menu has no use for , . < > c j l.
 				const ctx = { typing: false };
 				if (matchesShortcut(e, "media-frame-back", ctx)) { consume(); stepVideoFrame(video, -1, fps); return; }
 				if (matchesShortcut(e, "media-frame-forward", ctx)) { consume(); stepVideoFrame(video, 1, fps); return; }
+				if (matchesShortcut(e, "media-jump-back", ctx)) { consume(); jumpVideo(video, -1); return; }
+				if (matchesShortcut(e, "media-jump-forward", ctx)) { consume(); jumpVideo(video, 1); return; }
 				if (matchesShortcut(e, "media-speed-down", ctx)) { consume(); stepVideoRate(video, -1); return; }
 				if (matchesShortcut(e, "media-speed-up", ctx)) { consume(); stepVideoRate(video, 1); return; }
 				if (canComment && matchesShortcut(e, "media-comment-at-playhead", ctx)) { consume(); commentAtPlayhead(); return; }
