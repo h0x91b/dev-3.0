@@ -192,6 +192,8 @@ function packagedImageRuntime(diagnostics: string[]): NativeHostRuntime | null {
 	const staged = stagePackagedImage({ sourceImageDir: discovered.imageDir, stagingRoot, expectations });
 	if (staged.status === "failed") {
 		diagnostics.push(`Staging the packaged host image into ${stagingRoot} failed: ${staged.reason}`);
+		// A half-deleted image blocks staging until a prune removes it.
+		setTimeout(() => void pruneStagedHostImages(), 0);
 		return null;
 	}
 	log.info("Native host image ready", { tag: staged.tag, status: staged.status, imageDir: staged.imageDir });

@@ -538,6 +538,13 @@ startSelfUpdateWatch((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// Drop staged native host images nothing uses any more; delayed so boot is not held up.
+setTimeout(() => {
+	import("./native-host-runtime")
+		.then(({ pruneStagedHostImages }) => pruneStagedHostImages())
+		.catch((err) => log.warn("Native host image prune could not be scheduled", { error: String(err) }));
+}, 5_000);
+
 // ── Agent rate-limit monitor (Claude dump / Codex rollouts + monthly credits) ──
 startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);

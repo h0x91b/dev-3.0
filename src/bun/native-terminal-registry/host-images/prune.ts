@@ -3,14 +3,15 @@
  * any live session. Deleting is self-healing (the next launch re-stages the image).
  */
 
-import { lstat, readdir, rm, unlink } from "node:fs/promises";
-import { realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { isValidImageTag } from "./image-manifest";
 import { packagedHostRuntimeCarrier } from "./packaged-image";
-import { hostImagesRootDir } from "../paths";
+import { PACKAGED_HOST_IMAGE_MANIFEST_FILE } from "./packaged-image-manifest";
+import { classifyOwnership, type OwnershipVerdict } from "../ownership";
+import { hostImagesRootDir, isValidSessionId, sessionsRootDir } from "../paths";
 import { isProcessAlive } from "../process-identity";
-import { list as listSessions, type SessionListing } from "../registry";
+import { inspectRecordFile, readToken, type NativeSessionRecord } from "../record";
 
 export const KEEP_NEWEST_IMAGES = 2;
 export const KEEP_RECENT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -29,7 +30,7 @@ export interface PruneInput {
 	now: number;
 	/** `host.executable` of every session whose host may still be running. */
 	liveExecutables: readonly string[];
-	removeDir?: (path: string) => Promise<void>;
+	removeDir?: (path: string) => void;
 }
 
 export interface PruneReport {
@@ -45,15 +46,15 @@ const RUNTIME_CARRIER_NAMES = [packagedHostRuntimeCarrier("darwin"), packagedHos
  * Unlink the runtime carrier first: a locked executable (Windows) then fails the delete
  * with the image still whole, instead of leaving one that staging refuses forever.
  */
-export async function removeImageDirectory(path: string): Promise<void> {
+export function removeImageDirectory(path: string): void {
 	for (const name of RUNTIME_CARRIER_NAMES) {
 		try {
-			await unlink(join(path, name));
+			unlinkSync(join(path, name));
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
 		}
 	}
-	await rm(path, { recursive: true, force: true });
+	rmSync(path, { recursive: true, force: true });
 }
 
 function pathForms(path: string): string[] {
@@ -70,99 +71,143 @@ function isInside(file: string, dirForms: readonly string[]): boolean {
 	return pathForms(file).some((candidate) => dirForms.some((dir) => candidate.startsWith(dir + sep)));
 }
 
-async function realDirectoryMtime(path: string): Promise<number | null> {
+function directoryMtime(path: string): number | null {
 	try {
-		const info = await lstat(path);
-		return info.isDirectory() && !info.isSymbolicLink() ? info.mtimeMs : null;
+		const info = lstatSync(path);
+		return info.isDirectory() ? info.mtimeMs : null;
 	} catch {
 		return null;
 	}
 }
 
+/** Cheap existence checks only: the manifest parses and both files it names are present. */
+function isIncompleteImage(imageDir: string): boolean {
+	try {
+		const manifest = JSON.parse(readFileSync(join(imageDir, PACKAGED_HOST_IMAGE_MANIFEST_FILE), "utf8")) as {
+			runtimeCarrier?: unknown;
+			artifact?: { entrypoint?: unknown };
+		};
+		const names = [manifest.runtimeCarrier, manifest.artifact?.entrypoint];
+		return !names.every((name) => typeof name === "string" && name !== "" && existsSync(join(imageDir, name)));
+	} catch {
+		return true;
+	}
+}
+
+interface ImageState {
+	name: string;
+	mtime: number;
+	incomplete: boolean;
+}
+
 /** Prune one staging root. Never throws; a failed delete is reported and skipped. */
-export async function pruneHostImageRoot(input: PruneInput): Promise<PruneReport> {
+export function pruneHostImageRoot(input: PruneInput): PruneReport {
 	const report: PruneReport = { deleted: [], deletedStaging: [], failed: [], kept: 0 };
 	const removeDir = input.removeDir ?? removeImageDirectory;
 	let names: string[];
 	try {
-		names = await readdir(input.root);
+		names = readdirSync(input.root);
 	} catch {
 		return report;
 	}
 
-	const images: { name: string; mtime: number }[] = [];
-	const staging: { name: string; mtime: number }[] = [];
-	for (const name of names) {
-		const isImage = isPackagedImageTag(name);
-		if (!isImage && !name.startsWith(STAGING_PREFIX)) continue;
-		const mtime = await realDirectoryMtime(join(input.root, name));
-		if (mtime === null) continue;
-		(isImage ? images : staging).push({ name, mtime });
-	}
+	const imageNames = names.filter(isPackagedImageTag);
+	const read = (): ImageState[] =>
+		imageNames.flatMap((name) => {
+			const dir = join(input.root, name);
+			const mtime = directoryMtime(dir);
+			return mtime === null ? [] : [{ name, mtime, incomplete: isIncompleteImage(dir) }];
+		});
+	const order = read().sort((a, b) => b.mtime - a.mtime || a.name.localeCompare(b.name));
 
-	const remove = async (name: string, into: string[]): Promise<void> => {
+	const attempt = (name: string, into: string[]): void => {
 		try {
-			await removeDir(join(input.root, name));
+			removeDir(join(input.root, name));
 			into.push(name);
 		} catch (err) {
 			report.failed.push({ name, error: String(err) });
 		}
 	};
 
-	images.sort((a, b) => b.mtime - a.mtime || a.name.localeCompare(b.name));
-	const newest = new Set(images.slice(0, KEEP_NEWEST_IMAGES).map((image) => image.name));
-	for (const image of images) {
-		const dirForms = pathForms(join(input.root, image.name));
-		const protectedImage =
-			newest.has(image.name) ||
-			image.mtime > input.now - KEEP_RECENT_MS ||
-			input.liveExecutables.some((executable) => isInside(executable, dirForms));
+	for (const candidate of order) {
+		// Re-read everything and delete in one synchronous block: a launch in this process
+		// cannot refresh an mtime between the decision and the delete.
+		const fresh = read();
+		const image = fresh.find((entry) => entry.name === candidate.name);
+		if (!image) continue;
+		const live = input.liveExecutables.some((executable) => isInside(executable, pathForms(join(input.root, image.name))));
+		const newest = fresh
+			.filter((entry) => !entry.incomplete)
+			.sort((a, b) => b.mtime - a.mtime || a.name.localeCompare(b.name))
+			.slice(0, KEEP_NEWEST_IMAGES)
+			.some((entry) => entry.name === image.name);
+		const protectedImage = live || (!image.incomplete && (newest || image.mtime > input.now - KEEP_RECENT_MS));
 		if (protectedImage) report.kept += 1;
-		else await remove(image.name, report.deleted);
+		else attempt(image.name, report.deleted);
 	}
-	for (const scratch of staging) {
-		if (scratch.mtime < input.now - STALE_STAGING_MS) await remove(scratch.name, report.deletedStaging);
+
+	for (const name of names) {
+		if (!name.startsWith(STAGING_PREFIX)) continue;
+		const mtime = directoryMtime(join(input.root, name));
+		if (mtime === null) continue;
+		if (mtime < input.now - STALE_STAGING_MS) attempt(name, report.deletedStaging);
 		else report.kept += 1;
 	}
 	return report;
 }
 
-/**
- * Executables of sessions that may still run: owned or reused, and also "dead" ones whose
- * host pid is alive (a host can outlive its shell for a moment).
- */
-export function liveHostExecutables(
-	sessions: readonly SessionListing[],
-	isAlive: (pid: number) => boolean = isProcessAlive,
-): string[] {
-	return sessions
-		.filter((session) => session.state !== "dead" || isAlive(session.record.host.pid))
-		.map((session) => session.record.host.executable);
-}
-
 export interface PruneHostImagesOptions {
 	now?: number;
 	root?: string;
-	readSessions?: () => Promise<SessionListing[]>;
 	isHostAlive?: (pid: number) => boolean;
+	classify?: (record: NativeSessionRecord, token: string | null) => Promise<OwnershipVerdict>;
+}
+
+/**
+ * Executables of sessions that may still run (owned, reused, or "dead" with a live host
+ * pid). Null when any session cannot be read: nothing can then be proven unused.
+ */
+async function readLiveExecutables(options: PruneHostImagesOptions): Promise<string[] | null> {
+	const isHostAlive = options.isHostAlive ?? isProcessAlive;
+	const classify = options.classify ?? classifyOwnership;
+	let entries;
+	try {
+		entries = readdirSync(sessionsRootDir(), { withFileTypes: true });
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === "ENOENT" ? [] : null;
+	}
+	const executables: string[] = [];
+	for (const entry of entries) {
+		if (!entry.isDirectory() || !isValidSessionId(entry.name)) continue;
+		const inspection = inspectRecordFile(entry.name);
+		if (!inspection.ok) {
+			if (inspection.problem.kind === "absent" || inspection.problem.kind === "missing") continue;
+			return null;
+		}
+		try {
+			const verdict = await classify(inspection.record, readToken(entry.name));
+			if (verdict !== "dead" || isHostAlive(inspection.record.host.pid)) {
+				executables.push(inspection.record.host.executable);
+			}
+		} catch {
+			return null;
+		}
+	}
+	return executables;
 }
 
 let inFlight: Promise<PruneReport | null> | null = null;
 
-/** Prune the staging root against the session registry; null if one is running or sessions are unreadable. */
+/** Prune the staging root; null if one is already running or the sessions cannot be read in full. */
 export function pruneHostImages(options: PruneHostImagesOptions = {}): Promise<PruneReport | null> {
 	if (inFlight) return Promise.resolve(null);
 	const run = (async (): Promise<PruneReport | null> => {
-		let sessions: SessionListing[];
-		try {
-			sessions = await (options.readSessions ?? (() => listSessions()))();
-		} catch {
-			return null;
-		}
+		const liveExecutables = await readLiveExecutables(options);
+		if (!liveExecutables) return null;
 		return pruneHostImageRoot({
 			root: options.root ?? hostImagesRootDir(),
 			now: options.now ?? Date.now(),
-			liveExecutables: liveHostExecutables(sessions, options.isHostAlive),
+			liveExecutables,
 		});
 	})();
 	inFlight = run.finally(() => {

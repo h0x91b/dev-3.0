@@ -212,7 +212,10 @@ describe("packaged image lookup", () => {
 describe("staged image last-used marker and prune trigger", () => {
 	let imageDir: string;
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		// Earlier cases that failed to stage leave a zero-delay prune timer behind.
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		vi.mocked(pruneHostImages).mockClear();
 		imageDir = mkdtempSync(join(tmpdir(), "dev3-host-runtime-image-"));
 		const longAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 		utimesSync(imageDir, longAgo, longAgo);
@@ -249,6 +252,15 @@ describe("staged image last-used marker and prune trigger", () => {
 
 	it("prunes after a new image is staged", async () => {
 		stageAs("staged");
+		resolveNativeHostRuntime();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(pruneHostImages).toHaveBeenCalledTimes(1);
+	});
+
+	it("prunes after a failed stage so a half-deleted image cannot block the next launch", async () => {
+		vi.mocked(stagePackagedImage).mockImplementation(
+			() => ({ status: "failed", tag: "tag", reason: "already-staged image tag is unusable" }) as never,
+		);
 		resolveNativeHostRuntime();
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		expect(pruneHostImages).toHaveBeenCalledTimes(1);
