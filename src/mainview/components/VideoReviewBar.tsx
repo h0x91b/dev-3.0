@@ -19,6 +19,8 @@ const ICON = "'JetBrainsMono Nerd Font Mono'";
 /** Arrow-key seek on a video, on the scrubber and on the stage alike. */
 export const SEEK_STEP_SECONDS = 5;
 const PAGE_SEEK_SECONDS = 60;
+/** The −15 s / +15 s buttons and J / L. */
+export const JUMP_SECONDS = 15;
 /** How long the hidden probe may play before it gives up on a steady rate. */
 const PROBE_TIMEOUT_MS = 4000;
 
@@ -45,6 +47,35 @@ export function stepVideoRate(video: HTMLVideoElement, direction: 1 | -1): void 
 export function seekVideoBy(video: HTMLVideoElement, seconds: number): void {
 	const end = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
 	video.currentTime = Math.min(end, Math.max(0, video.currentTime + seconds));
+}
+
+export function jumpVideo(video: HTMLVideoElement, direction: 1 | -1): void {
+	seekVideoBy(video, direction * JUMP_SECONDS);
+}
+
+export interface ScrubSeeker {
+	seek(time: number): void;
+	dispose(): void;
+}
+
+/**
+ * Live scrubbing: one precise seek in flight, the newest target waits and wins.
+ * Not `fastSeek` — WebKit snaps it to a keyframe, so on a sparse-GOP clip a
+ * paused picture never moved while dragging (decisions/2026/11/25/precise-coalesced-video-scrub.md).
+ */
+export function createScrubSeeker(video: HTMLVideoElement): ScrubSeeker {
+	let pending: number | null = null;
+	const flush = () => {
+		if (pending === null || video.seeking) return;
+		const time = pending;
+		pending = null;
+		video.currentTime = time;
+	};
+	video.addEventListener("seeked", flush);
+	return {
+		seek(time) { pending = time; flush(); },
+		dispose() { pending = null; video.removeEventListener("seeked", flush); },
+	};
 }
 
 /**
@@ -197,19 +228,19 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 		return combo ? `${label} (${combo})` : label;
 	};
 
-	/**
-	 * While dragging, `fastSeek` jumps to the nearest keyframe — a precise seek per
-	 * pointer move would decode a whole GOP each time on a long file. The release
-	 * lands precisely.
-	 */
-	const seekToPointer = useCallback((clientX: number, precise: boolean) => {
+	const seeker = useRef<ScrubSeeker | null>(null);
+	useEffect(() => {
+		const created = createScrubSeeker(video);
+		seeker.current = created;
+		return () => { created.dispose(); if (seeker.current === created) seeker.current = null; };
+	}, [video]);
+
+	const seekToPointer = useCallback((clientX: number) => {
 		const track = trackRef.current;
 		if (!track || !Number.isFinite(video.duration)) return;
 		const rect = track.getBoundingClientRect();
 		const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0;
-		const target = ratio * video.duration;
-		if (!precise && typeof video.fastSeek === "function") video.fastSeek(target);
-		else video.currentTime = target;
+		seeker.current?.seek(ratio * video.duration);
 	}, [video]);
 
 	const onSliderKey = (e: React.KeyboardEvent) => {
@@ -229,6 +260,9 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 	const frame = fps !== null ? frameAt(state.time, fps) : null;
 	const now = formatReviewTimestamp(state.time);
 	const total = Number.isFinite(state.duration) ? formatReviewTimestamp(state.duration) : "–:––";
+	// Sized for the last frame, so a growing readout never shifts the timeline under a dragging pointer.
+	const lastFrame = fps !== null && Number.isFinite(state.duration) ? frameAt(state.duration, fps) : null;
+	const frameWidth = lastFrame !== null ? `${t("imageViewer.frameNumber", { frame: String(lastFrame) }).length}ch` : undefined;
 	const iconBtn = "flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-fg-2 transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-elevated-hover hover:text-fg active:scale-[0.96]";
 	const playLabel = state.paused ? t("imageViewer.videoPlay") : t("imageViewer.videoPause");
 
@@ -243,6 +277,17 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 				className={iconBtn}
 			>
 				<span aria-hidden="true" className="text-sm leading-none" style={{ fontFamily: ICON }}>{state.paused ? "\uf04b" : "\uf04c"}</span>
+			</button>
+			<button
+				type="button"
+				onClick={() => jumpVideo(video, -1)}
+				title={withKeys(t("imageViewer.jumpBack"), "media-jump-back")}
+				aria-label={t("imageViewer.jumpBack")}
+				aria-keyshortcuts="j"
+				data-testid="video-jump-back"
+				className={iconBtn}
+			>
+				<span aria-hidden="true" className="text-base leading-none" style={{ fontFamily: ICON }}>{"\u{f1946}"}</span>
 			</button>
 			<button
 				type="button"
@@ -266,13 +311,24 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 			>
 				<span aria-hidden="true" className="text-sm leading-none" style={{ fontFamily: ICON }}>{"\uf051"}</span>
 			</button>
+			<button
+				type="button"
+				onClick={() => jumpVideo(video, 1)}
+				title={withKeys(t("imageViewer.jumpForward"), "media-jump-forward")}
+				aria-label={t("imageViewer.jumpForward")}
+				aria-keyshortcuts="l"
+				data-testid="video-jump-forward"
+				className={iconBtn}
+			>
+				<span aria-hidden="true" className="text-base leading-none" style={{ fontFamily: ICON }}>{"\u{f193a}"}</span>
+			</button>
 			<span data-testid="video-time" className="flex-shrink-0 px-1.5 font-mono text-xs text-fg-2 tabular-nums">
-				{now}<span className="text-fg-muted"> / {total}</span>
-				{frame !== null && <span className="ml-2 text-fg-3">{t("imageViewer.frameNumber", { frame: String(frame) })}</span>}
+				<span className="inline-block text-right" style={{ minWidth: `${total.length}ch` }}>{now}</span><span className="text-fg-muted"> / {total}</span>
+				{frame !== null && <span className="ml-2 inline-block text-fg-3" style={{ minWidth: frameWidth }}>{t("imageViewer.frameNumber", { frame: String(frame) })}</span>}
 			</span>
 
 			{/* Markers are a sibling layer, not children of the slider: ARIA makes a
-			    slider's children presentational, which would hide them from screen readers. */}
+				slider's children presentational, which would hide them from screen readers. */}
 			<div className="relative mx-2 h-10 min-w-[8rem] flex-1">
 				<div
 					ref={trackRef}
@@ -288,11 +344,11 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 					onPointerDown={(e) => {
 						scrubbing.current = true;
 						e.currentTarget.setPointerCapture?.(e.pointerId);
-						seekToPointer(e.clientX, true);
+						seekToPointer(e.clientX);
 					}}
-					onPointerMove={(e) => { if (scrubbing.current) seekToPointer(e.clientX, false); }}
+					onPointerMove={(e) => { if (scrubbing.current) seekToPointer(e.clientX); }}
 					onPointerUp={(e) => {
-						if (scrubbing.current) seekToPointer(e.clientX, true);
+						if (scrubbing.current) seekToPointer(e.clientX);
 						scrubbing.current = false;
 					}}
 					onPointerCancel={() => { scrubbing.current = false; }}

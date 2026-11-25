@@ -245,6 +245,8 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	// listens, and never while a field has focus.
 	{ id: "media-frame-back", primary: [{ code: "Comma", mods: [] }], descKey: "keymap.shortcut.mediaFrameBack", category: "view", conflictGroup: "media-viewer" },
 	{ id: "media-frame-forward", primary: [{ code: "Period", mods: [] }], descKey: "keymap.shortcut.mediaFrameForward", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-jump-back", primary: [{ code: "KeyJ", mods: [] }], descKey: "keymap.shortcut.mediaJumpBack", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-jump-forward", primary: [{ code: "KeyL", mods: [] }], descKey: "keymap.shortcut.mediaJumpForward", category: "view", conflictGroup: "media-viewer" },
 	{ id: "media-speed-down", primary: [{ code: "Comma", mods: ["Shift"] }], descKey: "keymap.shortcut.mediaSpeedDown", category: "view", conflictGroup: "media-viewer" },
 	{ id: "media-speed-up", primary: [{ code: "Period", mods: ["Shift"] }], descKey: "keymap.shortcut.mediaSpeedUp", category: "view", conflictGroup: "media-viewer" },
 	{ id: "media-comment-at-playhead", primary: [{ code: "KeyC", mods: [] }], descKey: "keymap.shortcut.mediaCommentAtPlayhead", category: "create", conflictGroup: "media-viewer" },

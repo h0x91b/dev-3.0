@@ -56,6 +56,8 @@ const keymap = {
 	"keymap.shortcut.reviewCommentSend": "Send the review comment to the agent",
 	"keymap.shortcut.mediaFrameBack": "Media viewer: step one frame back",
 	"keymap.shortcut.mediaFrameForward": "Media viewer: step one frame forward",
+	"keymap.shortcut.mediaJumpBack": "Media viewer: jump back 15 seconds",
+	"keymap.shortcut.mediaJumpForward": "Media viewer: jump forward 15 seconds",
 	"keymap.shortcut.mediaSpeedDown": "Media viewer: slower playback",
 	"keymap.shortcut.mediaSpeedUp": "Media viewer: faster playback",
 	"keymap.shortcut.mediaCommentAtPlayhead": "Media viewer: comment on the current moment of a video",

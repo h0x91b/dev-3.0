@@ -668,21 +668,72 @@ describe("TaskImageViewer video review", () => {
 		expect(screen.getByRole("button", { name: "Comment 1 at 0:12.500: Early" })).toBe(marker);
 	});
 
-	it("drags with keyframe seeks and lands precisely on release", async () => {
-		const { video } = await renderClip();
-		const fastSeek = vi.fn();
-		Object.defineProperty(video, "fastSeek", { configurable: true, value: fastSeek });
+	function scrubberOf() {
 		const scrubber = screen.getByTestId("video-scrubber");
 		scrubber.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 28, right: 400, bottom: 28, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
 		scrubber.setPointerCapture = () => {};
+		return scrubber;
+	}
+
+	it("moves a paused picture with every drag step by precise seeks, never fastSeek's keyframe snap", async () => {
+		const { video } = await renderClip();
+		const fastSeek = vi.fn();
+		Object.defineProperty(video, "fastSeek", { configurable: true, value: fastSeek });
+		const scrubber = scrubberOf();
+		expect(video.paused).toBe(true);
 		fireEvent.pointerDown(scrubber, { clientX: 100, pointerId: 1 });
 		expect(video.currentTime).toBe(30);
 		fireEvent.pointerMove(scrubber, { clientX: 200, pointerId: 1 });
-		expect(fastSeek).toHaveBeenCalledWith(60);
+		expect(video.currentTime).toBe(60);
+		fireEvent.pointerMove(scrubber, { clientX: 220, pointerId: 1 });
+		expect(video.currentTime).toBe(66);
 		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
 		expect(video.currentTime).toBe(90);
+		expect(fastSeek).not.toHaveBeenCalled();
 		fireEvent.keyDown(scrubber, { key: "PageDown" });
 		expect(video.currentTime).toBe(30);
+	});
+
+	it("keeps one seek in flight while dragging and lands on the newest target", async () => {
+		const { video } = await renderClip();
+		let seeking = false;
+		Object.defineProperty(video, "seeking", { configurable: true, get: () => seeking });
+		const writes: number[] = [];
+		let time = 0;
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; writes.push(v); seeking = true; } });
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 40, pointerId: 1 });
+		for (const x of [80, 120, 160, 200]) fireEvent.pointerMove(scrubber, { clientX: x, pointerId: 1 });
+		expect(writes).toEqual([12]);
+		seeking = false;
+		fireEvent(video, new Event("seeked"));
+		expect(writes).toEqual([12, 60]);
+		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
+		seeking = false;
+		fireEvent(video, new Event("seeked"));
+		expect(writes).toEqual([12, 60, 90]);
+		fireEvent(video, new Event("seeked"));
+		expect(writes).toEqual([12, 60, 90]);
+	});
+
+	it("jumps 15 seconds with the buttons and J / L, clamped to the clip, paused or playing", async () => {
+		const { video, at } = await renderClip();
+		at(50);
+		await userEvent.click(screen.getByTestId("video-jump-forward"));
+		expect(video.currentTime).toBe(65);
+		await userEvent.click(screen.getByTestId("video-jump-back"));
+		await userEvent.click(screen.getByTestId("video-jump-back"));
+		expect(video.currentTime).toBe(35);
+		at(7);
+		fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+		expect(video.currentTime).toBe(0);
+		Object.defineProperty(video, "paused", { configurable: true, get: () => false });
+		at(110);
+		fireEvent.keyDown(window, { key: "l", code: "KeyL" });
+		expect(video.currentTime).toBe(120);
+		expect(video.paused).toBe(false);
+		expect(screen.getByTestId("video-jump-back")).toHaveAccessibleName("Back 15 seconds");
+		expect(screen.getByTestId("video-jump-forward")).toHaveAttribute("title", expect.stringContaining("Forward 15 seconds"));
 	});
 
 	it("offers no comment action without a project to store it in", async () => {
