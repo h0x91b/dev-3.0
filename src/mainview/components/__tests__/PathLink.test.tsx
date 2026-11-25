@@ -114,8 +114,9 @@ describe("TaskRefText path links", () => {
 
 	it("shows an absolute path by its file name but copies the whole path", async () => {
 		const { container } = wrap(<TaskRefText text="plan: /home/me/notes/plan.md" contextProjectId="p1" />);
-		const chip = await screen.findByRole("button", { name: /\/home\/me\/notes\/plan\.md/ });
+		const chip = await screen.findByRole("button", { name: /plan\.md/ });
 		expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("plan.md");
+		expect(chip.getAttribute("aria-label")).not.toContain("/home/me");
 		expect(chip.querySelector(".sr-only")?.textContent).toBe("/home/me/notes/plan.md");
 		expect(container.textContent).toContain("/home/me/notes/plan.md");
 	});
@@ -143,15 +144,16 @@ describe("TaskRefText path links", () => {
 describe("path tokens", () => {
 	it("render as a chip showing the project path and copying the token", async () => {
 		wrap(<TaskRefText text="brief: <path:a1c9fe4e/todo/x.md>" contextProjectId="p1" />);
-		const chip = await screen.findByRole("button", { name: /\/other\/todo\/x\.md/ });
+		const chip = await screen.findByRole("button", { name: /todo\/x\.md/ });
 		expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
+		expect(chip.getAttribute("aria-label")).not.toContain("/other/");
 		expect(chip.querySelector(".sr-only")?.textContent).toBe("<path:a1c9fe4e/todo/x.md>");
 	});
 
 	it("survive the markdown sanitizer as autolinks, bare text and code spans", async () => {
 		wrap(<TaskDescriptionMarkdown body={"A <path:a1c9fe4e/todo/x.md>. B path:a1c9fe4e/todo/x.md. C `path:a1c9fe4e/todo/x.md`."} projectId="p1" taskId="t1" />);
-		await waitFor(() => expect(screen.getAllByRole("button", { name: /\/other\/todo\/x\.md/ })).toHaveLength(3));
-		for (const chip of screen.getAllByRole("button", { name: /\/other\/todo\/x\.md/ })) {
+		await waitFor(() => expect(screen.getAllByRole("button", { name: /todo\/x\.md/ })).toHaveLength(3));
+		for (const chip of screen.getAllByRole("button", { name: /todo\/x\.md/ })) {
 			expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
 		}
 		expect(resolveTerminalPaths.mock.calls.flatMap(([arg]) => arg.paths)).toContain("path:a1c9fe4e/todo/x.md");
@@ -180,7 +182,7 @@ describe("TaskDescriptionMarkdown path links", () => {
 
 	it("keeps a backslash before punctuation in a Windows path", async () => {
 		const { container } = wrap(<TaskDescriptionMarkdown body={"Config C:\\Users\\me\\.claude\\x.md and src\\_gen\\a.ts"} projectId="p1" taskId="t1" />);
-		await screen.findByRole("button", { name: /\.claude\\x\.md/ });
+		await screen.findByRole("button", { name: /x\.md/ });
 		await screen.findByRole("button", { name: /_gen/ });
 		expect(container.textContent).toContain("C:\\Users\\me\\.claude\\x.md");
 	});
@@ -207,8 +209,9 @@ describe("TaskDescriptionMarkdown path links", () => {
 
 	it("labels a token by its real path, whatever text an author wrapped it in", async () => {
 		wrap(<TaskDescriptionMarkdown body={"[setup docs](path:a1c9fe4e/todo/x.md)"} projectId="p1" taskId="t1" />);
-		const chip = await screen.findByRole("button", { name: /\/other\/todo\/x\.md/ });
+		const chip = await screen.findByRole("button", { name: /todo\/x\.md/ });
 		expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
+		expect(chip.getAttribute("aria-label")).not.toContain("/other/");
 	});
 
 	it("leaves a fenced code block alone", async () => {

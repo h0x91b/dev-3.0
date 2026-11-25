@@ -124,6 +124,8 @@ export function PathLink({ path, line, contextProjectId, taskId, children, label
 	// The browser cannot open a host folder, so there a folder stays plain text.
 	if (!resolved || (resolved.kind === "directory" && !isElectrobun)) return <>{children}</>;
 	const fullPath = line ? `${resolved.path}:${line}` : resolved.path;
+	// Screen readers get the written path: streamer mode cannot blur the accessibility tree.
+	const spokenPath = label ?? (line ? `${path}:${line}` : path);
 	const onClick = (event: MouseEvent) => {
 		event.preventDefault();
 		event.stopPropagation();
@@ -135,7 +137,7 @@ export function PathLink({ path, line, contextProjectId, taskId, children, label
 				type="button"
 				onClick={onClick}
 				className={PATH_CHIP_CLASS}
-				aria-label={t(resolved.kind === "directory" ? "pathLink.openFolderAria" : "pathLink.openFileAria", { path: fullPath })}
+				aria-label={t(resolved.kind === "directory" ? "pathLink.openFolderAria" : "pathLink.openFileAria", { path: spokenPath })}
 				data-path-link={resolved.path}
 			>
 				{label === undefined ? children : (
