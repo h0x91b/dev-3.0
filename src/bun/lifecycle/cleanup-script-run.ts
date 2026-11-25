@@ -83,7 +83,9 @@ export async function readCleanupLogTail(files: CleanupScriptFiles): Promise<str
 			const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
 			let text = buffer.subarray(0, bytesRead).toString("utf8").replace(ANSI_PATTERN, "").replace(/\r/g, "");
 			// A read that began mid-file starts on a cut line (and maybe a cut character).
-			if (start > 0) text = text.slice(text.indexOf("\n") + 1);
+			// Keep that line when it is all there is: the 2000-char cap trims its cut head.
+			const rest = text.slice(text.indexOf("\n") + 1);
+			if (start > 0 && rest.trim() !== "") text = rest;
 			const tail = text.split("\n").filter((line) => line.trim() !== "").slice(-TAIL_LINES).join("\n");
 			return tail.length > TAIL_CHARS ? tail.slice(-TAIL_CHARS) : tail;
 		} finally {

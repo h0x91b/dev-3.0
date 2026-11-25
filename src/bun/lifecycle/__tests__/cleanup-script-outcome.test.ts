@@ -280,4 +280,13 @@ describe("cleanup wrapper", () => {
 
 		expect(await readCleanupLogTail(files)).toBe("last line");
 	});
+
+	it("keeps the tail of a single final line longer than the read range", async () => {
+		const files = cleanupScriptFiles(TASK_ID);
+		writeFileSync(files.log, `early output\n${"x".repeat(CLEANUP_LOG_READ_BYTES + 4000)}diagnostic-tail\n`);
+
+		const tail = await readCleanupLogTail(files);
+		expect(tail.endsWith("diagnostic-tail")).toBe(true);
+		expect(tail.length).toBe(2000);
+	});
 });
