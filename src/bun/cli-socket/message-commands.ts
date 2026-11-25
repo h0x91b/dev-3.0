@@ -60,7 +60,7 @@ export const messageHandlers: Record<string, Handler> = {
 		if (externalSender && params.agentHandle != null) throw new Error("--as-sender cannot be combined with --agent: a sender's message goes to the task's main agent.");
 		const author = addressedAgent(params);
 		const source = externalSender ? null : await stampedSource(params, task.id);
-		const delivery = await sendMessageImmediately(task, await absolutizeSenderPaths(text, source?.projectId, project.id), null, source, { subject, author, externalSender });
+		const delivery = await sendMessageImmediately(task, await absolutizeSenderPaths(text, source, project.id), null, source, { subject, author, externalSender });
 		return {
 			delivered: true,
 			status: delivery.status,
@@ -101,7 +101,7 @@ export const messageHandlers: Record<string, Handler> = {
 				senderEvidenceOf(params),
 			)
 			: null);
-		const updated = await scheduleMessageCore(project, task, { text: await absolutizeSenderPaths(text, source?.projectId, project.id), at, source, subject, author });
+		const updated = await scheduleMessageCore(project, task, { text: await absolutizeSenderPaths(text, source, project.id), at, source, subject, author });
 		const queue = updated.scheduledMessages ?? [];
 		// Appended under the tasks-file lock, so the returned queue ends with ours.
 		const messageId = queue[queue.length - 1]?.id;

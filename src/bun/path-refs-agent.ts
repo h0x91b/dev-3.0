@@ -59,20 +59,31 @@ export async function qualifyEditedWriterPaths(text: string, previous: string | 
 	return qualified.split("\n").map((line, i) => (kept.has(original[i]!) ? original[i]! : line)).join("\n");
 }
 
+/** Where a sender's relative paths live: its task worktree first, then the project folder. */
+async function senderRoots(projectId: string, taskId: string | undefined): Promise<string[]> {
+	const root = await projectRoot(projectId);
+	if (!root) return [];
+	try {
+		const worktree = taskId ? (await data.getTask(await data.getProject(projectId), taskId)).worktreePath : null;
+		return worktree && worktree !== root ? [worktree, root] : [root];
+	} catch {
+		return [root];
+	}
+}
+
 /**
- * A message from another board, as its receiving agent reads it: a relative path
- * that exists on the sender's project becomes absolute (unambiguous, so even one
- * both boards hold), and a `path:` token gains its absolute path.
+ * A message from another board, as its receiving agent reads it: a relative path that
+ * exists in the sender's worktree or project becomes absolute (even one both boards
+ * hold), and a `path:` token gains its absolute path.
  */
-export async function absolutizeSenderPaths(text: string, senderProjectId: string | undefined, receiverProjectId: string): Promise<string> {
+export async function absolutizeSenderPaths(text: string, sender: { projectId?: string; taskId?: string } | null | undefined, receiverProjectId: string): Promise<string> {
 	let out = text;
-	if (senderProjectId && senderProjectId !== receiverProjectId) {
-		const senderRoot = await projectRoot(senderProjectId);
-		if (senderRoot) {
-			const exists = writerOnly(senderRoot, null);
+	if (sender?.projectId && sender.projectId !== receiverProjectId) {
+		const checks = (await senderRoots(sender.projectId, sender.taskId)).map((root) => ({ root, exists: writerOnly(root, null) }));
+		if (checks.length > 0) {
 			out = rewriteRelativePaths(out, (relative, line) => {
-				if (!exists(relative)) return null;
-				return `${underRoot(senderRoot, relative)}${line ? `:${line}` : ""}`;
+				const hit = checks.find(({ exists }) => exists(relative));
+				return hit ? `${underRoot(hit.root, relative)}${line ? `:${line}` : ""}` : null;
 			});
 		}
 	}
