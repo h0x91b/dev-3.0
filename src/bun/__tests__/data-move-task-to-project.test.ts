@@ -187,6 +187,18 @@ describe("moveTaskToProject", () => {
 		expect(moved.notes?.[0]?.content).toBe("Updated path:proj-src/todo/brief.md");
 	});
 
+	it("renames the moved task's refs to itself to its new seq, and leaves history and a qualified ref alone", async () => {
+		const history = [{ at: "2025-02-02T00:00:00Z", title: "Self seq:7", overview: null }];
+		seed(source, [makeTask({ id: "task-self", seq: 7, description: "This is <seq:7>, split from seq:3; also seq:7 --project proj-tgt", history } as never)]);
+		seed(target, [makeTask({ id: "existing", projectId: "proj-tgt", seq: 4 })]);
+
+		const moved = await moveTaskToProject(source, target, "task-self");
+
+		expect(moved.seq).toBe(5);
+		expect(moved.description).toBe("This is <seq:5>, split from seq:proj-src/3; also seq:7 --project proj-tgt");
+		expect((moved as unknown as { history: unknown }).history).toEqual(history);
+	});
+
 	it("removes the task from the source project", async () => {
 		seed(source, [makeTask({ id: "a", seq: 1 }), makeTask({ id: "task-move", seq: 2 })]);
 		seed(target, []);

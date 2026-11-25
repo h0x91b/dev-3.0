@@ -483,7 +483,9 @@ export async function sourceTaskProjectId(params: Record<string, unknown>): Prom
 	}
 }
 
-/** {@link sourceTaskProjectId}, skipping the board scan when a task writes to itself. */
-export async function writerProjectIdFor(params: Record<string, unknown>, project: Project, task: Task): Promise<string | undefined> {
-	return params.sourceTaskId === task.id ? project.id : sourceTaskProjectId(params);
+/** {@link sourceTaskProjectId}, skipping the board scan when the writer is the task or on `boardTasks`. */
+export async function writerProjectIdFor(params: Record<string, unknown>, project: Project, task: Task, boardTasks?: readonly Task[]): Promise<string | undefined> {
+	const sourceId = params.sourceTaskId;
+	if (sourceId === task.id || (typeof sourceId === "string" && boardTasks?.some((t) => t.id === sourceId))) return project.id;
+	return sourceTaskProjectId(params);
 }

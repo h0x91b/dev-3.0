@@ -6,14 +6,16 @@
 
 ## 2. Decision
 
-- `dev3 note add` and `dev3 overview set` send `sourceTaskId` from the CLI context, as `task update` does. `note.add` runs `qualifyRefsFor` and `overview.set` runs `qualifyEditedRefsFor` against the old overview (`src/bun/cli-socket/board-metadata-commands.ts`). `writerProjectIdFor` (`task-resolution.ts`) skips the board scan when a task writes to itself, the common case for an overview.
-- `data.moveTaskToProject` qualifies the title, custom title, description, both overviews and every note against the source project. The history log keeps the text as it was.
+- `dev3 note add` and `dev3 overview set` send `sourceTaskId` from the CLI context, as `task update` does. `overview.set` runs `qualifyEditedRefsFor` against the old overview, and `note.add` against the task's existing notes, so a line quoted from one keeps its refs (`src/bun/cli-socket/board-metadata-commands.ts`). `writerProjectIdFor` (`task-resolution.ts`) skips the board scan when a task writes to itself, or, for a note, when the writer is on the same board.
+- `data.moveTaskToProject` qualifies the title, custom title, description, both overviews and every note against the source project. A ref to the moved task itself becomes its new seq, bare (`renumberSelfRefs` in `src/shared/task-refs.ts`). The history log keeps the text as it was.
 
 ## 3. Risks
 
 - A ref already qualified with the target project stays qualified after a move. It still resolves, only less tersely.
 - Moving a task back qualifies nothing new: the refs already carry the first board's qualifier.
 - An older CLI sends no `sourceTaskId`, so its notes and overviews stay as written, the same as before.
+- Refs to the moved task from tasks left on the source board are not rewritten; they now name a seq the source no longer has, as before this change.
+- The old overview and notes are read before the write lock, so two writers at once can qualify a line the other just added.
 
 ## 4. Alternatives considered
 
