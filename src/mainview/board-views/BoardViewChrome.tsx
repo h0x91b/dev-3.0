@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import Select from "../components/Select";
+import Select, { type SelectOption } from "../components/Select";
 import { useT, type TranslationKey } from "../i18n";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { CordisContext } from "../plugins/react";
@@ -13,30 +13,117 @@ export function useViewLabel(): (view: RegisteredBoardView) => string {
 }
 
 const MANAGE_VIEWS = "__manage-views__";
+const SAVE_VIEW = "__save-view__";
+const UPDATE_VIEW = "__update-view__";
+const REVERT_VIEW = "__revert-view__";
+const RENAME_VIEW = "__rename-view__";
+const DELETE_VIEW = "__delete-view__";
+const NAMED_PREFIX = "named:";
 
-/** "Kanban ▾" at the left end of the filter row (D13), ending in "Manage views…". The host decides whether it shows at all. */
-export function BoardViewSwitcher({ views, activeId, onPick, onManage }: {
+/** Saved views add up to six action rows under the views; keep them on screen instead of behind the 18rem scroll. */
+const SWITCHER_LIST_MAX_HEIGHT = "min(36rem, calc(100dvh - 1rem))";
+
+/** What the switcher needs to list named saved views and act on the applied one. */
+export interface SavedViewsSwitcherProps {
+	named: readonly { id: string; name: string; viewType: string }[];
+	/** The named view the board shows, if any. */
+	appliedId: string | null;
+	modified: boolean;
+	onApply: (id: string) => void;
+	/** A saved view whose view type this board cannot show here (narrow, disabled, uninstalled). */
+	onUnavailable: (id: string) => void;
+	onSave: () => void;
+	onUpdate: (id: string) => void;
+	onRevert: (id: string) => void;
+	onRename: (id: string) => void;
+	onDelete: (id: string) => void;
+	/** The list opened: a chance to pick up views other windows saved. */
+	onOpen?: () => void;
+}
+
+/**
+ * "Kanban ▾" at the left end of the filter row (D13): named saved views, then the
+ * view types, then the actions, ending in "Manage views…". The host decides whether it shows at all.
+ */
+export function BoardViewSwitcher({ views, activeId, onPick, onManage, saved }: {
 	views: readonly RegisteredBoardView[];
 	activeId: string;
 	onPick: (id: string) => void;
 	onManage: () => void;
+	saved: SavedViewsSwitcherProps;
 }) {
 	const t = useT();
 	const labelOf = useViewLabel();
+	const applied = saved.appliedId ? saved.named.find((view) => view.id === saved.appliedId) ?? null : null;
+	const grouped = saved.named.length > 0;
+	const offeredIds = new Set(views.map((view) => view.def.id));
+	const actions: SelectOption[] = [];
+	if (applied && saved.modified) {
+		actions.push({ value: UPDATE_VIEW, label: t("boardView.saved.update", { name: applied.name }) });
+		actions.push({ value: REVERT_VIEW, label: t("boardView.saved.revert") });
+	}
+	if (applied) {
+		actions.push({ value: RENAME_VIEW, label: t("boardView.saved.rename", { name: applied.name }) });
+		actions.push({ value: DELETE_VIEW, label: t("boardView.saved.delete", { name: applied.name }) });
+	}
+	actions.push({ value: SAVE_VIEW, label: t("boardView.saved.save") });
+	actions[0] = { ...actions[0], divider: true };
+
+	const options: SelectOption[] = [
+		...saved.named.map((view) => ({
+			value: `${NAMED_PREFIX}${view.id}`,
+			label: view.id === applied?.id && saved.modified ? t("boardView.saved.modifiedName", { name: view.name }) : view.name,
+			section: t("boardView.saved.section"),
+			disabled: !offeredIds.has(view.viewType),
+		})),
+		...views.map((view) => ({ value: view.def.id, label: labelOf(view), ...(grouped ? { section: t("boardView.saved.viewsSection") } : {}) })),
+		...actions,
+		{ value: MANAGE_VIEWS, label: t("boardView.manage") },
+	];
+
+	function choose(value: string) {
+		if (value.startsWith(NAMED_PREFIX)) return saved.onApply(value.slice(NAMED_PREFIX.length));
+		switch (value) {
+			case MANAGE_VIEWS: return onManage();
+			case SAVE_VIEW: return saved.onSave();
+			case UPDATE_VIEW: return applied && saved.onUpdate(applied.id);
+			case REVERT_VIEW: return applied && saved.onRevert(applied.id);
+			case RENAME_VIEW: return applied && saved.onRename(applied.id);
+			case DELETE_VIEW: return applied && saved.onDelete(applied.id);
+			default: return onPick(value);
+		}
+	}
+
 	return (
 		<div className="flex-shrink-0" data-testid="board-view-switcher">
 			<Select
-				value={activeId}
-				options={[
-					...views.map((view) => ({ value: view.def.id, label: labelOf(view) })),
-					{ value: MANAGE_VIEWS, label: t("boardView.manage"), divider: true },
-				]}
-				onChange={(value) => (value === MANAGE_VIEWS ? onManage() : onPick(value))}
+				value={applied ? `${NAMED_PREFIX}${applied.id}` : activeId}
+				options={options}
+				onChange={choose}
 				ariaLabel={t("boardView.switcherAria")}
-				renderOption={(option) => (option.value === MANAGE_VIEWS ? <ManageViewsOption label={option.label} /> : option.label)}
+				renderOption={(option) => {
+					if (option.value === MANAGE_VIEWS) return <ManageViewsOption label={option.label} />;
+					if (applied && saved.modified && option.value === `${NAMED_PREFIX}${applied.id}`) return <EditedName name={applied.name} />;
+					return option.label;
+				}}
+				onOptionDisabledClick={(value) => value.startsWith(NAMED_PREFIX) && saved.onUnavailable(value.slice(NAMED_PREFIX.length))}
 				growList
+				maxListHeight={SWITCHER_LIST_MAX_HEIGHT}
+				onOpen={saved.onOpen}
 			/>
 		</div>
+	);
+}
+
+/** The dot is for the eye; a screen reader hears the word instead. */
+function EditedName({ name }: { name: string }) {
+	const t = useT();
+	return (
+		<span>
+			{name}
+			<span aria-hidden> •</span>
+			<span className="sr-only"> {t("boardView.saved.edited")}</span>
+		</span>
 	);
 }
 

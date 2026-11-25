@@ -2,6 +2,8 @@
 
 Status: Proposed — design agreed with the maintainer on 2026-10-31 (task seq:2308), not yet implemented.
 
+Partly superseded on 2026-11-24 by `decisions/2026/11/21/named-saved-views-are-presets.md`: named saved views are stored in their own `board-saved-views.json`; `board-views.json` keeps only the working views and slots.
+
 ## Context
 
 A project or space board can only be shown as a Kanban. An external user reported they practically never use it except to reopen finished work; the dev-3.0 board holds ~2400 tasks, 98% completed or cancelled, while a Kanban column shows 15. The maintainer wants interchangeable **board views** (Kanban, Table, lineage Tree, Attention buckets, later anything — even 3D) and, eventually, views written by users as extensions.

@@ -77,6 +77,7 @@ interface ListboxProps {
 	value: string;
 	activeIndex: number;
 	grow?: boolean;
+	maxHeight?: string;
 	renderOption?: (option: SelectOption) => ReactNode;
 	onHover: (index: number) => void;
 	onPick: (index: number) => void;
@@ -108,6 +109,7 @@ function SelectListbox({
 	value,
 	activeIndex,
 	grow,
+	maxHeight,
 	renderOption,
 	onHover,
 	onPick,
@@ -193,7 +195,7 @@ function SelectListbox({
 						<div
 							key={`section-${opt.section}`}
 							role="presentation"
-							className="px-3 pt-2.5 pb-1 text-micro uppercase tracking-wide text-fg-muted"
+							className="px-3 pt-2.5 pb-1 text-micro uppercase tracking-wide text-fg-3"
 						>
 							{opt.section}
 						</div>
@@ -269,7 +271,7 @@ function SelectListbox({
 
 	if (!search) {
 		return createPortal(
-			<div ref={panelRef} id={listboxId} role="listbox" style={panelStyle} className={`${panelClass} overflow-y-auto max-h-72`}>
+			<div ref={panelRef} id={listboxId} role="listbox" style={maxHeight ? { ...panelStyle, maxHeight } : panelStyle} className={`${panelClass} overflow-y-auto overscroll-contain max-h-72`}>
 				{rows}
 			</div>,
 			document.body,
@@ -298,7 +300,7 @@ function SelectListbox({
 					className="w-full bg-elevated text-fg text-sm rounded-md px-2.5 py-1.5 border border-edge focus:border-accent outline-none placeholder:text-fg-muted"
 				/>
 			</div>
-			<div id={listboxId} role="listbox" className="overflow-y-auto max-h-64">
+			<div id={listboxId} role="listbox" className="overflow-y-auto overscroll-contain max-h-64">
 				{rows}
 			</div>
 		</div>,
@@ -313,7 +315,9 @@ function Select({
 	onChange,
 	renderOption,
 	growList,
+	maxListHeight,
 	onOptionDisabledClick,
+	onOpen,
 	searchable,
 	allowCustom,
 	placeholder,
@@ -333,8 +337,12 @@ function Select({
 	/** Let the open list be wider than the trigger, up to a cap. For a field whose
 	 *  rows carry a caption the trigger has no room for. */
 	growList?: boolean;
+	/** Replaces the open list's 18rem height cap, for a list whose last rows are actions that must stay in view. No effect with a filter field. */
+	maxListHeight?: string;
 	/** Called when a `disabled` option is clicked (instead of `onChange`). */
 	onOptionDisabledClick?: (value: string) => void;
+	/** Called each time the list opens. */
+	onOpen?: () => void;
 	/** Show a filter field inside the panel. Implied by `allowCustom`. */
 	searchable?: boolean;
 	/** Let the typed text commit as the value, so a list the app shipped never
@@ -387,6 +395,7 @@ function Select({
 		setQuery("");
 		setActiveIndex(index);
 		setOpen(true);
+		onOpen?.();
 	}
 
 	function commitOption(index: number) {
@@ -539,6 +548,7 @@ function Select({
 					value={value}
 					activeIndex={activeIndex}
 					grow={growList}
+					maxHeight={maxListHeight}
 					renderOption={renderOption}
 					onHover={setActiveIndex}
 					onPick={commitOption}

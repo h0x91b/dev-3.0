@@ -1,9 +1,7 @@
 /**
- * The on-disk shape of one board's board-view state (`board-views.json`).
- *
- * The format is already a list of saved views (spec D21): v1 keeps exactly one,
- * implicit, and both form-factor slots point at it. Named saved views later add
- * entries to the list without a migration.
+ * One board's board-view state. `board-views.json` holds the working views and
+ * slots; the named presets live in their own file (`board-saved-views.json`).
+ * See decisions/2026/11/21/named-saved-views-are-presets.md.
  */
 
 export type BoardKind = "project" | "space";
@@ -17,7 +15,7 @@ export interface BoardRef {
 
 export interface SavedBoardView {
 	id: string;
-	/** `null` for the implicit default view; named saved views come later. */
+	/** `null` for a working view a slot shows; a string for a named preset. */
 	name: string | null;
 	viewType: string;
 	query: string;
@@ -65,15 +63,24 @@ function normalizeSavedView(value: unknown): SavedBoardView | null {
  */
 export function normalizeBoardViewState(value: unknown): BoardViewState {
 	if (!isRecord(value) || value.version !== 1) return defaultBoardViewState();
+	const seen = new Set<string>();
+	// First entry wins a duplicated id, so a slot can never resolve to the wrong view.
 	const savedViews = Array.isArray(value.savedViews)
-		? value.savedViews.map(normalizeSavedView).filter((view): view is SavedBoardView => view !== null)
+		? value.savedViews.map(normalizeSavedView).filter((view): view is SavedBoardView => {
+			if (!view || seen.has(view.id)) return false;
+			seen.add(view.id);
+			return true;
+		})
 		: [];
 	if (savedViews.length === 0) return defaultBoardViewState();
-	const ids = new Set(savedViews.map((view) => view.id));
+	// A slot shows a working view, never a named preset: re-add one if a hand edit left none.
+	if (!savedViews.some((view) => view.name === null)) savedViews.unshift(defaultBoardViewState().savedViews[0]);
+	const working = savedViews.filter((view) => view.name === null);
+	const workingIds = new Set(working.map((view) => view.id));
 	const slots = isRecord(value.slots) ? value.slots : {};
 	const slotFor = (formFactor: BoardFormFactor) => {
 		const id = slots[formFactor];
-		return typeof id === "string" && ids.has(id) ? id : savedViews[0].id;
+		return typeof id === "string" && workingIds.has(id) ? id : working[0].id;
 	};
 	return { version: 1, slots: { wide: slotFor("wide"), narrow: slotFor("narrow") }, savedViews };
 }
@@ -116,6 +123,181 @@ export function withLayout(
 	layout: unknown,
 ): BoardViewState {
 	return updateActive(state, formFactor, (view) => ({ ...view, layouts: { ...view.layouts, [viewType]: layout } }));
+}
+
+/** The named presets, in the order the user saved them. */
+export function namedSavedViews(state: BoardViewState): SavedBoardView[] {
+	return state.savedViews.filter((view) => view.name !== null);
+}
+
+/** Longest name a saved view keeps; the switcher truncates long ones anyway. */
+export const SAVED_VIEW_NAME_MAX = 60;
+
+export function cleanSavedViewName(name: string): string {
+	// Whole code points up to the input's own UTF-16 cap, so an emoji is never split in half.
+	let clean = "";
+	for (const char of name.trim().replace(/\s+/g, " ")) {
+		if (clean.length + char.length > SAVED_VIEW_NAME_MAX) break;
+		clean += char;
+	}
+	return clean.trim();
+}
+
+/** Random, so two windows saving at once never share an id. `getRandomValues` also works off a secure context. */
+export function newNamedViewId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(8));
+	return `sv-named-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function cloneLayouts(layouts: Record<string, unknown>): Record<string, unknown> {
+	return JSON.parse(JSON.stringify(layouts)) as Record<string, unknown>;
+}
+
+/**
+ * One edit to the named views. The host applies it to the file under its lock
+ * (`changeNamedBoardView`), so a window holding an older copy cannot undo it.
+ */
+export type NamedViewChange =
+	| { kind: "add"; view: SavedBoardView }
+	| { kind: "update"; id: string; viewType: string; query: string; layouts: Record<string, unknown> }
+	| { kind: "rename"; id: string; name: string }
+	| { kind: "delete"; id: string };
+
+function hasNamed(state: BoardViewState, id: string): boolean {
+	return state.savedViews.some((view) => view.id === id && view.name !== null);
+}
+
+function sameName(a: string, b: string): boolean {
+	return a.toLowerCase() === b.toLowerCase();
+}
+
+/** True when an add or rename would give a second named view the same name, ignoring case. */
+export function namedViewChangeTakesName(state: BoardViewState, change: NamedViewChange): boolean {
+	if (change.kind !== "add" && change.kind !== "rename") return false;
+	const raw = change.kind === "add" ? change.view?.name : change.name;
+	const name = typeof raw === "string" ? cleanSavedViewName(raw) : "";
+	const selfId = change.kind === "add" ? null : change.id;
+	return !!name && namedSavedViews(state).some((view) => view.id !== selfId && sameName(view.name ?? "", name));
+}
+
+/** The host's answer to a named view change: the new state, and why it refused the change, if it did. */
+export interface NamedViewChangeResult {
+	state: BoardViewState;
+	rejected: "name-taken" | null;
+}
+
+/** Applies one change; an invalid one, or one that takes another view's name, returns `state` itself. */
+export function applyNamedViewChange(state: BoardViewState, change: NamedViewChange): BoardViewState {
+	if (namedViewChangeTakesName(state, change)) return state;
+	switch (change.kind) {
+		case "add": {
+			const view = normalizeSavedView(change.view);
+			const name = view ? cleanSavedViewName(view.name ?? "") : "";
+			if (!view || !name || state.savedViews.some((other) => other.id === view.id)) return state;
+			return { ...state, savedViews: [...state.savedViews, { ...view, name, query: view.query.trim() }] };
+		}
+		case "update": {
+			if (!hasNamed(state, change.id) || typeof change.viewType !== "string" || !change.viewType || !isRecord(change.layouts)) return state;
+			const query = typeof change.query === "string" ? change.query.trim() : "";
+			return {
+				...state,
+				savedViews: state.savedViews.map((view) => (view.id === change.id
+					? { ...view, viewType: change.viewType, query, layouts: cloneLayouts(change.layouts) }
+					: view)),
+			};
+		}
+		case "rename": {
+			const name = typeof change.name === "string" ? cleanSavedViewName(change.name) : "";
+			if (!name || !hasNamed(state, change.id)) return state;
+			return { ...state, savedViews: state.savedViews.map((view) => (view.id === change.id ? { ...view, name } : view)) };
+		}
+		case "delete":
+			if (!hasNamed(state, change.id)) return state;
+			return { ...state, savedViews: state.savedViews.filter((view) => view.id !== change.id) };
+		default:
+			return state;
+	}
+}
+
+/** `state` without its named views: what `board-views.json` stores. */
+export function workingViewState(state: BoardViewState): BoardViewState {
+	return normalizeBoardViewState({ ...state, savedViews: state.savedViews.filter((view) => view.name === null) });
+}
+
+/** Accepts whatever the presets file holds: named views only, first wins a repeated id or name. */
+export function normalizeNamedViews(value: unknown): SavedBoardView[] {
+	const views = isRecord(value) && value.version === 1 && Array.isArray(value.views) ? value.views : [];
+	const named: SavedBoardView[] = [];
+	for (const entry of views) {
+		const view = normalizeSavedView(entry);
+		const name = view ? cleanSavedViewName(view.name ?? "") : "";
+		if (!view || !name || named.some((other) => other.id === view.id || sameName(other.name ?? "", name))) continue;
+		named.push({ ...view, name });
+	}
+	return named;
+}
+
+/** A working state plus the presets from their own file. A preset reusing a working view's id is dropped. */
+export function withNamedViews(state: BoardViewState, named: readonly SavedBoardView[]): BoardViewState {
+	const working = workingViewState(state);
+	const workingIds = new Set(working.savedViews.map((view) => view.id));
+	return { ...working, savedViews: [...working.savedViews, ...named.filter((view) => !workingIds.has(view.id))] };
+}
+
+/** The change that saves what a form factor shows, plus the board query, as a new named view. */
+export function namedViewAddChange(state: BoardViewState, formFactor: BoardFormFactor, name: string, query: string, id = newNamedViewId()): NamedViewChange & { kind: "add" } {
+	const active = activeSavedView(state, formFactor);
+	return { kind: "add", view: { id, name: cleanSavedViewName(name), viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) } };
+}
+
+/** The change that overwrites a named view with what the form factor shows now. */
+export function namedViewUpdateChange(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): NamedViewChange & { kind: "update" } {
+	const active = activeSavedView(state, formFactor);
+	return { kind: "update", id, viewType: active.viewType, query: query.trim(), layouts: cloneLayouts(active.layouts) };
+}
+
+export function withNamedViewAdded(state: BoardViewState, formFactor: BoardFormFactor, name: string, query: string): { state: BoardViewState; id: string } {
+	const change = namedViewAddChange(state, formFactor, name, query);
+	return { state: applyNamedViewChange(state, change), id: change.view.id };
+}
+
+export function withNamedViewUpdated(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): BoardViewState {
+	return applyNamedViewChange(state, namedViewUpdateChange(state, formFactor, id, query));
+}
+
+export function withNamedViewRenamed(state: BoardViewState, id: string, name: string): BoardViewState {
+	return applyNamedViewChange(state, { kind: "rename", id, name });
+}
+
+export function withoutNamedView(state: BoardViewState, id: string): BoardViewState {
+	return applyNamedViewChange(state, { kind: "delete", id });
+}
+
+/**
+ * Loads a named view into the form factor's working view: its view type and exactly that type's
+ * layout (absent if the view has none). The caller sets the query, which lives in memory.
+ */
+export function withNamedViewApplied(state: BoardViewState, formFactor: BoardFormFactor, id: string): BoardViewState {
+	const named = state.savedViews.find((view) => view.id === id && view.name !== null);
+	if (!named) return state;
+	const active = activeSavedView(state, formFactor);
+	const savedLayout = named.layouts[named.viewType];
+	if (active.viewType === named.viewType && JSON.stringify(active.layouts[named.viewType] ?? null) === JSON.stringify(savedLayout ?? null)) return state;
+	return updateActive(state, formFactor, (view) => {
+		const layouts = { ...view.layouts };
+		if (savedLayout === undefined) delete layouts[named.viewType];
+		else layouts[named.viewType] = JSON.parse(JSON.stringify(savedLayout));
+		return { ...view, viewType: named.viewType, layouts };
+	});
+}
+
+/** True when the form factor no longer shows what the named view holds: its view type, that view's layout, or the query. */
+export function namedViewModified(state: BoardViewState, formFactor: BoardFormFactor, id: string, query: string): boolean {
+	const named = state.savedViews.find((view) => view.id === id && view.name !== null);
+	if (!named) return false;
+	const active = activeSavedView(state, formFactor);
+	if (active.viewType !== named.viewType || query.trim() !== named.query) return true;
+	return JSON.stringify(active.layouts[named.viewType] ?? null) !== JSON.stringify(named.layouts[named.viewType] ?? null);
 }
 
 /** A space id becomes a file name, so only the generated `sp_<uuid>` alphabet is accepted. */

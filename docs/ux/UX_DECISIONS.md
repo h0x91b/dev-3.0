@@ -10,6 +10,8 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+2026-11-21 - Named saved views are presets atop the board view `Select` (bible §5.11, yaml `board_view_host`). Why: decisions/2026/11/21/named-saved-views-are-presets.md.
+
 ## 2026-11-09 — Completion asks: dialog by default, a bar in the agent's pane on request
 - **Rule:** bible §10 "merge/agent completion ask", yaml `task_info_panel.completion_strip`.
 - **Why:** decisions/2026/11/09/completion-offer-style-setting.md.

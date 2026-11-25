@@ -39,7 +39,7 @@ import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, Confi
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
 import type { BoardFilterState } from "../board-filter-state";
-import type { BoardRef, BoardViewState } from "../board-view-state";
+import type { BoardRef, BoardViewState, NamedViewChange, NamedViewChangeResult } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
@@ -151,7 +151,7 @@ export type AppRPCSchema = {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;
 			};
-			/** Board-view selection and layouts of one project or space board (`board-views.json`). */
+			/** Board-view selection, layouts and named presets of one project or space board (`board-views.json`, `board-saved-views.json`). */
 			getBoardViewState: {
 				params: { board: BoardRef };
 				response: BoardViewState;
@@ -159,6 +159,11 @@ export type AppRPCSchema = {
 			setBoardViewState: {
 				params: { board: BoardRef; state: BoardViewState };
 				response: BoardViewState;
+			};
+			/** One named saved view edit, applied to `board-saved-views.json` under its lock. */
+			changeNamedBoardView: {
+				params: { board: BoardRef; change: NamedViewChange };
+				response: NamedViewChangeResult;
 			};
 			/** Persisted Active | All visibility of one board (`board-filters.json`). */
 			getBoardFilterState: {
