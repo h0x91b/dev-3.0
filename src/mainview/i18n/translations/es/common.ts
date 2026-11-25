@@ -69,6 +69,8 @@ const common = {
 	"agentLaunch.titleResume": "El agente quiere reanudar la sesión guardada de esta tarea",
 	"agentLaunch.resumeNote": "Reabre las conversaciones guardadas, cada una con su propio agente, preset y cuenta.",
 	"agentLaunch.resumeNoteAccount": "Reabre las conversaciones guardadas, cada una con su propio agente y preset. Los paneles de Claude pueden pasar a otra cuenta abajo.",
+	"agentLaunch.resumeAccountsUnavailable": "No se pudo cargar la lista de cuentas; Reanudar mantiene la cuenta guardada de cada panel.",
+	"agentLaunch.agentsUnavailable": "No se pudo cargar la lista de agentes. Se reintentará cuando vuelva la conexión.",
 	"agentLaunch.resumeConversation": "Conversación {id}",
 	"agentLaunch.resumeLatest": "Sin id de conversación guardado: el agente abre la última",
 	"agentLaunch.resumeStartAgain": "Iniciar de nuevo (el agente no se inició)",

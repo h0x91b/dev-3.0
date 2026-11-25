@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { findAgentConfig } from "../../shared/agent-live-models";
 import type { AgentCheckResult, AgentLaunchChoice, AgentLaunchRequest, CodingAgent, GlobalSettings, LaunchVariant, TaskPriority } from "../../shared/types";
 import { api } from "../rpc";
+import { RPC_STATUS_EVENT } from "../diagnostics";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
@@ -83,21 +84,43 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	const [launching, setLaunching] = useState(false);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
 
+	// Over a flapping remote socket either read can reject; a one-shot load would
+	// leave the dialog waiting forever, so it retries on every reconnect until it lands.
+	const [loadFailed, setLoadFailed] = useState(false);
 	useEffect(() => {
-		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
-		Promise.all([
-			api.request.getAgents(),
-			api.request.getGlobalSettings(),
-		]).then(([a, gs]) => {
-			setAgents(a);
-			setGlobalSettings(gs);
-			// Nothing is interactive until settings land (the picker is a skeleton and
-			// there is no add affordance), so this can seed the list outright.
-			// A requester's suggestion only preselects; one naming an agent that has
-			// since disappeared falls back to the default rather than an empty picker.
-			const suggested = request.suggested && a.some((agent) => agent.id === request.suggested?.agentId) ? request.suggested : null;
-			setVariants([request.spawn?.choice ?? suggested ?? defaultVariant(a, gs)]);
-		}).catch(() => {});
+		let cancelled = false;
+		let loaded = false;
+		function load() {
+			if (loaded) return;
+			api.request.checkAgentAvailability().then((result) => { if (!cancelled) setAgentAvailability(result); }).catch(() => {});
+			Promise.all([
+				api.request.getAgents(),
+				api.request.getGlobalSettings(),
+			]).then(([a, gs]) => {
+				if (cancelled || loaded) return;
+				loaded = true;
+				setLoadFailed(false);
+				setAgents(a);
+				setGlobalSettings(gs);
+				// Nothing is interactive until settings land (the picker is a skeleton and
+				// there is no add affordance), so this can seed the list outright.
+				// A requester's suggestion only preselects; one naming an agent that has
+				// since disappeared falls back to the default rather than an empty picker.
+				const suggested = request.suggested && a.some((agent) => agent.id === request.suggested?.agentId) ? request.suggested : null;
+				setVariants([request.spawn?.choice ?? suggested ?? defaultVariant(a, gs)]);
+			}).catch(() => {
+				if (!cancelled && !loaded) setLoadFailed(true);
+			});
+		}
+		load();
+		const onRpcStatus = (e: Event) => {
+			if ((e as CustomEvent<{ state?: string }>).detail?.state === "connected") load();
+		};
+		window.addEventListener(RPC_STATUS_EVENT, onRpcStatus);
+		return () => {
+			cancelled = true;
+			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
+		};
 	}, []);
 
 	// Escape declines: the CLI is blocked waiting, so dismissing without an
@@ -211,7 +234,9 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	const agentNotInstalled = selectedAgent != null;
 	// "Not ready" (missing agent / still loading) must not look like "in flight",
 	// which keeps full colour and gets a spinner instead.
-	const notReady = agentNotInstalled || !globalSettings;
+	// A resume or session action answers without agents or settings, so it never waits on them.
+	const waitsForSettings = !noAgentChoice && !globalSettings;
+	const notReady = agentNotInstalled || waitsForSettings;
 	const canAddVariants = !request.spawn && request.canAddVariants && globalSettings != null;
 	const pressFeedback = reducedMotion
 		? "transition-colors"
@@ -346,6 +371,9 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 								projectId={request.projectId}
 								taskId={request.taskId}
 							/>
+							{loadFailed && request.resume.panes.some(isClaudePane) ? (
+								<p data-testid="agent-launch-load-failed" className="text-fg-3 text-xs">{t("agentLaunch.resumeAccountsUnavailable")}</p>
+							) : null}
 						</div>
 					) : globalSettings ? (
 						<div className="space-y-2">
@@ -427,7 +455,10 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							)}
 						</div>
 					) : (
-						<AgentPickerSkeleton />
+						<>
+							<AgentPickerSkeleton />
+							{loadFailed ? <p data-testid="agent-launch-load-failed" className="text-fg-3 text-xs">{t("agentLaunch.agentsUnavailable")}</p> : null}
+						</>
 					)}
 
 					{agentNotInstalled && selectedAgent && (
@@ -480,7 +511,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						type="button"
 						data-testid="agent-launch-accept"
 						onClick={handleLaunch}
-						disabled={launching || !globalSettings}
+						disabled={launching || waitsForSettings}
 						aria-disabled={agentNotInstalled || undefined}
 						aria-describedby={agentNotInstalled && selectedAgent ? NOT_INSTALLED_ID : undefined}
 						className={`text-sm font-medium px-5 py-2 rounded-xl inline-flex items-center gap-2 ${pressFeedback} ${

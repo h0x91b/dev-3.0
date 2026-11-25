@@ -69,6 +69,8 @@ const common = {
 	"agentLaunch.titleResume": "Agent wants to resume this task's saved session",
 	"agentLaunch.resumeNote": "Reopens the saved conversations, each with its own agent, preset and account.",
 	"agentLaunch.resumeNoteAccount": "Reopens the saved conversations, each with its own agent and preset. Claude panes can move to another account below.",
+	"agentLaunch.resumeAccountsUnavailable": "Couldn’t load the account list, so Resume keeps each pane’s saved account.",
+	"agentLaunch.agentsUnavailable": "Couldn’t load the agent list. Retrying when the connection is back.",
 	"agentLaunch.resumeConversation": "Conversation {id}",
 	"agentLaunch.resumeLatest": "No saved conversation id — the agent opens its latest",
 	"agentLaunch.resumeStartAgain": "Start again (the agent never started)",

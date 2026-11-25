@@ -64,6 +64,7 @@ vi.mock("../components/AgentAccountIndicator", () => ({
 
 import AgentLaunchRequestModal from "../components/AgentLaunchRequestModal";
 import { api } from "../rpc";
+import { RPC_STATUS_EVENT } from "../diagnostics";
 import { setDialogKeyboardGuardClock } from "../utils/dialog-keyboard-guard";
 
 function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchRequest {
@@ -164,6 +165,32 @@ describe("AgentLaunchRequestModal", () => {
 		await waitFor(() => expect(accept).toBeEnabled());
 		await user.click(accept);
 		expect(onRespond).toHaveBeenCalledWith(true, { variants: [], resumeAccountId: null });
+	});
+
+	it("lets a resume through when the agent list never loads, keeping the saved account and saying why", async () => {
+		// A remote socket that drops mid-request rejects both reads; the dialog must not wait forever.
+		vi.mocked(api.request.getAgents).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		vi.mocked(api.request.getGlobalSettings).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(claudeResume());
+		const accept = await screen.findByTestId("agent-launch-accept");
+		await waitFor(() => expect(accept).toBeEnabled());
+		expect(await screen.findByTestId("agent-launch-load-failed")).toHaveTextContent("Couldn’t load the account list");
+		expect(screen.queryByTestId("account-pill")).not.toBeInTheDocument();
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, undefined);
+	});
+
+	it("retries a failed agent list when the connection comes back", async () => {
+		vi.mocked(api.request.getAgents).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		renderModal();
+		expect(await screen.findByTestId("agent-launch-load-failed")).toBeInTheDocument();
+		const accept = screen.getByTestId("agent-launch-accept");
+		expect(accept).toBeDisabled();
+		window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+		await waitFor(() => expect(accept).toBeEnabled());
+		expect(screen.queryByTestId("agent-launch-load-failed")).not.toBeInTheDocument();
+		expect(screen.getByTestId("agent-config-picker")).toBeInTheDocument();
 	});
 
 	it("offers no account for a resume with no Claude pane", async () => {
