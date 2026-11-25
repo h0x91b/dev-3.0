@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { registerBackLayer } from "../back-navigation";
 import { dismissTopOverlayLayer } from "../utils/overlay-layers";
+import { claimEscape } from "../escape-claims";
 
 /**
  * Close an overlay (modal / lightbox / popover) when Escape is pressed.
@@ -51,7 +52,11 @@ export function useEscapeKey(
 			onEscapeRef.current();
 		}
 		window.addEventListener("keydown", handleKey, true);
-		return () => window.removeEventListener("keydown", handleKey, true);
+		const release = claimEscape();
+		return () => {
+			window.removeEventListener("keydown", handleKey, true);
+			release();
+		};
 	}, [enabled]);
 
 	// Any Esc-closable overlay is also closable by the Android hardware Back

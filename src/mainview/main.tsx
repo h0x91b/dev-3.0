@@ -14,7 +14,8 @@ import type { GlobalSettings } from "../shared/types";
 import { debugLog } from "./debug-log";
 import { api, isElectrobun } from "./rpc";
 import { initAutoFullscreen } from "./fullscreen";
-import { initKeyboardLock } from "./keyboard-lock";
+import { initKeyboardLock, isKeyboardLockSupported } from "./keyboard-lock";
+import { initTabCloseGuard } from "./tab-close-guard";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { bootstrapTerminalFont } from "./terminal-font";
@@ -102,15 +103,23 @@ bootstrapZoom();
 // Apply saved streamer mode (privacy masking) before React mounts
 initStreamerMode();
 
-// Mobile remote mode: enter fullscreen on the first tap after load (browser
-// chrome wastes a big share of a phone screen). Desktop/Electrobun only get
-// the fullscreenchange subscription for the menu toggle. See fullscreen.ts.
-initAutoFullscreen({ mobile: !isElectrobun && detectMobile() });
+// Remote mode: enter fullscreen on the first tap after load — on a phone for the
+// screen space, on a desktop Chromium so Keyboard Lock can hand ⌘W / Ctrl+W to
+// the page (setting `remoteAutoFullscreen`). The Electrobun shell only gets the
+// fullscreenchange subscription for the menu toggle. See fullscreen.ts.
+initAutoFullscreen({
+	mobile: !isElectrobun && detectMobile(),
+	desktop: !isElectrobun && isKeyboardLockSupported(),
+});
 
 // Browser remote mode: while fullscreen, ask the browser for its own combos
 // (⌘W, ⌘T, ⌘1–9, zoom) so the desktop keymap works verbatim. Chromium-only and
 // a pure upgrade — everything still works without it. See keyboard-lock.ts.
 initKeyboardLock();
+
+// Browser remote mode: a stray ⌘W / Ctrl+W asks before closing the tab
+// (the browser's own beforeunload prompt). See tab-close-guard.ts.
+initTabCloseGuard();
 
 // Start the PostHog feature-flag refresh loop (desktop renderer only)
 initFeatureFlags();

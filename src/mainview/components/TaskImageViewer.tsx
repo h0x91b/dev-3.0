@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isSharedAudio, isSharedClip, type SharedImage, type Task } from "../../shared/types";
+import { isDeletableSharedMedia, isSharedAudio, isSharedClip, taskSharedMedia, type SharedImage, type Task } from "../../shared/types";
 import { clipReviewExcerpt, formatReviewMoment, videoMomentExcerpt, type ReviewComment, type ReviewImageRegionAnchor, type ReviewVideoTimeAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from "../review/ImageRegionOverlay";
@@ -16,11 +16,14 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
+import Tooltip from "./Tooltip";
 import VideoFrameThumb from "./VideoFrameThumb";
 import { primeFirstFrame } from "../utils/video-first-frame";
-import VideoReviewBar, { SEEK_STEP_SECONDS, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
+import VideoReviewBar, { SEEK_STEP_SECONDS, jumpVideo, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
 import { frameAt, frameSeekTime } from "../utils/video-playback";
 import { matchesShortcut } from "../keymap";
+import { confirmDeleteSharedMedia, useOlderClipsCleanup } from "../shared-media-delete";
+import { formatBytes } from "../utils/formatBytes";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -142,13 +145,18 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const startedRef = useRef<Set<string>>(new Set());
 	const mountedRef = useRef(true);
 	useEffect(() => () => { mountedRef.current = false; }, []);
+	// Records this viewer changed, so a tombstone shows at once even when the host's list is a snapshot.
+	const [overrides, setOverrides] = useState<Record<string, SharedImage>>({});
+	const media = useMemo(() => images.map((item) => overrides[item.id] ?? item), [images, overrides]);
+	const cleanup = useOlderClipsCleanup({ projectId, taskId, media, t });
 
 	// Keep the active index valid when the image list changes (new arrivals).
 	useEffect(() => {
 		setIndex((i) => Math.max(0, Math.min(images.length - 1, i)));
 	}, [images.length]);
 
-	const current = images[index];
+	const current = media[index];
+	const isRemoved = Boolean(current?.removedAt);
 	const clip = current && isSharedClip(current) ? (isSharedAudio(current) ? "audio" : "video") : null;
 	const isClip = clip !== null;
 	const hasClips = useMemo(() => images.some(isSharedClip), [images]);
@@ -329,10 +337,12 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			const video = playerRef.current instanceof HTMLVideoElement ? playerRef.current : null;
 			if (video) {
 				// The viewer is itself a dialog, which the matcher reads as "typing"; text
-				// fields already returned above, and the speed menu has no use for , . < > c.
+				// fields already returned above, and the speed menu has no use for , . < > c j l.
 				const ctx = { typing: false };
 				if (matchesShortcut(e, "media-frame-back", ctx)) { consume(); stepVideoFrame(video, -1, fps); return; }
 				if (matchesShortcut(e, "media-frame-forward", ctx)) { consume(); stepVideoFrame(video, 1, fps); return; }
+				if (matchesShortcut(e, "media-jump-back", ctx)) { consume(); jumpVideo(video, -1); return; }
+				if (matchesShortcut(e, "media-jump-forward", ctx)) { consume(); jumpVideo(video, 1); return; }
 				if (matchesShortcut(e, "media-speed-down", ctx)) { consume(); stepVideoRate(video, -1); return; }
 				if (matchesShortcut(e, "media-speed-up", ctx)) { consume(); stepVideoRate(video, 1); return; }
 				if (canComment && matchesShortcut(e, "media-comment-at-playhead", ctx)) { consume(); commentAtPlayhead(); return; }
@@ -387,7 +397,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	// its bytes are fetched only now, on an explicit click.
 	const saveImage = async () => {
 		setMenu(null);
-		if (!currentUrl || isError) return;
+		if (!currentUrl || isError || isRemoved) return;
 		try {
 			if (isClip) await downloadUrl(currentUrl, current.name);
 			else downloadDataUrl(currentUrl, current.name);
@@ -397,8 +407,27 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		}
 	};
 
+	const canDelete = Boolean(projectId && taskId) && isDeletableSharedMedia(current);
+	const deleteCurrent = async () => {
+		setMenu(null);
+		if (!projectId || !taskId) return;
+		playerRef.current?.pause();
+		const updated = await confirmDeleteSharedMedia({ projectId, taskId, items: [current], t, scope: "one" });
+		const record = updated && taskSharedMedia(updated).find((item) => item.id === current.id);
+		if (record?.removedAt && mountedRef.current) setOverrides((prev) => ({ ...prev, [record.id]: record }));
+	};
+	const deleteOlder = async () => {
+		setMenu(null);
+		const ids = new Set(cleanup.older.map((item) => item.id));
+		if (ids.has(current.id)) playerRef.current?.pause();
+		const updated = await cleanup.run();
+		if (!updated || !mountedRef.current) return;
+		const records = taskSharedMedia(updated).filter((item) => ids.has(item.id) && item.removedAt);
+		setOverrides((prev) => ({ ...prev, ...Object.fromEntries(records.map((item) => [item.id, item])) }));
+	};
+
 	const openMenu = (e: React.MouseEvent) => {
-		if (!currentUrl || isError) return;
+		if ((!currentUrl || isError) && !canDelete && !cleanup.available) return;
 		e.preventDefault();
 		setMenu({ x: e.clientX, y: e.clientY });
 	};
@@ -514,16 +543,18 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					<button
 						type="button"
 						onClick={copyPath}
+						disabled={isRemoved}
 						title={copyLabel}
 						aria-label={copyLabel}
-						className={iconBtn}
+						data-testid="image-viewer-copy-path"
+						className={`${iconBtn} disabled:opacity-40 disabled:cursor-default`}
 					>
 						<span className={`text-base leading-none ${copied ? "text-success" : ""}`} style={{ fontFamily: ICON }}>{copied ? "" : ""}</span>
 					</button>
 					<button
 						type="button"
 						onClick={saveImage}
-						disabled={!currentUrl || isError}
+						disabled={!currentUrl || isError || isRemoved}
 						title={downloadLabel}
 						aria-label={downloadLabel}
 						data-testid="image-viewer-download"
@@ -535,9 +566,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						type="button"
 						onClick={() => (isRemote() ? openFileInBrowser(current.storedPath) : api.request.openImageFile({ path: current.storedPath }))
 							.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "imageViewer.openFailed"), { taskId }))}
+						disabled={isRemoved}
 						title={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
 						aria-label={isRemote() ? t("imageViewer.openInTab") : t("imageViewer.open")}
-						className={iconBtn}
+						data-testid="image-viewer-open"
+						className={`${iconBtn} disabled:opacity-40 disabled:cursor-default`}
 					>
 						<span className="text-base leading-none" style={{ fontFamily: ICON }}>{""}</span>
 					</button>
@@ -563,7 +596,13 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						style={{ touchAction: isClip ? "manipulation" : fit === "width" ? "pan-y" : "none" }}
 						className={`absolute inset-0 ${fit === "width" ? "overflow-y-auto overflow-x-hidden p-3" : "overflow-hidden p-4 flex items-center justify-center"}`}
 					>
-						{isError || (isClip && clipError) ? (
+						{isRemoved ? (
+							<div data-testid="viewer-media-removed" className="flex max-w-md flex-col items-center gap-2 text-center text-fg-3">
+								<span className="text-3xl leading-none" style={{ fontFamily: ICON }}>{"\uf1f8"}</span>
+								<span className="text-sm">{t("sharedMedia.removed")}</span>
+								<span className="text-xs tabular-nums text-fg-muted">{formatBytes(current.bytes)} · {new Date(current.removedAt ?? 0).toLocaleDateString()}</span>
+							</div>
+						) : isError || (isClip && clipError) ? (
 							<div data-testid="viewer-media-error" className="flex max-w-md flex-col items-center gap-2 text-center text-fg-3">
 								<span className="text-3xl leading-none" style={{ fontFamily: ICON }}>{""}</span>
 								<span className="text-sm">{t(clipErrorKey(clip, isError))}</span>
@@ -710,12 +749,13 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 
 				{/* Thumbnail history rail */}
 				{images.length > 1 && (
+					<div className="flex-shrink-0 flex items-center border-t border-edge bg-raised">
 					<div
 						ref={thumbStripRef}
 						data-wheel-x
-						className="flex-shrink-0 flex justify-center gap-2 overflow-x-auto px-4 py-3 border-t border-edge bg-raised"
+						className="min-w-0 flex-1 flex justify-center gap-2 overflow-x-auto px-4 py-3"
 					>
-						{images.map((img, i) => {
+						{media.map((img, i) => {
 							const thumbUrl = urls[img.id];
 							const isNew = newSet.has(img.id);
 							const thumbClip = isSharedClip(img) ? (isSharedAudio(img) ? "audio" : "video") : null;
@@ -732,7 +772,9 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 										i === index ? "border-accent" : isNew ? "border-success" : "border-edge/50 hover:border-edge-active"
 									} ${isNew ? "ring-2 ring-success/60 ring-offset-1 ring-offset-raised" : ""}`}
 								>
-									{thumbClip === "video" ? (
+									{img.removedAt ? (
+										<span data-testid="viewer-thumb-removed" title={t("sharedMedia.removedBadge")} className="flex h-full w-full items-center justify-center bg-elevated text-fg-muted text-sm" style={{ fontFamily: ICON }}>{"\uf1f8"}</span>
+									) : thumbClip === "video" ? (
 										<VideoFrameThumb
 											path={img.storedPath}
 											fallback={<ClipThumbGlyph clip="video" title={t("imageViewer.video")} />}
@@ -749,6 +791,19 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 							);
 						})}
 					</div>
+					{cleanup.available && (
+						<Tooltip content={cleanup.label} detail={t("sharedMedia.deleteOlderHint")}>
+							<button
+								type="button"
+								data-testid="image-viewer-delete-older"
+								onClick={() => void deleteOlder()}
+								className="mr-4 flex-shrink-0 rounded-md border border-danger/30 px-2.5 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10 active:scale-[0.96]"
+							>
+								{cleanup.label}
+							</button>
+						</Tooltip>
+					)}
+					</div>
 				)}
 
 				{menu && (
@@ -757,6 +812,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						onDownload={saveImage}
 						onCopyPath={() => { setMenu(null); void copyPath(); }}
 						onClose={() => setMenu(null)}
+						onDelete={canDelete ? () => void deleteCurrent() : undefined}
+						onDeleteOlder={cleanup.available ? { label: cleanup.label, run: () => void deleteOlder() } : undefined}
 						media={clip ?? "image"}
 					/>
 				)}

@@ -6,6 +6,7 @@ import {
 	isKeyboardLocked,
 } from "../keyboard-lock";
 import { __resetFullscreenForTests, initAutoFullscreen } from "../fullscreen";
+import { __resetEscapeClaimsForTests, claimEscape } from "../escape-claims";
 
 /** Drive `document.fullscreenElement` and fire the event the app listens to. */
 function setFullscreen(active: boolean) {
@@ -25,6 +26,7 @@ beforeEach(() => {
 	Object.defineProperty(navigator, "keyboard", { configurable: true, value: { lock, unlock } });
 	__resetKeyboardLockForTests();
 	__resetFullscreenForTests();
+	__resetEscapeClaimsForTests();
 	initAutoFullscreen({ mobile: false });
 	setFullscreen(false);
 });
@@ -53,7 +55,59 @@ describe("keyboard lock", () => {
 		expect(unlock).toHaveBeenCalled();
 	});
 
-	it("never locks Escape — a single press must still leave fullscreen", async () => {
+	it("locks Escape only while a terminal has focus — vim needs every Esc", async () => {
+		const terminal = document.createElement("div");
+		terminal.setAttribute("data-terminal", "true");
+		const input = document.createElement("textarea");
+		terminal.appendChild(input);
+		document.body.appendChild(terminal);
+		initKeyboardLock();
+		setFullscreen(true);
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledOnce());
+		expect(lock.mock.calls[0][0]).not.toContain("Escape");
+
+		input.focus();
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(2));
+		expect(lock.mock.calls[1][0]).toContain("Escape");
+
+		input.blur();
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(3));
+		expect(lock.mock.calls[2][0]).not.toContain("Escape");
+		terminal.remove();
+	});
+
+	it("locks Escape while an Esc-closable layer is open, so Esc closes it instead of leaving fullscreen", async () => {
+		initKeyboardLock();
+		setFullscreen(true);
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledOnce());
+
+		const release = claimEscape(); // a dialog / palette / menu opens
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(2));
+		expect(lock.mock.calls[1][0]).toContain("Escape");
+
+		release();
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(3));
+		expect(lock.mock.calls[2][0]).not.toContain("Escape");
+	});
+
+	it("does not re-lock when focus moves between two terminals", async () => {
+		const terminal = document.createElement("div");
+		terminal.setAttribute("data-terminal", "true");
+		const a = document.createElement("textarea");
+		const b = document.createElement("textarea");
+		terminal.append(a, b);
+		document.body.appendChild(terminal);
+		initKeyboardLock();
+		setFullscreen(true);
+		a.focus();
+		await vi.waitFor(() => expect(lock).toHaveBeenCalledTimes(2));
+		b.focus();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(lock).toHaveBeenCalledTimes(2);
+		terminal.remove();
+	});
+
+	it("does not lock Escape outside a terminal — a single press must still leave fullscreen", async () => {
 		initKeyboardLock();
 		setFullscreen(true);
 		await vi.waitFor(() => expect(lock).toHaveBeenCalled());

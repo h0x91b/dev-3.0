@@ -8,6 +8,7 @@ import { api } from "../rpc";
 import { getAppRoot, observeAppSlots, resetAppRootForTests } from "./root";
 import type { SlotItem, SlotRegistry } from "./slot-registry";
 import { resetMenuRowFailuresForTests } from "./menu-rows";
+import { reloadPage } from "../tab-close-guard";
 
 /**
  * The plugin runtime: which built-ins run, and the third-party extensions loaded
@@ -305,7 +306,7 @@ export async function restartWithExtensionsOff(): Promise<void> {
 		api.request.setExtensionsEnabled({ enabled: false }).catch(() => {}),
 		new Promise((resolve) => setTimeout(resolve, 3000)),
 	]);
-	window.location.reload();
+	reloadPage();
 }
 
 export function setExtensionLoadForTests(id: string, load: ExtensionLoadState): void {

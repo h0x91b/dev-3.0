@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
+import { claimEscape } from "../escape-claims";
 
 /**
  * Keeps keystrokes that were meant for something else from answering a dialog.
@@ -156,9 +157,11 @@ export function useDialogKeyboardGuard(ref: RefObject<HTMLElement | null>, optio
 			onKeyActivity: () => onKeyActivity.current?.(),
 		};
 		stack.push(entry);
+		const release = hasEscape ? claimEscape() : null;
 		return () => {
 			const i = stack.indexOf(entry);
 			if (i >= 0) stack.splice(i, 1);
+			release?.();
 		};
 	}, [ref, quietMs, hasEscape]);
 }

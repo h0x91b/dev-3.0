@@ -1722,6 +1722,13 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:is(:hover, :focus-visible) .hdr-sess2 { transform-box: fill-box; transform-origin: center; animation: hdr-sess-pulse 1.8s ease-in-out .3s infinite; }
 .header-anim:is(:hover, :focus-visible) .hdr-sess3 { transform-box: fill-box; transform-origin: center; animation: hdr-sess-pulse 1.8s ease-in-out .6s infinite; }
 
+/* -- Library: the front card lifts off the stack -- */
+@keyframes hdr-lib-lift {
+	0%, 100% { transform: translate(0, 0); }
+	40%, 60% { transform: translate(-1.5px, 1.5px); }
+}
+.header-anim:is(:hover, :focus-visible) .hdr-lib { animation: hdr-lib-lift 1.8s ease-in-out infinite; }
+
 /* -- Resource pills: memory teeth, the CPU core and the disk band blink in turn -- */
 @keyframes hdr-res-blink {
 	0%, 100% { opacity: 1; }

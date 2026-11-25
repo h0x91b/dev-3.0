@@ -1,5 +1,7 @@
 # Full keyboard coverage in browser remote mode
 
+Superseded in part on 2026-11-24 by `decisions/2026/11/24/beforeunload-tab-close-guard.md`: `Escape` is now locked while a terminal has focus, and desktop Chromium enters fullscreen on the first click.
+
 ## Context
 
 The keymap was designed on macOS, where the app modifier is ⌘ and nothing else wants it. `Mod`

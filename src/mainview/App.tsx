@@ -130,6 +130,8 @@ import { restoreFocusAfterViewer } from "./utils/viewer-focus";
 import { sharedArrivalNoun, type SharedArrivalKind } from "./utils/sharedArrivalNoun";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
+import { setTabCloseGuardEnabled } from "./tab-close-guard";
+import { setDesktopAutoFullscreen } from "./fullscreen";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -1944,6 +1946,16 @@ function App() {
 		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
 	}, [dispatch]);
 
+	const confirmTabClose = globalSettings.remoteConfirmTabClose !== false;
+	useEffect(() => {
+		setTabCloseGuardEnabled(confirmTabClose);
+	}, [confirmTabClose]);
+
+	const autoFullscreen = globalSettings.remoteAutoFullscreen !== false;
+	useEffect(() => {
+		setDesktopAutoFullscreen(autoFullscreen);
+	}, [autoFullscreen]);
+
 	const completionOfferStyle = globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE;
 	useEffect(() => {
 		setCompletionOfferStyle(completionOfferStyle);
@@ -3395,6 +3407,7 @@ function App() {
 			case "changelog": return t("changelog.screenTitle");
 			case "stats": return t("stats.title");
 			case "sessions": return t("sessions.title");
+			case "library": return t("library.title");
 			case "agent-traffic": return t("traffic.label");
 			default: return "";
 		}
@@ -4277,6 +4290,14 @@ function App() {
 							projectName: state.projects.find((p) => p.id === route.scopeProjectId)?.name ?? null,
 							onOpenTask: openTaskFromNotification,
 						}}
+					/>
+				);
+			case "library":
+				return (
+					<DestinationBody
+						key={route.scopeProjectId ?? "all"}
+						destination="library"
+						props={{ projectId: route.scopeProjectId ?? null, onOpenTask: openTaskFromNotification }}
 					/>
 				);
 			case "agent-traffic":

@@ -219,12 +219,7 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Rule:** the phone's root font-size factor is chosen by route, not fixed.
 - **Why:** `decisions/2026/08/08/phone-density-is-per-screen-not-global.md`.
 
-## 2026-08-07 — A narrow control row sheds; it never stacks
-
-- **Rule:** bible §12.6 (`flex-nowrap`, written priority order, container-query thresholds, a sheet path for anything shed) + §12.3 for the diff viewer's four modes.
-- **Why:** a second row costs a phone a band of screen and moves every control being aimed at, worse than losing the least important one; measured at 340px the summary bar went 40px → 67px tall. Rejected: JS measured overflow via `ResizeObserver` (oscillates once hiding an item shrinks `scrollWidth`; recovering the natural width needs an offscreen clone); a viewport breakpoint (the row is not the window — one width holds different bars with or without a variant switcher and output badges); folding the readouts unconditionally (they are status, and §12.6 keeps them resting-visible whenever they fit).
-- **Refinement (seq 1676):** the diff sheds its *width*, not the control — `decisions/2026/08/25/mobile-diff-chip-pins-the-diff-mode.md`.
-- **Status:** Decided. Evidence: `TaskHeader.tsx` (`task-summary-bar`, `diff-summary-badge`, `summary-bar-diff-compact`), `TaskDiffViewer.tsx` (narrow mode row), seq 1459, seq 1676.
+2026-08-07 — A narrow control row sheds; it never stacks — rule lives in bible §12.6/§12.3. Why: `decisions/2026/08/07/narrow-control-row-sheds-never-stacks.md`.
 
 ## 2026-08-07 — The Active Tasks sidebar row carries the Kanban card's lifecycle rail
 - **Rule:** the sidebar row mounts `TaskCardRail` with `autoLabel` — ring, bell and the glued ✓ → Completed always, and the upright status word only when the rail measures tall enough to hold it whole — then title → signals → a muted identity line; the agent config no longer opens the row — bible §5.
@@ -774,3 +769,5 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 2026-11-22 — ⌘1–9 keys are pinned from the row's own ⌘N chip (bible §10 slot pins). Why: decisions/2026/11/22/digit-slot-pins-over-default-order.md.
 
 2026-11-24 — Video in the image viewer gets its own transport (frame step, speed, marker scrubber); timeline comments are `video-time` review anchors. Why: native scrubbers cannot carry markers. Dropped on purpose: volume level (mute only), PiP, OS fullscreen (viewer `f` covers it). Yaml `task_image_viewer`.
+
+2026-11-24 — Library: one menu-only route for every artifact and shown media, a projection of task records (no index file) — bible §4/§5. Why: `decisions/2026/11/24/library-is-a-projection-not-an-index.md`.

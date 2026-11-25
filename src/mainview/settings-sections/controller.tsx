@@ -700,6 +700,20 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 		[persistSettingChange],
 	);
 
+	const handleRemoteConfirmTabCloseToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ remoteConfirmTabClose: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleRemoteAutoFullscreenToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ remoteAutoFullscreen: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const handlePreventSleepToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ preventSleepWhileRunning: enabled });
@@ -762,6 +776,13 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 	const handleRateLimitTrackingToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ agentRateLimitTracking: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleStatusLineShowAccountToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ statusLineShowAccount: enabled });
 		},
 		[persistSettingChange],
 	);
@@ -1054,7 +1075,10 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 		handlePxpipeProxyToggle,
 		handleQuestionsSoundToggle,
 		handleRateLimitTrackingToggle,
+		handleStatusLineShowAccountToggle,
 		handleRemotePortChange,
+		handleRemoteAutoFullscreenToggle,
+		handleRemoteConfirmTabCloseToggle,
 		handleRemoteSilentUpdateToggle,
 		handleRemoteTunnelChange,
 		handleResourceLevelsChange,

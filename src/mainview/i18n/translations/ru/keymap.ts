@@ -53,6 +53,8 @@ const keymap = {
 	"keymap.shortcut.reviewCommentSend": "Отправить комментарий из ревью агенту",
 	"keymap.shortcut.mediaFrameBack": "Просмотр медиа: кадр назад",
 	"keymap.shortcut.mediaFrameForward": "Просмотр медиа: кадр вперёд",
+	"keymap.shortcut.mediaJumpBack": "Просмотр медиа: назад на 15 секунд",
+	"keymap.shortcut.mediaJumpForward": "Просмотр медиа: вперёд на 15 секунд",
 	"keymap.shortcut.mediaSpeedDown": "Просмотр медиа: медленнее",
 	"keymap.shortcut.mediaSpeedUp": "Просмотр медиа: быстрее",
 	"keymap.shortcut.mediaCommentAtPlayhead": "Просмотр медиа: комментарий к текущему моменту видео",

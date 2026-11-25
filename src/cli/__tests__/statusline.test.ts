@@ -11,6 +11,7 @@ import {
 	resolveOriginalStatusLine,
 	sessionDumpFilePath,
 	STATUSLINE_NESTED_ENV,
+	statusLineAccountLabel,
 } from "../commands/statusline";
 
 let tmp: string;
@@ -240,5 +241,46 @@ describe("claudeDumpOwner", () => {
 		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: elsewhere }, "/u", "/w", dev3Home)).toEqual({ accountId: null, configDir: elsewhere });
 		const nested = `${accountDir(WIX)}/projects`;
 		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: nested }, "/u", "/w", dev3Home)).toEqual({ accountId: null, configDir: nested });
+	});
+});
+
+describe("statusLineAccountLabel", () => {
+	const id = "acct-1";
+	let dev3Home: string;
+	let accountDir: string;
+
+	beforeEach(() => {
+		dev3Home = join(tmp, ".dev3.0");
+		accountDir = join(dev3Home, "agent-accounts", "claude", id);
+		mkdirSync(accountDir, { recursive: true });
+		writeFileSync(join(accountDir, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "me@work.test" } }));
+	});
+
+	const writeRegistry = (label: string) =>
+		writeFileSync(
+			join(dev3Home, "agent-accounts", "accounts.json"),
+			JSON.stringify({ version: 1, claude: { activeId: null, accounts: [{ id, label }] } }),
+		);
+
+	it("prefers the managed account's label", () => {
+		writeRegistry("work");
+		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("work");
+	});
+
+	it("falls back to the login's email when the label is blank or the registry is missing", () => {
+		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("me@work.test");
+		writeRegistry("  ");
+		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("me@work.test");
+	});
+
+	it("reads the system login's email from ~/.claude.json", () => {
+		writeFileSync(join(home, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "me@home.test" } }));
+		expect(statusLineAccountLabel({}, home, tmp, dev3Home)).toBe("me@home.test");
+	});
+
+	it("strips control characters and returns null when nothing names the login", () => {
+		writeRegistry("wo\u001b[31mrk\n");
+		expect(statusLineAccountLabel({ CLAUDE_CONFIG_DIR: accountDir }, home, tmp, dev3Home)).toBe("wo[31mrk");
+		expect(statusLineAccountLabel({}, home, tmp, dev3Home)).toBeNull();
 	});
 });

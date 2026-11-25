@@ -49,6 +49,29 @@ export function taskSharedMedia(task: Pick<Task, "sharedImages" | "sharedVideos"
 	return [...(task.sharedImages ?? []), ...clips].sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/** A clip at or over this size counts as "large": the one threshold disk cleanup reasons about. */
+export const LARGE_SHARED_MEDIA_BYTES = 15 * 1024 * 1024;
+
+/** A clip whose stored file the user can still delete (not already a tombstone). */
+export function isDeletableSharedMedia(item: SharedImage): boolean {
+	return isSharedClip(item) && !item.removedAt;
+}
+
+/** Every deletable large clip except the newest one — what "delete older large clips" removes. */
+export function olderLargeSharedClips(media: SharedImage[]): SharedImage[] {
+	const large = media.filter((item) => isDeletableSharedMedia(item) && item.bytes >= LARGE_SHARED_MEDIA_BYTES);
+	const newest = large.reduce<SharedImage | null>((best, item) => (!best || item.createdAt > best.createdAt ? item : best), null);
+	return large.filter((item) => item !== newest);
+}
+
+/** What a clip deletion did (or, as a dry run, would do). `freeableBytes` is the honest disk gain. */
+export interface SharedMediaDeleteSummary {
+	count: number;
+	bytes: number;
+	freeableBytes: number;
+	failed: Array<{ id: string; reason: string }>;
+}
+
 /** Max images accepted in a single `dev3 show-image` invocation. */
 export const MAX_SHARED_IMAGES_PER_CALL = 20;
 
@@ -130,6 +153,10 @@ export interface SharedImage {
 	caption?: string;
 	/** ms epoch when the image was shared. */
 	createdAt: number;
+	/** ms epoch when the user deleted the stored file to free disk; the record stays as a tombstone. */
+	removedAt?: number;
+	/** Estimated bytes the deletion freed: 0 when the stored file looked like an APFS clone of a still-live original. */
+	removedBytes?: number;
 }
 
 /** One local asset copied beside a task-bound HTML artifact. */

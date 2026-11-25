@@ -247,6 +247,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		artifactTemplatePath: typeof d.artifactTemplatePath === "string" && d.artifactTemplatePath.trim() ? d.artifactTemplatePath.trim() : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		remoteSilentUpdate: d.remoteSilentUpdate === false ? false : undefined,
+		remoteConfirmTabClose: d.remoteConfirmTabClose === false ? false : undefined,
+		remoteAutoFullscreen: d.remoteAutoFullscreen === false ? false : undefined,
 		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,
 		skipQuitDialog: d.skipQuitDialog === true ? true : undefined,
 		importShellEnv: d.importShellEnv === false ? false : undefined,
@@ -267,6 +269,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		focusMode: d.focusMode === true ? true : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,
+		statusLineShowAccount: d.statusLineShowAccount === true ? true : undefined,
 		autoAccountDefault: normalizeAutoAccountDefault(d.autoAccountDefault),
 		autoAccountExclusions: normalizeAutoAccountExclusions(d.autoAccountExclusions),
 		// Boolean preference — both true (watch) and false (don't watch) are

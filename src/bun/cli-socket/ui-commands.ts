@@ -53,8 +53,8 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 		throw new Error(`Failed to store ${kind}: ${err instanceof Error ? err.message : String(err)}`);
 	}
 
-	// Append inside the file lock. The history is uncapped — the stored files
-	// live in the worktree and die with it.
+	// Append inside the file lock. The history is uncapped; the stored files sit in the
+	// per-project pool, freed by the user's delete or the media prune (doctor-media.ts).
 	// Clips get their own additive fields: older versions read every sharedImages entry's bytes.
 	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
 		if (kind === "image") return { updates: { sharedImages: [...(current.sharedImages ?? []), ...incoming] }, result: undefined };
