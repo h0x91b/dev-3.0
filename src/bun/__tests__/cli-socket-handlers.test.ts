@@ -4456,6 +4456,20 @@ describe("cross-board note and overview refs", () => {
 		const kept = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Old seq:7 line", sourceTaskId: writer.id }));
 		expect((kept.data as Task).overview).toBe("Old seq:7 line");
 	});
+	it("note.add and overview.set turn a path only the writer's board holds into its path: token", async () => {
+		const target = makeTask({ notes: [], overview: null });
+		wire(target);
+		const writerBoard = { ...writerProject, path: "/boards/other" };
+		vi.mocked(data.getProject).mockImplementation(async (id) => (id === "proj-2" ? writerBoard : makeProject()));
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject(), writerBoard]);
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/boards/other/todo/brief.md");
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...target, ...change }) as Task);
+		const note = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "Read todo/brief.md, not todo/none.md", sourceTaskId: writer.id }));
+		const overview = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Drafting todo/brief.md", sourceTaskId: writer.id }));
+		vi.mocked(existsSync).mockImplementation(() => false);
+		expect((note.data as Task).notes?.[0]?.content).toBe("Read path:proj-2/todo/brief.md, not todo/none.md");
+		expect((overview.data as Task).overview).toBe("Drafting path:proj-2/todo/brief.md");
+	});
 });
 
 describe("note.list", () => {

@@ -1,5 +1,7 @@
 # Cross-project path tokens: `path:<project>/<path>`
 
+> Superseded in part on 2026-11-24 by `decisions/2026/11/24/path-tokens-in-notes-overviews-and-moves.md`: notes and overviews written from another board, and a task moved to another project, now qualify their plain paths too.
+
 ## 1. Context
 
 A plain relative path in task text resolves against the task's own project (`file-path-links-in-task-text`). An agent on board A that writes "Brief: todo/x.md in AI-Work" into a task on board B leaves a path that resolves on B, where it names nothing or the wrong file. An absolute path works on one machine only and is mostly home-directory noise.
@@ -29,7 +31,6 @@ A plain relative path in task text resolves against the task's own project (`fil
 
 - A token resolves against the project root, not a task worktree. A worktree task's new or changed file is checked, and opened, from the main checkout.
 - After a project folder moves, an annotation stored before this rule existed, or copied by hand, no longer matches exactly. It stays as text and a fresh one is added next to it.
-- Moving a task to another project does not rewrite its paths, the same as its `seq:` refs today. Notes and overviews written from another board are not qualified either, again like `seq:` refs.
 - No Windows CI job runs these tests on a Windows host. They cover Windows behaviour through `path.win32` and an explicit platform parameter.
 
 ## 4. Alternatives considered

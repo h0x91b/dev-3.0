@@ -44,3 +44,24 @@ export function annotateWithProjects(text: string, projects: readonly ProjectRoo
 export function stripWithProjects(text: string, projects: readonly ProjectRoot[]): string {
 	return stripPathAnnotations(text, (ref) => resolvePathRefIn(projects, ref));
 }
+
+/** Distinct relative paths checked on disk per text, as `resolveTerminalPaths` caps its batch. */
+const MAX_PATH_CHECKS = 64;
+
+/**
+ * Whether a relative path names the writer's file and not the reader's (`readerRoot`
+ * null skips that check): a path both boards hold is ambiguous. Memoized and capped.
+ */
+export function writerOnly(writerRoot: string, readerRoot: string | null): (relative: string) => boolean {
+	const seen = new Map<string, boolean>();
+	return (relative) => {
+		const known = seen.get(relative);
+		if (known !== undefined) return known;
+		if (seen.size >= MAX_PATH_CHECKS) return false;
+		const onWriter = underRoot(writerRoot, relative);
+		const onReader = readerRoot ? underRoot(readerRoot, relative) : null;
+		const result = !!onWriter && existsSync(onWriter) && !(onReader && existsSync(onReader));
+		seen.set(relative, result);
+		return result;
+	};
+}

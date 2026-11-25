@@ -1,6 +1,8 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { storesInProject } from "../shared/project-storage";
 import { qualifyRefsFor } from "../shared/task-refs";
+import { qualifyPathsFor } from "../shared/path-refs";
+import { writerOnly } from "./path-ref-resolve";
 import { liveProjectDataDir, liveStorage } from "./project-storage-live";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskOrigin, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
 import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
@@ -1222,7 +1224,8 @@ export async function getTask(
  *
  * Portable fields (title, description, overview, notes, history, priority,
  * `automationId`, `createdAt`, …) travel unchanged, except that a bare `seq:N` /
- * `pr:N` in the text gains the source project, as it did not name the target's. Project-scoped fields are
+ * `pr:N` in the text gains the source project, as it did not name the target's, and a
+ * relative path only the source holds becomes its `path:` token. Project-scoped fields are
  * re-derived: `projectId` → target, `seq` → next free target seq, `baseBranch`
  * → the target project's default. Labels match by NAME (attach the target
  * project's same-name label, else drop — never auto-create). `customColumnId`,
@@ -1283,16 +1286,23 @@ export async function moveTaskToProject(
 			}
 
 			const now = new Date().toISOString();
-			// Bare refs in the task's text named the source board's tasks; keep them there.
-			const retarget = (text: string) => qualifyRefsFor(text, sourceProject.id, targetProject.id);
-			const retargetOptional = (text: string | null | undefined) => (text ? retarget(text) : text);
+			// Bare refs in the task's text named the source board's tasks, and its plain
+			// paths the source's files (not in titles, which render as plain text).
+			const retargetTitle = (text: string) => qualifyRefsFor(text, sourceProject.id, targetProject.id);
+			const sourceRoot = sourceProject.kind !== "virtual" ? sourceProject.path : "";
+			const targetRoot = targetProject.kind !== "virtual" && targetProject.path ? targetProject.path : null;
+			const retarget = (text: string) => {
+				const refs = retargetTitle(text);
+				return sourceRoot ? qualifyPathsFor(refs, sourceProject.id, targetProject.id, writerOnly(sourceRoot, targetRoot)) : refs;
+			};
+			const optional = (fn: (text: string) => string) => (text: string | null | undefined) => (text ? fn(text) : text);
 			const moved: Task = {
 				...source,
-				title: retarget(source.title),
+				title: retargetTitle(source.title),
 				description: retarget(source.description),
-				customTitle: retargetOptional(source.customTitle),
-				overview: retargetOptional(source.overview),
-				userOverview: retargetOptional(source.userOverview),
+				customTitle: optional(retargetTitle)(source.customTitle),
+				overview: optional(retarget)(source.overview),
+				userOverview: optional(retarget)(source.userOverview),
 				...(source.notes ? { notes: source.notes.map((note) => ({ ...note, content: retarget(note.content) })) } : {}),
 				projectId: targetProject.id,
 				seq: nextSeq(targetTasks),

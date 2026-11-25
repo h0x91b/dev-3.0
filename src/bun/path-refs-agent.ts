@@ -1,13 +1,9 @@
-import { existsSync } from "node:fs";
 import * as data from "./data";
 import { createLogger } from "./logger";
 import { findPathRefsInText, qualifyPathsFor, rewriteRelativePaths } from "../shared/path-refs";
-import { annotateWithProjects, stripWithProjects, underRoot } from "./path-ref-resolve";
+import { annotateWithProjects, stripWithProjects, underRoot, writerOnly } from "./path-ref-resolve";
 
 const log = createLogger("path-refs");
-
-/** Distinct relative paths checked on disk per text, as `resolveTerminalPaths` caps its batch. */
-const MAX_PATH_CHECKS = 64;
 
 /** Text an agent will read: each `path:` token gains the absolute path it names on this machine. */
 export async function withAbsolutePaths(text: string, maxAdded?: number): Promise<string> {
@@ -39,24 +35,6 @@ async function projectRoot(projectId: string | undefined): Promise<string | null
 	} catch {
 		return null;
 	}
-}
-
-/**
- * Whether a relative path names the writer's file and not the reader's (`readerRoot`
- * null skips that check): a path both boards hold is ambiguous. Memoized and capped.
- */
-function writerOnly(writerRoot: string, readerRoot: string | null): (relative: string) => boolean {
-	const seen = new Map<string, boolean>();
-	return (relative) => {
-		const known = seen.get(relative);
-		if (known !== undefined) return known;
-		if (seen.size >= MAX_PATH_CHECKS) return false;
-		const onWriter = underRoot(writerRoot, relative);
-		const onReader = readerRoot ? underRoot(readerRoot, relative) : null;
-		const result = !!onWriter && existsSync(onWriter) && !(onReader && existsSync(onReader));
-		seen.set(relative, result);
-		return result;
-	};
 }
 
 /** {@link qualifyPathsFor} against the writer and reader project roots on disk; drops agent annotations first. */

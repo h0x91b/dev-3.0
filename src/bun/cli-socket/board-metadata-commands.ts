@@ -1,5 +1,5 @@
 import type { Project, Task, TaskStatus, NoteSource } from "../../shared/types";
-import { withoutAbsolutePaths } from "../path-refs-agent";
+import { qualifyEditedWriterPaths, qualifyWriterPaths } from "../path-refs-agent";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../../shared/review";
 import { formatStatus, getTaskTitle, STATUS_LABELS } from "../../shared/types";
 import { qualifyEditedRefsFor, qualifyRefsFor } from "../../shared/task-refs";
@@ -25,9 +25,11 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 			throw new Error("overview text is required");
 		}
 		const { project, task } = await resolveTaskFromParams(params);
-		// Written from another board: its bare refs name the writer's tasks.
-		const qualified = qualifyEditedRefsFor(overview, task.overview, await writerProjectIdFor(params, project, task), project.id);
-		return (await updateTaskMetadata(boardPorts, project, task.id, { overview: await withoutAbsolutePaths(qualified) }, AGENT_ACTOR)).task;
+		// Written from another board: its bare refs and plain paths name the writer's.
+		const writer = await writerProjectIdFor(params, project, task);
+		const refsQualified = qualifyEditedRefsFor(overview, task.overview, writer, project.id);
+		const qualified = await qualifyEditedWriterPaths(refsQualified, task.overview, writer, project.id);
+		return (await updateTaskMetadata(boardPorts, project, task.id, { overview: qualified }, AGENT_ACTOR)).task;
 	},
 
 	"overview.show": async (params) => {
@@ -91,8 +93,10 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
+		const writer = await writerProjectIdFor(params, project, task);
+		const qualified = await qualifyWriterPaths(qualifyRefsFor(content, writer, project.id), writer, project.id);
 		const { task: updated } = await taskNotes.addNote(
-			boardPorts, project, task.id, await withoutAbsolutePaths(qualifyRefsFor(content, await writerProjectIdFor(params, project, task), project.id)), AGENT_ACTOR, params.source as NoteSource | undefined,
+			boardPorts, project, task.id, qualified, AGENT_ACTOR, params.source as NoteSource | undefined,
 		);
 		return updated;
 	},

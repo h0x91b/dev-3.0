@@ -159,6 +159,34 @@ describe("moveTaskToProject", () => {
 		expect((await loadTasks(target))[0]!.description).toBe(moved.description);
 	});
 
+	it("turns a relative path only the source project holds into its path: token", async () => {
+		const srcRoot = `${TEST_HOME}/repo-src`;
+		const tgtRoot = `${TEST_HOME}/repo-tgt`;
+		for (const file of [`${srcRoot}/todo/brief.md`, `${srcRoot}/README.md`, `${tgtRoot}/README.md`]) {
+			mkdirSync(dirname(file), { recursive: true });
+			writeFileSync(file, "x");
+		}
+		const src = { ...source, path: srcRoot };
+		const tgt = { ...target, path: tgtRoot };
+		seed(src, [
+			makeTask({
+				id: "task-paths",
+				title: "Read todo/brief.md",
+				description: "Brief: todo/brief.md:3, see README.md and missing.md\n```\ncat todo/brief.md\n```",
+				overview: "Drafting todo/brief.md",
+				notes: [{ id: "n1", content: "Updated todo/brief.md", source: "ai", createdAt: "", updatedAt: "" }],
+			}),
+		]);
+		seed(tgt, []);
+
+		const moved = await moveTaskToProject(src, tgt, "task-paths");
+
+		expect(moved.title).toBe("Read todo/brief.md");
+		expect(moved.description).toBe("Brief: path:proj-src/todo/brief.md:3, see README.md and missing.md\n```\ncat todo/brief.md\n```");
+		expect(moved.overview).toBe("Drafting path:proj-src/todo/brief.md");
+		expect(moved.notes?.[0]?.content).toBe("Updated path:proj-src/todo/brief.md");
+	});
+
 	it("removes the task from the source project", async () => {
 		seed(source, [makeTask({ id: "a", seq: 1 }), makeTask({ id: "task-move", seq: 2 })]);
 		seed(target, []);
