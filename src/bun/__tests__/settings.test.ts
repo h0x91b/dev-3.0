@@ -493,6 +493,8 @@ describe("saveSettings", () => {
 			digitsFollowSpaces: true,
 			defaultDiffViewMode: "unified",
 			remoteSilentUpdate: false,
+			remoteConfirmTabClose: false,
+			remoteAutoFullscreen: false,
 			preventSleepWhileRunning: true,
 			skipQuitDialog: true,
 			importShellEnv: false,

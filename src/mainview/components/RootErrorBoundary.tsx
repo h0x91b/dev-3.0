@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { getDiagnostics, formatDiagnosticsForCopy, recordDiagnostic } from "../diagnostics";
 import { api } from "../rpc";
 import { hasLoadedExtensions, restartWithExtensionsOff } from "../plugins/runtime";
+import { reloadPage } from "../tab-close-guard";
 
 interface Props {
 	children: ReactNode;
@@ -57,7 +58,7 @@ export class RootErrorBoundary extends Component<Props, State> {
 
 	private handleReload = (): void => {
 		try {
-			window.location.reload();
+			reloadPage();
 		} catch {
 			/* no window (tests) */
 		}

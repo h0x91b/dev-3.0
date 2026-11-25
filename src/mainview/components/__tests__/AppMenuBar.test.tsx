@@ -49,6 +49,13 @@ describe("buildBrowserMenu", () => {
 		expect(findItem(menu, "Rename Task…")).toBeUndefined();
 	});
 
+	it("turns the native full-screen role into a browser toggle where element fullscreen exists", () => {
+		Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: vi.fn() });
+		expect(findItem(buildBrowserMenu(FULL), "Toggle Full Screen")?.action).toBe("toggle-fullscreen");
+		Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+		expect(findItem(buildBrowserMenu(FULL), "Toggle Full Screen")).toBeUndefined();
+	});
+
 	it("excludes native role items handled by the browser itself (no Quit/Paste)", () => {
 		const menu = buildBrowserMenu(FULL);
 		expect(findItem(menu, "Quit")).toBeUndefined();

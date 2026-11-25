@@ -130,6 +130,8 @@ import { restoreFocusAfterViewer } from "./utils/viewer-focus";
 import { sharedArrivalNoun, type SharedArrivalKind } from "./utils/sharedArrivalNoun";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
+import { setTabCloseGuardEnabled } from "./tab-close-guard";
+import { setDesktopAutoFullscreen } from "./fullscreen";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -1943,6 +1945,16 @@ function App() {
 		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
 		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
 	}, [dispatch]);
+
+	const confirmTabClose = globalSettings.remoteConfirmTabClose !== false;
+	useEffect(() => {
+		setTabCloseGuardEnabled(confirmTabClose);
+	}, [confirmTabClose]);
+
+	const autoFullscreen = globalSettings.remoteAutoFullscreen !== false;
+	useEffect(() => {
+		setDesktopAutoFullscreen(autoFullscreen);
+	}, [autoFullscreen]);
 
 	const completionOfferStyle = globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE;
 	useEffect(() => {

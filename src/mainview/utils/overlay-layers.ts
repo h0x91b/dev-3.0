@@ -18,10 +18,12 @@
  * Portalled panels register through `useOverlayLayer` and must NOT call
  * `useEscapeKey` themselves.
  */
+import { claimEscape } from "../escape-claims";
 
 interface OverlayLayer {
 	el: HTMLElement;
 	onDismiss: () => void;
+	release: () => void;
 }
 
 const layers: OverlayLayer[] = [];
@@ -46,12 +48,13 @@ function syncListener() {
 
 /** Push a panel onto the stack. Returns the unregister function. */
 export function registerOverlayLayer(el: HTMLElement, onDismiss: () => void): () => void {
-	const layer: OverlayLayer = { el, onDismiss };
+	const layer: OverlayLayer = { el, onDismiss, release: claimEscape() };
 	layers.push(layer);
 	syncListener();
 	return () => {
 		const index = layers.indexOf(layer);
 		if (index !== -1) layers.splice(index, 1);
+		layer.release();
 		syncListener();
 	};
 }

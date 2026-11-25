@@ -7,6 +7,7 @@ import { createRemoteSession, type AccessCodeOutcome, type RemoteSessionState, t
 import { readCodeFromFragment, stripCodeFromFragment } from "../shared/remote-sign-in-link";
 import { debugLog } from "./debug-log";
 import { createBridgeSendGate } from "./bridge-send-gate";
+import { reloadPage } from "./tab-close-guard";
 
 // ── Transport connection state ──────────────────────────────────────
 // Surfaced to the bootstrap screen so a stuck "Loading…" can tell the user
@@ -80,7 +81,7 @@ export function reconnectRpc(): void {
 		}
 	}
 	try {
-		window.location.reload();
+		reloadPage();
 	} catch {
 		/* no window (tests) */
 	}
@@ -347,7 +348,7 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 				// Best effort: the bridge is dead, so this may not land — but if the
 				// re-init above revived it briefly, it is the record of why we reloaded.
 				reportWatchdogAction(rawRequest, "reload");
-				if (allowWatchdogReload(Date.now())) window.location.reload();
+				if (allowWatchdogReload(Date.now())) reloadPage();
 			}
 		} finally {
 			inFlight = false;

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useBackLayer } from "../hooks/useBackLayer";
+import { useEscapeClaim } from "../hooks/useEscapeClaim";
 import { overlayScaleUp } from "../zoom";
 
 interface BottomSheetProps {
@@ -49,6 +50,7 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 
 	// Android hardware Back closes the sheet (mobile remote mode).
 	useBackLayer(onClose);
+	useEscapeClaim();
 
 	// Esc closes (capture phase so it wins over background handlers).
 	useEffect(() => {

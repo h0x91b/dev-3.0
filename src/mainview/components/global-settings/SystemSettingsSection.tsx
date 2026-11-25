@@ -21,6 +21,8 @@ export default function SystemSettingsSection({
 	onRemoteTunnelChange,
 	onRemotePortChange,
 	onRemoteSilentUpdateToggle,
+	onRemoteConfirmTabCloseToggle,
+	onRemoteAutoFullscreenToggle,
 	onStaticAccessCodeChange,
 	onPreventSleepToggle,
 	onResourceLevelsChange,
@@ -38,6 +40,8 @@ export default function SystemSettingsSection({
 	onRemoteTunnelChange: (tunnel: RemoteTunnelSettings | undefined) => void;
 	onRemotePortChange: (port: number | undefined) => void;
 	onRemoteSilentUpdateToggle: (enabled: boolean) => void;
+	onRemoteConfirmTabCloseToggle: (enabled: boolean) => void;
+	onRemoteAutoFullscreenToggle: (enabled: boolean) => void;
 	/** Empty string clears the code. */
 	onStaticAccessCodeChange: (code: string) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
@@ -150,6 +154,43 @@ export default function SystemSettingsSection({
 						onLabel={t("settings.on")}
 						offLabel={t("settings.off")}
 						onToggle={() => onRemoteSilentUpdateToggle(globalSettings.remoteSilentUpdate === false)}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="remote-confirm-tab-close">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.remoteConfirmTabClose")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.remoteConfirmTabCloseDesc")}
+					</p>
+					<SettingsToggle
+						checked={globalSettings.remoteConfirmTabClose !== false}
+						ariaLabel={t("settings.remoteConfirmTabClose")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onRemoteConfirmTabCloseToggle(globalSettings.remoteConfirmTabClose === false)}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="remote-auto-fullscreen">
+				{/* Turning it off must not first throw the page into fullscreen (fullscreen.ts). */}
+				<div data-no-auto-fullscreen="">
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.remoteAutoFullscreen")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.remoteAutoFullscreenDesc")}
+					</p>
+					<SettingsToggle
+						checked={globalSettings.remoteAutoFullscreen !== false}
+						ariaLabel={t("settings.remoteAutoFullscreen")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onRemoteAutoFullscreenToggle(globalSettings.remoteAutoFullscreen === false)}
 					/>
 				</div>
 			</SettingsEntry>
