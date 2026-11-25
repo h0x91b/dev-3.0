@@ -17,7 +17,6 @@ const resolveNativeHostRuntime = vi.hoisted(() => vi.fn(() => ({ kind: "source-c
 vi.mock("../native-host-runtime", () => ({
 	resolveNativeHostRuntime,
 	nativeHostLauncher: () => () => undefined,
-	startWithHostRuntimeRecovery: async (start: (runtime: unknown) => Promise<unknown>) => start(resolveNativeHostRuntime()),
 }));
 
 import {

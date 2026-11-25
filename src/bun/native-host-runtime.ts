@@ -256,36 +256,6 @@ export function resolveNativeHostRuntime(): NativeHostRuntime {
 	);
 }
 
-export interface HostRuntimeRecoveryDeps {
-	resolve?: () => NativeHostRuntime;
-	exists?: (path: string) => boolean;
-}
-
-/**
- * Run `start` against a freshly resolved runtime. If it fails because the staged image
- * vanished under it (a concurrent prune), resolve again, which re-stages, and retry once.
- */
-export async function startWithHostRuntimeRecovery<T>(
-	start: (runtime: NativeHostRuntime) => Promise<T>,
-	deps: HostRuntimeRecoveryDeps = {},
-): Promise<T> {
-	const resolveRuntime = deps.resolve ?? resolveNativeHostRuntime;
-	const exists = deps.exists ?? existsSync;
-	const runtime = resolveRuntime();
-	try {
-		return await start(runtime);
-	} catch (err) {
-		const imageGone =
-			runtime.kind === "packaged-image" && !(exists(runtime.runtimePath) && exists(runtime.entrypointPath));
-		if (!imageGone) throw err;
-		log.warn("Native host image vanished during launch; re-staging and retrying once", {
-			tag: runtime.imageTag,
-			error: String(err),
-		});
-		return start(resolveRuntime());
-	}
-}
-
 /**
  * A registry {@link HostLauncher} that spawns the detached host from `runtime`.
  * Same env contract as the registry's own default launcher — the host reads its
