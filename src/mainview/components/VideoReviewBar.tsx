@@ -37,7 +37,7 @@ export interface VideoMarker {
 export function stepVideoFrame(video: HTMLVideoElement, direction: 1 | -1, fps: number | null): void {
 	const rate = fps ?? FALLBACK_FPS;
 	video.pause();
-	video.currentTime = frameSeekTime(frameAt(video.currentTime, rate) + direction, rate, video.duration);
+	video.currentTime = frameSeekTime(frameAt(intendedTime(video), rate) + direction, rate, video.duration);
 }
 
 export function stepVideoRate(video: HTMLVideoElement, direction: 1 | -1): void {
@@ -46,7 +46,7 @@ export function stepVideoRate(video: HTMLVideoElement, direction: 1 | -1): void 
 
 export function seekVideoBy(video: HTMLVideoElement, seconds: number): void {
 	const end = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
-	video.currentTime = Math.min(end, Math.max(0, video.currentTime + seconds));
+	video.currentTime = Math.min(end, Math.max(0, intendedTime(video) + seconds));
 }
 
 export function jumpVideo(video: HTMLVideoElement, direction: 1 | -1): void {
@@ -55,27 +55,59 @@ export function jumpVideo(video: HTMLVideoElement, direction: 1 | -1): void {
 
 export interface ScrubSeeker {
 	seek(time: number): void;
+	/** The target still waiting for the seek in flight, if any. */
+	target(): number | null;
 	dispose(): void;
 }
 
+const seekers = new WeakMap<HTMLVideoElement, ScrubSeeker>();
+
+/**
+ * Where the user last put the playhead: a drag target still waiting for its
+ * seek, else the element's own time. Relative seeks start from here.
+ */
+export function intendedTime(video: HTMLVideoElement): number {
+	return seekers.get(video)?.target() ?? video.currentTime;
+}
+
+/** Further than this from our own last write, a seek came from someone else. */
+const OWN_SEEK_TOLERANCE = 0.005;
+
 /**
  * Live scrubbing: one precise seek in flight, the newest target waits and wins.
- * Not `fastSeek` — WebKit snaps it to a keyframe, so on a sparse-GOP clip a
- * paused picture never moved while dragging (decisions/2026/11/25/precise-coalesced-video-scrub.md).
+ * Not `fastSeek`: WebKit holds backward drags and long jumps on the previous keyframe.
+ * Not a seek per move: each aborts the last, so nothing paints until release.
+ * See decisions/2026/11/25/precise-coalesced-video-scrub.md.
  */
-export function createScrubSeeker(video: HTMLVideoElement): ScrubSeeker {
+export function createScrubSeeker(video: HTMLVideoElement, onSettled: () => void = () => {}): ScrubSeeker {
 	let pending: number | null = null;
+	let written: number | null = null;
 	const flush = () => {
 		if (pending === null || video.seeking) return;
-		const time = pending;
+		written = pending;
 		pending = null;
-		video.currentTime = time;
+		video.currentTime = written;
+		onSettled();
+	};
+	// A jump, frame step or marker seek wins over a drag target still waiting.
+	const onSeeking = () => {
+		if (pending === null) return;
+		if (written === null || Math.abs(video.currentTime - written) > OWN_SEEK_TOLERANCE) { pending = null; onSettled(); }
 	};
 	video.addEventListener("seeked", flush);
-	return {
+	video.addEventListener("seeking", onSeeking);
+	const seeker: ScrubSeeker = {
 		seek(time) { pending = time; flush(); },
-		dispose() { pending = null; video.removeEventListener("seeked", flush); },
+		target: () => pending,
+		dispose() {
+			pending = null;
+			if (seekers.get(video) === seeker) seekers.delete(video);
+			video.removeEventListener("seeked", flush);
+			video.removeEventListener("seeking", onSeeking);
+		},
 	};
+	seekers.set(video, seeker);
+	return seeker;
 }
 
 /**
@@ -228,9 +260,12 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 		return combo ? `${label} (${combo})` : label;
 	};
 
+	// While dragging, the thumb and readout follow the pointer, and hold the release
+	// target until its seek is written; the picture follows as fast as seeks land.
+	const [scrubTime, setScrubTime] = useState<number | null>(null);
 	const seeker = useRef<ScrubSeeker | null>(null);
 	useEffect(() => {
-		const created = createScrubSeeker(video);
+		const created = createScrubSeeker(video, () => { if (!scrubbing.current) setScrubTime(null); });
 		seeker.current = created;
 		return () => { created.dispose(); if (seeker.current === created) seeker.current = null; };
 	}, [video]);
@@ -240,8 +275,13 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 		if (!track || !Number.isFinite(video.duration)) return;
 		const rect = track.getBoundingClientRect();
 		const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0;
+		setScrubTime(ratio * video.duration);
 		seeker.current?.seek(ratio * video.duration);
 	}, [video]);
+	const endScrub = () => {
+		scrubbing.current = false;
+		if (seeker.current?.target() == null) setScrubTime(null);
+	};
 
 	const onSliderKey = (e: React.KeyboardEvent) => {
 		const steps: Record<string, number> = {
@@ -256,12 +296,14 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 		e.preventDefault();
 	};
 
-	const played = timelinePercent(state.time, state.duration);
-	const frame = fps !== null ? frameAt(state.time, fps) : null;
-	const now = formatReviewTimestamp(state.time);
+	const shownTime = scrubTime ?? state.time;
+	const played = timelinePercent(shownTime, state.duration);
+	// The clip's end is past its last frame; never count one frame too many.
+	const lastFrame = fps !== null && Number.isFinite(state.duration) ? Math.max(0, Math.ceil(state.duration * fps - 1e-6) - 1) : null;
+	const frame = fps !== null ? Math.min(frameAt(shownTime, fps), lastFrame ?? Number.POSITIVE_INFINITY) : null;
+	const now = formatReviewTimestamp(shownTime);
 	const total = Number.isFinite(state.duration) ? formatReviewTimestamp(state.duration) : "–:––";
 	// Sized for the last frame, so a growing readout never shifts the timeline under a dragging pointer.
-	const lastFrame = fps !== null && Number.isFinite(state.duration) ? frameAt(state.duration, fps) : null;
 	const frameWidth = lastFrame !== null ? `${t("imageViewer.frameNumber", { frame: String(lastFrame) }).length}ch` : undefined;
 	const iconBtn = "flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-fg-2 transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-elevated-hover hover:text-fg active:scale-[0.96]";
 	const playLabel = state.paused ? t("imageViewer.videoPlay") : t("imageViewer.videoPause");
@@ -328,7 +370,7 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 			</span>
 
 			{/* Markers are a sibling layer, not children of the slider: ARIA makes a
-				slider's children presentational, which would hide them from screen readers. */}
+			    slider's children presentational, which would hide them from screen readers. */}
 			<div className="relative mx-2 h-10 min-w-[8rem] flex-1">
 				<div
 					ref={trackRef}
@@ -337,7 +379,7 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 					aria-label={t("imageViewer.videoSeek")}
 					aria-valuemin={0}
 					aria-valuemax={Number.isFinite(state.duration) ? Math.round(state.duration) : 0}
-					aria-valuenow={Math.round(state.time)}
+					aria-valuenow={Math.round(shownTime)}
 					aria-valuetext={`${now} / ${total}`}
 					data-testid="video-scrubber"
 					onKeyDown={onSliderKey}
@@ -349,9 +391,9 @@ export default function VideoReviewBar({ video, fps, markers, activeMarkerId, on
 					onPointerMove={(e) => { if (scrubbing.current) seekToPointer(e.clientX); }}
 					onPointerUp={(e) => {
 						if (scrubbing.current) seekToPointer(e.clientX);
-						scrubbing.current = false;
+						endScrub();
 					}}
-					onPointerCancel={() => { scrubbing.current = false; }}
+					onPointerCancel={endScrub}
 					className="group absolute inset-x-0 bottom-0 h-7 cursor-pointer touch-none rounded outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
 				>
 					<div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-fg-muted/25">

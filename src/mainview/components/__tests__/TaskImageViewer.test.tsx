@@ -716,6 +716,74 @@ describe("TaskImageViewer video review", () => {
 		expect(writes).toEqual([12, 60, 90]);
 	});
 
+	function seekingClip(video: HTMLVideoElement) {
+		let seeking = false;
+		let time = 0;
+		const writes: number[] = [];
+		Object.defineProperty(video, "seeking", { configurable: true, get: () => seeking });
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; writes.push(v); seeking = true; } });
+		const land = () => { seeking = false; fireEvent(video, new Event("seeked")); };
+		return { writes, land, started: () => fireEvent(video, new Event("seeking")) };
+	}
+
+	it("lets a jump right after release win over a drag target still waiting for its seek", async () => {
+		const { video } = await renderClip();
+		const clip = seekingClip(video);
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 200, pointerId: 1 });
+		clip.started();
+		fireEvent.pointerUp(scrubber, { clientX: 40, pointerId: 1 });
+		expect(clip.writes).toEqual([60]);
+		// From where the drag let go (12 s), not from the seek still in flight (60 s).
+		fireEvent.keyDown(window, { key: "l", code: "KeyL" });
+		clip.started();
+		expect(clip.writes).toEqual([60, 27]);
+		clip.land();
+		expect(clip.writes).toEqual([60, 27]);
+		expect(video.currentTime).toBe(27);
+	});
+
+	it("keeps the thumb on the pointer while a seek is in flight, and on the release target until it is written", async () => {
+		const { video } = await renderClip();
+		const clip = seekingClip(video);
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 40, pointerId: 1 });
+		clip.started();
+		fireEvent.pointerMove(scrubber, { clientX: 200, pointerId: 1 });
+		expect(clip.writes).toEqual([12]);
+		expect(scrubber).toHaveAttribute("aria-valuenow", "60");
+		fireEvent.pointerUp(scrubber, { clientX: 300, pointerId: 1 });
+		expect(scrubber).toHaveAttribute("aria-valuenow", "90");
+		clip.land();
+		clip.started();
+		expect(clip.writes).toEqual([12, 90]);
+		expect(scrubber).toHaveAttribute("aria-valuenow", "90");
+	});
+
+	it("clicks a marker right after release and stays on it", async () => {
+		const { video } = await renderClip([moment("m1", 90, "Late")]);
+		const clip = seekingClip(video);
+		const scrubber = scrubberOf();
+		fireEvent.pointerDown(scrubber, { clientX: 200, pointerId: 1 });
+		clip.started();
+		fireEvent.pointerUp(scrubber, { clientX: 40, pointerId: 1 });
+		fireEvent.click(await screen.findByTestId("video-marker"));
+		clip.started();
+		clip.land();
+		expect(clip.writes).toEqual([60, 90]);
+	});
+
+	it("types J and L into the comment composer instead of seeking", async () => {
+		const user = userEvent.setup();
+		const { video, at } = await renderClip();
+		at(50);
+		fireEvent.keyDown(window, { key: "c", code: "KeyC" });
+		const box = await screen.findByPlaceholderText("Leave a comment on this line...");
+		await user.type(box, "jjll");
+		expect(box).toHaveValue("jjll");
+		expect(video.currentTime).toBe(50);
+	});
+
 	it("jumps 15 seconds with the buttons and J / L, clamped to the clip, paused or playing", async () => {
 		const { video, at } = await renderClip();
 		at(50);
