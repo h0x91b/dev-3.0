@@ -110,6 +110,12 @@ function renderModal(props: {
 	);
 }
 
+/** One input event instead of one re-render per keystroke; only for fields with no per-key behaviour. */
+async function fillText(field: HTMLElement, text: string): Promise<void> {
+	await userEvent.click(field);
+	await userEvent.paste(text);
+}
+
 function makeFileList(files: File[]): FileList {
 	return {
 		length: files.length,
@@ -172,14 +178,18 @@ describe("CreateTaskModal", () => {
 		]);
 	});
 
-	it("shows Save & Start button when onCreateAndRun is provided", () => {
+	it("shows Save & Start, the dual hint and an enabled Scratch Task (empty description) when onCreateAndRun is provided", () => {
 		renderModal({ onCreateAndRun: vi.fn() });
 		expect(screen.getByText("Save & Start")).toBeInTheDocument();
+		expect(screen.getByText(/\u2318\u21e7Enter/)).toBeInTheDocument();
+		expect(screen.getByText("Scratch Task").closest("button")).not.toBeDisabled();
 	});
 
-	it("does not show Save & Start button when onCreateAndRun is omitted", () => {
+	it("omits Save & Start and Scratch Task and shows the simple hint when onCreateAndRun is omitted", () => {
 		renderModal();
 		expect(screen.queryByText("Save & Start")).not.toBeInTheDocument();
+		expect(screen.queryByText("Scratch Task")).not.toBeInTheDocument();
+		expect(screen.getByText("\u2318Enter to save")).toBeInTheDocument();
 	});
 
 	it("attach button uploads a picked file and inserts its path into the description", async () => {
@@ -217,7 +227,7 @@ describe("CreateTaskModal", () => {
 
 		await userEvent.click(screen.getByLabelText("Project"));
 		await userEvent.click(screen.getByRole("option", { name: "Other Project" }));
-		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Task for another project");
+		await fillText(screen.getByPlaceholderText("Describe what needs to be done..."), "Task for another project");
 		await userEvent.click(screen.getByText("Save & Start"));
 
 		await waitFor(() => {
@@ -233,23 +243,13 @@ describe("CreateTaskModal", () => {
 		expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: otherTask });
 	});
 
-	it("shows dual hint text when onCreateAndRun is provided", () => {
-		renderModal({ onCreateAndRun: vi.fn() });
-		expect(screen.getByText(/\u2318\u21e7Enter/)).toBeInTheDocument();
-	});
-
-	it("shows simple hint text when onCreateAndRun is omitted", () => {
-		renderModal();
-		expect(screen.getByText("\u2318Enter to save")).toBeInTheDocument();
-	});
-
 	it("Save & Start creates task and calls onCreateAndRun", async () => {
 		const onCreateAndRun = vi.fn();
 		const dispatch = vi.fn();
 		renderModal({ onCreateAndRun, dispatch });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "My new task");
+		await fillText(textarea, "My new task");
 		await userEvent.click(screen.getByText("Save & Start"));
 
 		await waitFor(() => {
@@ -268,7 +268,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ onClose, onCreateAndRun });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "My new task");
+		await fillText(textarea, "My new task");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -282,7 +282,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ onCreateAndRun });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "My new task");
+		await fillText(textarea, "My new task");
 		await userEvent.keyboard("{Meta>}{Shift>}{Enter}{/Shift}{/Meta}");
 
 		await waitFor(() => {
@@ -296,7 +296,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ onClose, onCreateAndRun });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "My new task");
+		await fillText(textarea, "My new task");
 		await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
 
 		await waitFor(() => {
@@ -310,7 +310,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ onClose });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "My new task");
+		await fillText(textarea, "My new task");
 		await userEvent.keyboard("{Control>}{Enter}{/Control}");
 
 		await waitFor(() => {
@@ -323,7 +323,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ onCreateAndRun });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "My new task");
+		await fillText(textarea, "My new task");
 		await userEvent.keyboard("{Control>}{Shift>}{Enter}{/Shift}{/Control}");
 
 		await waitFor(() => {
@@ -331,133 +331,54 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("clicking backdrop with empty form closes immediately", async () => {
+	it("closes an empty form immediately from the backdrop, the X and Escape, but not from a click inside", async () => {
 		const onClose = vi.fn();
 		renderModal({ onClose });
 
-		const overlay = screen.getByText("New Task").closest(".fixed");
-		if (overlay) await userEvent.click(overlay);
-
-		expect(onClose).toHaveBeenCalled();
-	});
-
-	it("clicking backdrop with filled form shows discard confirmation", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
-
-		const overlay = screen.getByText("New Task").closest(".fixed");
-		if (overlay) await userEvent.click(overlay);
-
-		expect(screen.getByText("Discard")).toBeInTheDocument();
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it("clicking inside the modal does not close it", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		// Click on the modal dialog itself (not the backdrop)
 		await userEvent.click(screen.getByText("New Task"));
-
 		expect(onClose).not.toHaveBeenCalled();
-	});
 
-	it("X close button with empty description closes immediately", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
+		const overlay = screen.getByText("New Task").closest(".fixed");
+		if (overlay) await userEvent.click(overlay);
+		expect(onClose).toHaveBeenCalledTimes(1);
 
 		await userEvent.click(screen.getByLabelText("Close"));
+		expect(onClose).toHaveBeenCalledTimes(2);
 
-		expect(onClose).toHaveBeenCalled();
+		await userEvent.keyboard("{Escape}");
+		expect(onClose).toHaveBeenCalledTimes(3);
 	});
 
-	it("X close button with filled description shows inline discard confirmation", async () => {
+	// One filled form walks every way into and out of the inline discard confirmation.
+	it("guards a filled form with the inline discard confirmation from backdrop, X and Escape", async () => {
 		const onClose = vi.fn();
 		renderModal({ onClose });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByLabelText("Close"));
+		await fillText(textarea, "some text");
 
+		// Backdrop click asks instead of closing; Keep editing hides the prompt and stays open.
+		const overlay = screen.getByText("New Task").closest(".fixed");
+		if (overlay) await userEvent.click(overlay);
 		expect(screen.getByText("Discard")).toBeInTheDocument();
-		expect(screen.getByText("Keep editing")).toBeInTheDocument();
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it("clicking Discard in confirmation closes the modal", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByLabelText("Close"));
-		await userEvent.click(screen.getByText("Discard"));
-
-		expect(onClose).toHaveBeenCalled();
-	});
-
-	it("clicking Keep editing hides confirmation and stays open", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByLabelText("Close"));
 		await userEvent.click(screen.getByText("Keep editing"));
-
 		expect(screen.queryByText("Discard")).not.toBeInTheDocument();
-		expect(onClose).not.toHaveBeenCalled();
-	});
 
-	it("Escape with filled description shows inline discard confirmation", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
-		await userEvent.keyboard("{Escape}");
-
-		expect(screen.getByText("Discard")).toBeInTheDocument();
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it("Escape with empty description closes immediately", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		await userEvent.keyboard("{Escape}");
-
-		expect(onClose).toHaveBeenCalled();
-	});
-
-	it("Escape on discard confirmation dismisses it without closing", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
-		await userEvent.keyboard("{Escape}");
-
-		expect(screen.getByText("Discard")).toBeInTheDocument();
-
-		await userEvent.keyboard("{Escape}");
-
-		expect(screen.queryByText("Discard")).not.toBeInTheDocument();
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it("Keep editing button receives focus when discard confirmation appears", async () => {
-		renderModal();
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "some text");
+		// X asks too, and focuses Keep editing.
 		await userEvent.click(screen.getByLabelText("Close"));
-
+		expect(screen.getByText("Discard")).toBeInTheDocument();
 		const keepEditingBtn = screen.getByText("Keep editing");
 		expect(document.activeElement).toBe(keepEditingBtn);
+
+		// Escape on the prompt dismisses it without closing; Escape on the form asks again.
+		await userEvent.keyboard("{Escape}");
+		expect(screen.queryByText("Discard")).not.toBeInTheDocument();
+		await userEvent.keyboard("{Escape}");
+		expect(screen.getByText("Discard")).toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+
+		await userEvent.click(screen.getByText("Discard"));
+		expect(onClose).toHaveBeenCalled();
 	});
 
 	it("uploads dropped images and inserts the saved path", async () => {
@@ -559,27 +480,13 @@ describe("CreateTaskModal", () => {
 
 	// ---- Branch selector ----
 
-	it("branch section starts collapsed", () => {
-		renderModal();
-		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
-		expect(screen.queryByPlaceholderText("Search branches or paste a PR URL...")).not.toBeInTheDocument();
-	});
-
-	it("clicking 'Use existing branch' expands the selector", async () => {
-		mockedApi.request.listBranches.mockResolvedValue([]);
-		renderModal();
-
-		await userEvent.click(screen.getByText("Use existing branch"));
-
-		expect(screen.getByPlaceholderText("Search branches or paste a PR URL...")).toBeInTheDocument();
-	});
-
-	it("selecting a branch shows it as a chip", async () => {
+	it("branch section starts collapsed, expands, selects a branch as a chip and clears it back to the input", async () => {
 		mockedApi.request.listBranches.mockResolvedValue([
 			{ name: "feature/login", isRemote: false },
 			{ name: "origin/main", isRemote: true },
 		]);
 		renderModal();
+		expect(screen.queryByPlaceholderText("Search branches or paste a PR URL...")).not.toBeInTheDocument();
 
 		await userEvent.click(screen.getByText("Use existing branch"));
 		const input = screen.getByPlaceholderText("Search branches or paste a PR URL...");
@@ -593,24 +500,7 @@ describe("CreateTaskModal", () => {
 		// Now the chip should be visible and the input should be gone
 		expect(screen.getByText("feature/login")).toBeInTheDocument();
 		expect(screen.queryByPlaceholderText("Search branches or paste a PR URL...")).not.toBeInTheDocument();
-	});
 
-	it("clearing selected branch returns to input", async () => {
-		mockedApi.request.listBranches.mockResolvedValue([
-			{ name: "feature/login", isRemote: false },
-		]);
-		renderModal();
-
-		await userEvent.click(screen.getByText("Use existing branch"));
-		const input = screen.getByPlaceholderText("Search branches or paste a PR URL...");
-		await userEvent.click(input);
-
-		await waitFor(() => {
-			expect(screen.getByText("feature/login")).toBeInTheDocument();
-		});
-		await userEvent.click(screen.getByText("feature/login"));
-
-		// Click the X button to clear
 		const clearButton = screen.getByText("feature/login").parentElement?.querySelector("button");
 		expect(clearButton).toBeTruthy();
 		await userEvent.click(clearButton!);
@@ -637,7 +527,7 @@ describe("CreateTaskModal", () => {
 
 		// Type description and create
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Continue login");
+		await fillText(textarea, "Continue login");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -649,45 +539,27 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("does not pass existingBranch when no branch is selected", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "New task");
-		await userEvent.click(screen.getByText("Save"));
-
-		await waitFor(() => {
-			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
-				projectId: "p1",
-				description: "New task",
-			});
-		});
-	});
-
 	// ---- Current branch choice guardrail ----
 
-	it("auto-fills branch when project is on a non-base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
+	it("auto-fills a non-base current branch and asks which branch to start from, with dirty and base-branch notes", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: true, behindOrigin: 0 });
 		renderModal();
 
 		await waitFor(() => {
 			expect(screen.getByText("feat/login")).toBeInTheDocument();
 		});
-	});
-
-	it("asks whether to use the current branch or the base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
-		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Continue login work");
+		await fillText(textarea, "Continue login work");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
 			expect(screen.getByText("Start task from which branch?")).toBeInTheDocument();
 		});
 		expect(mockedApi.request.createTask).not.toHaveBeenCalled();
+		expect(screen.getByText("Main repo has uncommitted Git changes. Those uncommitted changes stay here and do not move into the new task.")).toBeInTheDocument();
+		expect(screen.getByText("Here, base branch means the project base branch, using origin/main when available.")).toBeInTheDocument();
+		expect(screen.getByText("Use project base branch: main")).toBeInTheDocument();
 	});
 
 	it("uses the current branch after explicit confirmation", async () => {
@@ -695,7 +567,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ dispatch: vi.fn() });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Continue login work");
+		await fillText(textarea, "Continue login work");
 		await userEvent.click(screen.getByText("Save"));
 		await userEvent.click(screen.getByText("Use current branch: feat/login"));
 
@@ -708,39 +580,12 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("shows a dirty repo warning in the confirmation dialog", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: true, behindOrigin: 0 });
-		renderModal();
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Continue login work");
-		await userEvent.click(screen.getByText("Save"));
-
-		await waitFor(() => {
-			expect(screen.getByText("Main repo has uncommitted Git changes. Those uncommitted changes stay here and do not move into the new task.")).toBeInTheDocument();
-		});
-	});
-
-	it("clarifies that base branch means the project base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
-		renderModal();
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Continue login work");
-		await userEvent.click(screen.getByText("Save"));
-
-		await waitFor(() => {
-			expect(screen.getByText("Here, base branch means the project base branch, using origin/main when available.")).toBeInTheDocument();
-		});
-		expect(screen.getByText("Use project base branch: main")).toBeInTheDocument();
-	});
-
 	it("keeps the base branch as default after explicit confirmation", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "New task");
+		await fillText(textarea, "New task");
 		await userEvent.click(screen.getByText("Save"));
 		await userEvent.click(screen.getByText("Use project base branch: main"));
 
@@ -754,27 +599,13 @@ describe("CreateTaskModal", () => {
 
 	// ---- Scratch Task ----
 
-	it("shows Scratch Task button when onCreateAndRun is provided", () => {
-		renderModal({ onCreateAndRun: vi.fn() });
-		expect(screen.getByText("Scratch Task")).toBeInTheDocument();
-	});
-
-	it("does not show Scratch Task button when onCreateAndRun is omitted", () => {
-		renderModal();
-		expect(screen.queryByText("Scratch Task")).not.toBeInTheDocument();
-	});
-
-	it("Scratch Task button is enabled with empty description", () => {
-		renderModal({ onCreateAndRun: vi.fn() });
-		const btn = screen.getByText("Scratch Task").closest("button");
-		expect(btn).not.toBeDisabled();
-	});
-
-	it("Scratch Task click sends scratch:true and empty description, calls onCreateAndRun", async () => {
+	it("Scratch Task sends scratch:true with an empty description, ignoring typed text, and calls onCreateAndRun", async () => {
 		const onCreateAndRun = vi.fn();
 		const dispatch = vi.fn();
 		renderModal({ onCreateAndRun, dispatch });
 
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await fillText(textarea, "irrelevant text user typed then clicked scratch");
 		await userEvent.click(screen.getByText("Scratch Task"));
 
 		await waitFor(() => {
@@ -786,40 +617,6 @@ describe("CreateTaskModal", () => {
 		});
 		expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
 		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask, mockProject);
-	});
-
-	it("Scratch Task ignores typed description text (backend generates placeholder)", async () => {
-		const onCreateAndRun = vi.fn();
-		renderModal({ onCreateAndRun });
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "irrelevant text user typed then clicked scratch");
-		await userEvent.click(screen.getByText("Scratch Task"));
-
-		await waitFor(() => {
-			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
-				projectId: "p1",
-				description: "",
-				scratch: true,
-			});
-		});
-	});
-
-	it("does not ask when project is already on the base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
-		renderModal();
-
-		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "New task");
-		await userEvent.click(screen.getByText("Save"));
-
-		await waitFor(() => {
-			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
-				projectId: "p1",
-				description: "New task",
-			});
-		});
-		expect(screen.queryByText("Start task from which branch?")).not.toBeInTheDocument();
 	});
 
 	it("does not ask after clearing the auto-filled branch", async () => {
@@ -835,7 +632,7 @@ describe("CreateTaskModal", () => {
 		await userEvent.click(clearButton!);
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "New task");
+		await fillText(textarea, "New task");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -852,7 +649,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "New task");
+		await fillText(textarea, "New task");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -876,7 +673,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Racey task");
+		await fillText(textarea, "Racey task");
 		await userEvent.click(screen.getByText("Save"));
 
 		// Now let the lookup complete with a non-base branch.
@@ -990,7 +787,8 @@ describe("CreateTaskModal labels", () => {
 
 		// Select "Bug" through the picker popover.
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		await userEvent.type(screen.getByPlaceholderText("Search or create..."), "bug{Enter}");
+		await fillText(screen.getByPlaceholderText("Search or create..."), "bug");
+		await userEvent.keyboard("{Enter}");
 
 		// Only the selected label appears as a chip; the unselected one still does not.
 		await waitFor(() => {
@@ -1006,7 +804,8 @@ describe("CreateTaskModal labels", () => {
 
 		await userEvent.click(screen.getByTitle("+ Add Label"));
 		const input = screen.getByPlaceholderText("Search or create...");
-		await userEvent.type(input, "Urgent{Enter}");
+		await fillText(input, "Urgent");
+		await userEvent.keyboard("{Enter}");
 
 		await waitFor(() => {
 			expect(mockedApi.request.createLabel).toHaveBeenCalledWith({ projectId: "p1", name: "Urgent" });
@@ -1020,7 +819,7 @@ describe("CreateTaskModal labels", () => {
 
 		// The new label must be carried into the created task.
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Do the thing");
+		await fillText(textarea, "Do the thing");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -1037,13 +836,14 @@ describe("CreateTaskModal labels", () => {
 
 		await userEvent.click(screen.getByTitle("+ Add Label"));
 		const input = screen.getByPlaceholderText("Search or create...");
-		await userEvent.type(input, "bug{Enter}");
+		await fillText(input, "bug");
+		await userEvent.keyboard("{Enter}");
 
 		expect(mockedApi.request.createLabel).not.toHaveBeenCalled();
 
 		// Existing label gets selected and passed through on create.
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Do the thing");
+		await fillText(textarea, "Do the thing");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -1091,10 +891,11 @@ describe("CreateTaskModal — partial create failure", () => {
 
 		// Select an existing label so the failing setTaskLabels call is reached.
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		await userEvent.type(screen.getByPlaceholderText("Search or create..."), "bug{Enter}");
+		await fillText(screen.getByPlaceholderText("Search or create..."), "bug");
+		await userEvent.keyboard("{Enter}");
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Do the thing");
+		await fillText(textarea, "Do the thing");
 		await userEvent.click(screen.getByText("Save"));
 
 		// The base task must reach the board even though labels could not be applied.
@@ -1116,13 +917,14 @@ describe("CreateTaskModal — partial create failure", () => {
 		renderModal({ dispatch, onClose });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Do the thing");
+		await fillText(textarea, "Do the thing");
 
 		// Enter title-edit mode and set a custom title so renameTask is reached.
 		await userEvent.click(screen.getByText("Title:"));
 		const titleInput = screen.getAllByRole("textbox").find((el) => el.tagName === "INPUT") as HTMLInputElement;
 		await userEvent.clear(titleInput);
-		await userEvent.type(titleInput, "Custom title{Enter}");
+		await fillText(titleInput, "Custom title");
+		await userEvent.keyboard("{Enter}");
 
 		await userEvent.click(screen.getByText("Save"));
 
@@ -1147,14 +949,16 @@ describe("CreateTaskModal — partial create failure", () => {
 		renderModal({ dispatch, onClose, project: labeledProject });
 
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		await userEvent.type(screen.getByPlaceholderText("Search or create..."), "bug{Enter}");
+		await fillText(screen.getByPlaceholderText("Search or create..."), "bug");
+		await userEvent.keyboard("{Enter}");
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Do the thing");
+		await fillText(textarea, "Do the thing");
 		await userEvent.click(screen.getByText("Title:"));
 		const titleInput = screen.getAllByRole("textbox").find((el) => el.tagName === "INPUT") as HTMLInputElement;
 		await userEvent.clear(titleInput);
-		await userEvent.type(titleInput, "Custom title{Enter}");
+		await fillText(titleInput, "Custom title");
+		await userEvent.keyboard("{Enter}");
 
 		await userEvent.click(screen.getByText("Save"));
 
@@ -1177,7 +981,7 @@ describe("CreateTaskModal — partial create failure", () => {
 		renderModal({ onClose });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Plain task");
+		await fillText(textarea, "Plain task");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -1193,7 +997,7 @@ describe("CreateTaskModal — partial create failure", () => {
 		renderModal({ dispatch });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
-		await userEvent.type(textarea, "Plain task");
+		await fillText(textarea, "Plain task");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
@@ -1537,7 +1341,7 @@ describe("CreateTaskModal — virtual (Operations) project", () => {
 
 	it("creates a virtual task with the managed folder (no opsWorkDir)", async () => {
 		renderModal({ project: vproject });
-		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Backup prod");
+		await fillText(screen.getByPlaceholderText("Describe what needs to be done..."), "Backup prod");
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Backup prod" });
@@ -1556,7 +1360,7 @@ describe("CreateTaskModal — Operations worktree toggle", () => {
 	});
 
 	async function pickFolderAndSave() {
-		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Fix it");
+		await fillText(screen.getByPlaceholderText("Describe what needs to be done..."), "Fix it");
 		await userEvent.click(screen.getByText("Choose folder…"));
 	}
 
@@ -1740,7 +1544,7 @@ describe("CreateTaskModal — project with the git workflow off", () => {
 
 	it("creates the task with no branch", async () => {
 		renderModal({ project: gproject });
-		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Map the Azure estate");
+		await fillText(screen.getByPlaceholderText("Describe what needs to be done..."), "Map the Azure estate");
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Map the Azure estate" });
@@ -1768,7 +1572,7 @@ describe("CreateTaskModal — project with the git workflow off", () => {
 		await userEvent.click(await screen.findByTestId("workspace-own-worktree"));
 		expect(screen.queryByText("/home/user/test-project")).not.toBeInTheDocument();
 		expect(screen.getByText(/Gets its own worktree and branch/)).toBeInTheDocument();
-		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Linux build");
+		await fillText(screen.getByPlaceholderText("Describe what needs to be done..."), "Linux build");
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Linux build", ownWorktree: true });
@@ -1804,7 +1608,7 @@ describe("CreateTaskModal — Save as draft (create mode)", () => {
 		const button = screen.getByTestId("create-task-save-draft");
 		expect(button).toBeDisabled();
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
 
 		expect(button).toBeEnabled();
 	});
@@ -1825,7 +1629,7 @@ describe("CreateTaskModal — Save as draft (create mode)", () => {
 		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, draft: true, description: "half a thought" });
 		renderModal({ onClose, onCreateAndRun });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
 		await userEvent.click(screen.getByTestId("create-task-save-draft"));
 
 		await waitFor(() => {
@@ -1869,7 +1673,7 @@ describe("CreateTaskModal — draft-edit mode", () => {
 	it("enables Save once the description is non-empty", async () => {
 		renderModal({ draftTask, onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "Now it is written");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "Now it is written");
 
 		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 	});
@@ -1879,7 +1683,7 @@ describe("CreateTaskModal — draft-edit mode", () => {
 		mockedApi.request.editTask.mockResolvedValue({ ...draftTask, description: "more words" });
 		renderModal({ draftTask, dispatch, onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "more words");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "more words");
 		await userEvent.click(screen.getByTestId("create-task-save-draft"));
 
 		await waitFor(() => {
@@ -1902,7 +1706,7 @@ describe("CreateTaskModal — draft-edit mode", () => {
 		mockedApi.request.editTask.mockResolvedValue({ ...draftTask, draft: false, description: "written" });
 		renderModal({ draftTask, onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "written");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "written");
 		await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
 		await waitFor(() => {
@@ -1916,7 +1720,7 @@ describe("CreateTaskModal — draft-edit mode", () => {
 		mockedApi.request.editTask.mockResolvedValue(promoted);
 		renderModal({ draftTask, onCreateAndRun });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "written");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "written");
 		await userEvent.click(screen.getByRole("button", { name: /Save & Start/i }));
 
 		await waitFor(() => expect(onCreateAndRun).toHaveBeenCalledWith(promoted, mockProject));
@@ -1926,7 +1730,7 @@ describe("CreateTaskModal — draft-edit mode", () => {
 		const onClose = vi.fn();
 		renderModal({ draftTask, onClose, onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "unsaved");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "unsaved");
 		await userEvent.click(screen.getByLabelText("Close"));
 
 		expect(screen.getByText(/Unsaved changes/i)).toBeTruthy();
@@ -1954,7 +1758,7 @@ describe("CreateTaskModal — Save as draft from the discard confirmation", () =
 	it("offers all three exits when closing a half-written new task", async () => {
 		renderModal({ onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
 		await userEvent.click(screen.getByLabelText("Close"));
 
 		expect(screen.getByRole("button", { name: /Keep editing/i })).toBeTruthy();
@@ -1967,7 +1771,7 @@ describe("CreateTaskModal — Save as draft from the discard confirmation", () =
 		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, draft: true, description: "half a thought" });
 		renderModal({ onClose, onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
 		await userEvent.click(screen.getByLabelText("Close"));
 		await userEvent.click(screen.getByTestId("discard-save-draft"));
 
@@ -1984,7 +1788,7 @@ describe("CreateTaskModal — Save as draft from the discard confirmation", () =
 		mockedApi.request.editTask.mockResolvedValue({ ...draftTask, description: "second sitting" });
 		renderModal({ draftTask, onCreateAndRun: vi.fn() });
 
-		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "second sitting");
+		await fillText(screen.getByPlaceholderText(/Describe what needs to be done/i), "second sitting");
 		await userEvent.click(screen.getByLabelText("Close"));
 		await userEvent.click(screen.getByTestId("discard-save-draft"));
 
@@ -2056,7 +1860,7 @@ describe("CreateTaskModal — memory notice", () => {
 		renderModal();
 
 		await screen.findByTestId("memory-pressure-banner");
-		await userEvent.type(screen.getByPlaceholderText(/describe/i), "do the thing");
+		await fillText(screen.getByPlaceholderText(/describe/i), "do the thing");
 
 		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 	});
@@ -2114,7 +1918,7 @@ describe("CreateTaskModal — task type presets", () => {
 
 	it("keeps central scope text when switching away from cleanup", async () => {
 		renderModal({ project: { ...mockProject, kind: "virtual" } });
-		await userEvent.type(description(), "Audit all projects.");
+		await fillText(description(), "Audit all projects.");
 		await userEvent.click(await screen.findByTestId("task-type-board-cleanup"));
 		await waitFor(() => expect(description().value).toBe(BOARD_CLEANUP_PROMPT + "\n\n---\n\nAudit all projects."));
 		await userEvent.click(screen.getByTestId("task-type-standard"));
@@ -2131,13 +1935,28 @@ describe("CreateTaskModal — task type presets", () => {
 		await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(expect.objectContaining({ taskType: null, description: "Audit this board." })));
 	});
 
-	it("injects the coordinator preamble and keeps the user's own text below a separator", async () => {
+	// The type has to reach disk, not just the prompt: the board marks the card and
+	// the sort lift off the stored field.
+	it("injects the coordinator preamble above the user's text, titles the task from that text, and persists the type", async () => {
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
 		renderModal();
-		await userEvent.type(description(), "Ship the Windows track.");
+		await fillText(description(), "Ship the Windows track.");
 		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
 
 		await waitFor(() => expect(description().value).toContain(COORDINATOR_PROMPT));
 		expect(description().value).toMatch(/\n\n---\n\nShip the Windows track\.$/);
+		await waitFor(() =>
+			expect(screen.getByTestId("create-task-title")).toHaveTextContent("Ship the Windows track."),
+		);
+		expect(screen.getByTestId("create-task-title").textContent).not.toContain("COORDINATOR");
+
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
+		const sent = mockedApi.request.createTask.mock.calls[0][0];
+		expect(sent.title).toBe("Ship the Windows track.");
+		expect(sent.description).toContain(COORDINATOR_PROMPT);
+		expect(sent.taskType).toBe("coordinator");
 	});
 
 	it("puts the caret after the preamble, so typing lands in the user's own text", async () => {
@@ -2149,7 +1968,7 @@ describe("CreateTaskModal — task type presets", () => {
 
 	it("returning to Standard restores exactly the user's own text", async () => {
 		renderModal();
-		await userEvent.type(description(), "Ship the Windows track.");
+		await fillText(description(), "Ship the Windows track.");
 		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
 		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
 
@@ -2170,7 +1989,7 @@ describe("CreateTaskModal — task type presets", () => {
 	it("swaps one preamble for the other without leaving the first behind", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feature", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
-		await userEvent.type(description(), "mine");
+		await fillText(description(), "mine");
 		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
 		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
 
@@ -2189,20 +2008,14 @@ describe("CreateTaskModal — task type presets", () => {
 		await waitFor(() => expect(description().value).toBe("Project coordinator."));
 	});
 
-	it("offers PR review without a branch and asks for the pull request link", async () => {
+	it("offers PR review without a branch, asks for the link, and keeps Save clickable while saying what is missing", async () => {
 		renderModal();
-		await userEvent.type(description(), "Focus on auth.");
+		await fillText(description(), "Focus on auth.");
 		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
 
 		const link = await screen.findByLabelText("Pull request");
 		await waitFor(() => expect(link).toHaveFocus());
 		expect(screen.getByRole("button", { name: "Save as draft" })).toBeEnabled();
-	});
-
-	it("keeps Save clickable and says what is missing instead of creating a branchless review", async () => {
-		renderModal();
-		await userEvent.type(description(), "Focus on auth.");
-		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
 		const save = screen.getByRole("button", { name: "Save" });
 		expect(save).toBeEnabled();
 
@@ -2219,7 +2032,7 @@ describe("CreateTaskModal — task type presets", () => {
 			ok: true, branch: "origin/feature", number: 42, title: "My PR", isFork: false, error: null,
 		});
 		renderModal();
-		await userEvent.type(description(), "Focus on auth.");
+		await fillText(description(), "Focus on auth.");
 		await userEvent.click(await screen.findByTestId("task-type-pr-review"));
 		await userEvent.click(await screen.findByLabelText("Pull request"));
 		await userEvent.paste("https://github.com/o/r/pull/42");
@@ -2283,52 +2096,11 @@ describe("CreateTaskModal — task type presets", () => {
 		expect(screen.queryByTestId("task-type-pr-review")).not.toBeInTheDocument();
 	});
 
-	it("names the task after the user's own text, not the preamble", async () => {
-		renderModal();
-		await userEvent.type(description(), "Ship the Windows track.");
-		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
-
-		await waitFor(() =>
-			expect(screen.getByTestId("create-task-title")).toHaveTextContent("Ship the Windows track."),
-		);
-		expect(screen.getByTestId("create-task-title").textContent).not.toContain("COORDINATOR");
-	});
-
-	it("sends that title to createTask, so the board card is not titled from the preamble", async () => {
-		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
-		renderModal();
-		await userEvent.type(description(), "Ship the Windows track.");
-		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
-		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
-
-		await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
-		const sent = mockedApi.request.createTask.mock.calls[0][0];
-		expect(sent.title).toBe("Ship the Windows track.");
-		expect(sent.description).toContain(COORDINATOR_PROMPT);
-	});
-
-	// The type has to reach disk, not just the prompt: the board marks the card and
-	// the sort lift off the stored field.
-	it("persists the coordinator task type", async () => {
-		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
-		renderModal();
-		await userEvent.type(description(), "Run the board.");
-		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
-		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
-
-		await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
-		expect(mockedApi.request.createTask.mock.calls[0][0].taskType).toBe("coordinator");
-	});
-
 	// PR review changes the prompt and nothing about the task.
 	it("stores no task type for the PR review preset", async () => {
 		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
 		renderModal();
-		await userEvent.type(description(), "Look at this branch.");
+		await fillText(description(), "Look at this branch.");
 		await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
 		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
