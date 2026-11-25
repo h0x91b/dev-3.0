@@ -164,7 +164,7 @@ describe("withoutLaunchTaskWiring", () => {
 		expectNoTaskWiring(spawnEnv());
 	});
 
-	it("reaches the tmux client of an attached session even with its own process env", async () => {
+	it("reaches the tmux client of an attached session", async () => {
 		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
 		const { client, seen, spawnEnv } = fakeClient();
 
@@ -172,7 +172,6 @@ describe("withoutLaunchTaskWiring", () => {
 			client.spawnAttachedSession({
 				sessionName: "s", configFile: "/tmp/c.conf", cwd: "/tmp", socket: "probe",
 				terminal: { cols: 80, rows: 24, data: () => {} },
-				processEnv: { TERM: "xterm-256color", HOME: "/Users/me" },
 			});
 		});
 

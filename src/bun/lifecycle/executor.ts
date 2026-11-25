@@ -55,7 +55,6 @@ import { isTaskSoundEnabled, type TaskSoundStatus } from "../../shared/task-soun
 import { loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
-import { dev3TaskTempPath } from "../temp-paths";
 import { reapWorktreeProcesses } from "../worktree-reaper";
 import { forgetWorktreeTrust } from "../worktree-trust";
 import {
@@ -80,9 +79,20 @@ import {
 	notifyWatchedTaskEvent,
 	notifyWatchedTaskStatusChange,
 	pushCliAttention,
+	pushCliToast,
 } from "../rpc-handlers/shared";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import type { LifecycleEffect } from "./effects";
+import {
+	buildCleanupWrapper,
+	cleanupNoteContent,
+	cleanupScriptFiles,
+	cleanupToastMessage,
+	readCleanupExitCode,
+	readCleanupLogTail,
+	removeCleanupRunFiles,
+	type CleanupOutcome,
+} from "./cleanup-script-run";
 import { getMergeCompletionFingerprint } from "./merge-fingerprint";
 import type {
 	LifecycleColumn,
@@ -622,12 +632,16 @@ async function cleanupSessionAlive(socket: string, sessionName: string): Promise
 	}
 }
 
+type CleanupSessionResult =
+	| { kind: "exited"; clientExitCode: number; elapsedMs: number }
+	| { kind: "abandoned"; reason: "orphaned-client" | "hard-timeout" };
+
 async function awaitCleanupSession(
 	proc: CleanupProcess,
 	socket: string,
 	sessionName: string,
 	taskId: string,
-): Promise<void> {
+): Promise<CleanupSessionResult> {
 	const startedAt = Date.now();
 	const fields = { taskId, session: sessionName };
 	let missingSessionPolls = 0;
@@ -641,19 +655,59 @@ async function awaitCleanupSession(
 		]);
 		clearTimeout(timer);
 		const elapsedMs = Date.now() - startedAt;
-		if (settled) {
-			log.info("Cleanup script finished", { ...fields, exitCode: settled.exitCode, elapsedMs });
-			return;
-		}
+		if (settled) return { kind: "exited", clientExitCode: settled.exitCode, elapsedMs };
 		if (elapsedMs >= CLEANUP_SCRIPT_HARD_TIMEOUT_MS) {
 			await abandonCleanupSession(proc, socket, sessionName, "hard-timeout", { ...fields, elapsedMs });
-			return;
+			return { kind: "abandoned", reason: "hard-timeout" };
 		}
 		missingSessionPolls = (await cleanupSessionAlive(socket, sessionName)) ? 0 : missingSessionPolls + 1;
 		if (missingSessionPolls >= CLEANUP_ORPHAN_POLLS) {
 			await abandonCleanupSession(proc, socket, sessionName, "orphaned-client", { ...fields, elapsedMs });
-			return;
+			return { kind: "abandoned", reason: "orphaned-client" };
 		}
+	}
+}
+
+const CLEANUP_ABANDON_TEXT = {
+	"hard-timeout": `it ran past the ${Math.round(CLEANUP_SCRIPT_HARD_TIMEOUT_MS / 60_000)} minute limit and was stopped`,
+	"orphaned-client": "its tmux session disappeared",
+} as const;
+
+/**
+ * Best-effort: the teardown goes on whatever happens here. The toast carries the
+ * news, the note keeps it once the toast is gone (no note when the task is deleted).
+ */
+async function surfaceCleanupFailure(
+	task: Task,
+	project: Project,
+	transition: CleanupTransition,
+	outcome: Exclude<CleanupOutcome, { kind: "ok" }>,
+	logTail: string,
+): Promise<void> {
+	const fields = { taskId: task.id.slice(0, 8) };
+	try {
+		pushCliToast({
+			taskId: task.id,
+			projectId: project.id,
+			message: cleanupToastMessage(outcome, transition.toStatus !== "deleted"),
+			level: "error",
+			taskSeq: task.seq,
+			taskTitle: getTaskTitle(task),
+			projectName: project.name,
+		});
+	} catch (error) {
+		log.warn("Could not toast the cleanup-script failure", { ...fields, error: String(error) });
+	}
+	if (transition.toStatus === "deleted") return;
+	try {
+		const [{ addNote }, { boardPorts }, { AGENT_ACTOR }] = await Promise.all([
+			import("../board-operations/task-notes"),
+			import("../board-operations/runtime"),
+			import("../board-operations/types"),
+		]);
+		await addNote({ ...boardPorts, push: () => {} }, project, task.id, cleanupNoteContent(outcome, logTail), AGENT_ACTOR);
+	} catch (error) {
+		log.warn("Could not record the cleanup-script failure note", { ...fields, error: String(error) });
 	}
 }
 
@@ -674,30 +728,63 @@ export async function runCleanupScript(
 		: await resolveOperationalProjectConfig(rootProject, task.worktreePath, { foreignCode: task.foreignCode });
 	const script = resolved.cleanupScript?.trim() || 'echo "Task finished"';
 	const dialect = launchDialect();
-	const scriptPath = dev3TaskTempPath(task.id, `cleanup${dialect.scriptExtension}`);
+	const files = cleanupScriptFiles(task.id);
 	const cleanupEnv = {
 		...(resolved.env ?? {}),
 		...buildCleanupScriptEnv(task, rootProject, transition),
 	};
-	await Bun.write(scriptPath, `${[...dialect.header(), script].join("\n")}\n`);
 	// The cleanup script is shown in a throwaway tmux session — POSIX-only.
 	assertPosixLaunchDialect("the cleanup-script tmux session");
+	const shellPath = getUserShell();
+	removeCleanupRunFiles(files, ["status", "log"]);
+	await Promise.all([
+		Bun.write(files.body, `${[...dialect.header(), script].join("\n")}\n`),
+		Bun.write(files.wrapper, buildCleanupWrapper(files, buildScriptRunnerCommand(files.body, { shellPath }))),
+	]);
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const sessionName = cleanupSessionName(task.id);
 	const taskId = task.id.slice(0, 8);
 	log.info("Running cleanup script", { taskId, session: sessionName });
-	const proc = tmux.spawnAttachedSession({
-		socket,
-		configFile: activeTmuxConfigPath(),
-		sessionName,
-		cwd: task.worktreePath,
-		envFlags: cleanupEnv,
-		command: buildScriptRunnerCommand(scriptPath, { shellPath: getUserShell() }),
-		// Session env only via `-e`: a client env would become the global env of
-		// a server this cleanup session happens to start.
-		terminal: { cols: 220, rows: 50, data: () => {} },
-	});
-	await awaitCleanupSession(proc, socket, sessionName, taskId);
+	let outcome: CleanupOutcome;
+	try {
+		const proc = tmux.spawnAttachedSession({
+			socket,
+			configFile: activeTmuxConfigPath(),
+			sessionName,
+			cwd: task.worktreePath,
+			envFlags: cleanupEnv,
+			command: buildScriptRunnerCommand(files.wrapper, { shellPath }),
+			// Session env only via `-e`: a client env would become the global env of
+			// a server this cleanup session happens to start.
+			terminal: { cols: 220, rows: 50, data: () => {} },
+		});
+		const settled = await awaitCleanupSession(proc, socket, sessionName, taskId);
+		// The script may have finished before a wedged client was abandoned.
+		const exitCode = await readCleanupExitCode(files);
+		log.info(settled.kind === "exited" ? "Cleanup script finished" : "Cleanup script abandoned", {
+			taskId,
+			session: sessionName,
+			exitCode,
+			...(settled.kind === "exited"
+				? { clientExitCode: settled.clientExitCode, elapsedMs: settled.elapsedMs }
+				: { reason: settled.reason }),
+		});
+		outcome = exitCode === 0
+			? { kind: "ok" }
+			: exitCode !== null
+				? { kind: "failed", exitCode }
+				: {
+					kind: "unfinished",
+					reason: settled.kind === "abandoned"
+						? CLEANUP_ABANDON_TEXT[settled.reason]
+						: `no exit status was recorded, tmux client exit ${settled.clientExitCode}`,
+				};
+	} catch (error) {
+		log.warn("Cleanup script could not start", { taskId, session: sessionName, error: String(error) });
+		outcome = { kind: "unfinished", reason: error instanceof Error ? error.message : String(error) };
+	}
+	if (outcome.kind !== "ok") await surfaceCleanupFailure(task, project, transition, outcome, await readCleanupLogTail(files));
+	removeCleanupRunFiles(files);
 }
 
 export async function captureCompletedDiffStats(
