@@ -4,7 +4,7 @@ import { basename, extname } from "node:path";
 import type { SharedImage } from "../shared/types";
 import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_MEDIA_BYTES, SHARED_AUDIO_EXTS, SHARED_IMAGE_EXTS, SHARED_MEDIA_EXTS, mediaTooLargeDetail } from "../shared/types";
 import { DEV3_HOME } from "./paths";
-import { projectWorktreesRoot, storesInProject, type StorageProject } from "../shared/project-storage";
+import { allProjectWorktreesRoots, projectWorktreesRoot, storesInProject, type StorageProject } from "../shared/project-storage";
 import { isFullyQualifiedPath } from "../shared/absolute-path";
 
 const SUPPORTED_EXTS = new Set(SHARED_IMAGE_EXTS);
@@ -35,6 +35,11 @@ export function sharedImagesDir(project: StorageProject): string {
 	// Sibling of the per-project `uploads/` dir (decision 036), kept in the
 	// worktree tree so it shares the worktree's lifecycle, per the storage choice.
 	return `${projectWorktreesRoot(DEV3_HOME, project.path, storesInProject(project) ? "project" : undefined)}/shared-images`;
+}
+
+/** Both pools a project's clips may sit in: older tasks keep theirs after a storage-root switch. */
+export function sharedImagesDirs(project: StorageProject): string[] {
+	return allProjectWorktreesRoots(DEV3_HOME, project.path).map((root) => `${root}/shared-images`);
 }
 
 /** Lowercase extension without the dot, or "" if none. */

@@ -258,9 +258,9 @@ export interface RawTask {
 	movedAt?: string | null;
 	statusEnteredAt?: string;
 	description?: string;
-	sharedImages?: Array<{ storedPath?: string }>;
-	sharedVideos?: Array<{ storedPath?: string }>;
-	sharedAudio?: Array<{ storedPath?: string }>;
+	sharedImages?: Array<{ storedPath?: string; pinnedAt?: number }>;
+	sharedVideos?: Array<{ storedPath?: string; pinnedAt?: number }>;
+	sharedAudio?: Array<{ storedPath?: string; pinnedAt?: number }>;
 	sharedArtifacts?: Array<{ storedPath?: string }>;
 }
 

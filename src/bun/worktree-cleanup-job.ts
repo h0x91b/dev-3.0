@@ -22,6 +22,8 @@ export interface WorktreeCleanupResult {
 	/** Worktree prune plus large-media prune. */
 	freedBytes: number;
 	removedMediaFiles: number;
+	/** Media files the prune unlinked; the host tombstones their records. Not persisted. */
+	removedMediaPaths?: string[];
 	skipped: number;
 	failed: number;
 	/** Removed or failed entries only — what the log names. */
@@ -55,6 +57,7 @@ export function runWorktreeCleanup(deps: WorktreeScanDeps, steps: WorktreeCleanu
 		removedDirs: outcomes.filter((o) => o.action === "removed-dir").length,
 		freedBytes: [...outcomes, ...mediaOutcomes].reduce((sum, o) => sum + o.freedBytes, 0),
 		removedMediaFiles: mediaOutcomes.filter((o) => o.action === "removed").length,
+		removedMediaPaths: mediaOutcomes.filter((o) => o.action === "removed").map((o) => o.path),
 		skipped: outcomes.filter((o) => o.action === "skipped").length,
 		failed: [...outcomes, ...mediaOutcomes].filter((o) => o.action === "failed").length,
 		outcomes: outcomes.filter((o) => o.action !== "skipped"),
