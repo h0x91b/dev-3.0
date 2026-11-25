@@ -306,7 +306,7 @@ const terminal = {
 	"terminal.pathLinkFolderBrowser": "Las carpetas no se pueden abrir desde el navegador — usa la aplicación de escritorio.",
 	"terminal.pathLinkOpenFailed": "No se pudo abrir la ruta: {error}",
 	"terminal.legacyTmuxServer": "Las terminales de las tareas siguen en un servidor tmux de una ejecución anterior de dev-3.0, así que pueden perder el acceso a Documentos o Escritorio. Pasarán a la configuración corregida cuando ese servidor se reinicie: cierra todas las terminales de tareas o cierra sesión.",
-	"terminal.staleTmuxServerDeleted": "Las terminales de las tareas usan un servidor tmux cuya copia de dev-3.0 se eliminó, así que perderán el acceso a Documentos, Escritorio y Acceso total al disco la próxima vez que macOS lo compruebe. Reinicia las terminales cuando ningún agente esté a mitad de un turno.",
+	"terminal.staleTmuxServerDeleted": "Las terminales de las tareas usan un servidor tmux cuya copia de dev-3.0 se eliminó o fue reemplazada por una actualización, así que macOS puede retirarles el acceso a Documentos, Escritorio y Acceso total al disco en su próxima comprobación. Reinicia las terminales cuando ningún agente esté a mitad de un turno.",
 	"terminal.staleTmuxServerElsewhere": "Las terminales de las tareas usan un servidor tmux de otra copia de dev-3.0. Perderán el acceso a Documentos y Escritorio en cuanto se elimine esa copia. Reinicia las terminales para pasarlas a esta.",
 	"terminal.staleTmuxServerIncompatible": "Las terminales de las tareas usan un servidor tmux de una versión que este dev-3.0 no puede controlar, así que es posible que no se abran terminales nuevas. Reinicia las terminales cuando ningún agente esté a mitad de un turno.",
 	"terminal.restartTerminals": "Reiniciar terminales",

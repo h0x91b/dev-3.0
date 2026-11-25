@@ -2,6 +2,8 @@
 
 > Superseded in part on 2026-11-12 by `decisions/2026/11/12/same-path-update-keeps-tmux-tcc-access.md`: a tmux
 > replaced at the same path (an ordinary update) keeps folder access and is no longer reported as `deleted`.
+> That in turn was superseded on 2026-11-24 by `decisions/2026/11/24/tmux-server-runs-from-a-hardlink-mirror.md`:
+> the job runs a hardlink mirror of the bundle, and a deleted (`k0`) executable is reported again.
 
 ## Context
 
