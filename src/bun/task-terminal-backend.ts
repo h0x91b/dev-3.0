@@ -34,7 +34,7 @@ export type { TerminalPaneCapture, TerminalPaneCaptureMissReason } from "./termi
 // Re-export the concrete class so native-task-panes can hold the typed handle
 // without importing terminal-backend directly (isolation: decision 179).
 export { NativeTerminalBackend } from "./terminal-backend";
-import { nativeHostLauncher, resolveNativeHostRuntime } from "./native-host-runtime";
+import { nativeHostLauncher, startWithHostRuntimeRecovery } from "./native-host-runtime";
 import { defaultDeps as nativeRegistryDeps, start as registryStart } from "./native-terminal-registry/registry";
 import { defaultCoordinatorDeps } from "./native-terminal-multipane/coordinator";
 
@@ -99,10 +99,9 @@ export function nativeTaskTerminalBackend(): NativeTerminalBackend {
 			// Resolved HERE, not when the backend is built: resolving can stage a host
 			// image or throw, and a read-only inspection must not depend on either.
 			startPane: (sessionId, opts) =>
-				registryStart(sessionId, opts, {
-					...nativeRegistryDeps,
-					launchHost: nativeHostLauncher(resolveNativeHostRuntime()),
-				}),
+				startWithHostRuntimeRecovery((runtime) =>
+					registryStart(sessionId, opts, { ...nativeRegistryDeps, launchHost: nativeHostLauncher(runtime) }),
+				),
 		},
 	});
 }

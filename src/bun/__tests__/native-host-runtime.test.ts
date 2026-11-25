@@ -45,6 +45,8 @@ import {
 	packagedHostImageRoots,
 	PACKAGED_HOST_SESSION_VERB,
 	resolveNativeHostRuntime,
+	startWithHostRuntimeRecovery,
+	type NativeHostRuntime,
 } from "../native-host-runtime";
 import { discoverPackagedImage, stagePackagedImage } from "../native-terminal-registry/host-images/packaged-image";
 import { pruneHostImages } from "../native-terminal-registry/host-images/prune";
@@ -271,6 +273,68 @@ describe("staged image last-used marker and prune trigger", () => {
 		resolveNativeHostRuntime();
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		expect(pruneHostImages).not.toHaveBeenCalled();
+	});
+});
+
+describe("launch recovery when the staged image vanished", () => {
+	const runtimeOf = (kind: NativeHostRuntime["kind"]): NativeHostRuntime => ({
+		kind,
+		runtimePath: "/images/tag/dev3-terminal-host",
+		entrypointPath: "/images/tag/entrypoint.mjs",
+		sessionVerb: PACKAGED_HOST_SESSION_VERB,
+		origin: "test",
+	});
+
+	it("resolves again and starts once more when the image files are gone", async () => {
+		const resolve = vi.fn(() => runtimeOf("packaged-image"));
+		const start = vi.fn().mockRejectedValueOnce(new Error("host exited")).mockResolvedValueOnce("started");
+		await expect(startWithHostRuntimeRecovery(start, { resolve, exists: () => false })).resolves.toBe("started");
+		expect(resolve).toHaveBeenCalledTimes(2);
+		expect(start).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not retry when the image files are still present", async () => {
+		const resolve = vi.fn(() => runtimeOf("packaged-image"));
+		const failure = new Error("shell failed");
+		const start = vi.fn().mockRejectedValue(failure);
+		await expect(startWithHostRuntimeRecovery(start, { resolve, exists: () => true })).rejects.toBe(failure);
+		expect(resolve).toHaveBeenCalledTimes(1);
+		expect(start).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries once only: a second failure propagates and there is no third attempt", async () => {
+		const resolve = vi.fn(() => runtimeOf("packaged-image"));
+		const second = new Error("second failure");
+		const start = vi.fn().mockRejectedValueOnce(new Error("first")).mockRejectedValueOnce(second);
+		await expect(startWithHostRuntimeRecovery(start, { resolve, exists: () => false })).rejects.toBe(second);
+		expect(start).toHaveBeenCalledTimes(2);
+	});
+
+	it.each(["development-entrypoint", "source-checkout"] as const)("never retries a %s runtime", async (kind) => {
+		const resolve = vi.fn(() => runtimeOf(kind));
+		const failure = new Error("boom");
+		const start = vi.fn().mockRejectedValue(failure);
+		await expect(startWithHostRuntimeRecovery(start, { resolve, exists: () => false })).rejects.toBe(failure);
+		expect(start).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries when only the entrypoint is gone", async () => {
+		const start = vi.fn().mockRejectedValueOnce(new Error("x")).mockResolvedValueOnce("ok");
+		const exists = (path: string): boolean => path.endsWith("dev3-terminal-host");
+		await startWithHostRuntimeRecovery(start, { resolve: () => runtimeOf("packaged-image"), exists });
+		expect(start).toHaveBeenCalledTimes(2);
+	});
+
+	it("passes a failure to resolve the first runtime straight through", async () => {
+		const start = vi.fn();
+		await expect(
+			startWithHostRuntimeRecovery(start, {
+				resolve: () => {
+					throw new NativeHostRuntimeError("none", []);
+				},
+			}),
+		).rejects.toBeInstanceOf(NativeHostRuntimeError);
+		expect(start).not.toHaveBeenCalled();
 	});
 });
 

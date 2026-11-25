@@ -12,7 +12,7 @@ Images are a rebuildable cache, so the on-disk invariants in `AGENTS.md` are unt
 
 ## Risks
 
-Another dev3 process (a newer or older version) can launch from a tag between the final check and the delete; there is no cross-process lock, and the 7-day window plus the mtime refresh make it unlikely. A dev3 version older than this change does not refresh the mtime, so such a launch fails once and the next re-stages. A failed delete is logged and retried on the next run.
+There is no cross-process lock. A deletion that lands after another process's final image selection is recovered by that launch's single retry (`startWithHostRuntimeRecovery`), which resolves the runtime again and so re-stages the image; a host that already started is unaffected on POSIX, and on Windows its locked carrier aborts the delete. A dev3 version older than this change has no retry and does not refresh the mtime, so such a launch fails once and the next re-stages. A failed delete is logged and retried on the next run.
 
 ## Alternatives considered
 
