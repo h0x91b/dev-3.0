@@ -469,6 +469,21 @@ describe("isUnder", () => {
 		expect(isUnder("/home/Me/a.md", "/home/me", posix)).toBe(false);
 	});
 
+	it("folds only ASCII case, so a Kelvin sign is not a K", () => {
+		expect(isUnder("C:\\Users\\\u212Aate\\a.md", "C:\\Users\\Kate", win32)).toBe(false);
+	});
+
+	it("refuses a relative or empty root instead of anchoring it at the cwd", () => {
+		expect(isUnder(join(process.cwd(), "a.md"), "")).toBe(false);
+		expect(isUnder(join(process.cwd(), "proj", "a.md"), "proj")).toBe(false);
+		expect(isUnder("C:\\proj\\a.md", "proj", win32)).toBe(false);
+	});
+
+	it("uses the host's path module by default", () => {
+		expect(isUnder(join(homedir(), "a.md"), homedir())).toBe(true);
+		expect(isUnder(join(homedir(), "a.md"), `${homedir()}/`)).toBe(true);
+	});
+
 	it("never lets a dot-dot segment climb out of the root", () => {
 		expect(isUnder("C:\\Users\\me\\..\\other\\a.md", "C:\\Users\\me", win32)).toBe(false);
 		expect(isUnder("/home/me/../other/a.md", "/home/me", posix)).toBe(false);

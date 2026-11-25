@@ -75,12 +75,16 @@ async function projectRoots(): Promise<string[]> {
 	}
 }
 
-/** The host's path module by default; a parameter only so tests can cover Windows and POSIX alike. */
-type PathApi = Pick<typeof nodePath, "resolve" | "sep">;
+type PathApi = Pick<typeof nodePath, "isAbsolute" | "resolve" | "sep">;
 
-/** Windows paths compare case-insensitively and in either slash direction: `c:/x` is under `C:\X`. */
+/**
+ * On Windows `c:/x` is under `C:\X`: slashes and ASCII case fold, nothing else (NTFS keeps `\u212A` and `K` apart).
+ * A relative root is refused. `pathApi` defaults to the host's; a parameter so tests cover both.
+ */
 export function isUnder(absPath: string, root: string, pathApi: PathApi = nodePath): boolean {
-	const fold = (p: string) => (pathApi.sep === "\\" ? pathApi.resolve(p).toLowerCase() : pathApi.resolve(p));
+	if (!pathApi.isAbsolute(root)) return false;
+	const asciiLower = (p: string) => p.replace(/[A-Z]/g, (c) => c.toLowerCase());
+	const fold = (p: string) => (pathApi.sep === "\\" ? asciiLower(pathApi.resolve(p)) : pathApi.resolve(p));
 	const path = fold(absPath);
 	const base = fold(root);
 	return path === base || path.startsWith(base.endsWith(pathApi.sep) ? base : `${base}${pathApi.sep}`);
