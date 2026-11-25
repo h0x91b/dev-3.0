@@ -43,8 +43,9 @@ describe.skipIf(!tmuxVersion())("dev3 pane title bars on a live tmux server", ()
 		titled = join(workDir, "titled.conf");
 		writeFileSync(untitled, buildThemeConfig("mocha", true, false));
 		writeFileSync(titled, buildThemeConfig("mocha", true, true));
-		tmux("-f", "/dev/null", "new-session", "-d", "-s", "titles", "-c", workDir, "sh");
-		tmux("split-window", "-t", "=titles:", "-c", workDir, "sh");
+		// `cat`, not `sh`: macOS /bin/sh runs bash, so tmux would report the command as `bash`.
+		tmux("-f", "/dev/null", "new-session", "-d", "-s", "titles", "-c", workDir, "cat");
+		tmux("split-window", "-t", "=titles:", "-c", workDir, "cat");
 	});
 
 	afterAll(() => {
@@ -82,7 +83,7 @@ describe.skipIf(!tmuxVersion())("dev3 pane title bars on a live tmux server", ()
 		expect(lines).toHaveLength(2);
 		lines.forEach((line, i) => {
 			expect(line).toContain(` ${i + 1} `);
-			expect(line).toContain(`${folder} │ sh`);
+			expect(line).toContain(`${folder} │ cat`);
 		});
 		// The focused pane carries the green badge, the other the grey one.
 		expect(lines.filter((line) => line.includes("#a6e3a1"))).toHaveLength(1);
@@ -92,6 +93,6 @@ describe.skipIf(!tmuxVersion())("dev3 pane title bars on a live tmux server", ()
 		tmux("select-pane", "-t", "=titles:.1", "-T", "Claude Code");
 		const line = tmux("display-message", "-p", "-t", "=titles:.1", "#{E:pane-border-format}");
 		expect(line).toContain("Claude Code");
-		expect(line).not.toContain("│ sh");
+		expect(line).not.toContain("│ cat");
 	});
 });
