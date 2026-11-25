@@ -135,15 +135,15 @@ export function codeSpans(line: string): Array<{ start: number; end: number; inn
 
 /**
  * Every relative path in `text` outside fenced code, refs and tokens, offered to
- * `rewrite` as `/`-separated; a non-null answer replaces it, `:line` included.
+ * `rewrite` as `/`-separated; a non-null answer replaces it, `:line` and `:col` included.
  * In inline code only a span that is one whole path is offered, so commands keep running.
  */
-export function rewriteRelativePaths(text: string, rewrite: (relativePath: string, line: number | undefined) => string | null): string {
+export function rewriteRelativePaths(text: string, rewrite: (relativePath: string, line: number | undefined, column: string) => string | null): string {
 	if (!text) return text;
 	return linesOutsideFences(text).map(({ line, code }) => (code ? line : rewriteLine(line, rewrite))).join("\n");
 }
 
-function rewriteLine(line: string, rewrite: (relativePath: string, line: number | undefined) => string | null): string {
+function rewriteLine(line: string, rewrite: (relativePath: string, line: number | undefined, column: string) => string | null): string {
 	const taken = [...findRefsInText(line), ...findPathRefsInText(line)];
 	const spans = codeSpans(line);
 	let out = "";
@@ -152,11 +152,12 @@ function rewriteLine(line: string, rewrite: (relativePath: string, line: number 
 		if (taken.some((t) => candidate.start < t.end && candidate.end >= t.start)) continue;
 		const span = spans.find((sp) => candidate.start >= sp.start && candidate.end < sp.end);
 		if (span && span.inner.trim() !== candidate.raw) continue;
-		const relative = projectRelative(candidate.cleanPath);
-		const replacement = relative ? rewrite(relative, candidate.line) : null;
-		if (replacement === null) continue;
-		// `path[:line[:col]]` is replaced whole, so no `:col` tail sticks to the new token.
+		// `path[:line[:col]]` is replaced whole; `rewrite` gets the `:col` and decides whether it stays.
 		const written = /^:\d+(?::\d+)?/.exec(candidate.raw.slice(candidate.cleanPath.length))?.[0] ?? "";
+		const column = /^:\d+(:\d+)$/.exec(written)?.[1] ?? "";
+		const relative = projectRelative(candidate.cleanPath);
+		const replacement = relative ? rewrite(relative, candidate.line, column) : null;
+		if (replacement === null) continue;
 		out += line.slice(cursor, candidate.start) + replacement;
 		cursor = span ? candidate.end + 1 : candidate.start + candidate.cleanPath.length + written.length;
 	}

@@ -45,8 +45,8 @@ afterAll(() => {
 
 describe("absolutizeSenderPaths", () => {
 	it("makes a sender's existing relative path absolute for the receiver", async () => {
-		const out = await absolutizeSenderPaths("see todo/x.md:2 and todo/none.md", { projectId: "a1c9fe4e-0000-4000-8000-000000000001" }, "other-project");
-		expect(out).toBe(`see ${join(root, "todo", "x.md")}:2 and todo/none.md`);
+		const out = await absolutizeSenderPaths("see todo/x.md:2, todo/x.md:3:7 and todo/none.md", { projectId: "a1c9fe4e-0000-4000-8000-000000000001" }, "other-project");
+		expect(out).toBe(`see ${join(root, "todo", "x.md")}:2, ${join(root, "todo", "x.md")}:3:7 and todo/none.md`);
 	});
 
 	it("gives the sender's absolute path even for a file both boards hold", async () => {

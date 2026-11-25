@@ -81,9 +81,9 @@ export async function absolutizeSenderPaths(text: string, sender: { projectId?: 
 	if (sender?.projectId && sender.projectId !== receiverProjectId) {
 		const checks = (await senderRoots(sender.projectId, sender.taskId)).map((root) => ({ root, exists: writerOnly(root, null) }));
 		if (checks.length > 0) {
-			out = rewriteRelativePaths(out, (relative, line) => {
+			out = rewriteRelativePaths(out, (relative, line, column) => {
 				const hit = checks.find(({ exists }) => exists(relative));
-				return hit ? `${underRoot(hit.root, relative)}${line ? `:${line}` : ""}` : null;
+				return hit ? `${underRoot(hit.root, relative)}${line ? `:${line}${column}` : ""}` : null;
 			});
 		}
 	}
