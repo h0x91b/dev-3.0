@@ -135,7 +135,7 @@ describe("getLibrary", () => {
 			["video", 0, 9000, true],
 			["report", 15, 700, false],
 		]);
-		expect(summarizeLibrary(report.items)).toMatchObject({ bytes: 15, goneBytes: 9700, missing: 1 });
+		expect(summarizeLibrary(report.items)).toMatchObject({ bytes: 15, goneBytes: 9700, missing: 2 });
 		expect(sortLibraryItems(report.items, "largest").map((i) => i.kind)).toEqual(["report", "video"]);
 	});
 
@@ -202,6 +202,12 @@ describe("library renderer helpers", () => {
 		expect(libraryDiskGroups(items, "project").map((g) => [g.id, g.bytes, g.count])).toEqual([["p2", 900, 1], ["p1", 55, 2]]);
 		expect(libraryDiskGroups(items, "task").map((g) => g.id)).toEqual(["t9", "t1"]);
 		expect(summarizeLibrary(items)).toEqual({ count: 3, bytes: 955, unseen: 1, missing: 0, goneBytes: 0 });
+	});
+
+	it("counts an item with only an older version gone among the removed, matching its gone bytes", () => {
+		const present = { ...items[0], missing: false, goneBytes: 40 };
+		const lost = { ...items[1], missing: true, bytes: 0, goneBytes: 900 };
+		expect(summarizeLibrary([present, lost, items[2]])).toMatchObject({ missing: 2, goneBytes: 940 });
 	});
 
 	it("rebuilds one task from a push, keeping host-checked presence for unchanged records", () => {

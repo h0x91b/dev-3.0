@@ -295,6 +295,7 @@ export interface LibrarySummary {
 	count: number;
 	bytes: number;
 	unseen: number;
+	/** Items with any file already gone (the record or an older version); `goneBytes` is their size. */
 	missing: number;
 	goneBytes: number;
 }
@@ -308,7 +309,8 @@ export function summarizeLibrary(items: readonly LibraryItem[]): LibrarySummary 
 		bytes += item.bytes;
 		goneBytes += item.goneBytes;
 		if (item.unread) unseen += 1;
-		if (item.missing) missing += 1;
+		// Counted with the same rule as `goneBytes`, so "N removed (X)" describes one set of items.
+		if (item.missing || item.goneBytes > 0) missing += 1;
 	}
 	return { count: items.length, bytes, unseen, missing, goneBytes };
 }

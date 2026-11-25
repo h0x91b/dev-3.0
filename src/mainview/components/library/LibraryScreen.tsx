@@ -67,6 +67,8 @@ interface LibraryHandle {
 
 function useLibrary(): LibraryHandle {
 	const [state, setState] = useState<LoadState>({ phase: "loading" });
+	const stateRef = useRef(state);
+	stateRef.current = state;
 	const alive = useRef(true);
 	const reload = useCallback(() => {
 		api.request
@@ -77,26 +79,31 @@ function useLibrary(): LibraryHandle {
 	// A push carries the whole task, so only that task's items are rebuilt here: the full
 	// archive is megabytes, and `taskUpdated` fires for every status and activity change.
 	const patchTask = useCallback((projectId: string, task: Task) => {
-		let unknownProject = false;
+		const current = stateRef.current;
+		if (current.phase !== "ready") return;
+		if (!current.items.some((item) => item.projectId === projectId)) {
+			// Its first output in a project this list has never seen: the name comes from the host.
+			try {
+				if (taskLibraryItems({ id: projectId, name: "" }, task).length > 0) reload();
+			} catch {
+				// an unreadable record: nothing to list
+			}
+			return;
+		}
 		setState((prev) => {
 			if (prev.phase !== "ready") return prev;
 			const projectName = prev.items.find((item) => item.projectId === projectId)?.projectName;
+			if (projectName == null) return prev;
 			let fresh: LibraryItem[] = [];
 			try {
-				fresh = projectName == null ? [] : taskLibraryItems({ id: projectId, name: projectName }, task);
+				fresh = taskLibraryItems({ id: projectId, name: projectName }, task);
 			} catch {
-				return prev;
-			}
-			if (projectName == null) {
-				// Its first output in a project this list has never seen: the name comes from the host.
-				unknownProject = taskLibraryItems({ id: projectId, name: "" }, task).length > 0;
 				return prev;
 			}
 			const hadAny = prev.items.some((item) => item.taskId === task.id && item.projectId === projectId);
 			if (!hadAny && fresh.length === 0) return prev;
 			return { phase: "ready", items: replaceTaskLibraryItems(prev.items, projectId, task.id, fresh) };
 		});
-		if (unknownProject) reload();
 	}, [reload]);
 	const patchTaskRef = useRef(patchTask);
 	patchTaskRef.current = patchTask;
@@ -249,10 +256,18 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 		else markSeen([item.key]);
 	};
 
-	// A selection only ever holds clips that can still be deleted: a push that tombstones one drops it.
-	const selectedItems = useMemo(() => items.filter((item) => selected.has(item.key) && isLibraryItemDeletable(item)), [items, selected]);
+	const shown = useMemo(() => rows.slice(0, limit), [rows, limit]);
+	// A selection is only ever what is on screen and still deletable: a filter that hides a
+	// clip, or a push that tombstones it, takes it out, so Delete never reaches an unseen file.
+	const deletableShown = useMemo(() => shown.filter(isLibraryItemDeletable), [shown]);
+	const selectedItems = useMemo(() => deletableShown.filter((item) => selected.has(item.key)), [deletableShown, selected]);
+	useEffect(() => {
+		setSelected((prev) => {
+			const kept = new Set(deletableShown.filter((item) => prev.has(item.key)).map((item) => item.key));
+			return kept.size === prev.size ? prev : kept;
+		});
+	}, [deletableShown]);
 	const selectedBytes = selectedItems.reduce((sum, item) => sum + item.bytes, 0);
-	const deletableShown = useMemo(() => rows.filter(isLibraryItemDeletable), [rows]);
 	const selecting = selectedItems.length > 0;
 	const toggleSelected = (key: string) => setSelected((prev) => {
 		const next = new Set(prev);
@@ -265,13 +280,9 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 		if (deleting.current) return;
 		deleting.current = true;
 		try {
+			// Deleted clips leave the selection as tombstones; a clip that failed stays picked for a retry.
 			const updated = await confirmDeleteSharedMediaGroups({ groups: libraryDeleteGroups(targets), t, scope });
 			for (const { projectId: pid, task } of updated) patchTask(pid, task);
-			if (updated.length > 0) setSelected((prev) => {
-				const next = new Set(prev);
-				for (const item of targets) next.delete(item.key);
-				return next;
-			});
 		} finally {
 			deleting.current = false;
 		}
@@ -288,14 +299,14 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 	};
 	const menuEntries = (item: LibraryItem): ControlMenuEntry[] => {
 		const path = item.image?.storedPath ?? item.artifact?.storedPath;
-		const present = !item.missing && !item.removedAt && !item.live && path != null;
+		const present = !item.missing && item.removedAt == null && !item.live && path != null;
 		const entries: ControlMenuEntry[] = [];
 		if (present) entries.push({ key: "copy", label: t("library.copyPath"), onSelect: () => void copyPath(item) });
 		if (present && isElectrobun) {
 			entries.push({
 				key: "reveal",
 				label: t(navigator.userAgent.includes("Mac") ? "library.revealMac" : "library.revealOther"),
-				onSelect: () => { api.request.openTerminalPath({ path: path!, mode: "reveal" }).catch(() => toast.error(t("library.missing"))); },
+				onSelect: () => { api.request.openTerminalPath({ path: path!, mode: "reveal" }).catch((err) => toast.error(t("library.revealFailed", { error: err instanceof Error ? err.message : String(err) }))); },
 			});
 		}
 		if (isLibraryItemDeletable(item)) entries.push({ key: "delete", label: t("library.deleteFile"), danger: true, separated: entries.length > 0, onSelect: () => void deleteItems([item], "one") });
@@ -304,7 +315,6 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 
 	const grouped = sort !== "largest";
 	const now = Date.now();
-	const shown = rows.slice(0, limit);
 
 	return (
 		<div className="h-full overflow-y-auto" data-testid="library-screen">
@@ -444,7 +454,7 @@ export default function LibraryScreen({ projectId, onOpenTask }: LibraryScreenPr
 								<span className="text-xs tabular-nums text-fg-muted">{formatBytes(selectedBytes)}</span>
 								{deletableShown.some((item) => !selected.has(item.key)) && (
 									<button type="button" onClick={() => setSelected(new Set([...selected, ...deletableShown.map((item) => item.key)]))} className="rounded text-xs text-accent hover:text-accent-emphasis hover:underline">
-										{t.plural("library.selectAll", deletableShown.length)}
+										{t.plural("library.selectAllShown", deletableShown.length)}
 									</button>
 								)}
 								<span className="flex-1" />
@@ -591,8 +601,8 @@ function LibraryRow({ item, showProject, agentName, stamp, maskClass, locked, on
 					</span>
 					<span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-micro text-fg-muted">
 						{meta.length > 0 && <span className="flex-shrink-0 tabular-nums">{meta.join(" · ")}</span>}
-						{item.missing && <span className="flex-shrink-0 text-warning-strong">· {t("library.missing")}</span>}
-						{item.removedAt && <span className="flex-shrink-0">{meta.length > 0 ? "· " : ""}{t("sharedMedia.removed")}</span>}
+						{item.missing && <span className="flex-shrink-0 text-warning-strong">{meta.length > 0 ? "· " : ""}{t("library.missing")}</span>}
+						{item.removedAt != null && <span className="flex-shrink-0">{meta.length > 0 ? "· " : ""}{t("sharedMedia.removed")}</span>}
 					</span>
 				</span>
 			</button>

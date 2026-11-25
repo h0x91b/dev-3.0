@@ -31,10 +31,17 @@ function splitRefused(items: SharedImage[], refused: readonly { id: string }[]):
 	return { accepted: items.filter((item) => !ids.has(item.id)), refused: items.filter((item) => ids.has(item.id)) };
 }
 
+/** A refusal names the clip by its id ("Not a deletable clip: <uuid>"); show its file name instead. */
+function readableError(err: unknown, groups: readonly SharedMediaDeleteGroup[]): string {
+	let message = err instanceof Error ? err.message : String(err);
+	for (const item of groups.flatMap((group) => group.items)) message = message.split(item.id).join(item.name);
+	return message;
+}
+
 /**
  * Confirm, then delete stored clip files, one server call per task (the delete resolves ids
- * against one task's records). Calls run with `skipRefused`, so one clip that cannot go (shared,
- * already gone) never blocks the rest: the dialog names the skipped clips and states the honest
+ * against one task's records). A batch runs with `skipRefused`, so one clip that cannot go (shared,
+ * already gone) never blocks the rest: the dialog names the skipped clips; a single clip refuses loudly and states the honest
  * disk gain from the read-only preview (a clone of a live original frees ~0). Returns the tasks
  * the server updated; failures surface as a toast naming the clips.
  */
@@ -49,9 +56,10 @@ export async function confirmDeleteSharedMediaGroups(opts: {
 	if (groups.length === 0 || groups.some((group) => inFlight.has(group.taskId))) return [];
 	for (const group of groups) inFlight.add(group.taskId);
 	const toastOpts = groups.length === 1 ? { taskId: groups[0].taskId } : undefined;
+	const skipRefused = scope !== "one";
 	try {
 		const plans = await Promise.all(groups.map(async (group) => {
-			const summary = await api.request.previewSharedMediaDelete({ projectId: group.projectId, taskId: group.taskId, mediaIds: group.items.map((item) => item.id), skipRefused: true });
+			const summary = await api.request.previewSharedMediaDelete({ projectId: group.projectId, taskId: group.taskId, mediaIds: group.items.map((item) => item.id), skipRefused });
 			return { group, summary, ...splitRefused(group.items, summary.skipped) };
 		}));
 		const refused = plans.flatMap((plan) => plan.refused);
@@ -80,7 +88,7 @@ export async function confirmDeleteSharedMediaGroups(opts: {
 		let freed = 0;
 		for (const { group, accepted: items } of accepted) {
 			try {
-				const { task, summary } = await api.request.deleteSharedMedia({ projectId: group.projectId, taskId: group.taskId, mediaIds: items.map((item) => item.id), skipRefused: true });
+				const { task, summary } = await api.request.deleteSharedMedia({ projectId: group.projectId, taskId: group.taskId, mediaIds: items.map((item) => item.id), skipRefused });
 				updated.push({ projectId: group.projectId, task });
 				deleted += summary.count;
 				freed += summary.freeableBytes;
@@ -93,7 +101,7 @@ export async function confirmDeleteSharedMediaGroups(opts: {
 		if (deleted > 0) toast.success(t("sharedMedia.deleted", { freed: formatBytes(freed) }), toastOpts);
 		return updated;
 	} catch (err) {
-		toast.error(t("sharedMedia.deleteFailed", { error: err instanceof Error ? err.message : String(err) }), toastOpts);
+		toast.error(t("sharedMedia.deleteFailed", { error: readableError(err, groups) }), toastOpts);
 		return [];
 	} finally {
 		for (const group of groups) inFlight.delete(group.taskId);

@@ -5,6 +5,7 @@ import type { LibraryItem } from "../../../../shared/library";
 import { I18nProvider } from "../../../i18n";
 import { setSensitiveProjectIds } from "../../../sensitive-projects";
 import { setStreamerMode } from "../../../streamer-mode";
+import { toast } from "../../../toast";
 import LibraryScreen from "../LibraryScreen";
 
 vi.mock("../../../rpc", () => ({
@@ -205,10 +206,10 @@ describe("LibraryScreen", () => {
 		});
 
 		beforeEach(() => {
-			preview.mockReset().mockImplementation(async ({ mediaIds }: { mediaIds: string[] }) => ({ count: mediaIds.length, bytes: mediaIds.length * 20 * 1024 * 1024, freeableBytes: mediaIds.length * 20 * 1024 * 1024, failed: [] }));
+			preview.mockReset().mockImplementation(async ({ mediaIds }: { mediaIds: string[] }) => ({ count: mediaIds.length, bytes: mediaIds.length * 20 * 1024 * 1024, freeableBytes: mediaIds.length * 20 * 1024 * 1024, failed: [], skipped: [] }));
 			remove.mockReset().mockImplementation(async ({ taskId, mediaIds }: { taskId: string; mediaIds: string[] }) => ({
 				task: taskWith(taskId, mediaIds[0]),
-				summary: { count: mediaIds.length, bytes: 0, freeableBytes: mediaIds.length * 20 * 1024 * 1024, failed: [] },
+				summary: { count: mediaIds.length, bytes: 0, freeableBytes: mediaIds.length * 20 * 1024 * 1024, failed: [], skipped: [] },
 			}));
 		});
 
@@ -219,15 +220,15 @@ describe("LibraryScreen", () => {
 			await user.click(screen.getByRole("checkbox", { name: "Select Clip c1" }));
 			const bar = screen.getByTestId("library-selection-bar");
 			expect(bar).toHaveTextContent("1 clip selected");
-			await user.click(within(bar).getByRole("button", { name: "Select all 2" }));
+			await user.click(within(bar).getByRole("button", { name: "Select all 2 shown" }));
 			expect(bar).toHaveTextContent("2 clips selected");
 			await user.click(screen.getByTestId("library-delete-selected"));
 			expect(confirmMock.confirm).toHaveBeenCalledTimes(1);
 			expect(confirmMock.confirm.mock.calls[0][0]).toMatchObject({ title: "Delete 2 clip files?", danger: true });
 			expect(confirmMock.confirm.mock.calls[0][0].message).toContain("40 MB");
 			expect(remove).toHaveBeenCalledTimes(2);
-			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["c1"] });
-			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t2", mediaIds: ["c2"] });
+			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["c1"], skipRefused: true });
+			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t2", mediaIds: ["c2"], skipRefused: true });
 			expect(screen.queryByTestId("library-selection-bar")).toBeNull();
 			expect(screen.getAllByText("Removed to free space")).toHaveLength(2);
 			expect(screen.queryAllByTestId("library-row-select")).toHaveLength(0);
@@ -258,7 +259,90 @@ describe("LibraryScreen", () => {
 			await user.click(screen.getByRole("button", { name: "More actions for Clip c2" }));
 			await user.click(screen.getByRole("menuitem", { name: "Delete file…" }));
 			expect(confirmMock.confirm.mock.calls[0][0].title).toBe("Delete the stored file of c2.mp4?");
-			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t2", mediaIds: ["c2"] });
+			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t2", mediaIds: ["c2"], skipRefused: false });
+		});
+
+		it("never deletes a selected clip that the current filter hides", async () => {
+			const user = userEvent.setup();
+			await renderScreen(CLIPS);
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c1" }));
+			await user.type(screen.getByTestId("library-search"), "Clip c2");
+			expect(screen.queryByTestId("library-selection-bar")).toBeNull();
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c2" }));
+			expect(screen.getByTestId("library-selection-bar")).toHaveTextContent("1 clip selected");
+			await user.click(screen.getByTestId("library-delete-selected"));
+			expect(remove).toHaveBeenCalledTimes(1);
+			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t2", mediaIds: ["c2"], skipRefused: true });
+			await user.clear(screen.getByTestId("library-search"));
+			expect(screen.getByRole("checkbox", { name: "Select Clip c1" })).not.toBeChecked();
+		});
+
+		it("selects all only up to the rendered page", async () => {
+			const user = userEvent.setup();
+			const many = Array.from({ length: 160 }, (_, i) => clip(`n${i}`, "t1", { createdAt: NOW - i }));
+			await renderScreen(many);
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip n0" }));
+			await user.click(screen.getByRole("button", { name: "Select all 150 shown" }));
+			expect(screen.getByTestId("library-selection-bar")).toHaveTextContent("150 clips selected");
+			await user.click(screen.getByTestId("library-delete-selected"));
+			expect(remove.mock.calls[0][0].mediaIds).toHaveLength(150);
+			expect(remove.mock.calls[0][0].mediaIds).not.toContain("n155");
+		});
+
+		it("skips a clip the server refuses and still deletes the rest of its task", async () => {
+			preview.mockImplementation(async ({ mediaIds }: { mediaIds: string[] }) => {
+				const kept = mediaIds.filter((id) => id !== "c1");
+				const skipped = mediaIds.includes("c1") ? [{ id: "c1", reason: "Stored file is shared with another record" }] : [];
+				return { count: kept.length, bytes: kept.length * 20 * 1024 * 1024, freeableBytes: kept.length * 20 * 1024 * 1024, failed: [], skipped };
+			});
+			const user = userEvent.setup();
+			await renderScreen([clip("c1", "t1"), clip("c3", "t1")]);
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c1" }));
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c3" }));
+			await user.click(screen.getByTestId("library-delete-selected"));
+			const dialog = confirmMock.confirm.mock.calls[0][0];
+			expect(dialog.title).toBe("Delete 1 clip file?");
+			expect(dialog.message).toContain("1 clip can't be deleted and is skipped: c1.mp4.");
+			expect(remove).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["c3"], skipRefused: true });
+		});
+
+		it("names the clips that failed and keeps them selected for a retry", async () => {
+			const error = vi.spyOn(toast, "error");
+			remove.mockImplementation(async ({ taskId, mediaIds }: { taskId: string; mediaIds: string[] }) => {
+				if (taskId === "t2") throw new Error("Not a deletable clip: 02643e60-cf4b");
+				return { task: taskWith(taskId, mediaIds[0]), summary: { count: 1, bytes: 0, freeableBytes: 1, failed: [], skipped: [] } };
+			});
+			const user = userEvent.setup();
+			await renderScreen(CLIPS);
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c1" }));
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c2" }));
+			await user.click(screen.getByTestId("library-delete-selected"));
+			expect(error).toHaveBeenCalledWith("Couldn't delete 1 clip: c2.mp4", undefined);
+			expect(screen.getByTestId("library-selection-bar")).toHaveTextContent("1 clip selected");
+			expect(screen.getByRole("checkbox", { name: "Select Clip c2" })).toBeChecked();
+			error.mockRestore();
+		});
+
+		it("names a single refused clip by its file name, never its id", async () => {
+			const error = vi.spyOn(toast, "error");
+			preview.mockRejectedValue(new Error("Stored file is shared with another record: c2"));
+			const user = userEvent.setup();
+			await renderScreen(CLIPS);
+			await user.click(screen.getAllByTestId("library-row-menu")[1]);
+			await user.click(screen.getByRole("menuitem", { name: "Delete file…" }));
+			expect(remove).not.toHaveBeenCalled();
+			expect(error.mock.calls[0][0]).toContain("Stored file is shared with another record: c2.mp4");
+			error.mockRestore();
+		});
+
+		it("drops a selected clip that a push tombstones", async () => {
+			const user = userEvent.setup();
+			await renderScreen(CLIPS);
+			await user.click(screen.getByRole("checkbox", { name: "Select Clip c2" }));
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { projectId: "p1", task: taskWith("t2", "c2") } }));
+			});
+			expect(screen.queryByTestId("library-selection-bar")).toBeNull();
 		});
 
 		it("lists a tombstoned clip as removed, out of the size and with no file actions", async () => {
