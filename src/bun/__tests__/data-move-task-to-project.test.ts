@@ -134,6 +134,31 @@ describe("moveTaskToProject", () => {
 		expect(targetTasks.map((t) => t.id).sort()).toEqual(["existing", "task-move"]);
 	});
 
+	it("keeps bare refs in the moved text pointing at the source board", async () => {
+		seed(source, [
+			makeTask({
+				id: "task-refs",
+				title: "Follow up seq:3",
+				description: "Split from <seq:3>; see <pr:12> and seq:proj-tgt/9",
+				customTitle: "Custom seq:3",
+				overview: "Waiting on seq:3",
+				userOverview: "User: <seq:4>",
+				notes: [{ id: "n1", content: "Blocked by seq:5", source: "ai", createdAt: "", updatedAt: "" }],
+			}),
+		]);
+		seed(target, []);
+
+		const moved = await moveTaskToProject(source, target, "task-refs");
+
+		expect(moved.title).toBe("Follow up seq:proj-src/3");
+		expect(moved.description).toBe("Split from <seq:proj-src/3>; see <pr:proj-src/12> and seq:proj-tgt/9");
+		expect(moved.customTitle).toBe("Custom seq:proj-src/3");
+		expect(moved.overview).toBe("Waiting on seq:proj-src/3");
+		expect(moved.userOverview).toBe("User: <seq:proj-src/4>");
+		expect(moved.notes?.map((n) => n.content)).toEqual(["Blocked by seq:proj-src/5"]);
+		expect((await loadTasks(target))[0]!.description).toBe(moved.description);
+	});
+
 	it("removes the task from the source project", async () => {
 		seed(source, [makeTask({ id: "a", seq: 1 }), makeTask({ id: "task-move", seq: 2 })]);
 		seed(target, []);

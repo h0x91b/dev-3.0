@@ -107,6 +107,7 @@ describe("note add", () => {
 			projectId: CTX.projectId,
 			content: "Found a race condition",
 			source: "ai",
+			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Added note");
 		expect(stdoutOutput).toContain("nnnnnnnn");
@@ -211,6 +212,7 @@ describe("note add", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.taskId).toBe("bbbbbbbb");
+		expect(params).not.toHaveProperty("sourceTaskId");
 	});
 
 	it("uses --task-id flag when no context", async () => {

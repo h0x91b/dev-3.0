@@ -4412,6 +4412,52 @@ describe("note.add", () => {
 	});
 });
 
+describe("cross-board note and overview refs", () => {
+	const writerProject = makeProject({ id: "proj-2", name: "Coordinators" });
+	const writer = makeTask({ id: "writer-0000-1111-2222-333333333333", projectId: "proj-2", seq: 40 });
+
+	function wire(target: Task): void {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project, writerProject]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [target]));
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(target);
+			return { task: { ...target, ...updates }, result } as never;
+		});
+		vi.mocked(getPushMessage).mockReturnValue(null);
+	}
+
+	it("note.add from another board qualifies its bare refs", async () => {
+		const target = makeTask({ notes: [] });
+		wire(target);
+		const resp = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7 and <pr:3>", sourceTaskId: writer.id }));
+		expect(resp.ok).toBe(true);
+		expect((resp.data as Task).notes?.[0]?.content).toBe("See seq:proj-2/7 and <pr:proj-2/3>");
+	});
+
+	it("note.add from the task itself or with no source keeps refs as written", async () => {
+		const target = makeTask({ notes: [] });
+		wire(target);
+		const own = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7", sourceTaskId: target.id }));
+		expect((own.data as Task).notes?.[0]?.content).toBe("See seq:7");
+		const user = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7" }));
+		expect((user.data as Task).notes?.[0]?.content).toBe("See seq:7");
+	});
+
+	it("overview.set from another board qualifies refs, and keeps a line already in the old overview", async () => {
+		const target = makeTask({ overview: "Old seq:7 line" });
+		wire(target);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...target, ...change }) as Task);
+		const fresh = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Blocked on seq:9", sourceTaskId: writer.id }));
+		expect(fresh.ok).toBe(true);
+		expect((fresh.data as Task).overview).toBe("Blocked on seq:proj-2/9");
+		const kept = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Old seq:7 line", sourceTaskId: writer.id }));
+		expect((kept.data as Task).overview).toBe("Old seq:7 line");
+	});
+});
+
 describe("note.list", () => {
 	it("errors when taskId is missing", async () => {
 		const resp = await handleRequest(makeRequest("note.list"));

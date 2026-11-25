@@ -9,6 +9,7 @@ import { captureSenderAgent } from "../scheduled-message-author";
 import { senderEvidenceOf } from "../sender-evidence";
 import { requireExternalSender } from "../external-senders";
 import type { ExternalSenderRequester } from "../../shared/external-senders";
+import { log } from "./shared";
 
 const MIN_PREFIX_LENGTH = ID_PREFIX_MIN_LENGTH;
 
@@ -468,4 +469,21 @@ export function resumeAccountParam(params: Record<string, unknown>): string | nu
 		throw new Error("accountId must be an account id, or null for the system login.");
 	}
 	return params.accountId as string | null;
+}
+
+/** The project of the task the CLI ran in, when it can be found. */
+export async function sourceTaskProjectId(params: Record<string, unknown>): Promise<string | undefined> {
+	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceId) return undefined;
+	try {
+		return (await resolveTaskAcrossProjects(sourceId))?.project.id;
+	} catch (err) {
+		log.warn("Source task lookup failed; refs stay as written", { sourceId, error: String(err) });
+		return undefined;
+	}
+}
+
+/** {@link sourceTaskProjectId}, skipping the board scan when a task writes to itself. */
+export async function writerProjectIdFor(params: Record<string, unknown>, project: Project, task: Task): Promise<string | undefined> {
+	return params.sourceTaskId === task.id ? project.id : sourceTaskProjectId(params);
 }

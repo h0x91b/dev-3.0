@@ -41,6 +41,7 @@ async function setOverview(
 	const { taskId, projectId } = resolveTargetIds(args, context);
 	const params: Record<string, unknown> = { taskId, overview };
 	if (projectId) params.projectId = projectId;
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 
 	const resp = await sendRequest(socketPath, "overview.set", params);
 	if (!resp.ok) exitError(resp.error || "Failed to set overview");
