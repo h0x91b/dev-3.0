@@ -386,7 +386,6 @@ describe("spawnAttachedSession", () => {
 			envFlags: { K: "v" },
 			command: "zsh",
 			terminal,
-			processEnv: { TERM: "xterm-256color" },
 		});
 		expect(proc).toBeDefined();
 		expect(argvOf(spawnFn)).toEqual([
@@ -414,6 +413,30 @@ describe("spawnAttachedSession", () => {
 			sessionName: "s", configFile: "/c", cwd: "/w",
 			terminal: { cols: 1, rows: 1, data: vi.fn() },
 		})).toThrow(TmuxSpawnError);
+	});
+
+	it("gives the client TERM, LANG and HOME even when the app env has none of them", () => {
+		const saved = { TERM: process.env.TERM, LANG: process.env.LANG, HOME: process.env.HOME };
+		delete process.env.TERM;
+		delete process.env.LANG;
+		delete process.env.HOME;
+		try {
+			const { client, spawnFn } = makeClient();
+			client.spawnAttachedSession({
+				sessionName: "dev3-cl-abc",
+				configFile: "/tmp/conf",
+				cwd: "/wt",
+				terminal: { cols: 1, rows: 1, data: vi.fn() },
+			});
+			expect(spawnFn.mock.calls[0][1]).toMatchObject({
+				env: { TERM: "xterm-256color", LANG: "en_US.UTF-8", HOME: "/" },
+			});
+		} finally {
+			for (const [key, value] of Object.entries(saved)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
 	});
 });
 
@@ -895,7 +918,6 @@ describe("server pre-start hook", () => {
 			configFile: "/tmp/conf",
 			cwd: "/wt",
 			terminal: { cols: 1, rows: 1, data: vi.fn() },
-			processEnv: { TERM: "xterm-256color" },
 		});
 		expect(order).toEqual(["ensure", "spawn"]);
 		expect(ensureServer).toHaveBeenCalledWith(expect.objectContaining({
@@ -912,5 +934,26 @@ describe("server pre-start hook", () => {
 			socket: "s9",
 			configFile: activeTmuxConfigPath(),
 		}));
+	});
+
+	it("starts a missing server with the full app env plus the client env", () => {
+		const prevTerm = process.env.TERM;
+		delete process.env.TERM;
+		process.env.DEV3_TEST_PATH_MARK = "/opt/test-bin";
+		try {
+			const { client, ensureServer } = hookedClient();
+			client.spawnAttachedSession({
+				sessionName: "s",
+				configFile: "/tmp/conf",
+				cwd: "/wt",
+				terminal: { cols: 1, rows: 1, data: vi.fn() },
+			});
+			expect(ensureServer).toHaveBeenCalledWith(expect.objectContaining({
+				env: expect.objectContaining({ TERM: "xterm-256color", DEV3_TEST_PATH_MARK: "/opt/test-bin", PATH: process.env.PATH }),
+			}));
+		} finally {
+			delete process.env.DEV3_TEST_PATH_MARK;
+			if (prevTerm !== undefined) process.env.TERM = prevTerm;
+		}
 	});
 });

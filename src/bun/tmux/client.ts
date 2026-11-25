@@ -53,6 +53,20 @@ interface SocketOpt {
 	socket?: string;
 }
 
+/**
+ * Process env of an attached tmux client. The packaged app has no TERM, and a
+ * client without one exits at once. No session env goes here: the client that
+ * starts the server makes its env the server-global one every session inherits.
+ */
+function attachedClientEnv(): Record<string, string> {
+	return {
+		TERM: "xterm-256color",
+		// macOS .app bundles have no LANG; without it tmux turns non-ASCII into "_".
+		LANG: process.env.LANG || "en_US.UTF-8",
+		HOME: process.env.HOME || "/",
+	};
+}
+
 /** Options common to fire-and-forget commands. */
 interface CommandOpts extends SocketOpt {
 	/** Swallow a non-zero tmux exit (TmuxError) — launch failures still throw. */
@@ -345,11 +359,10 @@ export class TmuxClient {
 		envFlags?: Record<string, string>;
 		command?: string;
 		terminal: { cols: number; rows: number; data: (terminal: unknown, data: string | Uint8Array) => void };
-		/** Environment for the client PROCESS itself (not the session env). */
-		processEnv?: Record<string, string>;
 	} & SocketOpt): SpawnedProcess {
 		this.assertPaneCwd(opts.cwd);
-		this.startServerIfMissing(opts.socket, opts.configFile, { ...process.env, ...opts.processEnv });
+		const clientEnv = attachedClientEnv();
+		this.startServerIfMissing(opts.socket, opts.configFile, { ...process.env, ...clientEnv });
 		const args = ["-f", opts.configFile, "new-session"];
 		if (opts.attachIfExists) args.push("-A");
 		args.push("-c", opts.cwd);
@@ -362,7 +375,7 @@ export class TmuxClient {
 		try {
 			return this.spawnFn(argv, {
 				terminal: opts.terminal,
-				env: withoutLaunchTaskWiring(opts.processEnv ?? process.env),
+				env: withoutLaunchTaskWiring(clientEnv),
 				cwd: tmuxClientCwd(),
 			});
 		} catch (err) {

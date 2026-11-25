@@ -2128,17 +2128,6 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 					}
 				},
 			},
-			// No session env here: the client that happens to start the server makes
-			// its process env the server-global env every later session inherits —
-			// that is how one task's DEV3_TASK_SEQ reached every Repo terminal.
-			processEnv: {
-				TERM: "xterm-256color",
-				// Ensure tmux knows the client supports UTF-8.
-				// macOS .app bundles inherit a minimal env without LANG;
-				// without it tmux replaces non-ASCII chars with underscores.
-				LANG: process.env.LANG || "en_US.UTF-8",
-				HOME: process.env.HOME || "/",
-			},
 		});
 		log.debug("PTY: Bun.spawn returned", { taskId: shortId(session.taskId), pid: proc.pid, msSinceSpawn: Date.now() - spawnStartedAt });
 	} catch (err) {

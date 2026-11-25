@@ -151,6 +151,8 @@ export interface TerminalFocusToastPayload {
 	message: string;
 	/** Renderer translation key for `message`, which stays the English fallback. */
 	messageKey?: CliToastMessageKey;
+	/** Values for the `{placeholders}` of `messageKey`. */
+	messageParams?: Record<string, string | number>;
 	level: "info" | "success" | "error";
 	durationMs?: number;
 	taskSeq?: number;

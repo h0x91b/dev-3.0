@@ -65,7 +65,11 @@ export type CliToastMessageKey =
 	| "kanban.launchAccountRemoved"
 	| "kanban.launchAwsProfileMissing"
 	| "kanban.awsProfilesChangedFromCli"
-	| "kanban.handoffHeldBehindPrompt";
+	| "kanban.handoffHeldBehindPrompt"
+	| "kanban.cleanupFailed"
+	| "kanban.cleanupFailedDeleted"
+	| "kanban.cleanupUnfinished"
+	| "kanban.cleanupUnfinishedDeleted";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -2370,6 +2374,8 @@ export type AppRPCSchema = {
 				message: string;
 				/** Renderer translation key for `message`, which stays the English fallback. */
 				messageKey?: CliToastMessageKey;
+				/** Values for the `{placeholders}` of `messageKey`. */
+				messageParams?: Record<string, string | number>;
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;
