@@ -27,6 +27,12 @@ bun run test:full     # everything incl. slow e2e (~42s) — CI/PR only
 bun run test:watch    # watch mode
 ```
 
+**The renderer and backend configs run on vm pools** (`vmThreads` / `vmForks`): one global
+context and one process per worker, shared by every file that worker runs. `test-realm-guard.ts`
+(repo root) restores prototypes, globals, `console`, `process.env`, `cwd` and storage after each
+file, so patching `HTMLElement.prototype` or `process.env` in a test is still fine. What it cannot undo is a host-realm object handed to the page (a Node `Response`, a Node
+`Buffer` where an `ArrayBuffer` is expected) — return plain objects from stubs instead.
+
 Running vitest directly (outside `bun run`): `bunx vitest run`, never `npx`.
 
 Narrowing while iterating: `bunx vitest run <path>`, `-t "<test name>"`, `--repeat <n>` for

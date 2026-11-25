@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
+import { guardSharedRealm } from "../../test-realm-guard";
 import { _resetPendingToastsForTests, _setToastArmDelayForTests } from "./toast";
 import { storageIsWritable } from "./utils/storage";
 import { resetRememberedFiltersForTests } from "./hooks/useRememberedFilter";
+
+// Registered first so it runs last: the vm pool shares one window between files.
+afterAll(guardSharedRealm());
 
 // Toasts raised without a mounted host are queued for the next host (see toast.tsx),
 // so drop the queue between tests (and the in-memory board filters) instead of leaking them into the next render.
