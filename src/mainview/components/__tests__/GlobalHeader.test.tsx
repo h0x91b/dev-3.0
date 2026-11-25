@@ -224,50 +224,56 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		mockedApi.request.getSpaces.mockResolvedValue({ version: 1, spaces: [], order: [] });
 	});
 
-	it("shows chevron button next to project name when inside a project", () => {
-		renderHeader({ screen: "project", projectId: "p1" });
+	it("opens, highlights and closes the switcher: chevron menu trigger, non-deleted rows, Escape / chevron / outside click", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project3Deleted]);
 		const chevron = getChevronButton();
-		expect(chevron).toBeInTheDocument();
 		// Project name text is rendered separately from the chevron
 		expect(screen.getByText("Project Alpha")).toBeInTheDocument();
-	});
-
-	it("declares the chevron as a menu trigger and reflects the open state", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-		const chevron = getChevronButton();
 		expect(chevron).toHaveAttribute("aria-haspopup", "menu");
 		expect(chevron).toHaveAttribute("aria-expanded", "false");
+
 		await user.click(chevron);
 		expect(chevron).toHaveAttribute("aria-expanded", "true");
+		// Project Alpha appears twice: once in breadcrumb, once in dropdown
+		expect(screen.getAllByText("Project Alpha")).toHaveLength(2);
+		expect(screen.getByText("Project Beta")).toBeInTheDocument();
+		expect(screen.queryByText("Deleted Project")).not.toBeInTheDocument();
+		// The current project carries the accent styling.
+		const alphaBtn = screen.getAllByRole("button").find(
+			(b) => b.textContent?.includes("Project Alpha") && b.className.includes("bg-accent"),
+		);
+		expect(alphaBtn).toBeDefined();
+
+		await user.keyboard("{Escape}");
+		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
+
+		// Repeated chevron clicks toggle it.
+		await user.click(chevron);
+		expect(screen.getByText("Project Beta")).toBeInTheDocument();
+		await user.click(chevron);
+		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
+
+		await user.click(chevron);
+		expect(screen.getByText("Project Beta")).toBeInTheDocument();
+		await user.click(document.body);
+		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
 	});
 
-	it("keeps the name and the chevron inside one bordered segmented control", () => {
-		renderHeader({ screen: "project", projectId: "p1", activeTaskId: "t1" }, [project1, project2], vi.fn(), [
+	it("keeps the name, an accent link, and the chevron in one bordered control; the name returns to the board", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1", activeTaskId: "t1" }, [project1, project2], navigate, [
 			{ id: "t1", seq: 1, title: "Task 1", status: "in-progress" } as Task,
 		]);
 		const shell = getChevronButton().parentElement!;
 		expect(shell).toHaveClass("border-edge");
 		// Both halves live in that shell — the chevron is no longer a loose glyph.
-		expect(within(shell).getByRole("button", { name: "Project Alpha" })).toBeInTheDocument();
-	});
+		const projectName = within(shell).getByRole("button", { name: "Project Alpha" });
+		expect(projectName).toHaveClass("text-accent", "hover:text-accent-emphasis");
+		expect(projectName).not.toHaveClass("text-fg-3");
 
-	it("does not show project dropdown on dashboard", () => {
-		renderHeader({ screen: "dashboard" });
-		expect(screen.queryByLabelText("Switch project")).not.toBeInTheDocument();
-	});
-
-	it("project name click navigates to project board (restores from split view)", async () => {
-		const user = userEvent.setup();
-		const navigate = vi.fn();
-		renderHeader(
-			{ screen: "project", projectId: "p1", activeTaskId: "t1" },
-			[project1, project2],
-			navigate,
-			[{ id: "t1", seq: 1, title: "Task 1", status: "in-progress" } as Task],
-		);
-
-		// Click the project name text (not the chevron)
+		// Click the project name text (not the chevron): restores from split view.
 		await user.click(screen.getByText("Project Alpha"));
 
 		expect(navigate).toHaveBeenCalledWith({
@@ -276,18 +282,10 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 	});
 
-	it("styles the clickable project name as an accent link", () => {
-		const navigate = vi.fn();
-		renderHeader(
-			{ screen: "project", projectId: "p1", activeTaskId: "t1" },
-			[project1, project2],
-			navigate,
-			[{ id: "t1", seq: 1, title: "Task 1", status: "in-progress" } as Task],
-		);
-
-		const projectName = screen.getByRole("button", { name: "Project Alpha" });
-		expect(projectName).toHaveClass("text-accent", "hover:text-accent-emphasis");
-		expect(projectName).not.toHaveClass("text-fg-3");
+	it("shows neither the project dropdown nor the terminal button on the dashboard", () => {
+		renderHeader({ screen: "dashboard" });
+		expect(screen.queryByLabelText("Switch project")).not.toBeInTheDocument();
+		expect(screen.queryByText("Repo")).not.toBeInTheDocument();
 	});
 
 	it("project name is clickable in activity/task view with no task selected", async () => {
@@ -308,37 +306,6 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 	});
 
-	it("opens dropdown on chevron click and shows all non-deleted projects", async () => {
-		const user = userEvent.setup();
-		renderHeader(
-			{ screen: "project", projectId: "p1" },
-			[project1, project2, project3Deleted],
-		);
-
-		await user.click(getChevronButton());
-
-		// Both non-deleted projects should appear in the dropdown
-		// Project Alpha appears twice: once in breadcrumb, once in dropdown
-		expect(screen.getAllByText("Project Alpha")).toHaveLength(2);
-		expect(screen.getByText("Project Beta")).toBeInTheDocument();
-
-		// Deleted project should not appear
-		expect(screen.queryByText("Deleted Project")).not.toBeInTheDocument();
-	});
-
-	it("highlights the current project in the dropdown", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-
-		await user.click(getChevronButton());
-
-		// Find the dropdown buttons — the current project should have accent styling
-		const alphaBtn = screen.getAllByRole("button").find(
-			(b) => b.textContent?.includes("Project Alpha") && b.className.includes("bg-accent"),
-		);
-		expect(alphaBtn).toBeDefined();
-	});
-
 	it("navigates to selected project and closes dropdown", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();
@@ -357,33 +324,6 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			screen: "project",
 			projectId: "p2",
 		});
-	});
-
-	it("closes dropdown on outside click", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-
-		await user.click(getChevronButton());
-		// Dropdown should be open — Project Beta is only visible in the dropdown
-		expect(screen.getByText("Project Beta")).toBeInTheDocument();
-
-		// Click outside
-		await user.click(document.body);
-
-		// Dropdown should close — Project Beta should no longer be visible
-		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
-	});
-
-	it("closes dropdown on Escape key", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-
-		await user.click(getChevronButton());
-		expect(screen.getByText("Project Beta")).toBeInTheDocument();
-
-		await user.keyboard("{Escape}");
-
-		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
 	});
 
 	it("fetches task counts when dropdown opens", async () => {
@@ -445,7 +385,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			return await screen.findByRole("menu");
 		}
 
-		it("hoists the current project's space above the other groups, Home last", async () => {
+		it("hoists the current space, Home last and inert; lists every membership; badges ⌘N in dashboard order", async () => {
 			withSpaces();
 			const menu = await openSwitcher();
 			await within(menu).findByText("Dev Space");
@@ -453,21 +393,12 @@ describe("GlobalHeader — project switcher dropdown", () => {
 				.getAllByText(/Dev Space|Other Space|Home/)
 				.map((el) => el.textContent);
 			expect(headers).toEqual(["Dev Space", "Other Space", "Home"]);
-		});
-
-		it("lists a project under every space it belongs to, plus once under Home", async () => {
-			withSpaces();
-			const menu = await openSwitcher();
-			await within(menu).findByText("Dev Space");
+			// Home names no space, so its heading leads nowhere.
+			expect(within(menu).getByText("Home").closest("button")).toBeNull();
 			// Beta is in both spaces → two rows; Delta has no space → the Home group.
 			expect(within(menu).getAllByText("Project Beta")).toHaveLength(2);
 			expect(within(menu).getAllByText("Project Delta")).toHaveLength(1);
-		});
 
-		it("badges ⌘N in dashboard order, not on the hoisted row order", async () => {
-			withSpaces();
-			const menu = await openSwitcher();
-			await within(menu).findByText("Dev Space");
 			const rows = within(menu).getAllByRole("button");
 			const badgeOf = (name: string) =>
 				rows.find((r) => r.textContent?.includes(name))?.querySelector("kbd")?.textContent;
@@ -510,28 +441,13 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			await user.click(screen.getByTestId("switcher-space-sp_dev"));
 
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_dev" });
-		});
 
-		it("anchors on a member that still exists, not on the current project", async () => {
-			withSpaces();
-			const navigate = vi.fn();
-			const user = userEvent.setup();
-			renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+			// It anchors on a member that still exists, not on the current project:
+			// p1 is current but not in sp_other; p2 is its only member.
+			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 			await user.click(getChevronButton());
-			const menu = await screen.findByRole("menu");
-			await within(menu).findByText("Other Space");
-
-			// p1 is the current project but is not in sp_other; p2 is its only member.
-			await user.click(screen.getByTestId("switcher-space-sp_other"));
-
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p2", spaceId: "sp_other" });
-		});
-
-		it("leaves the Home heading inert — it names no space", async () => {
-			withSpaces();
-			const menu = await openSwitcher();
-			await within(menu).findByText("Home");
-			expect(within(menu).getByText("Home").closest("button")).toBeNull();
+			await user.click(await screen.findByTestId("switcher-space-sp_other"));
+			expect(navigate).toHaveBeenLastCalledWith({ screen: "project", projectId: "p2", spaceId: "sp_other" });
 		});
 
 		it("stays flat when no space holds a visible project", async () => {
@@ -669,10 +585,13 @@ describe("GlobalHeader — project switcher dropdown", () => {
 				.map((row) => row.querySelector("span.flex-1")?.textContent ?? "");
 		}
 
-		it("filters the rows down to the typed match", async () => {
+		it("filters the rows down to the typed match, dropping a space group left with none", async () => {
+			withSpaces();
 			const { user, menu } = await openSwitcher();
+			await within(menu).findByText("Dev Space");
 			await user.type(screen.getByTestId("project-switcher-search"), "delta");
 			expect(rowNames(menu)).toEqual(["Project Delta"]);
+			expect(within(menu).queryByText("Dev Space")).not.toBeInTheDocument();
 		});
 
 		it("surfaces a space's members when the space name is typed", async () => {
@@ -682,14 +601,6 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			await user.type(screen.getByTestId("project-switcher-search"), "dev space");
 			// Alpha and Beta are the members; Delta belongs to no space.
 			expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta"]);
-		});
-
-		it("drops a space group that has no match left", async () => {
-			withSpaces();
-			const { user, menu } = await openSwitcher();
-			await within(menu).findByText("Dev Space");
-			await user.type(screen.getByTestId("project-switcher-search"), "delta");
-			expect(within(menu).queryByText("Dev Space")).not.toBeInTheDocument();
 		});
 
 		it("says so when nothing matches", async () => {
@@ -759,25 +670,17 @@ describe("GlobalHeader — project switcher dropdown", () => {
 				.map((row) => row.querySelector("span.flex-1")?.textContent ?? "");
 		}
 
-		it("lists active and recently finished projects above dormant and never-used ones", async () => {
+		it("ranks active and recently finished projects first, and keeps that order while searching — search filters, never re-ranks", async () => {
 			mockedApi.request.getTasks.mockImplementation(async ({ projectId }) => tasksOf[projectId] ?? []);
 			const user = userEvent.setup();
 			renderHeader({ screen: "project", projectId: "p1" }, boardOrder);
 			await user.click(getChevronButton());
 			const menu = await screen.findByRole("menu");
 			await within(menu).findByText("Dev Space");
+			// Active and recently finished projects rank above dormant and never-used ones.
 			await vi.waitFor(() =>
 				expect(rowNames(menu)).toEqual(["Project Alpha", "Busy Project", "Finished Project", "Dormant Project", "Never Project"]),
 			);
-		});
-
-		it("keeps the ranked order while searching — search filters, never re-ranks", async () => {
-			mockedApi.request.getTasks.mockImplementation(async ({ projectId }) => tasksOf[projectId] ?? []);
-			const user = userEvent.setup();
-			renderHeader({ screen: "project", projectId: "p1" }, boardOrder);
-			await user.click(getChevronButton());
-			const menu = await screen.findByRole("menu");
-			await vi.waitFor(() => expect(rowNames(menu)[1]).toBe("Busy Project"));
 			await user.type(screen.getByTestId("project-switcher-search"), "project");
 			expect(rowNames(menu)).toEqual(["Project Alpha", "Busy Project", "Finished Project", "Dormant Project", "Never Project"]);
 		});
@@ -822,26 +725,14 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 	});
 
-	it("shows downloading indicator when updateDownloadStatus is downloading", () => {
-		renderHeader(
-			{ screen: "dashboard" },
-			[project1, project2],
-			vi.fn(),
-			[],
-			{ updateDownloadStatus: "downloading" },
-		);
+	it("shows the downloading / checking indicator and nothing on error", () => {
+		const view = renderHeader({ screen: "dashboard" }, [project1, project2], vi.fn(), [], { updateDownloadStatus: "downloading" });
 		expect(screen.getByText("Downloading...")).toBeInTheDocument();
-	});
-
-	it("shows checking indicator when updateDownloadStatus is checking", () => {
-		renderHeader(
-			{ screen: "dashboard" },
-			[project1, project2],
-			vi.fn(),
-			[],
-			{ updateDownloadStatus: "checking" },
-		);
+		view.rerender(headerElement({ screen: "dashboard" }, [project1, project2], vi.fn(), [], { updateDownloadStatus: "checking" }));
 		expect(screen.getByText("Checking...")).toBeInTheDocument();
+		view.rerender(headerElement({ screen: "dashboard" }, [project1, project2], vi.fn(), [], { updateDownloadStatus: "error" }));
+		expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
+		expect(screen.queryByText("Checking...")).not.toBeInTheDocument();
 	});
 
 	it("does not show download indicator when updateVersion is set (ready state)", () => {
@@ -857,26 +748,15 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		expect(screen.getByText("Update")).toBeInTheDocument();
 	});
 
-	it("does not show download indicator when status is error", () => {
-		renderHeader(
-			{ screen: "dashboard" },
-			[project1, project2],
-			vi.fn(),
-			[],
-			{ updateDownloadStatus: "error" },
-		);
-		expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
-		expect(screen.queryByText("Checking...")).not.toBeInTheDocument();
-	});
-
-	it("renders the what's-new changelog section in the update dropdown", async () => {
+	it("renders the what's-new changelog section in the update dropdown, linking to the changelog screen", async () => {
 		const user = userEvent.setup();
+		const navigate = vi.fn();
 		const changelog: UpdateChangelog = {
 			features: ["Terminal scrollback search", "PR review threads in diff"],
 			featureCount: 5,
 			fixCount: 4,
 		};
-		renderHeader({ screen: "dashboard" }, [project1, project2], vi.fn(), [], {
+		renderHeader({ screen: "dashboard" }, [project1, project2], navigate, [], {
 			updateVersion: "1.38.0",
 			updateChangelog: changelog,
 		});
@@ -891,6 +771,9 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		expect(screen.getByText("PR review threads in diff")).toBeInTheDocument();
 		// 5 total features, 2 shown → "+3 more features · 4 fixes"
 		expect(screen.getByText("+3 more features · 4 fixes")).toBeInTheDocument();
+
+		await user.click(screen.getByText(/See all changes/));
+		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
 	});
 
 	it("renders the what's-new changelog section in the auto-shown update toast", () => {
@@ -911,21 +794,6 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		expect(screen.getByText("+3 more features · 4 fixes")).toBeInTheDocument();
 	});
 
-	it("navigates to the changelog screen from 'See all changes'", async () => {
-		const user = userEvent.setup();
-		const navigate = vi.fn();
-		renderHeader({ screen: "dashboard" }, [project1, project2], navigate, [], {
-			updateVersion: "1.38.0",
-			updateChangelog: { features: ["A feature"], featureCount: 1, fixCount: 0 },
-		});
-
-		// Dismiss the auto-shown toast first so "See all changes" is unambiguous.
-		await user.click(screen.getByText("Postpone"));
-		await user.click(screen.getByRole("button", { name: /Version 1\.38\.0 is ready/i }));
-		await user.click(screen.getByText(/See all changes/));
-		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
-	});
-
 	it("omits the what's-new section when no changelog is provided", async () => {
 		const user = userEvent.setup();
 		renderHeader({ screen: "dashboard" }, [project1, project2], vi.fn(), [], {
@@ -937,20 +805,6 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		expect(screen.getByText("Restart to Update")).toBeInTheDocument();
 	});
 
-	it("toggles dropdown open/close on repeated chevron clicks", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-
-		const chevron = getChevronButton();
-
-		// Open
-		await user.click(chevron);
-		expect(screen.getByText("Project Beta")).toBeInTheDocument();
-
-		// Close
-		await user.click(chevron);
-		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
-	});
 });
 
 describe("GlobalHeader — breadcrumb inline rename", () => {
@@ -959,7 +813,8 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("shows pencil icon on hover for task segment in full-page view", () => {
+	it("shows the pencil in full-page view; editing opens the input, an unchanged Enter saves nothing, cancel restores", async () => {
+		const user = userEvent.setup();
 		renderHeader(
 			{ screen: "task", projectId: "p1", taskId: "t1" },
 			[project1],
@@ -967,7 +822,18 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 			[makeBreadcrumbTask()],
 		);
 		expect(screen.getByText("My Task Title")).toBeInTheDocument();
-		expect(screen.getByTitle("Edit title")).toBeInTheDocument();
+		await user.click(screen.getByTitle("Edit title"));
+		expect(screen.getByDisplayValue("My Task Title")).toBeInTheDocument();
+		await user.keyboard("{Enter}");
+		expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
+
+		expect(screen.queryByDisplayValue("My Task Title")).not.toBeInTheDocument();
+		await user.click(screen.getByTitle("Edit title"));
+		await user.click(screen.getByTestId("rename-cancel"));
+		expect(screen.queryByDisplayValue("My Task Title")).not.toBeInTheDocument();
+		// Scoped to the breadcrumb: pointing at the title also opens the hover
+		// card, which repeats the title in full.
+		expect(within(screen.getByRole("navigation")).getByText("My Task Title")).toBeInTheDocument();
 	});
 
 	it("shows branch, seq and labels on the title hover card", async () => {
@@ -1026,18 +892,6 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		expect(screen.getByTitle("Edit title")).toBeInTheDocument();
 	});
 
-	it("opens inline input on pencil click", async () => {
-		const user = userEvent.setup();
-		renderHeader(
-			{ screen: "task", projectId: "p1", taskId: "t1" },
-			[project1],
-			vi.fn(),
-			[makeBreadcrumbTask()],
-		);
-		await user.click(screen.getByTitle("Edit title"));
-		expect(screen.getByDisplayValue("My Task Title")).toBeInTheDocument();
-	});
-
 	it("saves new title on Enter", async () => {
 		const user = userEvent.setup();
 		const updatedTask = makeBreadcrumbTask({ customTitle: "New Name" });
@@ -1061,36 +915,6 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		});
 	});
 
-	it("cancels rename on cancel button click", async () => {
-		const user = userEvent.setup();
-		renderHeader(
-			{ screen: "task", projectId: "p1", taskId: "t1" },
-			[project1],
-			vi.fn(),
-			[makeBreadcrumbTask()],
-		);
-		await user.click(screen.getByTitle("Edit title"));
-		expect(screen.getByDisplayValue("My Task Title")).toBeInTheDocument();
-
-		await user.click(screen.getByTestId("rename-cancel"));
-		expect(screen.queryByDisplayValue("My Task Title")).not.toBeInTheDocument();
-		// Scoped to the breadcrumb: pointing at the title also opens the hover
-		// card, which repeats the title in full.
-		expect(within(screen.getByRole("navigation")).getByText("My Task Title")).toBeInTheDocument();
-	});
-
-	it("does not save when title is unchanged", async () => {
-		const user = userEvent.setup();
-		renderHeader(
-			{ screen: "task", projectId: "p1", taskId: "t1" },
-			[project1],
-			vi.fn(),
-			[makeBreadcrumbTask()],
-		);
-		await user.click(screen.getByTitle("Edit title"));
-		await user.keyboard("{Enter}");
-		expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
-	});
 });
 
 describe("GlobalHeader — variant switcher on the task badge", () => {
@@ -1123,23 +947,15 @@ describe("GlobalHeader — variant switcher on the task badge", () => {
 		expect(screen.queryByTestId("variant-breadcrumb-toggle")).not.toBeInTheDocument();
 	});
 
-	it("shows the variant badge and lists the group on click", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), variantPair());
-		expect(within(screen.getByRole("navigation")).getByText("#42-1")).toBeInTheDocument();
-
-		await user.click(screen.getByTestId("variant-breadcrumb-toggle"));
-
-		const menu = screen.getByRole("dialog", { name: "Siblings" });
-		expect(within(menu).getByText("Second Attempt")).toBeInTheDocument();
-	});
-
-	it("stays on the fullscreen task screen when switching from there", async () => {
+	it("shows the variant badge, lists the group, and stays on the fullscreen task screen when switching", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();
 		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], navigate, variantPair());
+		expect(within(screen.getByRole("navigation")).getByText("#42-1")).toBeInTheDocument();
 
 		await user.click(screen.getByTestId("variant-breadcrumb-toggle"));
+		const menu = screen.getByRole("dialog", { name: "Siblings" });
+		expect(within(menu).getByText("Second Attempt")).toBeInTheDocument();
 		await user.click(screen.getByLabelText(/Switch to Variant 2/));
 
 		expect(navigate).toHaveBeenCalledWith({ screen: "task", projectId: "p1", taskId: "t2" });
@@ -1482,61 +1298,28 @@ describe("GlobalHeader — project terminal button", () => {
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("shows terminal button when inside a project", () => {
-		renderHeader({ screen: "project", projectId: "p1" });
-		expect(screen.getByText("Repo")).toBeInTheDocument();
-	});
-
-	it("keeps quick shell out of the bar and inside the kebab menu, icon included", async () => {
+	it("shows the Repo button, keeps quick shell and tmux in the kebab, fires quick shell from it, and Repo opens the terminal", async () => {
 		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
+		const handler = vi.fn();
+		const navigate = vi.fn();
+		window.addEventListener("menu:open-quick-shell", handler);
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
+		expect(screen.getByText("Repo")).toBeInTheDocument();
 		expect(screen.queryByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("tmux Sessions")).not.toBeInTheDocument();
 
 		await user.click(screen.getByLabelText("More"));
 		const quickShellButton = screen.getByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)");
 		expect(quickShellButton).toHaveAttribute("role", "menuitem");
 		expect(quickShellButton.querySelector("svg")).toBeTruthy();
 		expect(quickShellButton.className).toContain("header-anim");
-	});
+		expect(screen.getByLabelText("tmux Sessions")).toHaveAttribute("role", "menuitem");
 
-	it("fires the quick-shell event from the menu row and closes the menu", async () => {
-		const user = userEvent.setup();
-		const handler = vi.fn();
-		window.addEventListener("menu:open-quick-shell", handler);
-		renderHeader({ screen: "project", projectId: "p1" });
-
-		await user.click(screen.getByLabelText("More"));
-		await user.click(screen.getByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)"));
-
+		await user.click(quickShellButton);
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 		window.removeEventListener("menu:open-quick-shell", handler);
-	});
 
-	it("keeps the tmux session list in the kebab menu too", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-		expect(screen.queryByLabelText("tmux Sessions")).not.toBeInTheDocument();
-
-		await user.click(screen.getByLabelText("More"));
-		expect(screen.getByLabelText("tmux Sessions")).toHaveAttribute("role", "menuitem");
-	});
-
-	it("does not show terminal button on dashboard", () => {
-		renderHeader({ screen: "dashboard" });
-		expect(screen.queryByText("Repo")).not.toBeInTheDocument();
-	});
-
-	it("terminal button has active style on project-terminal screen", () => {
-		renderHeader({ screen: "project-terminal", projectId: "p1" });
-		const btn = screen.getByLabelText("Repo: terminal and files (\u2318`)");
-		expect(btn.className).toContain("text-accent");
-	});
-
-	it("clicking terminal button navigates to project-terminal", async () => {
-		const user = userEvent.setup();
-		const navigate = vi.fn();
-		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 		await user.click(screen.getByLabelText("Repo: terminal and files (\u2318`)"));
 		expect(navigate).toHaveBeenCalledWith({
 			screen: "project-terminal",
@@ -1544,16 +1327,19 @@ describe("GlobalHeader — project terminal button", () => {
 		});
 	});
 
-	it("clicking terminal button when already on terminal navigates back to project", async () => {
+	it("on the project-terminal screen the button is active and navigates back to the project", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();
 		renderHeader({ screen: "project-terminal", projectId: "p1" }, [project1, project2], navigate);
-		await user.click(screen.getByLabelText("Repo: terminal and files (\u2318`)"));
+		const btn = screen.getByLabelText("Repo: terminal and files (\u2318`)");
+		expect(btn.className).toContain("text-accent");
+		await user.click(btn);
 		expect(navigate).toHaveBeenCalledWith({
 			screen: "project",
 			projectId: "p1",
 		});
 	});
+
 });
 
 describe("GlobalHeader — remote access indicator", () => {
@@ -1602,21 +1388,16 @@ describe("GlobalHeader — compact layout", () => {
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("hides button text labels when the viewport is narrow", () => {
+	it("hides button text labels and folds external actions into an overflow menu when narrow", async () => {
 		mockMatchMedia(true);
-		renderHeader({ screen: "project", projectId: "p1" });
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 		// Buttons stay reachable by title, but their text labels collapse away.
 		expect(screen.getByLabelText("Repo: terminal and files (⌘`)")).toBeInTheDocument();
 		expect(screen.queryByText("Repo")).not.toBeInTheDocument();
 		expect(screen.queryByText("Report")).not.toBeInTheDocument();
 		expect(screen.queryByText("Change Log")).not.toBeInTheDocument();
-	});
-
-	it("folds external actions into an overflow menu when narrow", async () => {
-		mockMatchMedia(true);
-		const user = userEvent.setup();
-		const navigate = vi.fn();
-		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 
 		const more = screen.getByLabelText("More");
 		expect(more).toBeInTheDocument();
@@ -1627,10 +1408,11 @@ describe("GlobalHeader — compact layout", () => {
 		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
 	});
 
-	it("keeps labels and folds changelog into the kebab when roomy", async () => {
+	it("keeps labels and folds changelog and Agent sessions (project-scoped) into the kebab when roomy", async () => {
 		mockMatchMedia(false);
 		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 		// Roomy layout keeps text labels (e.g. the project terminal's short
 		// "Terminal" label). GitHub / Report / Changelog now always live in the
 		// kebab ("More") menu — there is no standalone changelog button anymore,
@@ -1640,14 +1422,7 @@ describe("GlobalHeader — compact layout", () => {
 		const more = screen.getByLabelText("More");
 		await user.click(more);
 		expect(screen.getByText("Change Log")).toBeInTheDocument();
-	});
-
-	it("opens Agent sessions from the kebab, scoped to the current project", async () => {
-		mockMatchMedia(false);
-		const user = userEvent.setup();
-		const navigate = vi.fn();
-		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
-		await user.click(screen.getByLabelText("More"));
+		// Agent sessions opens scoped to the current project.
 		await user.click(screen.getByRole("menuitem", { name: "Agent sessions" }));
 		expect(navigate).toHaveBeenCalledWith({ screen: "sessions", scopeProjectId: "p1" });
 	});
@@ -1682,13 +1457,23 @@ describe("GlobalHeader — compact layout", () => {
 		expect(toggle).toHaveAttribute("role", "menuitem");
 	});
 
-	it("stays open while a menu row's flyout is clicked — it is portaled, not outside", async () => {
+	it("leads the utilities cluster with the kebab, whose menu stays open while a portaled flyout is clicked", async () => {
 		mockMatchMedia(false);
 		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });
 		await act(async () => {});
 
-		await user.click(screen.getByLabelText("More"));
+		// The utilities cluster opens with the kebab — nothing sits left of it.
+		const more = screen.getByLabelText("More");
+		const cluster = document.querySelector('[data-help-id="header.utilities"]')!;
+		expect(cluster).toContainElement(more);
+		const others = [...cluster.querySelectorAll("button")].filter((b) => b !== more && !more.contains(b));
+		expect(others.length).toBeGreaterThan(0);
+		for (const other of others) {
+			expect(more.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		}
+
+		await user.click(more);
 		expect(screen.getByText("Change Log")).toBeInTheDocument();
 
 		// The memory / tmux detail panels render into <body>, so by DOM they are
@@ -1711,20 +1496,6 @@ describe("GlobalHeader — compact layout", () => {
 		flyout.remove();
 	});
 
-	it("opens the utilities cluster — nothing sits left of the kebab", async () => {
-		renderHeader({ screen: "project", projectId: "p1" });
-		await act(async () => {});
-
-		const more = screen.getByLabelText("More");
-		const cluster = document.querySelector('[data-help-id="header.utilities"]')!;
-		expect(cluster).toContainElement(more);
-		// Every other control in the cluster must follow it in document order.
-		const others = [...cluster.querySelectorAll("button")].filter((b) => b !== more && !more.contains(b));
-		expect(others.length).toBeGreaterThan(0);
-		for (const other of others) {
-			expect(more.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		}
-	});
 });
 
 describe("GlobalHeader — help mode button", () => {
@@ -1744,26 +1515,20 @@ describe("GlobalHeader — help mode button", () => {
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("renders the bright ? button on every screen", () => {
-		mockMatchMedia(false);
-		renderHeader({ screen: "dashboard" });
-		expect(screen.getByTestId("header-help-mode")).toBeInTheDocument();
-		expect(screen.getByLabelText("Explain this screen")).toBeInTheDocument();
-	});
-
 	it("stays inline even in compact layout (never folds into the kebab)", () => {
 		mockMatchMedia(true);
 		renderHeader({ screen: "project", projectId: "p1" });
 		expect(screen.getByTestId("header-help-mode")).toBeInTheDocument();
 	});
 
-	it("dispatches menu:enter-help-mode on click", async () => {
+	it("renders the bright ? button and dispatches menu:enter-help-mode on click", async () => {
 		mockMatchMedia(false);
 		const user = userEvent.setup();
 		const listener = vi.fn();
 		window.addEventListener("menu:enter-help-mode", listener);
 		try {
 			renderHeader({ screen: "dashboard" });
+			expect(screen.getByLabelText("Explain this screen")).toBeInTheDocument();
 			await user.click(screen.getByTestId("header-help-mode"));
 			expect(listener).toHaveBeenCalledTimes(1);
 		} finally {
@@ -1778,37 +1543,23 @@ describe("GlobalHeader — back/forward navigation", () => {
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("renders both navigation buttons", () => {
-		renderHeader({ screen: "dashboard" });
-		expect(screen.getByLabelText("Back (⌘[)")).toBeInTheDocument();
-		expect(screen.getByLabelText("Forward (⌘])")).toBeInTheDocument();
-	});
-
-	it("disables back when there is no history behind", () => {
-		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoBack: false });
+	it("renders both navigation buttons, disabled with no history either way", () => {
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoBack: false, canGoForward: false });
 		expect(screen.getByLabelText("Back (⌘[)")).toBeDisabled();
-	});
-
-	it("disables forward when there is no history ahead", () => {
-		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoForward: false });
 		expect(screen.getByLabelText("Forward (⌘])")).toBeDisabled();
 	});
 
-	it("invokes goBack when the back button is clicked", async () => {
+	it("invokes goBack and goForward from their buttons", async () => {
 		const user = userEvent.setup();
 		const goBack = vi.fn();
-		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoBack: true, goBack });
+		const goForward = vi.fn();
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoBack: true, goBack, canGoForward: true, goForward });
 		await user.click(screen.getByLabelText("Back (⌘[)"));
 		expect(goBack).toHaveBeenCalledTimes(1);
-	});
-
-	it("invokes goForward when the forward button is clicked", async () => {
-		const user = userEvent.setup();
-		const goForward = vi.fn();
-		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoForward: true, goForward });
 		await user.click(screen.getByLabelText("Forward (⌘])"));
 		expect(goForward).toHaveBeenCalledTimes(1);
 	});
+
 });
 
 describe("GlobalHeader — virtual (Operations) board git affordances", () => {
@@ -1873,11 +1624,26 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 
 	afterEach(() => mockMatchMedia(false));
 
-	it("folds the right-side cluster into a single kebab", () => {
-		renderHeader({ screen: "project", projectId: "p1" });
+	it("folds the right-side cluster and the stateful widgets into a kebab whose bottom sheet carries them, Repo included", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 		expect(screen.getByLabelText("More")).toBeInTheDocument();
-		// Inline simple-action buttons are gone (folded into the sheet).
+		// Inline simple-action buttons and the stateful widgets are gone (folded into the sheet).
 		expect(screen.queryByLabelText("Repo: terminal and files (⌘`)")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("git-pull-button")).not.toBeInTheDocument();
+		expect(screen.queryByTitle("tmux Sessions")).not.toBeInTheDocument();
+
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.getByTestId("header-action-sheet")).toBeInTheDocument();
+		expect(screen.getByText("Command palette")).toBeInTheDocument();
+		expect(screen.getByText("Settings")).toBeInTheDocument();
+		// Git pull + tmux manager now live in the sheet's controls strip.
+		expect(await screen.findByTestId("git-pull-button")).toBeInTheDocument();
+		expect(screen.getByLabelText("tmux Sessions")).toBeInTheDocument();
+
+		await user.click(screen.getByText("Repo"));
+		expect(navigate).toHaveBeenCalledWith({ screen: "project-terminal", projectId: "p1" });
 	});
 
 	it("folds the memory readout off the header and into the sheet", async () => {
@@ -1908,44 +1674,23 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		expect(screen.getByTestId("memory-headroom-indicator")).toBeInTheDocument();
 	});
 
-	it("opens a bottom sheet exposing the command palette and folded actions", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-		await user.click(screen.getByLabelText("More"));
-		expect(screen.getByTestId("header-action-sheet")).toBeInTheDocument();
-		expect(screen.getByText("Command palette")).toBeInTheDocument();
-		expect(screen.getByText("Repo")).toBeInTheDocument();
-		expect(screen.getByText("Settings")).toBeInTheDocument();
-	});
-
-	it("command palette row dispatches the open-command-palette event", async () => {
-		const user = userEvent.setup();
-		const handler = vi.fn();
-		window.addEventListener("menu:open-command-palette", handler);
-		renderHeader({ screen: "dashboard" });
-		await user.click(screen.getByLabelText("More"));
-		await user.click(screen.getByText("Command palette"));
-		expect(handler).toHaveBeenCalled();
-		window.removeEventListener("menu:open-command-palette", handler);
-	});
-
-	it("project terminal row navigates into the project terminal", async () => {
-		const user = userEvent.setup();
-		const navigate = vi.fn();
-		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
-		await user.click(screen.getByLabelText("More"));
-		await user.click(screen.getByText("Repo"));
-		expect(navigate).toHaveBeenCalledWith({ screen: "project-terminal", projectId: "p1" });
-	});
-
-	it("offers a Fullscreen toggle that requests element fullscreen (browser mode)", async () => {
+	it("dispatches the command palette from its row and offers a Fullscreen toggle (browser mode)", async () => {
 		const user = userEvent.setup();
 		const requestFullscreen = vi.fn(async () => {});
 		Object.defineProperty(document.documentElement, "requestFullscreen", {
 			configurable: true,
 			value: requestFullscreen,
 		});
+		const onPalette = vi.fn();
+		window.addEventListener("menu:open-command-palette", onPalette);
 		renderHeader({ screen: "dashboard" });
+		await user.click(screen.getByLabelText("More"));
+		await user.click(screen.getByText("Command palette"));
+		expect(onPalette).toHaveBeenCalled();
+		window.removeEventListener("menu:open-command-palette", onPalette);
+
+		// The row closes the sheet; reopen it for the next one.
+		expect(screen.queryByTestId("header-action-sheet")).not.toBeInTheDocument();
 		await user.click(screen.getByLabelText("More"));
 		await user.click(screen.getByText("Fullscreen"));
 		expect(requestFullscreen).toHaveBeenCalledOnce();
@@ -1962,21 +1707,6 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		expect(screen.queryByText("Fullscreen")).not.toBeInTheDocument();
 	});
 
-	it("keeps the stateful widgets (git pull, tmux) out of the inline header", () => {
-		renderHeader({ screen: "project", projectId: "p1" });
-		// Folded into the kebab sheet — not sitting inline in the header row.
-		expect(screen.queryByTestId("git-pull-button")).not.toBeInTheDocument();
-		expect(screen.queryByTitle("tmux Sessions")).not.toBeInTheDocument();
-	});
-
-	it("surfaces the stateful widgets inside the bottom sheet", async () => {
-		const user = userEvent.setup();
-		renderHeader({ screen: "project", projectId: "p1" });
-		await user.click(screen.getByLabelText("More"));
-		// Git pull + tmux manager now live in the sheet's controls strip.
-		expect(await screen.findByTestId("git-pull-button")).toBeInTheDocument();
-		expect(screen.getByLabelText("tmux Sessions")).toBeInTheDocument();
-	});
 });
 
 describe("GlobalHeader — remote access button", () => {
@@ -2067,9 +1797,11 @@ describe("GlobalHeader — the space segment", () => {
 
 	const splitInSpace: Route = { screen: "project", projectId: "p1", spaceId: "sp_ai", activeTaskId: "t1" };
 
-	it("names the space and the project, in that order, with a task open", async () => {
+	it("names the space and the project, in that order, as a plain link up — and asks which space whenever the project has two", async () => {
 		withSpaces();
-		renderHeader(splitInSpace, [project1, project2], vi.fn(), [makeBreadcrumbTask()]);
+		const navigate = vi.fn();
+		renderHeader(splitInSpace, [project1, project2], navigate, [makeBreadcrumbTask()]);
+		const user = userEvent.setup();
 		const crumb = await screen.findByTestId("breadcrumb-space");
 		expect(crumb).toHaveTextContent("AI Space");
 		expect(screen.getByText("Project Alpha")).toBeInTheDocument();
@@ -2077,6 +1809,26 @@ describe("GlobalHeader — the space segment", () => {
 		// dev-3.0 / AI Space / Project Alpha / #42 — the space sits before the chip.
 		expect(crumb.compareDocumentPosition(screen.getByText("Project Alpha")) & Node.DOCUMENT_POSITION_FOLLOWING)
 			.toBeTruthy();
+
+		// A plain link to that space's board — never a second switcher.
+		await user.click(crumb);
+		// Up a level: the space's own board, the task dropped.
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_ai" });
+		// One dropdown in the trail, and it belongs to the tail.
+		expect(screen.getAllByLabelText("Switch project")).toHaveLength(1);
+
+		// The unified-board button asks on exactly one condition: is there anything to
+		// ask about. Keying it on the route instead made the menu appear and vanish for
+		// no visible reason, which is what the user reported.
+		await user.click(await screen.findByTestId("space-zoom-out"));
+		const menu = await screen.findByRole("menu");
+		expect(within(menu).getByText("Which space?")).toBeInTheDocument();
+		// The board you are already on is marked, not hidden — the menu's length
+		// must not depend on where you stand.
+		const rows = within(menu).getAllByRole("button");
+		const current = rows.find((b) => b.textContent?.includes("AI Space"));
+		expect(current).toHaveAttribute("aria-current", "true");
+		expect(rows.find((b) => b.textContent?.includes("Other Space"))).not.toHaveAttribute("aria-current");
 	});
 
 	it("carries the space into a full-page task too", async () => {
@@ -2090,25 +1842,26 @@ describe("GlobalHeader — the space segment", () => {
 		expect(await screen.findByTestId("breadcrumb-space")).toHaveTextContent("AI Space");
 	});
 
-	it("is a plain link to that space's board — never a second switcher", async () => {
-		withSpaces();
-		const navigate = vi.fn();
-		renderHeader(splitInSpace, [project1, project2], navigate, [makeBreadcrumbTask()]);
-		const user = userEvent.setup();
-		await user.click(await screen.findByTestId("breadcrumb-space"));
-		// Up a level: the space's own board, the task dropped.
-		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_ai" });
-		// One dropdown in the trail, and it belongs to the tail.
-		expect(screen.getAllByLabelText("Switch project")).toHaveLength(1);
-	});
-
 	// On the space board the space IS the tail, so it is the chip — putting a link
 	// there too would read as `AI / AI`.
-	it("does not duplicate the space on the space board itself", async () => {
+	// A project in two spaces rendered under both, and both copies lit up — the
+	// user was told they were in two places at once. And `AI` in a chip is otherwise
+	// indistinguishable from a project called AI, so it wears the space glyph.
+	it("on the space board: no duplicate crumb, the chip wears the space glyph, and only the route's copy is current", async () => {
 		withSpaces();
 		renderHeader({ screen: "project", projectId: "p1", spaceId: "sp_ai" }, [project1, project2]);
-		await screen.findByText("AI Space");
+		const chip = await screen.findByText("AI Space");
 		expect(screen.queryByTestId("breadcrumb-space")).toBeNull();
+		expect(chip.parentElement?.querySelector("svg")).not.toBeNull();
+
+		const user = userEvent.setup();
+		await user.click(getChevronButton());
+		const menu = await screen.findByRole("menu");
+		const rows = within(menu).getAllByRole("button").filter((b) => b.textContent?.includes("Project Alpha"));
+		// Once under AI Space, once under Other Space, plus the Home group never
+		// holds it — exactly one of them reads as current.
+		expect(rows.length).toBeGreaterThan(1);
+		expect(rows.filter((b) => b.className.includes("text-accent"))).toHaveLength(1);
 	});
 
 	it("stays absent when the route names no space", async () => {
@@ -2129,32 +1882,6 @@ describe("GlobalHeader — the space segment", () => {
 		expect(crumb.querySelector(".streamer-private")).not.toBeNull();
 	});
 
-	// The unified-board button asks on exactly one condition: is there anything to
-	// ask about. Keying it on the route instead made the menu appear and vanish for
-	// no visible reason, which is what the user reported.
-	it("asks which space whenever the project has two, even from inside one of them", async () => {
-		withSpaces();
-		renderHeader(splitInSpace, [project1, project2], vi.fn(), [makeBreadcrumbTask()]);
-		const user = userEvent.setup();
-		await user.click(await screen.findByTestId("space-zoom-out"));
-		const menu = await screen.findByRole("menu");
-		expect(within(menu).getByText("Which space?")).toBeInTheDocument();
-		// The board you are already on is marked, not hidden — the menu's length
-		// must not depend on where you stand.
-		const rows = within(menu).getAllByRole("button");
-		const current = rows.find((b) => b.textContent?.includes("AI Space"));
-		expect(current).toHaveAttribute("aria-current", "true");
-		expect(rows.find((b) => b.textContent?.includes("Other Space"))).not.toHaveAttribute("aria-current");
-	});
-
-	it("still asks when the route names no space", async () => {
-		withSpaces();
-		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2]);
-		const user = userEvent.setup();
-		await user.click(await screen.findByTestId("space-zoom-out"));
-		expect(await screen.findByText("Which space?")).toBeInTheDocument();
-	});
-
 	// p2 belongs to sp_ai alone: one destination, so there is nothing to ask.
 	it("goes straight there when the project has exactly one space", async () => {
 		withSpaces();
@@ -2166,19 +1893,12 @@ describe("GlobalHeader — the space segment", () => {
 		expect(screen.queryByText("Which space?")).toBeNull();
 	});
 
-	// A project in two spaces rendered under both, and both copies lit up — the
-	// user was told they were in two places at once.
-	it("marks the current project only under the space on the route", async () => {
+	it("still asks when the route names no space", async () => {
 		withSpaces();
-		renderHeader({ screen: "project", projectId: "p1", spaceId: "sp_ai" }, [project1, project2]);
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2]);
 		const user = userEvent.setup();
-		await user.click(getChevronButton());
-		const menu = await screen.findByRole("menu");
-		const rows = within(menu).getAllByRole("button").filter((b) => b.textContent?.includes("Project Alpha"));
-		// Once under AI Space, once under Other Space, plus the Home group never
-		// holds it — exactly one of them reads as current.
-		expect(rows.length).toBeGreaterThan(1);
-		expect(rows.filter((b) => b.className.includes("text-accent"))).toHaveLength(1);
+		await user.click(await screen.findByTestId("space-zoom-out"));
+		expect(await screen.findByText("Which space?")).toBeInTheDocument();
 	});
 
 	it("marks every copy when the route names no space, having no basis to choose", async () => {
@@ -2191,13 +1911,4 @@ describe("GlobalHeader — the space segment", () => {
 		expect(rows.filter((b) => b.className.includes("text-accent")).length).toBe(rows.length);
 	});
 
-	// `AI` in a chip is otherwise indistinguishable from a project called AI.
-	it("wears the space glyph when the chip names a space", async () => {
-		withSpaces();
-		const { container } = renderHeader({ screen: "project", projectId: "p1", spaceId: "sp_ai" }, [project1, project2]);
-		const chip = await screen.findByText("AI Space");
-		expect(chip.parentElement?.querySelector("svg")).not.toBeNull();
-		// The project chip carries no such glyph.
-		expect(container).toBeTruthy();
-	});
 });

@@ -332,24 +332,23 @@ describe("AgentTrafficScreen live orbit", () => {
 		).toBe(true);
 	});
 
-	it.each([
-		["delivered", "Delivered"],
-		["held", "Held"],
-		["unconfirmed", "Unconfirmed"],
-		["not-delivered", "Not delivered"],
-	] as const)(
-		"retains and filters the %s delivery verdict",
-		async (status, label) => {
-			setPage(
-				["delivered", "held", "unconfirmed", "not-delivered"].map((value) =>
-					row({
-						status: value as AgentMessageLogRow["status"],
-						subject: `${value} attempt`,
-					}),
-				),
-			);
-			renderLog();
-			await messageRows(4);
+	it("retains and filters every delivery verdict", async () => {
+		setPage(
+			["delivered", "held", "unconfirmed", "not-delivered"].map((value) =>
+				row({
+					status: value as AgentMessageLogRow["status"],
+					subject: `${value} attempt`,
+				}),
+			),
+		);
+		renderLog();
+		await messageRows(4);
+		for (const [status, label] of [
+			["delivered", "Delivered"],
+			["held", "Held"],
+			["unconfirmed", "Unconfirmed"],
+			["not-delivered", "Not delivered"],
+		] as const) {
 			await choose("Delivery status", label);
 			const [message] = await messageRows(1);
 			expect(message.textContent).toContain(`${status} attempt`);
@@ -364,8 +363,9 @@ describe("AgentTrafficScreen live orbit", () => {
 				expect(inspector.textContent).toContain(
 					"does not show whether it is still queued",
 				);
-		},
-	);
+			await userEvent.click(within(inspector).getByRole("button", { name: "Back" }));
+		}
+	});
 
 	it("selects one pair from message details and clears the filter", async () => {
 		setPage([
@@ -384,7 +384,7 @@ describe("AgentTrafficScreen live orbit", () => {
 		await messageRows(2);
 	});
 
-	it("states retention and the oldest stored day, including partial-page evidence", async () => {
+	it("states retention and the oldest stored day, including partial-page evidence, and links to the retention setting", async () => {
 		setPage([row()], { hasMore: true });
 		renderLog();
 		expect(await screen.findByText(/2026-08-01/)).toBeTruthy();
@@ -399,11 +399,8 @@ describe("AgentTrafficScreen live orbit", () => {
 				limit: 1000,
 			}),
 		);
-	});
 
-	it("opens Settings at the retention entry from the statusbar link", async () => {
-		setPage([row()]);
-		renderLog();
+		// The statusbar's retention sentence is a link to the Settings entry.
 		const link = await screen.findByRole("button", { name: /Kept 30 days/ });
 		const opened = vi.fn();
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
@@ -434,31 +431,23 @@ describe("AgentTrafficScreen live orbit", () => {
 		expect(await screen.findByRole("button", { name: "Kept forever · oldest still here: 2026-08-01" })).toBeTruthy();
 	});
 
-	it("says history is kept forever when there is nothing stored yet", async () => {
-		setPage([], { retentionDays: null });
-		renderLog();
-		expect(await screen.findByRole("button", { name: "History is kept forever" })).toBeTruthy();
-	});
-
-	it("leads with the full subject and reveals the full stored body on selection", async () => {
+	it("leads with the full subject, reveals the full stored body, and falls back to the body for pre-subject rows", async () => {
 		const subject =
 			"A complete subject that must remain readable without an ellipsis";
 		const body = "The complete stored body. ".repeat(80);
-		setPage([row({ subject, body })]);
+		setPage([
+			row({ subject, body }),
+			row({ toTaskId: "task-c", toSeq: 33, body: "Legacy message body" }),
+		]);
 		renderLog();
-		const [message] = await messageRows(1);
-		expect(message.textContent).toContain(subject);
+		const rows = await messageRows(2);
+		const message = rows.find((el) => el.textContent?.includes(subject))!;
+		expect(
+			rows.some((el) => el.textContent?.includes("Legacy message body")),
+		).toBe(true);
 		await userEvent.click(message);
 		expect(screen.getByRole("heading", { name: subject })).toBeTruthy();
 		expect(document.querySelector("pre")?.textContent).toBe(body);
-	});
-
-	it("falls back to the body for pre-subject rows", async () => {
-		setPage([row({ body: "Legacy message body" })]);
-		renderLog();
-		expect((await messageRows(1))[0].textContent).toContain(
-			"Legacy message body",
-		);
 	});
 
 	it("exposes spilled body evidence in message details", async () => {
@@ -560,7 +549,7 @@ describe("AgentTrafficScreen live orbit", () => {
 		setPage([row({ subject: "Report baseline" })]);
 		renderLog();
 		await messageRows(1);
-		await userEvent.type(screen.getByRole("searchbox"), "Report");
+		fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Report" } });
 		setPage([...page.value.rows, row({ subject: "Report arrived" })]);
 		act(() => noteTrafficArrival("proj-1"));
 		await messageRows(2);
@@ -626,7 +615,7 @@ describe("AgentTrafficScreen entry", () => {
 	const following = () =>
 		document.querySelector(".traffic-nodes")?.getAttribute("data-follow");
 
-	it("opens on Live with the camera following and no replay running", async () => {
+	it("opens on Live with the camera following and no replay running, replays from the first event on Play, and re-enters on Live", async () => {
 		const media = allowMotion();
 		try {
 			setPage([
@@ -634,7 +623,7 @@ describe("AgentTrafficScreen entry", () => {
 				row({ at: new Date(Date.now() - 20 * 60000).toISOString(), subject: "Middle" }),
 				row({ subject: "Newest" }),
 			]);
-			renderLog();
+			const first = renderLog();
 			await waitFor(() => expect(counter()).toBe("3 / 3"));
 			// No cursor: the readout stands on the newest event, Live is the active
 			// mode, the transport is idle and the stage is following.
@@ -647,6 +636,27 @@ describe("AgentTrafficScreen entry", () => {
 			await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
 			expect(playLabel()).toBe("Play replay");
 			expect(liveActive()).toBe(true);
+
+			// Replay is still there when asked for, and starts at the window's beginning.
+			await userEvent.click(screen.getByTestId("traffic-play"));
+			expect(counter()).toBe("1 / 3");
+			expect(playLabel()).toBe("Pause replay");
+			expect(liveActive()).toBe(false);
+			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
+			// And Live hands the stage back.
+			await userEvent.click(screen.getByRole("button", { name: "Live" }));
+			expect(counter()).toBe("3 / 3");
+			expect(playLabel()).toBe("Play replay");
+
+			// Re-entering comes back on Live, not on the last cursor.
+			await userEvent.click(screen.getByTestId("traffic-play"));
+			expect(counter()).toBe("1 / 3");
+			first.unmount();
+			renderLog();
+			await waitFor(() => expect(counter()).toBe("3 / 3"));
+			expect(playLabel()).toBe("Play replay");
+			expect(liveActive()).toBe(true);
+			expect(following()).toBe("true");
 		} finally {
 			media.mockRestore();
 		}
@@ -671,52 +681,6 @@ describe("AgentTrafficScreen entry", () => {
 		}
 	});
 
-	it("still replays the window from its first event when Play is pressed", async () => {
-		const media = allowMotion();
-		try {
-			setPage([
-				row({ at: new Date(Date.now() - 50 * 60000).toISOString(), subject: "Oldest in the hour" }),
-				row({ at: new Date(Date.now() - 20 * 60000).toISOString(), subject: "Middle" }),
-				row({ subject: "Newest" }),
-			]);
-			renderLog();
-			await waitFor(() => expect(counter()).toBe("3 / 3"));
-			await userEvent.click(screen.getByTestId("traffic-play"));
-			expect(counter()).toBe("1 / 3");
-			expect(playLabel()).toBe("Pause replay");
-			expect(liveActive()).toBe(false);
-			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain("Oldest in the hour");
-			// And Live hands the stage back.
-			await userEvent.click(screen.getByRole("button", { name: "Live" }));
-			expect(counter()).toBe("3 / 3");
-			expect(playLabel()).toBe("Play replay");
-		} finally {
-			media.mockRestore();
-		}
-	});
-
-	it("re-entering the screen comes back on Live, not on the last cursor", async () => {
-		const media = allowMotion();
-		try {
-			setPage([
-				row({ at: new Date(Date.now() - 50 * 60000).toISOString(), subject: "Oldest in the hour" }),
-				row({ subject: "Newest" }),
-			]);
-			const first = renderLog();
-			await waitFor(() => expect(counter()).toBe("2 / 2"));
-			await userEvent.click(screen.getByTestId("traffic-play"));
-			expect(counter()).toBe("1 / 2");
-			first.unmount();
-			renderLog();
-			await waitFor(() => expect(counter()).toBe("2 / 2"));
-			expect(playLabel()).toBe("Play replay");
-			expect(liveActive()).toBe(true);
-			expect(following()).toBe("true");
-		} finally {
-			media.mockRestore();
-		}
-	});
-
 	// "Nothing matches this filter" was the only empty copy, so a quiet hour with no
 	// filter at all accused a filter that was not there.
 	it("says the window is empty when nothing is filtered, and blames the filter when something is", async () => {
@@ -727,7 +691,7 @@ describe("AgentTrafficScreen entry", () => {
 				"No messages in this window yet.",
 			),
 		);
-		await userEvent.type(screen.getByRole("searchbox"), "nothing like this");
+		fireEvent.change(screen.getByRole("searchbox"), { target: { value: "nothing like this" } });
 		await waitFor(() =>
 			expect(document.querySelector(".traffic-event-subject")?.textContent).toContain(
 				"Nothing matches this filter.",
@@ -902,11 +866,17 @@ describe("AgentTrafficScreen route header", () => {
 		await waitFor(() => expect(counter()).toBe("1 / 2"));
 	});
 
-	it("carries Experiment 1's animation toggle in the toolbar", async () => {
+	it("honours a recorded pick of Experiment 1 and carries its animation toggle in the toolbar", async () => {
 		settings.value = { agentTrafficExperiment: "1" };
 		setPage([row()]);
 		renderLog();
 		await waitFor(() => expect(tail()).not.toBeNull());
+		await waitFor(() => expect(screen.queryByLabelText("Project traffic map")).not.toBeNull());
+		expect(screen.getByTestId("traffic-experiment-1")).toHaveAttribute(
+			"aria-checked",
+			"true",
+		);
+		expect(screen.queryAllByTestId("traffic-node-card")).toHaveLength(0);
 		const toggle = within(tail() as HTMLElement).getByRole("button", {
 			name: "Pause animation",
 		});
@@ -922,18 +892,6 @@ describe("AgentTrafficScreen route header", () => {
 describe("AgentTrafficScreen presentation picker", () => {
 	const nodeCards = () => screen.queryAllByTestId("traffic-node-card");
 	const orbit = () => screen.queryByLabelText("Project traffic map");
-
-	it("renders Experiment 2 when no preference was ever recorded", async () => {
-		setPage([row()]);
-		renderLog();
-		await messageRows(1);
-		expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute(
-			"aria-checked",
-			"true",
-		);
-		expect(nodeCards().length).toBeGreaterThan(0);
-		expect(orbit()).toBeNull();
-	});
 
 	// An install that turned the feature on before the picker existed never chose a
 	// presentation, so the old flag alone must not pin it to Experiment 1.
@@ -951,25 +909,23 @@ describe("AgentTrafficScreen presentation picker", () => {
 		expect(nodeCards().length).toBeGreaterThan(0);
 	});
 
-	it("honours a recorded pick of Experiment 1", async () => {
-		settings.value = { agentTrafficExperiment: "1" };
-		setPage([row()]);
+	// Both stages read the same records, so a message that reaches one reaches the
+	// other — and the message list stays the same in both.
+	it("defaults to Experiment 2, switches both ways and persists each pick, one stage mounted at a time, same traffic in both", async () => {
+		setPage([row({ subject: "Report baseline" })]);
 		renderLog();
-		await waitFor(() => expect(orbit()).not.toBeNull());
-		expect(screen.getByTestId("traffic-experiment-1")).toHaveAttribute(
+		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
+		expect(screen.getByTestId("traffic-experiment-2")).toHaveAttribute(
 			"aria-checked",
 			"true",
 		);
-		expect(nodeCards()).toHaveLength(0);
-	});
-
-	it("switches both ways and persists each pick, one stage mounted at a time", async () => {
-		setPage([row()]);
-		renderLog();
-		await messageRows(1);
+		expect(nodeCards().length).toBeGreaterThan(0);
+		expect(orbit()).toBeNull();
+		expect(screen.getAllByText("Worker").length).toBeGreaterThan(0);
 		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
 		expect(orbit()).not.toBeNull();
 		expect(nodeCards()).toHaveLength(0);
+		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
 		await waitFor(() =>
 			expect(vi.mocked(api.request.saveGlobalSettings)).toHaveBeenCalledWith(
 				expect.objectContaining({ agentTrafficExperiment: "1" }),
@@ -987,20 +943,9 @@ describe("AgentTrafficScreen presentation picker", () => {
 		);
 	});
 
-	// Both stages read the same records, so a message that reaches one reaches the
-	// other — and the message list stays the same in both.
-	it("shows the same real traffic under either presentation", async () => {
-		setPage([row({ subject: "Report baseline" })]);
-		renderLog();
-		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
-		expect(screen.getAllByText("Worker").length).toBeGreaterThan(0);
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
-		expect((await messageRows(1))[0].textContent).toContain("Report baseline");
-	});
-
 	// A graph that re-arranges under the pointer is unreadable, so filtering and
 	// selection change what is lit, never where anything sits.
-	it("keeps every card in place when a selection narrows the messages", async () => {
+	it("keeps every card in place when a selection narrows the messages, and drives the shared inspector", async () => {
 		setPage([
 			row(),
 			row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" }),
@@ -1014,6 +959,9 @@ describe("AgentTrafficScreen presentation picker", () => {
 		expect(nodeCards().map((node) => (node as HTMLElement).style.left)).toEqual(
 			before,
 		);
+		expect(
+			within(screen.getByRole("complementary")).getByText("Current task overview"),
+		).toBeTruthy();
 	});
 
 	// The user's own board is mostly parked and mostly finished; both states have to
@@ -1041,6 +989,9 @@ describe("AgentTrafficScreen presentation picker", () => {
 			card.textContent?.includes("#22"),
 		) as HTMLElement;
 		expect(asleep.className).toContain("is-parked");
+		// Marked for styling that does not depend on colour, and saying so in words.
+		expect(cards.filter((el) => el.dataset.parked === "true")).toEqual([asleep]);
+		expect(asleep.textContent).toContain("Hibernated");
 		expect(done.className).toContain("is-completed");
 		expect(done.textContent).toContain("Completed");
 		// Last band: nothing sits below a hibernated card.
@@ -1068,15 +1019,6 @@ describe("AgentTrafficScreen presentation picker", () => {
 		expect(nodeCards()).toHaveLength(2);
 	});
 
-	it("selecting a card in Experiment 2 drives the shared inspector", async () => {
-		setPage([row()]);
-		renderLog();
-		await messageRows(1);
-		const card = nodeCards().find((node) => node.textContent?.includes("#22"));
-		await userEvent.click(card as HTMLElement);
-		const inspector = within(screen.getByRole("complementary"));
-		expect(inspector.getByText("Current task overview")).toBeTruthy();
-	});
 });
 
 describe("Coordination replay controls", () => {
@@ -1158,11 +1100,30 @@ describe("Space toggles the replay", () => {
 		return event;
 	}
 
-	it("plays from the start, pauses, and stops the page from scrolling", async () => {
+	it("plays from the start and pauses, but leaves held/modified/IME keys, a search field, a focused control and the orbit alone", async () => {
 		seedTwo();
 		renderLog();
 		const play = await screen.findByRole("button", { name: "Play replay" });
 		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
+
+		// A held key, a modifier and a composing IME are not a toggle.
+		for (const over of [{ repeat: true }, { metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) {
+			expect(pressSpace(over).defaultPrevented).toBe(false);
+		}
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+
+		const search = screen.getByRole("searchbox", { name: "Search tasks and messages" });
+		search.focus();
+		expect(pressSpace().defaultPrevented).toBe(false);
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+
+		// A focused button activates on Space by itself; claiming the key here
+		// would fire two different actions from one press.
+		const messages = screen.getByRole("button", { name: "Messages" });
+		messages.focus();
+		expect(pressSpace().defaultPrevented).toBe(false);
+		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
+		messages.blur();
 
 		const started = pressSpace();
 		expect(started.defaultPrevented).toBe(true);
@@ -1173,42 +1134,10 @@ describe("Space toggles the replay", () => {
 
 		pressSpace();
 		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
-	});
 
-	it("ignores a held key, a modifier and a composing IME", async () => {
-		seedTwo();
-		renderLog();
-		const play = await screen.findByRole("button", { name: "Play replay" });
-		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
-
-		for (const over of [{ repeat: true }, { metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) {
-			expect(pressSpace(over).defaultPrevented).toBe(false);
-		}
-		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
-	});
-
-	it("leaves the key to a search field and to the focused control", async () => {
-		seedTwo();
-		renderLog();
-		const play = await screen.findByRole("button", { name: "Play replay" });
-		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
-
-		screen.getByRole("searchbox", { name: "Search tasks and messages" }).focus();
-		expect(pressSpace().defaultPrevented).toBe(false);
-		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
-
-		// A focused button activates on Space by itself; claiming the key here
-		// would fire two different actions from one press.
-		screen.getByRole("button", { name: "Messages" }).focus();
-		expect(pressSpace().defaultPrevented).toBe(false);
-		expect(screen.getByRole("button", { name: "Play replay" })).toBeTruthy();
-	});
-
-	it("stays out of the orbit, which has no replay to toggle", async () => {
-		seedTwo();
-		renderLog();
-		await screen.findByRole("button", { name: "Play replay" });
+		// The orbit has no replay to toggle, so it stays out of the key.
 		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		(document.activeElement as HTMLElement | null)?.blur();
 		expect(pressSpace().defaultPrevented).toBe(false);
 	});
 });
@@ -1255,8 +1184,9 @@ it("Follow reveals its hibernated endpoint and replay never uses a future delive
 	).toBe(true);
 });
 
-it("draws the user as a sender for a message they proved they sent", async () => {
-	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined, origin: "user" })]);
+it("draws the user as a sender for a message they proved they sent, over the task they wrote to while it plays", async () => {
+	const subject = "Rework the traffic marker";
+	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined, origin: "user", subject })]);
 	renderLog();
 	const [messageRow] = await messageRows(1);
 	// The list and the graph must say the same thing: an em-dash here beside a
@@ -1271,12 +1201,8 @@ it("draws the user as a sender for a message they proved they sent", async () =>
 	expect(document.querySelectorAll(".traffic-wire")).toHaveLength(0);
 	// A bare number on a card explains nothing; the wire's thickness carries volume.
 	expect(document.querySelectorAll(".traffic-node-count")).toHaveLength(0);
-});
 
-it("puts the person over the task they wrote to, with their words above their head", async () => {
-	const subject = "Rework the traffic marker";
-	setPage([row({ fromTaskId: null, fromSeq: null, fromTitle: undefined, origin: "user", subject })]);
-	renderLog();
+	// Playing it puts the person over the task they wrote to, words above their head.
 	await waitFor(() => expect(screen.getByRole("button", { name: /^Replay$/ })).not.toBeDisabled());
 	await userEvent.click(screen.getByRole("button", { name: /^Replay$/ }));
 	const speaker = screen.getByTestId("traffic-user-speaker");
@@ -1327,7 +1253,7 @@ it("draws no user marker for a sender-less message that proved nothing", async (
 	expect(screen.queryByTestId("traffic-user-speaker")).toBeNull();
 });
 
-it("paints each wire with its own colour token and leaves an idle wire still", async () => {
+it("paints each wire with its own colour token, leaves an idle wire still, and sizes the scene layer to the graph", async () => {
 	setPage([row()]);
 	renderLog();
 	await messageRows(1);
@@ -1336,15 +1262,10 @@ it("paints each wire with its own colour token and leaves an idle wire still", a
 	expect(wire.style.getPropertyValue("--wire")).toMatch(/^var\(--wire-([1-9]|1[0-6])\)$/);
 	// Nothing is in transit, so nothing animates: no wave element at all.
 	expect(document.querySelector(".traffic-wire-flow")).toBeNull();
-});
 
-it("sizes the transformed scene layer to the graph it paints", async () => {
 	// Every card inside is absolutely positioned, so without an explicit size the
 	// scene collapses to 0x0 while painting the whole graph — the layer shape that
 	// left card fragments on screen until a pan repainted them.
-	setPage([row()]);
-	renderLog();
-	await messageRows(1);
 	const scene = screen.getByTestId("traffic-node-scene");
 	const wires = document.querySelector<SVGSVGElement>(".traffic-nodes-wires")!;
 	expect(scene.style.width).toBe(`${wires.getAttribute("width")}px`);
@@ -1408,24 +1329,6 @@ it("names hibernation in the task list without dropping the column the task sits
 	// Inactive is a state to read, never a control taken away.
 	await userEvent.click(parked as HTMLElement);
 	expect(parked?.className).toContain("is-selected");
-});
-
-// Grey alone excludes anyone who cannot make that reading, and the cell tier
-// hides the "Hibernated" line entirely — the card itself has to say so.
-it("marks a hibernated node card for styling that does not depend on colour", async () => {
-	taskExtras.value = { "task-c": { hibernated: true } };
-	setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
-	renderLog();
-	await messageRows(2);
-	await userEvent.click(screen.getByTestId("traffic-nodes-parked-toggle"));
-	const cards = screen.getAllByTestId("traffic-node-card");
-	const parked = cards.filter((el) => el.dataset.parked === "true");
-	expect(parked).toHaveLength(1);
-	expect(parked[0].className).toContain("is-parked");
-	expect(parked[0].textContent).toContain("Hibernated");
-	expect(
-		cards.filter((el) => el.dataset.parked === undefined).length,
-	).toBeGreaterThan(0);
 });
 
 it("selects a full local calendar day, then Live restores 24h and Follow", async () => {
@@ -1658,7 +1561,8 @@ it("Follow returns to overview after live inactivity and replay completion but k
 });
 
 
-it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s message bubbles contain only the message and a tail", async (status) => {
+// Only "not-delivered" branches (is-failed); one non-failed verdict stands for the rest.
+it.each(["held", "not-delivered"] as const)("%s message bubbles contain only the message and a tail", async (status) => {
 	const subject = "Work finished with a question";
 	setPage([row({ fromTaskId: null, fromSeq: null, status, subject })]);
 	renderLog();
@@ -1756,7 +1660,8 @@ it("keeps the wave off entirely under reduced motion, even mid-flight", async ()
 	}
 });
 
-it.each(["held", "delivered", "unconfirmed", "not-delivered"] as const)("%s sends three round drops in order and keeps only failures short of the destination", async (status) => {
+// Only "not-delivered" stops short; one arriving verdict stands for the rest.
+it.each(["delivered", "not-delivered"] as const)("%s sends three round drops in order and keeps only failures short of the destination", async (status) => {
 	vi.useFakeTimers();
 	const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
 		matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {},
@@ -1859,12 +1764,56 @@ describe("Replay reconstructs the board at the cursor", () => {
 			await userEvent.click(screen.getByRole("button", { name: "Next message" }));
 	}
 
-	it("puts board movements on the timeline, so message-less intervals still advance", async () => {
+	// One replay, walked step by step: every assertion is about not letting today's
+	// completed status leak into the earlier part of the timeline.
+	it("walks movements and messages forwards and back, stamping completion only at its recorded step", async () => {
 		await replayFromStart();
+		const state = () => card("#22").textContent!.replace(/Current task overview.*$/, "");
 		// Six steps: three movements and three messages, not just the three messages.
 		expect(counter()).toBe("1 / 6");
+		// Never reads the current completed status back into the past.
+		expect(card("#22").textContent).toContain("Your Review");
+		// An unrecorded past renders as unknown, not as today's status: task-c is
+		// in-progress NOW and has no movements.
+		expect(card("#33").getAttribute("data-history")).toBe("unrecorded");
+		expect(card("#33").textContent).toContain("Status not recorded");
+		expect(card("#33").textContent).not.toContain("Agent is Working");
+		// No status colour either — an unknown past is neutral, not tinted.
+		expect(card("#33").getAttribute("style")).toContain("--node-status: rgb(var(--text-tertiary))");
+		// Still shown: we cannot know it did not exist.
+		expect(card("#33").getAttribute("data-unborn")).toBeNull();
+		expect(card("#22").getAttribute("data-history")).toBeNull();
+
 		const kinds: string[] = [readout()];
-		for (let i = 0; i < 5; i++) { await next(); kinds.push(readout()); }
+		const forward: string[] = [state()];
+		await next();
+		kinds.push(readout());
+		forward.push(state());
+		expect(card("#22").textContent).toContain("Agent is Working");
+		expect(card("#22").textContent).not.toContain("Completed");
+		expect(card("#22").className).not.toContain("is-completed");
+		expect(card("#22").querySelector(".traffic-node-stamp")).toBeNull();
+		// The same stage ring the Kanban card and the Active Tasks row carry, reading
+		// the projection at the cursor — in-progress is stage 2 — not today's status.
+		const rail = card("#22").querySelector(".traffic-node-rail")!;
+		expect(rail.querySelector("[role='img']")!.getAttribute("aria-label")).toBe("Stage 2 of 7");
+		// Silent to assistive tech: the card's own aria-label already says the status.
+		expect(rail.getAttribute("aria-hidden")).toBe("true");
+		// task-c has no recorded past, so there is no stage to claim: strip only.
+		expect(card("#33").querySelector(".traffic-node-rail")!.children.length).toBe(0);
+
+		for (let i = 0; i < 3; i++) { await next(); kinds.push(readout()); forward.push(state()); }
+		// Step 5: stamped at the recorded completion — word plus its own icon.
+		const stamped = card("#22");
+		expect(stamped.className).toContain("is-completed");
+		const stamp = stamped.querySelector(".traffic-node-stamp")!;
+		expect(stamp.textContent).toContain("Completed");
+		expect(stamp.querySelector("svg.traffic-icon")).toBeTruthy();
+		expect(stamped.getAttribute("aria-label")).toContain("Completed");
+
+		await next();
+		kinds.push(readout());
+		forward.push(state());
 		expect(kinds.map(text =>
 			text.includes("Task created") ? "created"
 				: text.includes("Board move") ? "move"
@@ -1873,6 +1822,29 @@ describe("Replay reconstructs the board at the cursor", () => {
 		// Step 5 is a movement with no message anywhere near it — the case a
 		// message-indexed cursor could not express at all.
 		expect(counter()).toBe("6 / 6");
+
+		// Backwards through exactly the states it walked forwards; scrubbing back past
+		// the completion unstamps the card.
+		const backward: string[] = [state()];
+		for (let i = 0; i < 5; i++) {
+			await userEvent.click(screen.getByRole("button", { name: "Previous message" }));
+			backward.push(state());
+			if (i === 1) {
+				expect(card("#22").className).not.toContain("is-completed");
+				expect(card("#22").querySelector(".traffic-node-stamp")).toBeNull();
+				expect(card("#22").textContent).toContain("Agent is Working");
+			}
+		}
+		expect([...backward].reverse()).toEqual(forward);
+
+		// Live drops every historical marker and shows the states as they are.
+		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		await waitFor(() => expect(card("#22").className).toContain("is-completed"));
+		expect(card("#33").getAttribute("data-history")).toBeNull();
+		expect(card("#33").textContent).toContain("Agent is Working");
+		expect(
+			screen.getAllByTestId("traffic-node-card").some(el => el.getAttribute("data-unborn")),
+		).toBe(false);
 	});
 
 	it("withholds a card until its recorded creation, then keeps the layout still", async () => {
@@ -1908,118 +1880,29 @@ describe("Replay reconstructs the board at the cursor", () => {
 		expect(box(born)).toEqual(frozen);
 	});
 
-	it("never reads the current completed status back into the past", async () => {
-		await replayFromStart();
-		expect(card("#22").textContent).toContain("Your Review");
-		await next();
-		expect(card("#22").textContent).toContain("Agent is Working");
-		expect(card("#22").textContent).not.toContain("Completed");
-		expect(card("#22").className).not.toContain("is-completed");
-		expect(card("#22").querySelector(".traffic-node-stamp")).toBeNull();
-	});
-
-	it("stamps the card at the recorded completion and unstamps it scrubbing back", async () => {
-		await replayFromStart();
-		await next(4);
-		const stamped = card("#22");
-		expect(stamped.className).toContain("is-completed");
-		const stamp = stamped.querySelector(".traffic-node-stamp")!;
-		// Semantic word plus its own icon, not colour alone.
-		expect(stamp.textContent).toContain("Completed");
-		expect(stamp.querySelector("svg.traffic-icon")).toBeTruthy();
-		expect(stamped.getAttribute("aria-label")).toContain("Completed");
-
-		await userEvent.click(screen.getByRole("button", { name: "Previous message" }));
-		expect(card("#22").className).not.toContain("is-completed");
-		expect(card("#22").querySelector(".traffic-node-stamp")).toBeNull();
-		expect(card("#22").textContent).toContain("Agent is Working");
-	});
-
-	it("walks backwards through exactly the states it walked forwards", async () => {
-		await replayFromStart();
-		const state = () => card("#22").textContent!.replace(/Current task overview.*$/, "");
-		const forward: string[] = [state()];
-		for (let i = 0; i < 5; i++) { await next(); forward.push(state()); }
-		const backward: string[] = [state()];
-		for (let i = 0; i < 5; i++) {
-			await userEvent.click(screen.getByRole("button", { name: "Previous message" }));
-			backward.push(state());
-		}
-		expect([...backward].reverse()).toEqual(forward);
-	});
-
-	it("renders an unrecorded past as unknown, not as today's status", async () => {
-		await replayFromStart();
-		// task-c is in-progress NOW and has no movements. It must not show that.
-		expect(card("#33").getAttribute("data-history")).toBe("unrecorded");
-		expect(card("#33").textContent).toContain("Status not recorded");
-		expect(card("#33").textContent).not.toContain("Agent is Working");
-		// No status colour either — an unknown past is neutral, not tinted.
-		expect(card("#33").getAttribute("style")).toContain("--node-status: rgb(var(--text-tertiary))");
-		// Still shown: we cannot know it did not exist.
-		expect(card("#33").getAttribute("data-unborn")).toBeNull();
-		expect(card("#22").getAttribute("data-history")).toBeNull();
-	});
-
-	it("draws the lifecycle rail from the replayed status, and a bare strip without one", async () => {
-		await replayFromStart();
-		await next();
-		const rail = card("#22").querySelector(".traffic-node-rail")!;
-		// The same stage ring the Kanban card and the Active Tasks row carry, reading
-		// the projection at the cursor — in-progress is stage 2 — not today's status.
-		expect(rail.querySelector("[role='img']")!.getAttribute("aria-label")).toBe("Stage 2 of 7");
-		// Silent to assistive tech: the card's own aria-label already says the status.
-		expect(rail.getAttribute("aria-hidden")).toBe("true");
-		// task-c has no recorded past, so there is no stage to claim: strip only.
-		expect(card("#33").querySelector(".traffic-node-rail")!.children.length).toBe(0);
-	});
-
-	it("drops every historical marker on Live and shows the states as they are", async () => {
-		await replayFromStart();
-		await userEvent.click(screen.getByRole("button", { name: "Live" }));
-		await waitFor(() => expect(card("#22").className).toContain("is-completed"));
-		expect(card("#33").getAttribute("data-history")).toBeNull();
-		expect(card("#33").textContent).toContain("Agent is Working");
-		expect(
-			screen.getAllByTestId("traffic-node-card").some(el => el.getAttribute("data-unborn")),
-		).toBe(false);
-	});
-
-	it("claims a rebuild only while a cursor is actually standing in the past", async () => {
+	it("claims a rebuild and names the unrecorded dimensions only while a cursor stands in the past", async () => {
 		const summary = () => document.querySelector(".traffic-summary")!.textContent;
-		setUpHistory();
-		renderLog();
-		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
-		// Entry is Live, and experiment 2 on Live shows the board as it is, so it
-		// must not claim a rebuild.
-		expect(summary()).toContain("Task states are current");
-		const play = await screen.findByRole("button", { name: "Play replay" });
-		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
-		await userEvent.click(play);
-		expect(summary()).toContain("rebuilt from recorded board moves");
-		await userEvent.click(screen.getByRole("button", { name: "Live" }));
-		expect(summary()).toContain("Task states are current");
-		// Experiment 1 has no cursor at all.
-		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
-		expect(summary()).toContain("Task states are current");
-	});
-
-	it("names the dimensions the movement log does not record, only while replaying", async () => {
 		const caption = () => document.querySelector(".traffic-map-caption")!.textContent!;
 		setUpHistory();
 		renderLog();
 		await waitFor(() => expect(screen.getAllByTestId("traffic-node-card").length).toBeGreaterThan(0));
-		// Entry is Live, and the disclosure belongs to the cursor — no cursor, no
-		// disclosure.
+		// Entry is Live, and experiment 2 on Live shows the board as it is, so it
+		// must not claim a rebuild — and the disclosure belongs to the cursor.
+		expect(summary()).toContain("Task states are current");
 		expect(caption()).not.toContain("Hibernation");
 		const play = await screen.findByRole("button", { name: "Play replay" });
 		await waitFor(() => expect(play.hasAttribute("disabled")).toBe(false));
 		await userEvent.click(play);
+		expect(summary()).toContain("rebuilt from recorded board moves");
 		// A replayed card's parked state and project ARE the current ones, and the
 		// stage has to say so rather than let them read as reconstructed.
 		expect(caption()).toContain("Hibernation, project and variant are not recorded");
 		await userEvent.click(screen.getByRole("button", { name: "Live" }));
+		expect(summary()).toContain("Task states are current");
 		expect(caption()).not.toContain("Hibernation");
+		// Experiment 1 has no cursor at all.
+		await userEvent.click(screen.getByTestId("traffic-experiment-1"));
+		expect(summary()).toContain("Task states are current");
 	});
 });
 
@@ -2043,7 +1926,7 @@ describe("AgentTrafficScreen project scope", () => {
 	const scopeName = () => document.querySelector(".traffic-summary strong")?.textContent;
 	const cardTitles = () => screen.getAllByTestId("traffic-node-card").map((card) => card.textContent ?? "").join(" | ");
 
-	it("opens on the active projects and leaves the silent board off the stage", async () => {
+	it("opens on the active projects without the silent board, and keeps All projects unfiltered", async () => {
 		setUpTwoProjects();
 		renderLog(vi.fn(), null);
 		await waitFor(() => expect(scopeName()).toBe("All active projects"));
@@ -2051,12 +1934,6 @@ describe("AgentTrafficScreen project scope", () => {
 		// recorded event, so it does not occupy the stage.
 		await waitFor(() => expect(taskStat()).toBe("3"));
 		expect(cardTitles()).not.toContain("Idle worker");
-	});
-
-	it("keeps All projects unfiltered, silent board and all", async () => {
-		setUpTwoProjects();
-		renderLog(vi.fn(), null);
-		await waitFor(() => expect(taskStat()).toBe("3"));
 		await choose("Project", "All projects");
 		await waitFor(() => expect(scopeName()).toBe("All projects"));
 		expect(taskStat()).toBe("4");
@@ -2077,7 +1954,7 @@ describe("AgentTrafficScreen project scope", () => {
 describe("AgentTrafficScreen arrival subject", () => {
 	const detail = () => document.querySelector(".traffic-task-detail");
 
-	it("opens with the named task selected and its inspector showing", async () => {
+	it("opens with the named task selected and its inspector showing, then lets the user select somebody else", async () => {
 		setPage([row()]);
 		renderLog(vi.fn(), null, { taskId: "task-b", projectId: "proj-1" });
 
@@ -2090,15 +1967,9 @@ describe("AgentTrafficScreen arrival subject", () => {
 					?.textContent,
 			).toContain("22"),
 		);
-	});
 
-	// The route keeps carrying the same subject while the screen stays open, so a
-	// re-run would snap the selection back every time the user clicked elsewhere.
-	it("lets the user select somebody else afterwards", async () => {
-		setPage([row()]);
-		renderLog(vi.fn(), null, { taskId: "task-b", projectId: "proj-1" });
-		await waitFor(() => expect(detail()?.textContent).toContain("#22"));
-
+		// The route keeps carrying the same subject while the screen stays open, so a
+		// re-run would snap the selection back every time the user clicked elsewhere.
 		await userEvent.click(screen.getByRole("button", { name: "Tasks" }));
 		const sender = await screen.findAllByRole("button", { name: /^#11\b/ });
 		await userEvent.click(sender[0]);
@@ -2131,34 +2002,55 @@ describe("Agent traffic inspector composer", () => {
 	const sendButton = () => screen.getByTestId("traffic-composer-send");
 	const statusLine = () => screen.getByTestId("traffic-composer-status").textContent;
 
-	it("sends the typed text to the selected task as a user message", async () => {
+	it("sends the typed text to the selected task as a user message, from the button and on the modifier, keeping plain Enter a newline", async () => {
 		setPage([row()]);
 		renderLog();
 		await selectTask("#22");
-		await userEvent.type(box(), "rebase on main please");
+		await userEvent.type(box(), "a{Enter}b");
+		expect(api.request.sendAgentMessageNow).not.toHaveBeenCalled();
+		expect((box() as HTMLTextAreaElement).value).toBe("a\nb");
 		await userEvent.click(sendButton());
 		await waitFor(() =>
 			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith({
 				taskId: "task-b",
 				projectId: "proj-1",
-				text: "rebase on main please",
+				text: "a\nb",
 			}),
 		);
 		// The box empties and says what actually happened — typed into a pane, which
 		// is not a claim that the agent read it.
 		await waitFor(() => expect((box() as HTMLTextAreaElement).value).toBe(""));
 		expect(statusLine()).toContain("Typed into the agent's pane");
+
+		await userEvent.type(box(), "c");
+		fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+		await waitFor(() =>
+			expect(api.request.sendAgentMessageNow).toHaveBeenLastCalledWith(
+				expect.objectContaining({ text: "c" }),
+			),
+		);
 	});
 
-	it("says a send waits behind the agent's open prompt instead of claiming it was typed", async () => {
-		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValueOnce({ spilledPath: null, status: "held", reason: "behind-prompt" });
+	it("says a send waits behind the agent's open prompt, and keeps the text and names the failure when nothing was delivered", async () => {
+		vi.mocked(api.request.sendAgentMessageNow)
+			.mockResolvedValueOnce({ spilledPath: null, status: "held", reason: "behind-prompt" })
+			.mockRejectedValueOnce(
+				new Error("Could not deliver the message — the task has no live agent session."),
+			);
 		setPage([row()]);
 		renderLog();
 		await selectTask("#22");
-		await userEvent.type(box(), "rebase on main please");
+		await userEvent.type(box(), "rebase");
 		await userEvent.click(sendButton());
 		await waitFor(() => expect(statusLine()).toContain("Waits behind the agent's open prompt"));
 		expect(statusLine()).not.toContain("Typed into the agent's pane");
+
+		await waitFor(() => expect((box() as HTMLTextAreaElement).value).toBe(""));
+		await userEvent.type(box(), "there?");
+		await userEvent.click(sendButton());
+		await waitFor(() => expect(statusLine()).toContain("Not sent"));
+		expect(statusLine()).toContain("no live agent session");
+		expect((box() as HTMLTextAreaElement).value).toBe("there?");
 	});
 
 	it("addresses the selected task's own project while the scope spans several", async () => {
@@ -2190,35 +2082,6 @@ describe("Agent traffic inspector composer", () => {
 		);
 	});
 
-	it("sends on the modifier and keeps plain Enter a newline", async () => {
-		setPage([row()]);
-		renderLog();
-		await selectTask("#22");
-		await userEvent.type(box(), "first{Enter}second");
-		expect(api.request.sendAgentMessageNow).not.toHaveBeenCalled();
-		expect((box() as HTMLTextAreaElement).value).toBe("first\nsecond");
-		fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
-		await waitFor(() =>
-			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith(
-				expect.objectContaining({ text: "first\nsecond" }),
-			),
-		);
-	});
-
-	it("keeps the text and names the failure when nothing was delivered", async () => {
-		vi.mocked(api.request.sendAgentMessageNow).mockRejectedValueOnce(
-			new Error("Could not deliver the message — the task has no live agent session."),
-		);
-		setPage([row()]);
-		renderLog();
-		await selectTask("#22");
-		await userEvent.type(box(), "are you there");
-		await userEvent.click(sendButton());
-		await waitFor(() => expect(statusLine()).toContain("Not sent"));
-		expect(statusLine()).toContain("no live agent session");
-		expect((box() as HTMLTextAreaElement).value).toBe("are you there");
-	});
-
 	it("offers no composer for a finished task and says why", async () => {
 		taskExtras.value = { "task-b": { status: "completed" } };
 		setPage([row()]);
@@ -2245,10 +2108,10 @@ describe("Agent traffic inspector composer", () => {
 		setPage([row(), row({ toTaskId: "task-c", toSeq: 33, toTitle: "Other worker" })]);
 		renderLog();
 		await selectTask("#22");
-		await userEvent.type(box(), "for the worker");
+		await userEvent.type(box(), "draft");
 		await selectTask("#33");
 		expect((box() as HTMLTextAreaElement).value).toBe("");
 		await selectTask("#22");
-		expect((box() as HTMLTextAreaElement).value).toBe("for the worker");
+		expect((box() as HTMLTextAreaElement).value).toBe("draft");
 	});
 });

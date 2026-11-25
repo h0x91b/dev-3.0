@@ -150,11 +150,8 @@ afterAll(() => {
 });
 
 describe("which instance a real dev3 process reaches", () => {
-	it("sanity: the fabricated home really holds two live instances", async () => {
-		const out = await spawnCli("bun", [CLI_ENTRY, "doctor", "--json"]);
-		expect(out.stdout).toContain(String(process.pid));
-		expect(out.stdout).toContain(String(process.ppid));
-	}, 60_000);
+	// No separate fixture sanity check: every case below asserts which of the two
+	// instances answered, so a fabricated home that lost one fails them directly.
 
 	// ── The human shell ──
 
