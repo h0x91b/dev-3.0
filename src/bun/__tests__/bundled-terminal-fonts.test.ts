@@ -34,17 +34,16 @@ function declaredFaces(): Map<string, string[]> {
 describe("bundled terminal fonts", () => {
 	const faces = declaredFaces();
 
-	it.each(BUNDLED_TERMINAL_FONTS.map((f) => [f.label, f.family] as const))(
-		"%s declares an @font-face and ships the file it points at",
-		(_label, family) => {
+	it("every bundled font declares an @font-face and ships the file it points at", () => {
+		for (const { family } of BUNDLED_TERMINAL_FONTS) {
 			const urls = faces.get(family);
 			expect(urls, `no @font-face declares font-family '${family}'`).toBeDefined();
 			for (const url of urls ?? []) {
 				const path = `${MAINVIEW}${url.replace(/^\.\//, "")}`;
 				expect(existsSync(path), `${family} points at a missing file: ${url}`).toBe(true);
 			}
-		},
-	);
+		}
+	});
 
 	it("the reference font is the first entry and is itself unscaled", () => {
 		// `terminalFontScale` measures every other font against this one, so it has to be

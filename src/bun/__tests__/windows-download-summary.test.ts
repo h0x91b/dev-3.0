@@ -25,28 +25,19 @@ const INPUTS = {
 };
 
 describe("the downloadable Windows build's run summary", () => {
-	it("names the executable the proof launched, in Windows form", () => {
+	it("names the launched executable in Windows form, identifies the build, states retention, and warns about SmartScreen", () => {
 		const summary = windowsDownloadSummary(PROOF, INPUTS);
 		expect(summary).toContain("dev-3.0-canary");
 		expect(summary).toContain("bin\\launcher.exe");
 		expect(summary).not.toContain("bin/launcher.exe");
-	});
-
-	it("identifies the build after the run page is gone", () => {
-		const summary = windowsDownloadSummary(PROOF, INPUTS);
+		// Identifies the build after the run page is gone.
 		expect(summary).toContain("windows-app-abc1234");
 		expect(summary).toContain("abc1234");
 		expect(summary).toContain("2026-08-06T10:55:00.000Z");
-	});
-
-	it("states the retention and that an expired build is re-run, not lost", () => {
-		const summary = windowsDownloadSummary(PROOF, INPUTS);
+		// An expired build is re-run, not lost.
 		expect(summary).toContain("30 days");
 		expect(summary).toMatch(/re-run this workflow on the same commit/);
-	});
-
-	it("warns about SmartScreen and the missing signature before the download happens", () => {
-		const summary = windowsDownloadSummary(PROOF, INPUTS);
+		// SmartScreen and the missing signature, before the download happens.
 		expect(summary).toContain("SmartScreen");
 		expect(summary).toContain("Run anyway");
 		expect(summary).toContain("Unknown publisher");

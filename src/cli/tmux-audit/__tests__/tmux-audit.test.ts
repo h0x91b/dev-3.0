@@ -73,14 +73,10 @@ describe("tmux audit — fingerprint stability (line moves must not churn)", () 
 		expect(b).toBe(a);
 	});
 
-	it("changes when a new tmux signal is introduced", () => {
+	it("changes when a new tmux signal is introduced, or a grammar token even without the literal word", () => {
 		const withNew = original + "\nawait tmux.killSession(name);";
-		const a = computeFingerprint(extractSignals(original).tokens);
-		const b = computeFingerprint(extractSignals(withNew).tokens);
-		expect(b).not.toBe(a);
-	});
+		expect(computeFingerprint(extractSignals(withNew).tokens)).not.toBe(computeFingerprint(extractSignals(original).tokens));
 
-	it("detects a new tmux grammar token even without the literal word", () => {
 		const base = "// tmux socket helper\nconst x = 1;";
 		const withGrammar = base + "\nrun('send-keys', '-t', pane);";
 		expect(computeFingerprint(extractSignals(withGrammar).tokens)).not.toBe(
@@ -97,17 +93,11 @@ describe("tmux audit — boundary is cross-platform and self-excluding", () => {
 		excludePaths: config.boundary.excludePaths,
 	};
 
-	it("excludes the audit tool's own directory (no self-reference)", () => {
+	it("excludes the audit tool itself, treats changelogs and ADRs as historical, and scans production paths", () => {
 		expect(classifyBoundary("src/cli/tmux-audit/audit.config.json", boundary)).toBe("excluded");
 		expect(classifyBoundary("src/cli/tmux-audit/scanner.ts", boundary)).toBe("excluded");
-	});
-
-	it("treats changelogs and ADRs as historical, not inventoried", () => {
 		expect(classifyBoundary("change-logs/2026/07/23/fix-x.md", boundary)).toBe("historical");
 		expect(classifyBoundary("decisions/2026/07/19/deep-tmux-client.md", boundary)).toBe("historical");
-	});
-
-	it("scans real production paths", () => {
 		expect(classifyBoundary("src/bun/tmux/client.ts", boundary)).toBe("scan");
 		expect(classifyBoundary("src/bun/pty-server.ts", boundary)).toBe("scan");
 	});
@@ -135,24 +125,18 @@ describe("tmux audit — advisory verification rules", () => {
 		expect(collectManifestProblems(inventoryOf([entry()]), taxonomy)).toEqual([]);
 	});
 
-	it("reports an unclassified dependency", () => {
-		const inv = inventoryOf([], {
+	it("reports unclassified dependencies, hidden grammar, unknown taxonomy values and stale overrides", () => {
+		const unclassified = inventoryOf([], {
 			unclassified: [{ path: "src/bun/new.ts", occurrences: 2, tokens: { tmux: 2 }, fingerprint: "f" }],
 		});
-		expect(collectManifestProblems(inv, taxonomy).map((p) => p.kind)).toEqual(["unclassified"]);
-	});
+		expect(collectManifestProblems(unclassified, taxonomy).map((p) => p.kind)).toEqual(["unclassified"]);
 
-	it("reports tmux grammar hiding in an unclassified file", () => {
-		const inv = inventoryOf([entry()], { hiddenGrammarFiles: ["src/bun/sneaky.ts"] });
-		expect(collectManifestProblems(inv, taxonomy).map((p) => p.kind)).toEqual(["hidden-grammar"]);
-	});
+		const hidden = inventoryOf([entry()], { hiddenGrammarFiles: ["src/bun/sneaky.ts"] });
+		expect(collectManifestProblems(hidden, taxonomy).map((p) => p.kind)).toEqual(["hidden-grammar"]);
 
-	it("reports an unknown taxonomy value", () => {
-		const problems = collectManifestProblems(inventoryOf([entry({ depth: "bogus" })]), taxonomy);
-		expect(problems.map((p) => p.kind)).toEqual(["unknown-taxonomy"]);
-	});
+		const unknown = collectManifestProblems(inventoryOf([entry({ depth: "bogus" })]), taxonomy);
+		expect(unknown.map((p) => p.kind)).toEqual(["unknown-taxonomy"]);
 
-	it("reports a stale override", () => {
 		const stale = { ...taxonomy, overrides: { "src/bun/gone.ts": {} } } as unknown as typeof config;
 		expect(collectManifestProblems(inventoryOf([entry()]), stale).map((p) => p.kind)).toEqual(["stale-override"]);
 	});
@@ -169,9 +153,6 @@ describe("tmux audit — advisory verification rules", () => {
 			"changed: src/bun/pty-server.ts",
 			"removed: src/bun/old.ts",
 		]);
-	});
-
-	it("finds no drift when the snapshot matches the scan", () => {
 		expect(collectSnapshotDrift([entry()], inventoryOf([entry()]))).toEqual([]);
 	});
 
@@ -181,11 +162,8 @@ describe("tmux audit — advisory verification rules", () => {
 		expect(a).toEqual(b);
 	});
 
-	it("formats nothing when there are no problems", () => {
+	it("formats nothing without problems and groups formatted problems by kind", () => {
 		expect(formatProblems([])).toBe("");
-	});
-
-	it("groups formatted problems by kind", () => {
 		const report = formatProblems([
 			{ kind: "unclassified", detail: "a.ts" },
 			{ kind: "unclassified", detail: "b.ts" },

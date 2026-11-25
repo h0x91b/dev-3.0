@@ -40,14 +40,11 @@ afterEach(() => {
 });
 
 describe("resolveAgentCommand for agy", () => {
-	it("trusts the worktree's realpath, not the symlinked path the task was given", async () => {
+	it("trusts the worktree's realpath, not the symlinked path, falling back to the given path when it does not exist", async () => {
 		const command = await resolveAgentCommand(AGY, undefined, ctx(link));
 		expect(trusted(command)).toEqual([realpathSync(real)]);
-	});
-
-	it("falls back to the given path when the worktree does not exist", async () => {
 		const missing = join(root, "missing");
-		expect(trusted(await resolveAgentCommand(AGY, undefined, ctx(missing)))).toEqual([missing]);
+		expect(trusted(await resolveAgentCommand(AGY, undefined, ctx(missing))), "missing worktree").toEqual([missing]);
 	});
 
 	it("trusts no workspace for a task that runs someone else's branch, so agy asks the user", async () => {

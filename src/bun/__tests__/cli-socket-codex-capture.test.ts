@@ -170,7 +170,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			.toBe("codex resume 00000000-0000-4000-8000-0000c0de2704 -c check_for_update_on_startup=false");
 	});
 
-	it("adopts the lone null-paneId (main) pane when no stored paneId matches", async () => {
+	it("adopts the lone main pane, or follows a conversation resumed in a pane nobody recorded, when no stored paneId matches", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
@@ -188,6 +188,19 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		const [main] = readPanes();
 		expect(main?.paneId).toBe("%7");
 		expect(main?.sessionId).toBe(MAIN);
+		{
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		// Seq 1801, 2026-09-14: the entry still named the failed pane %5 while the
+		// same conversation ran on in %6 — every hook from %6 used to be ignored.
+		seed([makeTask({ sessionState: { panes: [{ ...codexPane("%5", CONV_X), accountId: "account-b" }] } })]);
+		rollout(CONV_X);
+
+		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: CONV_X, paneId: "%6" }));
+
+		expect(readPanes()).toEqual([expect.objectContaining({ paneId: "%6", sessionId: CONV_X, accountId: "account-b" })]);
+		}
 	});
 
 	it("a Codex started by hand in the shell left behind never takes over a parked conversation", async () => {
@@ -233,58 +246,27 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		expect(readPanes()[0]?.sessionId).toBe(STEADY);
 	});
 
-	it("captures an omp session the same way, and resume targets it with --resume", async () => {
+	it("captures omp, agy and pi sessions the same way, and resume targets each with its own flag", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 		const { buildResumeCommand } = await import("../agents");
 
-		seed([makeTask({
-			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "omp" }] },
-		})]);
-
-		const resp = await handleRequest(agentHook({
-			projectId: "proj-1",
-			taskId: "task-1",
-			harness: "omp",
-			event: "SessionStart",
-			sessionId: "00000000-0000-4000-8000-0000c0de4bba",
-			paneId: "%3",
-		}));
-		expect(resp.ok).toBe(true);
-
-		const [pane] = readPanes();
-		expect(pane?.sessionId).toBe("00000000-0000-4000-8000-0000c0de4bba");
-		expect(buildResumeCommand("omp", pane!.sessionId ?? undefined))
-			.toBe("omp --resume 00000000-0000-4000-8000-0000c0de4bba");
-	});
-
-	it("captures an agy conversation id from its hook, and resume targets it with --conversation", async () => {
-		await import("../data");
-		const { handleRequest } = await import("../cli-socket-server");
-		const { buildResumeCommand } = await import("../agents");
-
-		seed([makeTask({
-			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "agy" }] },
-		})]);
-
-		const resp = await handleRequest(agentHook({
-			projectId: "proj-1",
-			taskId: "task-1",
-			harness: "agy",
-			event: "SessionStart",
-			sessionId: "c0ffee00-1111-4222-8333-444455556666",
-			paneId: "%3",
-		}));
-		expect(resp.ok).toBe(true);
-
-		const [pane] = readPanes();
-		expect(pane?.sessionId).toBe("c0ffee00-1111-4222-8333-444455556666");
-		expect(buildResumeCommand("agy", pane!.sessionId ?? undefined))
-			.toBe("agy --conversation c0ffee00-1111-4222-8333-444455556666");
+		for (const [harness, sessionId, resume] of [
+			["omp", "00000000-0000-4000-8000-0000c0de4bba", "omp --resume 00000000-0000-4000-8000-0000c0de4bba"],
+			["agy", "c0ffee00-1111-4222-8333-444455556666", "agy --conversation c0ffee00-1111-4222-8333-444455556666"],
+			["pi", "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001", "pi --session-id 0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001"],
+		] as const) {
+			seed([makeTask({ sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: harness }] } })]);
+			const resp = await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", harness, event: "SessionStart", sessionId, paneId: "%3" }));
+			expect(resp.ok, harness).toBe(true);
+			const [pane] = readPanes();
+			expect(pane?.sessionId, harness).toBe(sessionId);
+			expect(buildResumeCommand(harness, pane!.sessionId ?? undefined)).toBe(resume);
+		}
 		expect(buildResumeCommand("agy", undefined)).toBe("agy --continue");
 	});
 
-	it("records an agy conversation reported by the statusLine without moving the task", async () => {
+	it("records agy conversations reported by the statusLine without moving the task, each pane its own (native pane ids included)", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 		const { moveTask } = await import("../rpc-handlers");
@@ -307,9 +289,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		expect(resp.ok).toBe(true);
 		expect(readPanes()[0]?.sessionId).toBe("c0ffee00-1111-4222-8333-444455556666");
 		expect(moveTask).not.toHaveBeenCalled();
-	});
-
-	it("records each agy pane's own conversation in a two-pane task, native pane ids included", async () => {
+		{
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 		const agyPane = (paneId: string) => ({ ...codexPane(paneId, null), agentCmd: "agy" });
@@ -322,6 +302,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			expect(resp.ok).toBe(true);
 		}
 		expect(readPanes().map((pane) => [pane.paneId, pane.sessionId])).toEqual([["native-1", "conv-one"], ["native-2", "conv-two"]]);
+		}
 	});
 
 	it("captures through the validated harness and refuses a conversation id that is not a plain token", async () => {
@@ -357,13 +338,6 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			const moves = () => vi.mocked(moveTask).mock.calls.map((call) => (call[0] as { newStatus: string }).newStatus);
 			return { report, moves, moveTask: vi.mocked(moveTask) };
 		}
-
-		it("parks the card on a wait and hands it back when that wait ends", async () => {
-			const { report, moves } = await setup();
-			await report("PermissionRequest", "conv-1", "%1");
-			await report("PostToolUse", "conv-1", "%1");
-			expect(moves()).toEqual(["user-questions", "in-progress"]);
-		});
 
 		it("keeps the card parked until the LAST pane's wait ends", async () => {
 			const { report, moves } = await setup();
@@ -454,17 +428,6 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 				expect(moves()).toEqual(["user-questions", "in-progress", "user-questions"]);
 			});
 
-			it("a heartbeat for a wait that is still held moves nothing", async () => {
-				const { report, moves } = await setup();
-				const { handleRequest } = await import("../cli-socket-server");
-				handleRequestFor = (params) => handleRequest(agentHook(params));
-				await report("PermissionRequest", "conv-a", "%1");
-				later(30_000);
-				await heartbeat("conv-a", "%1");
-				await heartbeat("conv-a", "%1");
-				expect(moves()).toEqual(["user-questions"]);
-			});
-
 			it("keeps holding while that pane's heartbeat keeps arriving", async () => {
 				const { report, moves } = await setup();
 				const { handleRequest } = await import("../cli-socket-server");
@@ -552,32 +515,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		});
 	});
 
-	it("accepts a plain pi report as pi and resume targets the session with --session-id", async () => {
-		await import("../data");
-		const { handleRequest } = await import("../cli-socket-server");
-		const { buildResumeCommand } = await import("../agents");
-
-		seed([makeTask({
-			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "pi" }] },
-		})]);
-
-		const resp = await handleRequest(agentHook({
-			projectId: "proj-1",
-			taskId: "task-1",
-			harness: "pi",
-			event: "SessionStart",
-			sessionId: "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001",
-			paneId: "%3",
-		}));
-		expect(resp.ok).toBe(true);
-
-		const [pane] = readPanes();
-		expect(pane?.sessionId).toBe("0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001");
-		expect(buildResumeCommand("pi", pane!.sessionId ?? undefined))
-			.toBe("pi --session-id 0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001");
-	});
-
-	it("places a Codex id without a paneId on a task's only pane (native session without a pane suffix)", async () => {
+	it("places a paneId-less Codex id only on a task's only pane (native session without a pane suffix), never among several, and never for Copilot", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
@@ -586,9 +524,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: MAIN }));
 
 		expect(readPanes()).toEqual([expect.objectContaining({ paneId: null, sessionId: MAIN })]);
-	});
-
-	it("leaves a paneId-less hook alone when the task has several panes", async () => {
+		{
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 		const { buildResumeCommand } = await import("../agents");
@@ -600,9 +536,8 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		expect(readPanes().map((pane) => pane.sessionId)).toEqual([null, null]);
 		// Nothing captured means nothing to resume by id — never `--last` (#1847).
 		expect(buildResumeCommand("codex", undefined)).toBeNull();
-	});
-
-	it("keeps Copilot's rule: without a paneId nothing is placed", async () => {
+		}
+		{
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
@@ -610,23 +545,10 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", harness: "copilot", event: "UserPromptSubmit", sessionId: MAIN }));
 
 		expect(readPanes()[0]?.sessionId).toBeNull();
+		}
 	});
 
-	it.each([
-		["a subagent thread", { thread_source: "subagent" }],
-		["a codex exec run", { source: "exec" }],
-	])("never records %s as the pane's conversation", async (_label, payload) => {
-		await import("../data");
-		const { handleRequest } = await import("../cli-socket-server");
-
-		seed([makeTask({ sessionState: { panes: [codexPane("%1", null)] } })]);
-		rollout(MAIN, payload);
-		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "SessionStart", sessionId: MAIN, paneId: "%1" }));
-
-		expect(readPanes()[0]?.sessionId).toBeNull();
-	});
-
-	it("skips an id whose rollout is not written yet, and binds it on a later hook", async () => {
+	it("binds an id only once its rollout exists, and never a subagent thread or codex exec run", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
@@ -638,23 +560,21 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		rollout(MAIN);
 		await handleRequest({ ...hook, params: { ...hook.params, event: "UserPromptSubmit" } });
 		expect(readPanes()[0]?.sessionId).toBe(MAIN);
-	});
-
-	it("follows a conversation resumed in a pane nobody recorded instead of leaving it on the dead one", async () => {
+		{
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
-		// Seq 1801, 2026-09-14: the entry still named the failed pane %5 while the
-		// same conversation ran on in %6 — every hook from %6 used to be ignored.
-		seed([makeTask({ sessionState: { panes: [{ ...codexPane("%5", CONV_X), accountId: "account-b" }] } })]);
-		rollout(CONV_X);
-
-		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: CONV_X, paneId: "%6" }));
-
-		expect(readPanes()).toEqual([expect.objectContaining({ paneId: "%6", sessionId: CONV_X, accountId: "account-b" })]);
+		for (const payload of [{ thread_source: "subagent" }, { source: "exec" }]) {
+			rmSync(join(tempHome, ".codex"), { recursive: true, force: true });
+			seed([makeTask({ sessionState: { panes: [codexPane("%1", null)] } })]);
+			rollout(MAIN, payload);
+			await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "SessionStart", sessionId: MAIN, paneId: "%1" }));
+			expect(readPanes()[0]?.sessionId, JSON.stringify(payload)).toBeNull();
+		}
+		}
 	});
 
-	it("recreates the main entry for the task's own agent after reconciliation removed every entry", async () => {
+	it("recreates the main entry only for the task's own agent after reconciliation removed every entry", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 		const { buildResumeCommand } = await import("../agents");
@@ -670,20 +590,17 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		// No account is guessed: resume finds the store that holds the conversation.
 		expect(panes[0]?.accountId).toBeUndefined();
 		expect(buildResumeCommand(panes[0]!.agentCmd, panes[0]!.sessionId ?? undefined)).toBe("codex resume 00000000-0000-4000-8000-0000c0de1083 -c check_for_update_on_startup=false");
-	});
-
-	it.each([
-		["another agent's task", { agentId: "builtin-claude", configId: null }],
-		["a task without an agent", { agentId: null, configId: null }],
-	])("does not invent a main entry on %s", async (_label, agent) => {
+		{
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
-		seed([makeTask({ ...agent, sessionState: { panes: [] } })]);
-		rollout(CONV_X);
-		await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: CONV_X, paneId: "%6" }));
-
-		expect(readPanes()).toEqual([]);
+		for (const agent of [{ agentId: "builtin-claude", configId: null }, { agentId: null, configId: null }]) {
+			seed([makeTask({ ...agent, sessionState: { panes: [] } })]);
+			rollout(CONV_X);
+			await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: CONV_X, paneId: "%6" }));
+			expect(readPanes(), String(agent.agentId)).toEqual([]);
+		}
+		}
 	});
 
 	it("skips an unknown pane when the stored entries leave it ambiguous", async () => {

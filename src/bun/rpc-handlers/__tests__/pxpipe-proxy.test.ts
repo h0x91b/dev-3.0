@@ -54,20 +54,19 @@ beforeEach(() => {
 });
 
 describe("getPxpipeProxyStatus", () => {
-	it("reports npx availability from the toggle and PATH", async () => {
+	it("reports npx availability, and a free port as neither running nor conflicting", async () => {
 		const s = await getPxpipeProxyStatus();
 		expect(s.enabled).toBe(true);
 		expect(s.npxAvailable).toBe(true);
 		expect(s.npxPath).toBe("/usr/bin/npx");
 		expect(s.port).toBe(PORT);
-	});
-
-	it("port free ⇒ not running, not conflicting", async () => {
-		h.findPortHolders.mockResolvedValue([]);
-		const s = await getPxpipeProxyStatus();
-		expect(s.portInUse).toBe(false);
-		expect(s.running).toBe(false);
-		expect(s.foreignConflict).toBe(false);
+		{
+			h.findPortHolders.mockResolvedValue([]);
+			const s = await getPxpipeProxyStatus();
+			expect(s.portInUse).toBe(false);
+			expect(s.running).toBe(false);
+			expect(s.foreignConflict).toBe(false);
+		}
 	});
 
 	it("port held by a foreign process ⇒ foreignConflict, not running", async () => {
@@ -80,7 +79,7 @@ describe("getPxpipeProxyStatus", () => {
 		expect(s.holderPid).toBe(99999);
 	});
 
-	it("port held by our managed pid ⇒ running", async () => {
+	it("a port held by our managed pid or its descendant ⇒ running", async () => {
 		// Use the live test pid so isAlive() is true and holder.pid === managedPid.
 		h.fs.existsSync.mockReturnValue(true);
 		h.fs.readFileSync.mockReturnValue(String(process.pid));
@@ -88,27 +87,27 @@ describe("getPxpipeProxyStatus", () => {
 		const s = await getPxpipeProxyStatus();
 		expect(s.running).toBe(true);
 		expect(s.foreignConflict).toBe(false);
+		{
+			h.fs.existsSync.mockReturnValue(true);
+			h.fs.readFileSync.mockReturnValue(String(process.pid));
+			h.getDescendantPids.mockResolvedValue([55555]);
+			h.findPortHolders.mockResolvedValue([{ port: PORT, pid: 55555, processName: "node" }]);
+			const s = await getPxpipeProxyStatus();
+			expect(s.running).toBe(true);
+		}
 	});
 
-	it("port held by a descendant of our managed pid ⇒ running", async () => {
-		h.fs.existsSync.mockReturnValue(true);
-		h.fs.readFileSync.mockReturnValue(String(process.pid));
-		h.getDescendantPids.mockResolvedValue([55555]);
-		h.findPortHolders.mockResolvedValue([{ port: PORT, pid: 55555, processName: "node" }]);
-		const s = await getPxpipeProxyStatus();
-		expect(s.running).toBe(true);
-	});
 });
 
 describe("startPxpipeProxy", () => {
-	it("throws when npx is missing", async () => {
+	it("throws when npx is missing or on a foreign port conflict", async () => {
 		stubNpx(false);
 		await expect(startPxpipeProxy()).rejects.toThrow(/npx/);
-	});
-
-	it("throws on a foreign port conflict", async () => {
-		h.findPortHolders.mockResolvedValue([{ port: PORT, pid: 99999, processName: "some-server" }]);
-		await expect(startPxpipeProxy()).rejects.toThrow(/in use/);
+		{
+			stubNpx(true);
+			h.findPortHolders.mockResolvedValue([{ port: PORT, pid: 99999, processName: "some-server" }]);
+			await expect(startPxpipeProxy()).rejects.toThrow(/in use/);
+		}
 	});
 
 	it("spawns the proxy and writes a pidfile when idle", async () => {

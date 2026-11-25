@@ -22,13 +22,8 @@ import {
 describe("tunnelCommandName", () => {
 	it("names the tool the command runs", () => {
 		expect(tunnelCommandName("ngrok http {port} --log stdout")).toBe("ngrok");
-	});
-
-	it("strips a path so the log label stays short", () => {
+		// A path is stripped so the log label stays short; blank falls back to a generic label.
 		expect(tunnelCommandName("/opt/tools/bin/expose --port {port}")).toBe("expose");
-	});
-
-	it("falls back to a generic label for a blank command", () => {
 		expect(tunnelCommandName("   ")).toBe("custom-tunnel");
 	});
 
@@ -36,20 +31,16 @@ describe("tunnelCommandName", () => {
 		expect(
 			tunnelCommandName("echo https://host.example.com; exec cloudflared tunnel run --url http://localhost:{port} name"),
 		).toBe("cloudflared");
-	});
-
-	it("keeps leading env assignments out of the label", () => {
+		// Leading env assignments stay out of the label.
 		expect(tunnelCommandName("TUNNEL_TOKEN=abc exec /usr/local/bin/cloudflared tunnel run")).toBe("cloudflared");
 	});
 
 	// The tunnel is what FEEDS a pipeline, not what consumes it.
-	it("names the producer of a pipeline, not the sink", () => {
+	it("names the producer of a pipeline, not the sink, and is not fooled by a stderr redirection", () => {
 		expect(tunnelCommandName("ngrok http {port} | tee log")).toBe("ngrok");
-	});
 
-	// Splitting the line on `;` and `&` to find "the last command" reads the `&`
-	// inside `2>&1` as a separator and answers `1`. Redirection is not a command.
-	it("is not fooled by a stderr redirection", () => {
+		// Splitting the line on `;` and `&` to find "the last command" reads the `&`
+		// inside `2>&1` as a separator and answers `1`. Redirection is not a command.
 		expect(tunnelCommandName("ngrok http {port} --log stdout 2>&1")).toBe("ngrok");
 		expect(tunnelCommandName("ngrok http {port} > out.log 2>&1")).toBe("ngrok");
 		expect(
@@ -62,6 +53,9 @@ describe("resolveRemoteTunnelProvider", () => {
 	it("defaults to cloudflare when nothing is configured", () => {
 		expect(resolveRemoteTunnelProvider({}).kind).toBe("cloudflare");
 		expect(resolveRemoteTunnelProvider({ remoteTunnel: undefined }).kind).toBe("cloudflare");
+		// With no settings passed, they are read from disk.
+		mocks.loadSettingsSync.mockReturnValue({ remoteTunnel: { provider: "custom", command: "tunnel {port}" } });
+		expect(resolveRemoteTunnelProvider().kind).toBe("custom");
 	});
 
 	it("fails closed on a blank custom command instead of falling back to cloudflare", () => {
@@ -80,11 +74,6 @@ describe("resolveRemoteTunnelProvider", () => {
 		expect(provider.command).toBe("ngrok http {port} --log stdout");
 		expect("wss://x https://foo.example.com done".match(provider.urlRegex!)?.[0]).toBe("https://foo.example.com");
 	});
-
-	it("reads settings from disk when none are passed", () => {
-		mocks.loadSettingsSync.mockReturnValue({ remoteTunnel: { provider: "custom", command: "tunnel {port}" } });
-		expect(resolveRemoteTunnelProvider().kind).toBe("custom");
-	});
 });
 
 describe("isCustomTunnelProviderActive", () => {
@@ -101,13 +90,11 @@ describe("isCustomTunnelProviderActive", () => {
 		expect(mocks.loadSettingsSync).toHaveBeenCalledTimes(1);
 	});
 
-	it("treats a misconfigured (blank-command) provider as NOT active", () => {
+	it("treats a misconfigured (blank-command) or default cloudflare provider as NOT active", () => {
 		// Origin-check hardening must not widen while no working custom tunnel exists.
 		mocks.loadSettingsSync.mockReturnValue({ remoteTunnel: { provider: "custom", command: " " } });
 		expect(isCustomTunnelProviderActive()).toBe(false);
-	});
-
-	it("is false on the default cloudflare provider", () => {
+		_resetCustomProviderCache();
 		mocks.loadSettingsSync.mockReturnValue({});
 		expect(isCustomTunnelProviderActive()).toBe(false);
 	});
@@ -118,9 +105,7 @@ describe("compileUrlPattern", () => {
 		expect(compileUrlPattern("([")).toBe(GENERIC_TUNNEL_URL_REGEX);
 		expect(compileUrlPattern("")).toBe(GENERIC_TUNNEL_URL_REGEX);
 		expect(compileUrlPattern(undefined)).toBe(GENERIC_TUNNEL_URL_REGEX);
-	});
-
-	it("falls back on an absurdly long pattern instead of running it per output line", () => {
+		// An absurdly long pattern falls back instead of running per output line.
 		expect(compileUrlPattern(`https://${"(a+)+".repeat(100)}`)).toBe(GENERIC_TUNNEL_URL_REGEX);
 	});
 });
@@ -147,22 +132,18 @@ describe("GENERIC_TUNNEL_URL_REGEX / extractTunnelUrl", () => {
 		for (const [line, expected] of cases) {
 			expect(extractTunnelUrl(line, GENERIC_TUNNEL_URL_REGEX)).toBe(expected);
 		}
+		// Non-https output lines never match.
+		expect(extractTunnelUrl("listening on http://localhost:3000", GENERIC_TUNNEL_URL_REGEX)).toBeNull();
 	});
 
-	it("does not swallow prose punctuation into the hostname", () => {
+	it("does not swallow prose punctuation, and prefers a capture group in a user pattern", () => {
 		expect(extractTunnelUrl("Visit https://x.example.com.", GENERIC_TUNNEL_URL_REGEX)).toBe("https://x.example.com");
 		expect(extractTunnelUrl("try https://x.example.com, then reload", GENERIC_TUNNEL_URL_REGEX)).toBe("https://x.example.com");
-	});
 
-	it("prefers a capture group in a user pattern over the whole match", () => {
 		// The natural ngrok pattern — without group preference this would
 		// publish "url=https://…" as the public URL.
 		const pattern = compileUrlPattern("url=(https:\\/\\/\\S+)");
 		expect(extractTunnelUrl("… url=https://a1b2.ngrok-free.app", pattern)).toBe("https://a1b2.ngrok-free.app");
-	});
-
-	it("does not match non-https output lines", () => {
-		expect(extractTunnelUrl("listening on http://localhost:3000", GENERIC_TUNNEL_URL_REGEX)).toBeNull();
 	});
 });
 
@@ -176,23 +157,16 @@ describe("buildCustomTunnelArgv", () => {
 			// the pid recorded for the self-update handoff is the real tunnel.
 			expect(argv).toEqual(["sh", "-c", "exec ngrok http 18590 --log stdout"]);
 		}
+		// Every occurrence of {port} is substituted.
+		expect(buildCustomTunnelArgv("tunnel {port} --name app-{port}", 4242)[2]).toContain("tunnel 4242 --name app-4242");
 	});
 
-	it("substitutes every occurrence of {port}", () => {
-		const argv = buildCustomTunnelArgv("tunnel {port} --name app-{port}", 4242);
-		expect(argv[2]).toContain("tunnel 4242 --name app-4242");
-	});
-
-	it("keeps leading VAR=value assignments in front of exec", () => {
+	it("keeps leading VAR=value assignments in front of exec, and leaves a pipeline alone", () => {
 		if (process.platform === "win32") return;
 		const argv = buildCustomTunnelArgv("NGROK_AUTHTOKEN=abc ngrok http {port}", 3000);
 		expect(argv[2]).toBe("NGROK_AUTHTOKEN=abc exec ngrok http 3000");
-	});
-
-	it("leaves a pipeline to the shell — exec cannot represent it", () => {
-		if (process.platform === "win32") return;
-		const argv = buildCustomTunnelArgv("tunnel {port} | tee /tmp/log", 3000);
-		expect(argv[2]).toBe("tunnel 3000 | tee /tmp/log");
+		// A pipeline is left to the shell — exec cannot represent it.
+		expect(buildCustomTunnelArgv("tunnel {port} | tee /tmp/log", 3000)[2]).toBe("tunnel 3000 | tee /tmp/log");
 	});
 
 	it("leaves a quoted line untouched — regex word-splitting would splice exec into the quotes", () => {

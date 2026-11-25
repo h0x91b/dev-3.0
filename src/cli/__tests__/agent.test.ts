@@ -27,10 +27,6 @@ describe("agent spawn", () => {
 			agentId: "builtin-codex", configId: "codex-default", prompt: "instructions from stdin", handoff: true,
 		}, { timeoutMs: 600000 });
 	});
-	it.each(["slot", "system"])("rejects --account %s even with a valid agent and preset", async (account) => {
-		await expect(spawn({ agent: "builtin-codex", config: "codex-default", account })).rejects.toThrow("EXIT_3");
-		expect(sendRequest).not.toHaveBeenCalled();
-	});
 	it("prints a machine-readable pane identity", async () => {
 		await spawn({ json: "true" });
 		expect(JSON.parse(output)).toMatchObject({ paneId: "%9", backend: "tmux" });
@@ -44,12 +40,17 @@ describe("agent spawn", () => {
 		await spawn({ task: "seq:8", project: "project-2" }, null);
 		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.spawn", expect.not.objectContaining({ sourceTaskId: expect.anything() }), expect.anything());
 	});
-	it.each<Record<string, string>>([{ config: "wrong" }, { prompt: " " }, { yes: "true" }, { account: "slot" }])("rejects invalid flags %j before sending", async (flags) => {
-		await expect(spawn(flags)).rejects.toThrow("EXIT_3");
+	it("rejects invalid flags (incl. any --account) and a missing task before sending", async () => {
+		const cases: Array<[Record<string, string>, CliContext | null]> = [
+			[{ config: "wrong" }, context], [{ prompt: " " }, context], [{ yes: "true" }, context],
+			[{ agent: "builtin-codex", config: "codex-default", account: "slot" }, context],
+			[{ agent: "builtin-codex", config: "codex-default", account: "system" }, context],
+			[{}, null],
+		];
+		for (const [flags, ctx] of cases) {
+			await expect(spawn(flags, ctx), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+		}
 		expect(sendRequest).not.toHaveBeenCalled();
-	});
-	it("requires a task", async () => {
-		await expect(spawn({}, null)).rejects.toThrow("EXIT_3");
 	});
 	it("uses the existing launch-declined exit code", async () => {
 		vi.mocked(sendRequest).mockResolvedValue({ id: "1", ok: true, data: { approved: false } });
@@ -103,16 +104,19 @@ describe("agent resume", () => {
 		await resume({ task: "seq:8", json: "true" });
 		expect(JSON.parse(output)).toEqual(resumed);
 	});
-	it.each([
+	it("maps each non-resumed outcome to its documented exit code, still printing JSON", async () => {
+		for (const [data, exit] of [
 		[{ outcome: "already-running", taskId: "task-8", seq: 8, backend: "tmux" }, "EXIT_31"],
 		[{ outcome: "unavailable", taskId: "task-8", seq: 8, reason: "no-saved-session", message: "nothing saved" }, "EXIT_32"],
 		[{ outcome: "unavailable", taskId: "task-8", seq: 8, reason: "session-id-unknown", message: "no id", panes: [] }, "EXIT_32"],
 		[{ outcome: "declined", taskId: "task-8", seq: 8 }, "EXIT_10"],
 		[{ outcome: "declined", taskId: "task-8", seq: 8, stale: true }, "EXIT_10"],
-	])("maps %j to its documented exit code, still printing JSON", async (data, exit) => {
-		respond(data);
-		await expect(resume({ task: "seq:8", json: "true" })).rejects.toThrow(exit);
-		expect(JSON.parse(output)).toEqual(data);
+		] as const) {
+			output = "";
+			respond(data);
+			await expect(resume({ task: "seq:8", json: "true" }), JSON.stringify(data)).rejects.toThrow(exit);
+			expect(JSON.parse(output)).toEqual(data);
+		}
 	});
 	it("names the pane that cannot resume instead of offering --allow-agent-latest", async () => {
 		let stderr = "";
@@ -124,20 +128,23 @@ describe("agent resume", () => {
 		expect(stderr).toContain("#0 main   custom  cannot resume — would start over  not resumed");
 		expect(stderr).not.toContain("--allow-agent-latest");
 	});
-	it.each<Record<string, string>>([{ agent: "builtin-codex" }, { config: "x" }, { prompt: "go" }, { fresh: "true" }])("refuses %j: a resume restores what was saved", async (flags) => {
-		await expect(resume({ task: "seq:8", ...flags })).rejects.toThrow("EXIT_3");
+	it("refuses launch flags (a resume restores what was saved), an empty --account and a missing task", async () => {
+		const cases: Array<[Record<string, string>, CliContext | null]> = [
+			[{ task: "seq:8", agent: "builtin-codex" }, context], [{ task: "seq:8", config: "x" }, context],
+			[{ task: "seq:8", prompt: "go" }, context], [{ task: "seq:8", fresh: "true" }, context],
+			[{ task: "seq:8", account: "" }, context], [{ task: "seq:8", account: "true" }, context],
+			[{}, null],
+		];
+		for (const [flags, ctx] of cases) {
+			await expect(resume(flags, ctx), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+		}
 		expect(sendRequest).not.toHaveBeenCalled();
 	});
-	it("requires a task", async () => {
-		await expect(resume({}, null)).rejects.toThrow("EXIT_3");
-	});
-	it.each([["acct-2", "acct-2"], ["system", null]] as const)("sends --account %s as the resume account", async (flag, accountId) => {
+	it("sends --account as the resume account, with system meaning null", async () => {
 		respond(resumed);
-		await resume({ task: "seq:8", account: flag }, null);
-		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.resume", { taskId: "seq:8", allowAgentLatest: false, accountId }, expect.anything());
-	});
-	it.each(["", "true"])("refuses --account with no account named (%j)", async (value) => {
-		await expect(resume({ task: "seq:8", account: value })).rejects.toThrow("EXIT_3");
-		expect(sendRequest).not.toHaveBeenCalled();
+		for (const [flag, accountId] of [["acct-2", "acct-2"], ["system", null]] as const) {
+			await resume({ task: "seq:8", account: flag }, null);
+			expect(sendRequest, flag).toHaveBeenLastCalledWith(expect.anything(), "agent.resume", { taskId: "seq:8", allowAgentLatest: false, accountId }, expect.anything());
+		}
 	});
 });

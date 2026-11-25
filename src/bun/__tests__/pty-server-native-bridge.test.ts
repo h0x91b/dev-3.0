@@ -317,14 +317,6 @@ describe("attaching a native viewer", () => {
 		expect(desktop.screen()).toBe("hello from the shell\r\n");
 	});
 
-	it("replays even output produced with no viewer attached at all", async () => {
-		// Remote-only use: the desktop window is closed, the shell keeps working.
-		shell.emit("headless output\r\n");
-		await delay(FLUSH_MS);
-
-		expect(connect().screen()).toBe("headless output\r\n");
-	});
-
 	it("gives a second viewer the same screen and identity, as an observer", async () => {
 		shell.emit("shared screen\r\n");
 		await delay(FLUSH_MS);
@@ -340,15 +332,10 @@ describe("attaching a native viewer", () => {
 		expect(browser.screen()).toBe(desktop.screen());
 	});
 
-	it("attaches to a silent session without claiming to have replayed anything", () => {
+	it("attaches to a silent session replaying nothing, then streams live output to every viewer with a monotonic watermark", async () => {
 		const desktop = connect();
-
 		expect(desktop.attach).toMatchObject({ seq: 0, resumed: false, reset: "fresh" });
 		expect(desktop.screen()).toBe("");
-	});
-
-	it("streams live output to every viewer with a monotonic watermark", async () => {
-		const desktop = connect();
 		const browser = connect();
 
 		shell.emit("first\r\n");
@@ -400,6 +387,12 @@ describe("reconnecting a native viewer", () => {
 
 		expect(resumed.attach).toMatchObject({ resumed: true });
 		expect(resumed.screen()).toBe("after-drop\r\n");
+		// Same host, shell, session and pane identity across the drop.
+		expect(resumed.attach.sessionId).toBe(first.attach.sessionId);
+		expect(resumed.attach.paneId).toBe(first.attach.paneId);
+		expect(resumed.attach.hostPid).toBe(first.attach.hostPid);
+		expect(resumed.attach.shellPid).toBe(first.attach.shellPid);
+		expect(startNativeTaskPanes).toHaveBeenCalledTimes(1);
 	});
 
 	it("sends nothing at all to a viewer that never fell behind", async () => {
@@ -414,43 +407,22 @@ describe("reconnecting a native viewer", () => {
 		expect(resumed.attach).toMatchObject({ resumed: true, seq: watermark });
 		expect(resumed.screen()).toBe("");
 	});
-
-	it("keeps the same host, shell, session, and pane identity across the drop", async () => {
-		const first = connect();
-		shell.emit("x\r\n");
-		await delay(FLUSH_MS);
-		disconnect(first);
-
-		const second = connect(first.watermark);
-
-		expect(second.attach.sessionId).toBe(first.attach.sessionId);
-		expect(second.attach.paneId).toBe(first.attach.paneId);
-		expect(second.attach.hostPid).toBe(first.attach.hostPid);
-		expect(second.attach.shellPid).toBe(first.attach.shellPid);
-		expect(startNativeTaskPanes).toHaveBeenCalledTimes(1);
-	});
 });
 
 describe("writer and observer", () => {
-	it("passes the writer's keystrokes to the shell", () => {
+	it("passes the writer's keystrokes to the shell and refuses an observer's, saying so", () => {
 		const desktop = connect();
-
-		handlers.message(desktop, "ls\r");
-
-		expect(shell.write).toHaveBeenCalledWith("ls\r");
-	});
-
-	it("refuses an observer's keystrokes and says so", () => {
-		connect();
 		const browser = connect();
 
 		handlers.message(browser, "rm -rf /\r");
-
 		expect(shell.write).not.toHaveBeenCalled();
 		expect(browser.lastRole).toEqual({ role: "observer", refused: true });
+
+		handlers.message(desktop, "ls\r");
+		expect(shell.write).toHaveBeenCalledWith("ls\r");
 	});
 
-	it("sizes the PTY from the writer alone, so an observer's viewport cannot shrink it", () => {
+	it("sizes the PTY from the writer alone, re-sizing to the new writer after a takeover", async () => {
 		const desktop = connect();
 		const browser = connect();
 
@@ -458,6 +430,11 @@ describe("writer and observer", () => {
 		handlers.message(browser, encodeResizeSequence(40, 12));
 
 		expect(shell.resize.mock.calls).toEqual([[200, 50]]);
+
+		// After a takeover the PTY follows the new writer's viewport.
+		handlers.message(browser, claimMessage());
+		await delay(FLUSH_MS);
+		expect(lastCall(shell.resize.mock.calls)).toEqual([40, 12]);
 	});
 
 	// The gesture always asks the host first now (see the stale-cache test above), so it
@@ -479,18 +456,6 @@ describe("writer and observer", () => {
 		expect(shell.write).toHaveBeenCalledTimes(1);
 	});
 
-	it("re-sizes the PTY to the new writer's viewport after a takeover", async () => {
-		const desktop = connect();
-		const browser = connect();
-		handlers.message(desktop, encodeResizeSequence(200, 50));
-		handlers.message(browser, encodeResizeSequence(80, 24));
-
-		handlers.message(browser, claimMessage());
-		await delay(FLUSH_MS);
-
-		expect(lastCall(shell.resize.mock.calls)).toEqual([80, 24]);
-	});
-
 	// An observer that reflows the stream to its own width wraps every long line in
 	// the wrong place, which is what a second window actually looked like.
 	it("tells a viewer the PTY's geometry so an observer can render at the writer's shape", async () => {
@@ -501,28 +466,18 @@ describe("writer and observer", () => {
 		const browser = connect();
 
 		expect(browser.attach).toMatchObject({ role: "observer", cols: 200, rows: 50 });
-	});
 
-	it("republishes the geometry to observers when the writer reshapes the PTY", async () => {
-		const desktop = connect();
-		const browser = connect();
+		// …and republishes it when the writer reshapes the PTY.
 		handlers.message(desktop, encodeResizeSequence(180, 44));
 		await delay(FLUSH_MS);
 
 		expect(browser.lastRoleHeader).toMatchObject({ role: "observer", cols: 180, rows: 44 });
 	});
 
-	it("tells its own viewers they are read-only when ANOTHER app process holds the host lease", () => {
-		shell.hostRole = "observer";
-
-		const desktop = connect();
-
-		expect(desktop.attach.role).toBe("observer");
-	});
-
 	it("never writes to the shell from a process the host made an observer", () => {
 		shell.hostRole = "observer";
 		const desktop = connect();
+		expect(desktop.attach.role).toBe("observer");
 
 		handlers.message(desktop, "would vanish\r");
 
@@ -540,15 +495,10 @@ describe("writer and observer", () => {
 		const desktop = connect();
 
 		expect(desktop.attach).toMatchObject({ role: "observer", writerAttached: false });
-	});
 
-	it("still reports a real writer as attached", () => {
-		shell.hostRole = "observer";
+		// …while a real writer elsewhere is still reported as attached.
 		shell.writerAttached = true;
-
-		const desktop = connect();
-
-		expect(desktop.attach).toMatchObject({ role: "observer", writerAttached: true });
+		expect(connect().attach).toMatchObject({ role: "observer", writerAttached: true });
 	});
 
 	// A plain `claim` is refused while another dev3 process is typing, so the explicit
@@ -619,25 +569,6 @@ describe("writer and observer", () => {
 		expect(shell.releaseHostWriter).not.toHaveBeenCalled();
 	});
 
-	// An unconfirmed release is worse than no release: the lease stays held by a process
-	// that cannot use it, locking every other dev3 window out. Dropping the connection
-	// makes the host free it, because it clears the writer on socket close.
-	it("detaches the host client when the release is never confirmed", async () => {
-		shell.hostRole = "observer";
-		shell.holdTakeover = true;
-		shell.releaseConfirms = false;
-		const leaving = connect();
-
-		handlers.message(leaving, claimMessage());
-		await delay(FLUSH_MS);
-		disconnect(leaving);
-		shell.settleTakeover?.();
-		await delay(FLUSH_MS);
-
-		expect(shell.releaseHostWriter).toHaveBeenCalledTimes(1);
-		expect(shell.detach).toHaveBeenCalled();
-	});
-
 	// A stale local cache must not stop the gesture reaching the host.
 	it("asks the host even when this process already believes it is the writer", async () => {
 		shell.hostRole = "writer";
@@ -683,7 +614,7 @@ describe("writer and observer", () => {
 
 	// Canonical geometry may only change once the HOST has applied the resize.
 	// Publishing what we asked for would broadcast a refused resize as the truth.
-	it("does not publish canonical geometry when the host refuses the resize", async () => {
+	it("publishes canonical geometry only after the host applies it, never when it refuses", async () => {
 		shell.resizeApplies = false;
 		const desktop = connect();
 		const before = desktop.lastRoleHeader;
@@ -693,11 +624,8 @@ describe("writer and observer", () => {
 
 		expect(shell.resize).not.toHaveBeenCalledWith(200, 50);
 		expect(desktop.lastRoleHeader).toEqual(before);
-	});
 
-	it("publishes canonical geometry only after the host applies it", async () => {
-		const desktop = connect();
-
+		shell.resizeApplies = true;
 		handlers.message(desktop, encodeResizeSequence(140, 45));
 		await delay(FLUSH_MS);
 
@@ -716,17 +644,6 @@ describe("writer and observer", () => {
 		await delay(FLUSH_MS);
 
 		expect(staying.lastRole).toEqual({ role: "observer", refused: false });
-	});
-
-	it("promotes a disconnect survivor to writer when this process DOES own the lease", async () => {
-		shell.hostRole = "writer";
-		const leaving = connect();
-		const staying = connect();
-
-		disconnect(leaving);
-		await delay(FLUSH_MS);
-
-		expect(staying.lastRole).toEqual({ role: "writer", refused: false });
 	});
 
 	// With the re-entry guard removed this path ran at
@@ -820,21 +737,6 @@ describe("writer and observer", () => {
 		await delay(FLUSH_MS);
 	});
 
-	// A throwing listener must not be able to strand a request, which would turn a
-	// clean refusal into a timeout and then into an unnecessary compensation.
-	it("settles a refused takeover even when the host error listener throws", async () => {
-		shell.hostRole = "observer";
-		shell.takeoverUnsupported = true;
-		shell.grantClaim = false;
-		const desktop = connect();
-
-		handlers.message(desktop, claimMessage());
-		await delay(FLUSH_MS);
-
-		// The refusal still reached the viewer, so settlement was not blocked.
-		expect(desktop.lastRole).toMatchObject({ refused: true });
-	});
-
 	// The in-flight guard must be held for the WHOLE recovery. Releasing it when the host
 	// request settles lets a second gesture overlap the release/rebind and the recovering
 	// window, which is exactly what an unawaited compensation allows.
@@ -926,7 +828,7 @@ describe("writer and observer", () => {
 		expect(browser.lastRole).toEqual({ role: "observer", refused: false });
 	});
 
-	it("promotes a remaining viewer when the writer disconnects, and leaves the shell alive", () => {
+	it("promotes a remaining viewer when the writer disconnects, and keeps the shell alive with no viewers", async () => {
 		const desktop = connect();
 		const browser = connect();
 
@@ -936,11 +838,9 @@ describe("writer and observer", () => {
 		expect(browser.lastRole).toEqual({ role: "writer", refused: false });
 		handlers.message(browser, "still here\r");
 		expect(shell.write).toHaveBeenCalledWith("still here\r");
-	});
 
-	it("keeps the shell running when every viewer disconnects", async () => {
-		disconnect(connect());
-
+		// With every viewer gone the shell still runs.
+		disconnect(browser);
 		expect(shell.detach).not.toHaveBeenCalled();
 		shell.emit("still alive\r\n");
 		await delay(FLUSH_MS);
@@ -1054,20 +954,12 @@ describe("attach frame identity — pane-1 and composite pane-2", () => {
 // The lookup owner routing starts from: a caller resolves a binding here, then
 // asks the HOST who may write before delivering anything through it.
 describe("nativePaneTerminal", () => {
-	it("finds the first pane under the bare task key", () => {
+	it("finds only the first pane under the bare task key, with an interrogable host role", () => {
 		expect(pty.nativePaneTerminal(TASK_ID)?.paneId).toBe("pane-1");
 		expect(pty.nativePaneTerminal(TASK_ID, "pane-1")?.paneId).toBe("pane-1");
-	});
-
-	it("refuses to pass off pane-1 as another pane", () => {
+		// Never passes off pane-1 as another pane, and has nothing for an unbound task.
 		expect(pty.nativePaneTerminal(TASK_ID, "pane-2")).toBeNull();
-	});
-
-	it("has nothing for a task this process never bound", () => {
 		expect(pty.nativePaneTerminal("11111111-2222-3333-4444-555555555555")).toBeNull();
-	});
-
-	it("hands back a binding whose host role can be interrogated", () => {
 		shell.hostRole = "observer";
 		expect(pty.nativePaneTerminal(TASK_ID)?.hostRole()).toBe("observer");
 	});

@@ -93,33 +93,17 @@ function makeRawTask(overrides: Partial<Task> & { id: string }): Record<string, 
 // ============================================================
 
 describe("loadTasks — seq backfill", () => {
-	it("assigns sequential seq to tasks without seq field", async () => {
-		const tasks = [
-			makeRawTask({ id: "a" }),
-			makeRawTask({ id: "b" }),
-			makeRawTask({ id: "c" }),
-		];
-		seedTasks(tasks);
-
-		const result = await loadTasks(testProject);
-
-		expect(result).toHaveLength(3);
-		expect(result[0].seq).toBe(1);
-		expect(result[1].seq).toBe(2);
-		expect(result[2].seq).toBe(3);
-	});
-
-	it("respects existing seq values (starts from max+1)", async () => {
-		const tasks = [
-			makeRawTask({ id: "a", seq: 5 } as any),
+	it("keeps existing seq values and backfills the rest from max+1, in order", async () => {
+		seedTasks([
+			makeRawTask({ id: "a", seq: 3 } as any),
 			makeRawTask({ id: "b" }), // no seq
-		];
-		seedTasks(tasks);
+			makeRawTask({ id: "c", seq: 1 } as any),
+			makeRawTask({ id: "d" }), // no seq
+		]);
 
 		const result = await loadTasks(testProject);
 
-		expect(result[0].seq).toBe(5);
-		expect(result[1].seq).toBe(6);
+		expect(result.map((t) => t.seq)).toEqual([3, 4, 1, 5]);
 	});
 
 	it("assigns same seq to tasks sharing groupId", async () => {
@@ -138,58 +122,19 @@ describe("loadTasks — seq backfill", () => {
 		expect(result[2].seq).not.toBe(result[0].seq);
 	});
 
-	it("keeps backfilled seq in memory during loadTasks without writing to disk", async () => {
-		const tasks = [makeRawTask({ id: "a" })];
-		seedTasks(tasks);
-
-		const loaded = await loadTasks(testProject);
-		const saved = readSavedTasks();
-		expect(loaded[0].seq).toBe(1);
-		expect(saved[0].seq).toBeUndefined();
-	});
-
-	it("second load returns same seq values (no re-backfill)", async () => {
-		const tasks = [
-			makeRawTask({ id: "a" }),
-			makeRawTask({ id: "b" }),
-		];
-		seedTasks(tasks);
+	it("keeps backfilled seq in memory without writing to disk, stable across loads", async () => {
+		seedTasks([makeRawTask({ id: "a" }), makeRawTask({ id: "b" })]);
 
 		const first = await loadTasks(testProject);
-		const second = await loadTasks(testProject);
-
-		expect(first[0].seq).toBe(second[0].seq);
-		expect(first[1].seq).toBe(second[1].seq);
+		expect(first.map((t) => t.seq)).toEqual([1, 2]);
+		expect(readSavedTasks()[0].seq).toBeUndefined();
+		expect((await loadTasks(testProject)).map((t) => t.seq)).toEqual([1, 2]);
 	});
 
-	it("handles mix of tasks with and without seq", async () => {
-		const tasks = [
-			makeRawTask({ id: "a", seq: 3 } as any),
-			makeRawTask({ id: "b" }), // no seq
-			makeRawTask({ id: "c", seq: 1 } as any),
-			makeRawTask({ id: "d" }), // no seq
-		];
-		seedTasks(tasks);
-
-		const result = await loadTasks(testProject);
-
-		expect(result[0].seq).toBe(3); // kept
-		expect(result[2].seq).toBe(1); // kept
-		expect(result[1].seq).toBe(4); // backfilled from max(3)+1
-		expect(result[3].seq).toBe(5); // backfilled
-	});
-
-	it("handles empty task list (no crash)", async () => {
+	it("returns an empty list for an empty or missing tasks file", async () => {
+		expect(await loadTasks(testProject)).toHaveLength(0);
 		seedTasks([]);
-
-		const result = await loadTasks(testProject);
-		expect(result).toHaveLength(0);
-	});
-
-	it("handles no tasks file", async () => {
-		// No file in store
-		const result = await loadTasks(testProject);
-		expect(result).toHaveLength(0);
+		expect(await loadTasks(testProject)).toHaveLength(0);
 	});
 });
 
@@ -198,73 +143,59 @@ describe("loadTasks — seq backfill", () => {
 // ============================================================
 
 describe("addTask — seq assignment", () => {
-	it("new task gets auto-incremented seq", async () => {
-		// Seed with one existing task
-		const existing = [{ ...makeRawTask({ id: "a" }), seq: 3 }];
-		seedTasks(existing);
-
-		const task = await addTask(testProject, "New task");
-
-		expect(task.seq).toBe(4);
-	});
-
-	it("explicit seq in extras is respected", async () => {
+	it("new task gets auto-incremented seq from the existing (or backfilled) max unless extras name one", async () => {
+		seedTasks([{ ...makeRawTask({ id: "a" }), seq: 3 }]);
+		expect((await addTask(testProject, "New task")).seq).toBe(4);
+		{
 		seedTasks([]);
 
 		const task = await addTask(testProject, "New task", "todo", { seq: 42 });
 
 		expect(task.seq).toBe(42);
+		}
+		{
+		// Old tasks without seq
+		const tasks = [
+			makeRawTask({ id: "a" }),
+			makeRawTask({ id: "b" }),
+		];
+		seedTasks(tasks);
+
+		// loadTasks triggers backfill: a=1, b=2
+		await loadTasks(testProject);
+
+		// New task should get seq=3
+		const newTask = await addTask(testProject, "New task");
+		expect(newTask.seq).toBe(3);
+		}
 	});
 
-	it("first task in empty project gets seq 1", async () => {
+	it("sequential addTask calls in an empty project produce 1, 2, 3", async () => {
 		// No tasks file → empty list
-		const task = await addTask(testProject, "First task");
-
-		expect(task.seq).toBe(1);
-	});
-
-	it("multiple sequential addTask calls produce unique seq values", async () => {
-		seedTasks([]);
-
 		const t1 = await addTask(testProject, "Task 1");
 		const t2 = await addTask(testProject, "Task 2");
 		const t3 = await addTask(testProject, "Task 3");
 
-		expect(t1.seq).toBe(1);
-		expect(t2.seq).toBe(2);
-		expect(t3.seq).toBe(3);
+		expect([t1.seq, t2.seq, t3.seq]).toEqual([1, 2, 3]);
 	});
 
-	it("addTask persists existingBranch and loadTasks reads it back", async () => {
+	it("addTask persists existingBranch (origin/ stripped for baseBranch) and omits it when not given", async () => {
 		seedTasks([]);
 
 		const task = await addTask(testProject, "Continue on branch", "todo", { existingBranch: "feature/login" });
 		expect(task.existingBranch).toBe("feature/login");
 		expect(task.baseBranch).toBe("feature/login");
-
-		// Read back from disk
 		const loaded = await loadTasks(testProject);
 		expect(loaded[0].existingBranch).toBe("feature/login");
 		expect(loaded[0].baseBranch).toBe("feature/login");
-	});
 
-	it("normalizes origin/ branch refs into task baseBranch", async () => {
-		seedTasks([]);
+		const remote = await addTask(testProject, "Continue on remote branch", "todo", { existingBranch: "origin/feature/login" });
+		expect(remote.existingBranch).toBe("origin/feature/login");
+		expect(remote.baseBranch).toBe("feature/login");
 
-		const task = await addTask(testProject, "Continue on remote branch", "todo", { existingBranch: "origin/feature/login" });
-
-		expect(task.existingBranch).toBe("origin/feature/login");
-		expect(task.baseBranch).toBe("feature/login");
-	});
-
-	it("addTask without existingBranch does not set the field", async () => {
-		seedTasks([]);
-
-		const task = await addTask(testProject, "Normal task");
-		expect(task.existingBranch).toBeUndefined();
-
-		const loaded = await loadTasks(testProject);
-		expect(loaded[0].existingBranch).toBeUndefined();
+		const normal = await addTask(testProject, "Normal task");
+		expect(normal.existingBranch).toBeUndefined();
+		expect((await loadTasks(testProject)).find((t) => t.id === normal.id)?.existingBranch).toBeUndefined();
 	});
 
 	it("addTask persists the per-launch accountId (managed account and system-login null)", async () => {
@@ -279,31 +210,14 @@ describe("addTask — seq assignment", () => {
 		const systemLogin = await addTask(testProject, "On the system login", "todo", { accountId: null });
 		expect(systemLogin.accountId).toBeNull();
 		expect((await loadTasks(testProject))[0].accountId).toBeNull();
-	});
 
-	it("addTask without accountId leaves the field unset (uses the registry default)", async () => {
 		seedTasks([]);
-
-		const task = await addTask(testProject, "No explicit account");
-		expect(task.accountId).toBeUndefined();
+		// Omitted means "use the registry default": the field stays unset.
+		const unset = await addTask(testProject, "No explicit account");
+		expect(unset.accountId).toBeUndefined();
 		expect((await loadTasks(testProject))[0].accountId).toBeUndefined();
 	});
 
-	it("addTask after backfill continues from correct seq", async () => {
-		// Old tasks without seq
-		const tasks = [
-			makeRawTask({ id: "a" }),
-			makeRawTask({ id: "b" }),
-		];
-		seedTasks(tasks);
-
-		// loadTasks triggers backfill: a=1, b=2
-		await loadTasks(testProject);
-
-		// New task should get seq=3
-		const newTask = await addTask(testProject, "New task");
-		expect(newTask.seq).toBe(3);
-	});
 });
 
 // ============================================================
@@ -311,45 +225,17 @@ describe("addTask — seq assignment", () => {
 // ============================================================
 
 describe("addTask — autoVariantIndex allocation", () => {
-	it("assigns the next free variant index for an existing group", async () => {
+	it("assigns the next free variant index of the same group, ignoring other groups and never duplicating", async () => {
 		seedTasks([
 			makeRawTask({ id: "a", groupId: "g1", variantIndex: 1 }),
 			makeRawTask({ id: "b", groupId: "g1", variantIndex: 2 }),
+			makeRawTask({ id: "c", groupId: "other", variantIndex: 9 }),
 		]);
 
 		const task = await addTask(testProject, "Variant", "in-progress", { groupId: "g1", autoVariantIndex: true });
 
 		expect(task.variantIndex).toBe(3);
-	});
-
-	it("assigns 1 for the first variant of a fresh group", async () => {
-		seedTasks([]);
-
-		const task = await addTask(testProject, "Variant", "in-progress", { groupId: "g-new", autoVariantIndex: true });
-
-		expect(task.variantIndex).toBe(1);
-	});
-
-	it("ignores variants of other groups when computing the max", async () => {
-		seedTasks([
-			makeRawTask({ id: "a", groupId: "g1", variantIndex: 1 }),
-			makeRawTask({ id: "b", groupId: "other", variantIndex: 9 }),
-		]);
-
-		const task = await addTask(testProject, "Variant", "in-progress", { groupId: "g1", autoVariantIndex: true });
-
-		expect(task.variantIndex).toBe(2);
-	});
-
-	it("is a no-op without a groupId (keeps the explicit/null variant index)", async () => {
-		seedTasks([]);
-
-		const task = await addTask(testProject, "Loner", "in-progress", { autoVariantIndex: true });
-
-		expect(task.variantIndex).toBeNull();
-	});
-
-	it("sequential auto allocations keep incrementing without duplicates", async () => {
+		{
 		seedTasks([makeRawTask({ id: "src", groupId: "g1", variantIndex: 1 })]);
 
 		const t2 = await addTask(testProject, "V2", "in-progress", { groupId: "g1", autoVariantIndex: true });
@@ -357,7 +243,18 @@ describe("addTask — autoVariantIndex allocation", () => {
 
 		expect(t2.variantIndex).toBe(2);
 		expect(t3.variantIndex).toBe(3);
+		}
 	});
+
+	it("assigns 1 for a fresh group and nothing without a groupId", async () => {
+		seedTasks([]);
+
+		const fresh = await addTask(testProject, "Variant", "in-progress", { groupId: "g-new", autoVariantIndex: true });
+		expect(fresh.variantIndex).toBe(1);
+		const loner = await addTask(testProject, "Loner", "in-progress", { autoVariantIndex: true });
+		expect(loner.variantIndex).toBeNull();
+	});
+
 });
 
 describe("additive task fields", () => {
@@ -389,33 +286,19 @@ describe("additive task fields", () => {
 describe("tasks.json hourly backups", () => {
 	it("captures the previous tasks.json once per hour before overwriting it", async () => {
 		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-04-22T10:15:00.000Z"));
-
-		const originalTasks = [{ ...makeRawTask({ id: "a", title: "Original", description: "Original" }), seq: 1 }];
-		seedTasks(originalTasks);
-
-		await updateTask(testProject, "a", { title: "Updated title" });
-
-		const backupFiles = readBackupFileNames();
-		expect(backupFiles).toEqual(["2026-04-22T10Z.json"]);
-		expect(JSON.parse(readFileSync(`${tasksBackupDirPath()}/2026-04-22T10Z.json`, "utf8"))).toEqual(originalTasks);
-		expect(readSavedTasks()[0].title).toBe("Updated title");
-	});
-
-	it("does not create a second backup file within the same hour", async () => {
-		vi.useFakeTimers();
 
 		const originalTasks = [{ ...makeRawTask({ id: "a", title: "Original", description: "Original" }), seq: 1 }];
 		seedTasks(originalTasks);
 
 		vi.setSystemTime(new Date("2026-04-22T10:05:00.000Z"));
 		await updateTask(testProject, "a", { title: "First update" });
+		expect(readSavedTasks()[0].title).toBe("First update");
 
+		// A second write within the same hour adds no second backup.
 		vi.setSystemTime(new Date("2026-04-22T10:45:00.000Z"));
 		await updateTask(testProject, "a", { title: "Second update" });
 
-		const backupFiles = readBackupFileNames();
-		expect(backupFiles).toEqual(["2026-04-22T10Z.json"]);
+		expect(readBackupFileNames()).toEqual(["2026-04-22T10Z.json"]);
 		expect(JSON.parse(readFileSync(`${tasksBackupDirPath()}/2026-04-22T10Z.json`, "utf8"))).toEqual(originalTasks);
 		expect(readSavedTasks()[0].title).toBe("Second update");
 	});

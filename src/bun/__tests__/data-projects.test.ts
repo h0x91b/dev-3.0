@@ -37,24 +37,19 @@ import { addProject, loadProjects, updateProject } from "../data";
 const PROJECTS_FILE = `${TEST_HOME}/projects.json`;
 
 describe("addProject — duplicate prevention", () => {
-	it("returns existing project when adding same path twice", async () => {
+	it("returns the existing project for the same path (trailing slash too), and a new one for a different path", async () => {
 		const first = await addProject("/tmp/my-repo", "My Repo");
 		const second = await addProject("/tmp/my-repo", "My Repo Again");
 
 		expect(second.id).toBe(first.id);
+		// Trailing slashes are normalized when checking for duplicates.
+		expect((await addProject("/tmp/my-repo/", "Repo Slash")).id).toBe(first.id);
+		expect(await loadProjects()).toHaveLength(1);
 
-		const all = await loadProjects();
-		expect(all).toHaveLength(1);
-	});
-
-	it("normalizes trailing slashes when checking for duplicates", async () => {
-		const first = await addProject("/tmp/my-repo", "Repo");
-		const second = await addProject("/tmp/my-repo/", "Repo Slash");
-
-		expect(second.id).toBe(first.id);
-
-		const all = await loadProjects();
-		expect(all).toHaveLength(1);
+		// A different path is a distinct project.
+		const other = await addProject("/tmp/repo-b", "Repo B");
+		expect(other.id).not.toBe(first.id);
+		expect(await loadProjects()).toHaveLength(2);
 	});
 
 	it("reactivates a soft-deleted project with the same path", async () => {
@@ -84,20 +79,10 @@ describe("addProject — duplicate prevention", () => {
 		expect(all).toHaveLength(1);
 		expect(all[0].deleted).toBeUndefined();
 	});
-
-	it("creates distinct projects for different paths", async () => {
-		const first = await addProject("/tmp/repo-a", "Repo A");
-		const second = await addProject("/tmp/repo-b", "Repo B");
-
-		expect(first.id).not.toBe(second.id);
-
-		const all = await loadProjects();
-		expect(all).toHaveLength(2);
-	});
 });
 
 describe("updateProject", () => {
-	it("persists autoReviewEnabled updates", async () => {
+	it("persists autoReviewEnabled and drops a cleared reviewModePrompt from disk", async () => {
 		const project = await addProject("/tmp/review-repo", "Review Repo");
 
 		const updated = await updateProject(project.id, { autoReviewEnabled: true });
@@ -106,11 +91,8 @@ describe("updateProject", () => {
 
 		const all = await loadProjects();
 		expect(all[0].autoReviewEnabled).toBe(true);
-	});
 
-	it("drops a cleared reviewModePrompt from disk so the global setting takes over", async () => {
-		const project = await addProject("/tmp/prompt-repo", "Prompt Repo");
-
+		// A cleared reviewModePrompt is dropped from disk so the global setting takes over.
 		await updateProject(project.id, { reviewModePrompt: "Only blockers." });
 		expect((await loadProjects())[0].reviewModePrompt).toBe("Only blockers.");
 

@@ -62,13 +62,11 @@ describe("live server guards", () => {
 		expect((await get(`/${TOKEN}/`, { host: `evil.example:${PORT}` })).status).toBe(421);
 	});
 
-	it("answers the browser's own favicon request quietly", async () => {
-		expect((await get("/favicon.ico")).status).toBe(204);
-	});
-
-	it("does not tell a wrong token from a missing page", async () => {
+	it("does not tell a wrong token from a missing page, and answers the favicon request quietly", async () => {
 		expect((await get("/nope/")).status).toBe(404);
 		expect((await get("/bcdefghijklmnopqrstuvwxy/")).status).toBe(404);
+		// The browser's own favicon request is answered quietly.
+		expect((await get("/favicon.ico")).status).toBe(204);
 	});
 
 	it("refuses writes that are not JSON or come from another origin", async () => {

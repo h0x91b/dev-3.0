@@ -53,12 +53,9 @@ describe("powerShellNativeArg", () => {
 		expect(powerShellNativeArg("the task's title")).not.toContain("\\'");
 	});
 
-	it("escapes a double quote for the callee's C runtime", () => {
+	it("escapes a double quote for the callee's C runtime, doubling the backslashes it would otherwise halve", () => {
 		expect(powerShellNativeArg('he said "no"')).toBe("'he said \\\"no\\\"'");
-	});
-
-	it("doubles the backslashes that a quote would otherwise halve", () => {
-		expect(powerShellNativeArg('a\\"b')).toBe("'a\\\\\\\"b'");
+		expect(powerShellNativeArg('a\\"b'), "backslash before a quote").toBe("'a\\\\\\\"b'");
 	});
 
 	it("doubles a trailing backslash run only when PowerShell will add a closing quote", () => {
@@ -69,49 +66,36 @@ describe("powerShellNativeArg", () => {
 		expect(powerShellNativeArg("ends-with\\")).toBe("'ends-with\\'");
 	});
 
-	it("leaves PowerShell's own metacharacters alone — a single-quoted literal is literal", () => {
+	it("leaves PowerShell's own metacharacters alone and passes an empty argument", () => {
+		// A single-quoted literal is literal.
 		expect(powerShellNativeArg("$env:PATH `n $(x)")).toBe("'$env:PATH `n $(x)'");
-	});
-
-	it("passes an empty argument", () => {
-		expect(powerShellNativeArg("")).toBe("''");
+		expect(powerShellNativeArg(""), "empty").toBe("''");
 	});
 });
 
 describe("shellEscape follows the platform dialect", () => {
-	it("POSIX keeps the historical escape byte-for-byte", () => {
+	it("POSIX keeps the historical escape byte-for-byte; Windows never emits it", () => {
 		asPlatform("darwin");
-		expect(shellEscape("the task's title")).toBe("'the task'\\''s title'");
-	});
-
-	it("Windows never emits the POSIX escape", () => {
+		expect(shellEscape("the task's title"), "posix").toBe("'the task'\\''s title'");
 		asPlatform("win32");
-		expect(shellEscape("the task's title")).toBe("'the task''s title'");
+		expect(shellEscape("the task's title"), "windows").toBe("'the task''s title'");
 	});
 });
 
 describe("commandToken", () => {
-	it("leaves a bare command name alone on both dialects", () => {
+	it("leaves a bare command name and a multi-word baseCommand (the user's own shell text) alone on both dialects", () => {
 		asPlatform("darwin");
 		expect(commandToken("claude")).toBe("claude");
 		expect(commandToken("/usr/local/bin/claude")).toBe("/usr/local/bin/claude");
+		expect(commandToken("npx claude")).toBe("npx claude");
 		asPlatform("win32");
 		expect(commandToken("claude")).toBe("claude");
-	});
-
-	it("leaves a multi-word baseCommand as shell text — it is the user's own", () => {
-		asPlatform("darwin");
-		expect(commandToken("npx claude")).toBe("npx claude");
-		asPlatform("win32");
 		expect(commandToken("npx claude")).toBe("npx claude");
 	});
 
-	it("quotes an absolute path that needs it", () => {
+	it("quotes an absolute path that needs it; Windows calls it instead of printing it back", () => {
 		asPlatform("darwin");
 		expect(commandToken("/Users/john smith/bin/claude")).toBe("'/Users/john smith/bin/claude'");
-	});
-
-	it("Windows calls a quoted path instead of printing it back", () => {
 		asPlatform("win32");
 		expect(commandToken("C:\\Users\\John Smith\\.local\\bin\\claude.exe")).toBe(
 			"& 'C:\\Users\\John Smith\\.local\\bin\\claude.exe'",
@@ -155,14 +139,10 @@ describe("the launch call site", () => {
 		expect(cmd).toContain("'\\''");
 	});
 
-	it("resolveAgentCommand spells a resolved binary path as a command", async () => {
+	it("resolveAgentCommand and buildResumeCommand spell a resolved binary path as a command", async () => {
 		asPlatform("win32");
 		const cmd = await resolveAgentCommand(agent("C:\\Users\\John Smith\\bin\\claude.exe"), undefined, CTX);
 		expect(cmd.startsWith("& 'C:\\Users\\John Smith\\bin\\claude.exe' ")).toBe(true);
-	});
-
-	it("buildResumeCommand spells it the same way", () => {
-		asPlatform("win32");
 		expect(buildResumeCommand("C:\\Users\\John Smith\\bin\\claude.exe", "sid", "claude")).toBe(
 			"& 'C:\\Users\\John Smith\\bin\\claude.exe' --resume sid",
 		);
@@ -219,14 +199,12 @@ describe("the command-line ceiling", () => {
 });
 
 describe("the dialect exposes both quoting jobs", () => {
-	it("POSIX hands a word straight to execve, so one spelling covers both", () => {
-		const d = launchDialect("darwin");
-		expect(d.nativeArg("a'b")).toBe(d.quote("a'b"));
+	it("POSIX needs one spelling (execve gets the word); Windows two, because two parsers run in series", () => {
+		const posix = launchDialect("darwin");
+		expect(posix.nativeArg("a'b"), "posix").toBe(posix.quote("a'b"));
+		const windows = launchDialect("win32");
+		expect(windows.quote('a"b')).toBe("'a\"b'");
+		expect(windows.nativeArg('a"b')).toBe("'a\\\"b'");
 	});
 
-	it("Windows needs two, because two parsers run in series", () => {
-		const d = launchDialect("win32");
-		expect(d.quote('a"b')).toBe("'a\"b'");
-		expect(d.nativeArg('a"b')).toBe("'a\\\"b'");
-	});
 });

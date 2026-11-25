@@ -61,7 +61,7 @@ function launch(base: string, config: AgentConfiguration | undefined, options?: 
 }
 
 describe("registry", () => {
-	it("resolves known base commands by last path segment", () => {
+	it("resolves known base commands by last path segment, and falls back to the generic adapter", () => {
 		expect(getAgentAdapter("claude")).toBe(claudeAdapter);
 		expect(getAgentAdapter("/opt/homebrew/bin/codex")).toBe(codexAdapter);
 		expect(getAgentAdapter("/usr/local/bin/gemini")).toBe(geminiAdapter);
@@ -72,15 +72,10 @@ describe("registry", () => {
 		expect(getAgentAdapter("pi")).toBe(piAdapter);
 		expect(getAgentAdapter("/home/u/.local/bin/pi")).toBe(piAdapter);
 		expect(getAgentAdapter("/Users/me/.local/bin/agy")).toBe(agyAdapter);
-	});
 
-	it("falls back to the generic adapter for unknown / custom commands", () => {
-		expect(getAgentAdapter("aider")).toBe(genericAdapter);
-		expect(getAgentAdapter("bash")).toBe(genericAdapter);
-		expect(getAgentAdapter("/weird/path/my-agent")).toBe(genericAdapter);
-	});
-
-	it("hasAgentAdapter / agentKey", () => {
+		for (const unknown of ["aider", "bash", "/weird/path/my-agent", "my-claude"]) {
+			expect(getAgentAdapter(unknown), unknown).toBe(genericAdapter);
+		}
 		expect(hasAgentAdapter("claude")).toBe(true);
 		expect(hasAgentAdapter("aider")).toBe(false);
 		expect(agentKey("/a/b/claude")).toBe("claude");
@@ -91,37 +86,25 @@ describe("registry", () => {
 // The renderer discloses what "Auto" resolves to and warns about an
 // unrecognized command, but importing this registry into the app bundle would
 // drag every skill body (~32 KB) along — so families.ts restates those facts as
-// plain data. These are the tests that keep the copy honest.
+// plain data. This is the test that keeps the copy honest.
 describe("agent families (the renderer's copy of the registry)", () => {
 	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter, agyAdapter];
 
-	it("lists exactly the commands that have a first-class adapter", () => {
+	it("lists, offers and resolves exactly the commands that have a first-class adapter", () => {
 		expect([...KNOWN_AGENT_COMMANDS].sort()).toEqual(ADAPTERS.map((a) => a.command).sort());
-		for (const adapter of ADAPTERS) expect(isKnownAgentCommand(adapter.command)).toBe(true);
-		expect(isKnownAgentCommand("my-claude")).toBe(false);
-		expect(isKnownAgentCommand("")).toBe(false);
-	});
-
-	it("offers every known command plus the explicit opt-out", () => {
-		expect([...SELECTABLE_AGENT_FAMILIES].sort()).toEqual([...ADAPTERS.map((a) => a.command), "none"].sort());
-	});
-
-	it("resolves each adapter's own command, and nothing else", () => {
+		expect([...SELECTABLE_AGENT_FAMILIES].sort(), "selectable = known + opt-out").toEqual([...ADAPTERS.map((a) => a.command), "none"].sort());
 		for (const adapter of ADAPTERS) {
+			expect(isKnownAgentCommand(adapter.command)).toBe(true);
 			expect(autoAgentFamily(adapter.command)).toBe(adapter.command);
 			expect(autoAgentFamily(`/opt/bin/${adapter.command}`)).toBe(adapter.command);
 		}
+		expect(isKnownAgentCommand("my-claude")).toBe(false);
+		expect(isKnownAgentCommand("")).toBe(false);
 		expect(autoAgentFamily("my-claude")).toBe("none");
 	});
 });
 
 describe("a declared family overrides the command-name guess", () => {
-	it("keeps the name guess when nothing is declared", () => {
-		expect(getAgentAdapter("claude")).toBe(claudeAdapter);
-		expect(getAgentAdapter("/opt/homebrew/bin/codex")).toBe(codexAdapter);
-		expect(getAgentAdapter("my-claude")).toBe(genericAdapter);
-	});
-
 	it("treats a renamed binary as the CLI it declares", () => {
 		// The reported bug: a custom executable for Claude Code was handled as an
 		// unknown CLI — no hooks, no dev3 protocol, and Resume Session re-ran the
@@ -133,7 +116,7 @@ describe("a declared family overrides the command-name guess", () => {
 		expect(agentKey("/Users/x/bin/cc", "claude")).toBe("claude");
 	});
 
-	it("gives a declared wrapper the same resume support as the CLI itself", () => {
+	it("gives a declared wrapper the CLI's resume support, resuming rather than re-sending the prompt", () => {
 		const adapter = getAgentAdapter("my-claude", "claude");
 		expect(adapter.supportsResume).toBe(true);
 		expect(adapter.supportsPreAssignedSessionId).toBe(true);
@@ -141,205 +124,164 @@ describe("a declared family overrides the command-name guess", () => {
 		expect(adapter.transcriptStore?.("/w", ["/home/.claude"])).toEqual(
 			claudeAdapter.transcriptStore?.("/w", ["/home/.claude"]),
 		);
-	});
 
-	it("resumes rather than re-sending the prompt, unlike the generic fallback", () => {
-		const ctx: TemplateContext = {
-			taskTitle: "T",
-			taskDescription: "ORIGINAL PROMPT",
-			projectName: "p",
-			projectPath: "/p",
-			worktreePath: "/w",
-		};
+		const ctx: TemplateContext = { taskTitle: "T", taskDescription: "ORIGINAL PROMPT", projectName: "p", projectPath: "/p", worktreePath: "/w" };
 		const resume: AdapterLaunchOptions = { resume: true, sessionId: "sess-1" };
-		const declared = getAgentAdapter("my-claude", "claude").launchArgs("my-claude", undefined, ctx, resume).join(" ");
+		const declared = adapter.launchArgs("my-claude", undefined, ctx, resume).join(" ");
 		expect(declared).toContain("--resume sess-1");
 		expect(declared).not.toContain("ORIGINAL PROMPT");
 		// Without the declaration this is byte-identical to a fresh launch.
-		expect(getAgentAdapter("my-claude").launchArgs("my-claude", undefined, ctx, resume).join(" "))
-			.toContain("ORIGINAL PROMPT");
+		expect(getAgentAdapter("my-claude").launchArgs("my-claude", undefined, ctx, resume).join(" ")).toContain("ORIGINAL PROMPT");
 	});
 
-	it("threads stopTarget / permissionMode through the declared family", () => {
+	it("threads stopTarget / permissionMode through the declared family, and honours an explicit opt-out", () => {
 		expect(getAgentAdapter("wrapper", "claude").hooksSpec({ stopTarget: "review-by-ai", permissionMode: "plan" }))
 			.toEqual({ kind: "claude", stopTarget: "review-by-ai", permissionMode: "plan" });
-	});
-
-	it("honours an explicit opt-out even for a recognized command", () => {
-		expect(getAgentAdapter("claude", "none")).toBe(genericAdapter);
+		expect(getAgentAdapter("claude", "none"), "opt-out on a recognized command").toBe(genericAdapter);
 		expect(hasAgentAdapter("claude", "none")).toBe(false);
 	});
 });
 
-describe("capability flags", () => {
-	it.each([
-		[claudeAdapter, "claude", true, true],
-		[codexAdapter, "codex", true, false],
-		[geminiAdapter, "gemini", true, true],
-		[cursorAdapter, "agent", true, true],
-		[opencodeAdapter, "opencode", true, false],
-		[copilotAdapter, "copilot", true, true],
-		[ompAdapter, "omp", true, false],
-		[piAdapter, "pi", true, true],
-		[agyAdapter, "agy", true, false],
-		[genericAdapter, "", false, false],
-	] as const)("%s", (adapter, command, resume, preassign) => {
-		expect(adapter.command).toBe(command);
-		expect(adapter.supportsResume).toBe(resume);
-		expect(adapter.supportsPreAssignedSessionId).toBe(preassign);
+describe("per-adapter descriptors", () => {
+	it("capability flags", () => {
+		const rows = [
+			[claudeAdapter, "claude", true, true],
+			[codexAdapter, "codex", true, false],
+			[geminiAdapter, "gemini", true, true],
+			[cursorAdapter, "agent", true, true],
+			[opencodeAdapter, "opencode", true, false],
+			[copilotAdapter, "copilot", true, true],
+			[ompAdapter, "omp", true, false],
+			[piAdapter, "pi", true, true],
+			[agyAdapter, "agy", true, false],
+			[genericAdapter, "", false, false],
+		] as const;
+		for (const [adapter, command, resume, preassign] of rows) {
+			expect(adapter.command).toBe(command);
+			expect(adapter.supportsResume, command).toBe(resume);
+			expect(adapter.supportsPreAssignedSessionId, command).toBe(preassign);
+		}
 	});
-});
 
-describe("trustKinds", () => {
-	it.each([
-		[claudeAdapter, ["claude"]],
-		[codexAdapter, ["claude", "codex"]],
-		[geminiAdapter, ["claude", "gemini"]],
-		[cursorAdapter, ["claude"]],
-		[opencodeAdapter, ["claude"]],
-		[copilotAdapter, ["claude", "copilot"]],
-		[ompAdapter, ["claude"]],
-		[piAdapter, ["claude"]],
-		[agyAdapter, ["claude"]],
-		[genericAdapter, ["claude"]],
-	] as const)("%s", (adapter, kinds) => {
-		expect(adapter.trustKinds).toEqual(kinds);
+	it("trustKinds", () => {
+		const rows = [
+			[claudeAdapter, ["claude"]],
+			[codexAdapter, ["claude", "codex"]],
+			[geminiAdapter, ["claude", "gemini"]],
+			[cursorAdapter, ["claude"]],
+			[opencodeAdapter, ["claude"]],
+			[copilotAdapter, ["claude", "copilot"]],
+			[ompAdapter, ["claude"]],
+			[piAdapter, ["claude"]],
+			[agyAdapter, ["claude"]],
+			[genericAdapter, ["claude"]],
+		] as const;
+		for (const [adapter, kinds] of rows) expect(adapter.trustKinds, adapter.command).toEqual(kinds);
 	});
-});
 
-describe("hooksSpec", () => {
-	it("Claude threads stopTarget + permissionMode", () => {
+	it("hooksSpec, hooksReportPermissionWaits and skillBody", () => {
 		expect(claudeAdapter.hooksSpec({ stopTarget: "review-by-ai", permissionMode: "bypassPermissions" }))
 			.toEqual({ kind: "claude", stopTarget: "review-by-ai", permissionMode: "bypassPermissions" });
 		expect(claudeAdapter.hooksSpec()).toEqual({ kind: "claude", stopTarget: undefined, permissionMode: undefined });
-	});
-	it("Codex is a bare codex spec", () => {
-		expect(codexAdapter.hooksSpec()).toEqual({ kind: "codex" });
-	});
-	it("Copilot is a bare copilot spec", () => {
-		expect(copilotAdapter.hooksSpec()).toEqual({ kind: "copilot" });
-	});
-	it("omp is a bare omp spec (the executor turns it into --hook <extension>)", () => {
-		expect(ompAdapter.hooksSpec()).toEqual({ kind: "omp" });
-	});
-	it("pi is a bare pi spec (the executor turns it into --extension <extension>)", () => {
-		expect(piAdapter.hooksSpec()).toEqual({ kind: "pi" });
-	});
-	it("agy is a bare agy spec (the executor writes the worktree .agents/ config)", () => {
-		expect(agyAdapter.hooksSpec()).toEqual({ kind: "agy" });
-	});
-	it("Cursor installs accounting hooks while keeping its generic lifecycle prompt", () => {
+		// omp → --hook <extension>, pi → --extension <extension>, agy → worktree .agents/ config.
+		for (const adapter of [codexAdapter, copilotAdapter, ompAdapter, piAdapter, agyAdapter]) {
+			expect(adapter.hooksSpec(), adapter.command).toEqual({ kind: adapter.command });
+		}
+		// Cursor installs accounting hooks while keeping its generic lifecycle prompt.
 		expect(cursorAdapter.hooksSpec()).toEqual({ kind: "cursor" });
-		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
-	});
-	it("Gemini / OpenCode / Generic install no hooks", () => {
-		expect(geminiAdapter.hooksSpec()).toBeNull();
-		expect(opencodeAdapter.hooksSpec()).toBeNull();
-		expect(genericAdapter.hooksSpec()).toBeNull();
-	});
-});
+		for (const adapter of [geminiAdapter, opencodeAdapter, genericAdapter]) expect(adapter.hooksSpec(), adapter.command).toBeNull();
 
-describe("hooksReportPermissionWaits", () => {
-	it.each([claudeAdapter, codexAdapter, ompAdapter, piAdapter, agyAdapter])(
-		"$command hooks move the task to user-questions on a permission wait",
-		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(true),
-	);
-	it.each([copilotAdapter, cursorAdapter, geminiAdapter, opencodeAdapter, genericAdapter])(
-		"$command hooks do not report a permission wait (none, or no user-questions move)",
-		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(false),
-	);
-});
+		// Hooks that move the task to user-questions on a permission wait.
+		for (const adapter of [claudeAdapter, codexAdapter, ompAdapter, piAdapter, agyAdapter]) {
+			expect(adapter.hooksReportPermissionWaits, adapter.command).toBe(true);
+		}
+		for (const adapter of [copilotAdapter, cursorAdapter, geminiAdapter, opencodeAdapter, genericAdapter]) {
+			expect(adapter.hooksReportPermissionWaits, adapter.command).toBe(false);
+		}
 
-describe("exitProgram", () => {
-	it.each([
-		[claudeAdapter, "/exit"],
-		[codexAdapter, "/quit"],
-		[geminiAdapter, "/quit"],
-		[cursorAdapter, "/exit"],
-		[opencodeAdapter, "/exit"],
-		[copilotAdapter, "/exit"],
-		[piAdapter, "/quit"],
-		[agyAdapter, "/quit"],
-	] as const)("%s interrupts, types its quit command, then submits", (adapter, command) => {
-		const program = adapter.exitProgram();
-		expect(program).not.toBeNull();
-		expect(program!.map((stage) => stage.steps)).toEqual([
-			[{ kind: "key", key: "ctrl-c" }],
-			[{ kind: "text", text: command }],
-			[{ kind: "key", key: "enter" }],
-		]);
-		// The gaps are what let the CLI redraw before the command and see a discrete Enter.
-		expect(program![0]!.delayBeforeMs).toBeUndefined();
-		expect(program![1]!.delayBeforeMs).toBeGreaterThan(0);
-		expect(program![2]!.delayBeforeMs).toBeGreaterThan(0);
-		// Must stay inside the pane-input seam's in-band delay budget or the send is refused.
-		const totalDelay = program!.reduce((sum, stage) => sum + (stage.delayBeforeMs ?? 0), 0);
-		expect(totalDelay).toBeLessThanOrEqual(PANE_INPUT_LIMITS.maxTotalDelayMs);
-	});
-	it("an unknown CLI has no quit command", () => {
-		expect(genericAdapter.exitProgram()).toBeNull();
-	});
-});
-
-describe("buildResumeCommand", () => {
-	it.each([
-		[claudeAdapter, "claude", undefined, "claude --continue"],
-		[claudeAdapter, "claude", "sid", "claude --resume sid"],
-		[codexAdapter, "codex", undefined, null],
-		[codexAdapter, "codex", "sid", "codex resume sid -c check_for_update_on_startup=false"],
-		[geminiAdapter, "gemini", undefined, "gemini --resume latest"],
-		[geminiAdapter, "gemini", "sid", "gemini --resume sid"],
-		[cursorAdapter, "agent", undefined, "agent --continue"],
-		[cursorAdapter, "agent", "sid", "agent --resume sid"],
-		[opencodeAdapter, "opencode", undefined, "opencode --continue"],
-		[opencodeAdapter, "opencode", "sid", "opencode --session sid"],
-		[copilotAdapter, "copilot", undefined, "copilot --continue"],
-		[copilotAdapter, "copilot", "sid", "copilot --resume=sid"],
-		[ompAdapter, "omp", undefined, "omp -c"],
-		[ompAdapter, "omp", "sid", "omp --resume sid"],
-		[piAdapter, "pi", undefined, "pi -c"],
-		[piAdapter, "pi", "0199aaaa-bbbb-7ccc", "pi --session-id 0199aaaa-bbbb-7ccc"],
-		[agyAdapter, "agy", undefined, "agy --continue"],
-		[agyAdapter, "agy", "c0ffee-1", "agy --conversation c0ffee-1"],
-		[genericAdapter, "aider", "sid", null],
-	] as const)("%s (sid=%s)", (adapter, base, sid, expected) => {
-		expect(adapter.buildResumeCommand(base, sid ?? undefined)).toBe(expected);
-	});
-});
-
-describe("skillBody", () => {
-	it("each adapter carries the right body", () => {
 		expect(claudeAdapter.skillBody).toBe(CLAUDE_SKILL_BODY);
 		expect(codexAdapter.skillBody).toBe(CODEX_SKILL_BODY);
 		expect(ompAdapter.skillBody).toBe(OMP_SKILL_BODY);
 		expect(piAdapter.skillBody).toBe(PI_SKILL_BODY);
-		// Gemini/Cursor/OpenCode/Generic use the generic body.
-		expect(geminiAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
-		expect(cursorAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
-		expect(opencodeAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
-		expect(copilotAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
-		expect(genericAdapter.skillBody).toBe(GENERIC_SKILL_BODY);
+		for (const adapter of [geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, genericAdapter]) {
+			expect(adapter.skillBody, adapter.command).toBe(GENERIC_SKILL_BODY);
+		}
+	});
+
+	it("exitProgram interrupts, types the quit command, then submits — inside the pane-input delay budget", () => {
+		const rows = [
+			[claudeAdapter, "/exit"],
+			[codexAdapter, "/quit"],
+			[geminiAdapter, "/quit"],
+			[cursorAdapter, "/exit"],
+			[opencodeAdapter, "/exit"],
+			[copilotAdapter, "/exit"],
+			[piAdapter, "/quit"],
+			[agyAdapter, "/quit"],
+		] as const;
+		for (const [adapter, command] of rows) {
+			const program = adapter.exitProgram();
+			expect(program, adapter.command).not.toBeNull();
+			expect(program!.map((stage) => stage.steps), adapter.command).toEqual([
+				[{ kind: "key", key: "ctrl-c" }],
+				[{ kind: "text", text: command }],
+				[{ kind: "key", key: "enter" }],
+			]);
+			// The gaps are what let the CLI redraw before the command and see a discrete Enter.
+			expect(program![0]!.delayBeforeMs).toBeUndefined();
+			expect(program![1]!.delayBeforeMs).toBeGreaterThan(0);
+			expect(program![2]!.delayBeforeMs).toBeGreaterThan(0);
+			// Must stay inside the pane-input seam's in-band delay budget or the send is refused.
+			const totalDelay = program!.reduce((sum, stage) => sum + (stage.delayBeforeMs ?? 0), 0);
+			expect(totalDelay, adapter.command).toBeLessThanOrEqual(PANE_INPUT_LIMITS.maxTotalDelayMs);
+		}
+		expect(genericAdapter.exitProgram(), "an unknown CLI has no quit command").toBeNull();
+	});
+
+	it("buildResumeCommand", () => {
+		const rows = [
+			[claudeAdapter, "claude", undefined, "claude --continue"],
+			[claudeAdapter, "claude", "sid", "claude --resume sid"],
+			[codexAdapter, "codex", undefined, null],
+			[codexAdapter, "codex", "sid", "codex resume sid -c check_for_update_on_startup=false"],
+			[geminiAdapter, "gemini", undefined, "gemini --resume latest"],
+			[geminiAdapter, "gemini", "sid", "gemini --resume sid"],
+			[cursorAdapter, "agent", undefined, "agent --continue"],
+			[cursorAdapter, "agent", "sid", "agent --resume sid"],
+			[opencodeAdapter, "opencode", undefined, "opencode --continue"],
+			[opencodeAdapter, "opencode", "sid", "opencode --session sid"],
+			[copilotAdapter, "copilot", undefined, "copilot --continue"],
+			[copilotAdapter, "copilot", "sid", "copilot --resume=sid"],
+			[ompAdapter, "omp", undefined, "omp -c"],
+			[ompAdapter, "omp", "sid", "omp --resume sid"],
+			[piAdapter, "pi", undefined, "pi -c"],
+			[piAdapter, "pi", "0199aaaa-bbbb-7ccc", "pi --session-id 0199aaaa-bbbb-7ccc"],
+			[agyAdapter, "agy", undefined, "agy --continue"],
+			[agyAdapter, "agy", "c0ffee-1", "agy --conversation c0ffee-1"],
+			[genericAdapter, "aider", "sid", null],
+		] as const;
+		for (const [adapter, base, sid, expected] of rows) {
+			expect(adapter.buildResumeCommand(base, sid ?? undefined), `${base} sid=${sid}`).toBe(expected);
+		}
+	});
+
+	it("only agy asks the launch handoff to wait for its session capture", () => {
+		expect(agyAdapter.readyEvidence).toBe("session-capture");
+		for (const adapter of [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter]) expect(adapter.readyEvidence).toBeUndefined();
 	});
 });
 
 describe("launchArgs — Claude", () => {
-	it("fresh: model + system prompt + positional prompt", () => {
-		expect(launch("claude", cfg({ model: "sonnet" })))
+	it("fresh, resume, skipModelForProvider, skipSystemPrompt and statusline settings", () => {
+		expect(launch("claude", cfg({ model: "sonnet" })), "fresh")
 			.toBe("claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
-	});
-	it("resume with sessionId drops the prompt", () => {
-		expect(launch("claude", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }))
+		expect(launch("claude", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }), "resume drops the prompt")
 			.toBe("claude --resume sid --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY>");
-	});
-	it("skipModelForProvider omits --model", () => {
-		expect(launch("claude", cfg({ model: "claude-opus-4-8[1m]" }), { skipModelForProvider: true }))
+		expect(launch("claude", cfg({ model: "claude-opus-4-8[1m]" }), { skipModelForProvider: true }), "skipModelForProvider")
 			.toBe("claude --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
-	});
-	it("skipSystemPrompt omits the body", () => {
-		expect(launch("claude", cfg({ model: "sonnet" }), { skipSystemPrompt: true }))
+		expect(launch("claude", cfg({ model: "sonnet" }), { skipSystemPrompt: true }), "skipSystemPrompt")
 			.toBe("claude --model sonnet --allow-dangerously-skip-permissions -- 'Fix the login bug'");
-	});
-	it("statusline settings after the body, unless user passes --settings", () => {
+		// Statusline settings go after the body, unless the user passes --settings.
 		expect(launch("claude", cfg({ model: "sonnet" }), { statuslineSettingsFile: "/tmp/s.json" }))
 			.toBe("claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> --settings /tmp/s.json -- 'Fix the login bug'");
 		expect(launch("claude", cfg({ model: "sonnet", additionalArgs: ["--settings", "x"] }), { statuslineSettingsFile: "/tmp/s.json" }))
@@ -366,39 +308,33 @@ describe("launchArgs — Codex", () => {
 		expect(launch("codex", cfg({ model: "gpt-5.6-sol" }), { resume: true, sessionId: "sid", codex: CODEX_RT }))
 			.toBe("codex resume sid --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR>");
 	});
-	it("rewrites a dev3 profile to the themed profile", () => {
+
+	it("rewrites a dev3 profile to the themed profile, in every spelling and with the installed flag", () => {
 		expect(launch("codex", cfg({ model: "gpt-5.6-sol", additionalArgs: ["-p", "dev3"] }), { codex: CODEX_RT }))
 			.toBe("codex --model gpt-5.6-sol -p dev3-dark -c 'default_permissions=\"dev3\"' -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'");
+		expect(launch("codex", cfg({ additionalArgs: ["--profile=dev3"] }), { codex: CODEX_RT })).toContain("--profile=dev3-dark");
+		const v2 = { codex: { ...CODEX_RT, profileLaunchFlag: "--profile-v2" as const } };
+		expect(launch("codex", cfg({ additionalArgs: ["-p=dev3"] }), v2)).toContain("--profile-v2=dev3-dark");
+		expect(launch("codex", cfg({ model: "gpt-5.6-sol", additionalArgs: ["-p", "dev3"] }), v2), "profile-v2 rewrites -p").toContain("--profile-v2 dev3-dark");
 	});
 
 	// A preset built by hand carries no flags at all. Codex's own default
 	// permissions do not include ~/.dev3.0, so without this the agent runs but
 	// `dev3 current` dies with EPERM and the task's status never moves.
-	describe("a preset that decides nothing still reaches dev3", () => {
-		it("adds the dev3 permissions preset", () => {
-			expect(launch("codex", cfg({}), { codex: CODEX_RT })).toContain(`-c 'default_permissions="dev3"'`);
-		});
-
-		it("adds the dev3 profile, which is where the hook trust lives", () => {
-			expect(launch("codex", cfg({}), { codex: CODEX_RT })).toContain("--profile dev3-dark");
-		});
-
-		it("adds it with the flag the installed codex actually accepts", () => {
-			expect(launch("codex", cfg({}), { codex: { ...CODEX_RT, profileLaunchFlag: "--profile-v2" } }))
-				.toContain("--profile-v2 dev3-dark");
-		});
-
-		it("adds them to a model-roles preset too, which has flags for the model and nothing else", () => {
-			const command = launch("codex", cfg({ model: "openrouter/ds-flash-0731" }), { codex: CODEX_RT });
-			expect(command).toContain(`-c 'default_permissions="dev3"'`);
-			expect(command).toContain("--profile dev3-dark");
-		});
+	it("a preset that decides nothing still gets the dev3 permissions preset and profile (where the hook trust lives)", () => {
+		for (const [label, model] of [["empty preset", undefined], ["model-roles preset", "openrouter/ds-flash-0731"]] as const) {
+			const command = launch("codex", cfg({ model }), { codex: CODEX_RT });
+			expect(command, label).toContain(`-c 'default_permissions="dev3"'`);
+			expect(command, label).toContain("--profile dev3-dark");
+		}
+		// With the flag the installed codex actually accepts.
+		expect(launch("codex", cfg({}), { codex: { ...CODEX_RT, profileLaunchFlag: "--profile-v2" } })).toContain("--profile-v2 dev3-dark");
 	});
 
 	// Deciding permissions is the user's call; only the absence of a decision is
 	// dev3's to fill. Each of these means "I chose", so nothing gets added.
-	describe("a preset that decided for itself is left alone", () => {
-		it.each([
+	it("a preset that decided for itself is left alone", () => {
+		const choices: [string, string[]][] = [
 			["a full-access sandbox", ["--sandbox", "danger-full-access"]],
 			["a short-flag sandbox", ["-s", "read-only"]],
 			["the bypass flag", ["--dangerously-bypass-approvals-and-sandbox"]],
@@ -406,83 +342,58 @@ describe("launchArgs — Codex", () => {
 			["the full-auto shorthand", ["--full-auto"]],
 			["its own permissions preset", ["-c", 'default_permissions="myown"']],
 			["a raw sandbox_mode override", ["-c", 'sandbox_mode="read-only"']],
-		])("%s", (_name, additionalArgs) => {
-			expect(launch("codex", cfg({ additionalArgs }), { codex: CODEX_RT }))
-				.not.toContain(`-c 'default_permissions="dev3"'`);
-		});
-
-		// An approval flag says when Codex stops to ask, not what it may touch.
-		// Dropping the dev3 preset there would cost the agent `~/.dev3.0` for no
-		// reason, so this one still gets it.
-		it("still supplies permissions next to an approval-only flag", () => {
-			expect(launch("codex", cfg({ additionalArgs: ["--ask-for-approval", "on-failure"] }), { codex: CODEX_RT }))
-				.toContain(`-c 'default_permissions="dev3"'`);
-		});
-
-		it("keeps the user's own profile instead of forcing ours", () => {
-			const command = launch("codex", cfg({ additionalArgs: ["-p", "myprofile"] }), { codex: CODEX_RT });
-			expect(command).toContain("-p myprofile");
-			expect(command).not.toContain("dev3-dark");
-		});
-
-		// Codex takes `--flag=value` as readily as `--flag value`; a check that only
-		// knows the spaced form silently overrides a choice the user did make.
-		it.each([
+			// Codex takes `--flag=value` as readily as `--flag value`.
 			["a sandbox written with =", ["--sandbox=danger-full-access"]],
 			["a short-flag sandbox written with =", ["-s=read-only"]],
-		])("%s", (_name, additionalArgs) => {
-			expect(launch("codex", cfg({ additionalArgs }), { codex: CODEX_RT }))
-				.not.toContain(`-c 'default_permissions="dev3"'`);
-		});
-
-		it("keeps a profile written with = instead of appending ours", () => {
-			const command = launch("codex", cfg({ additionalArgs: ["--profile=myprofile"] }), { codex: CODEX_RT });
-			expect(command).toContain("--profile=myprofile");
-			expect(command).not.toContain("dev3-dark");
-		});
+		];
+		for (const [label, additionalArgs] of choices) {
+			expect(launch("codex", cfg({ additionalArgs }), { codex: CODEX_RT }), label).not.toContain(`-c 'default_permissions="dev3"'`);
+		}
+		for (const profile of [["-p", "myprofile"], ["--profile=myprofile"]]) {
+			const command = launch("codex", cfg({ additionalArgs: profile }), { codex: CODEX_RT });
+			expect(command, profile.join(" ")).toContain(profile.join(" "));
+			expect(command, profile.join(" ")).not.toContain("dev3-dark");
+		}
 	});
 
-	it("rewrites a dev3 profile written with = to the themed profile", () => {
-		expect(launch("codex", cfg({ additionalArgs: ["--profile=dev3"] }), { codex: CODEX_RT }))
-			.toContain("--profile=dev3-dark");
-		expect(launch("codex", cfg({ additionalArgs: ["-p=dev3"] }), { codex: { ...CODEX_RT, profileLaunchFlag: "--profile-v2" } }))
-			.toContain("--profile-v2=dev3-dark");
-	});
-	it("profile-v2 codex rewrites -p to --profile-v2", () => {
-		expect(launch("codex", cfg({ model: "gpt-5.6-sol", additionalArgs: ["-p", "dev3"] }), { codex: { ...CODEX_RT, profileLaunchFlag: "--profile-v2" } }))
-			.toContain("--profile-v2 dev3-dark");
+	// An approval flag says when Codex stops to ask, not what it may touch.
+	// Dropping the dev3 preset there would cost the agent `~/.dev3.0` for no
+	// reason, so this one still gets it.
+	it("still supplies permissions next to an approval-only flag", () => {
+		expect(launch("codex", cfg({ additionalArgs: ["--ask-for-approval", "on-failure"] }), { codex: CODEX_RT }))
+			.toContain(`-c 'default_permissions="dev3"'`);
 	});
 });
 
 describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
-	it("Gemini maps permission mode to --approval-mode", () => {
+	it("Gemini, Cursor and OpenCode map modes and carry the generic body their own way", () => {
 		expect(launch("gemini", cfg({ model: "gemini-3-pro", permissionMode: "bypassPermissions" })))
 			.toBe("gemini --model gemini-3-pro --approval-mode yolo -- 'Fix the login bug'");
-	});
-	it("Cursor injects the generic body via the prompt and maps modes", () => {
 		expect(launch("agent", cfg({ permissionMode: "plan" })))
 			.toBe("agent --mode plan -- 'Fix the login bug\n\n<GENERIC_BODY>'");
 		expect(launch("agent", cfg({ permissionMode: "bypassPermissions" })))
 			.toBe("agent --force -- 'Fix the login bug\n\n<GENERIC_BODY>'");
-	});
-	it("OpenCode uses --prompt and ignores generic flags", () => {
+		// OpenCode uses --prompt and ignores generic flags.
 		expect(launch("opencode", cfg({ model: "anthropic/claude-opus-4-6", permissionMode: "bypassPermissions", effort: "high" })))
 			.toBe("opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'");
 	});
-	it("Generic emits Claude-shaped flags but no body", () => {
+
+	it("Generic emits Claude-shaped flags but no body, and never resumes or pre-assigns a session id", () => {
 		expect(launch("aider", cfg({ model: "sonnet", permissionMode: "plan", effort: "high", maxBudgetUsd: 12 })))
 			.toBe("aider --model sonnet --permission-mode plan --effort high --max-budget-usd 12 -- 'Fix the login bug'");
-	});
-	it("Generic does not resume or pre-assign a session id", () => {
 		expect(launch("aider", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }))
 			.toBe("aider --model sonnet -- 'Fix the login bug'");
 	});
 });
 
 describe("launchArgs — Copilot", () => {
-	it("fresh: model, mode, effort, and the prompt via -i (stays interactive)", () => {
+	it("fresh: model, mode, effort and the prompt via -i; pre-assigns a session id and resumes with --resume=", () => {
 		expect(launch("copilot", cfg({ model: "gpt-5.6-sol", permissionMode: "bypassPermissions", effort: "high" })))
 			.toBe("copilot --model gpt-5.6-sol --allow-all --effort high -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ model: "auto" }), { sessionId: "sid" }))
+			.toBe("copilot --session-id sid --model auto -i 'Fix the login bug'");
+		expect(launch("copilot", cfg({ model: "auto" }), { resume: true, sessionId: "sid" }))
+			.toBe("copilot --resume=sid --model auto");
 	});
 	// `copilot --model auto --effort xhigh` exits with
 	// `Model "auto" does not support reasoning effort configuration` and never
@@ -491,25 +402,16 @@ describe("launchArgs — Copilot", () => {
 		expect(launch("copilot", cfg({ model: "auto", effort: "xhigh" })))
 			.toBe("copilot --model auto -i 'Fix the login bug'");
 	});
-	it("pre-assigns a session id on a fresh launch and resumes with --resume=", () => {
-		expect(launch("copilot", cfg({ model: "auto" }), { sessionId: "sid" }))
-			.toBe("copilot --session-id sid --model auto -i 'Fix the login bug'");
-		expect(launch("copilot", cfg({ model: "auto" }), { resume: true, sessionId: "sid" }))
-			.toBe("copilot --resume=sid --model auto");
-	});
-	it("carries no skill body on the command line — the sessionStart hook delivers it", () => {
+	it("maps every dev3 permission mode, and carries no skill body or dollar budget", () => {
+		// The sessionStart hook delivers the body; Copilot budgets in AI credits, not dollars.
 		expect(launch("copilot", cfg())).toBe("copilot -i 'Fix the login bug'");
-	});
-	it("maps every dev3 permission mode to Copilot's own flags", () => {
+		expect(launch("copilot", cfg({ maxBudgetUsd: 12 }))).toBe("copilot -i 'Fix the login bug'");
 		expect(launch("copilot", cfg({ permissionMode: "plan" }))).toBe("copilot --mode plan -i 'Fix the login bug'");
 		expect(launch("copilot", cfg({ permissionMode: "acceptEdits" }))).toBe("copilot --allow-tool write -i 'Fix the login bug'");
 		expect(launch("copilot", cfg({ permissionMode: "auto" }))).toBe("copilot --allow-all-tools -i 'Fix the login bug'");
 		expect(launch("copilot", cfg({ permissionMode: "dontAsk" })))
 			.toBe("copilot --allow-all-tools --no-ask-user -i 'Fix the login bug'");
 		expect(launch("copilot", cfg({ permissionMode: "default" }))).toBe("copilot -i 'Fix the login bug'");
-	});
-	it("drops maxBudgetUsd — Copilot budgets in AI credits, not dollars", () => {
-		expect(launch("copilot", cfg({ maxBudgetUsd: 12 }))).toBe("copilot -i 'Fix the login bug'");
 	});
 });
 
@@ -521,25 +423,30 @@ describe("launchArgs — agy", () => {
 	}
 	const SETTINGS = `--settings ${shellEscape(agySessionSettings("/path/to/worktree"))}`;
 
-	it("fresh: the prompt via -i (stays interactive) and no protocol on the command line", () => {
-		expect(launch("agy", cfg())).toBe(`agy ${SETTINGS} -i 'Fix the login bug'`);
-	});
-	it("fresh: model, effort, permission flag, then settings, then the user's own args, then the prompt", () => {
+	it("fresh: model, effort, permission flag, settings, the user's own args, then the prompt via -i — no protocol, no budget", () => {
+		expect(launch("agy", cfg()), "bare").toBe(`agy ${SETTINGS} -i 'Fix the login bug'`);
+		expect(launch("agy", cfg({ maxBudgetUsd: 12 })), "agy has no budget flag").toBe(`agy ${SETTINGS} -i 'Fix the login bug'`);
 		expect(launch("agy", cfg({ model: "gemini-4-neon-high", effort: "high", permissionMode: "acceptEdits", additionalArgs: ["--add-dir", "/x"] })))
 			.toBe(`agy --model gemini-4-neon-high --effort high --mode accept-edits ${SETTINGS} --add-dir /x -i 'Fix the login bug'`);
-	});
-	it("passes no --effort unless the preset sets one: effort is part of the model slug", () => {
+		// Effort is part of the model slug unless the preset sets one.
 		expect(launch("agy", cfg({ model: "gemini-4-neon-high" }))).not.toContain("--effort");
-	});
-	it("quotes a model name that carries spaces and parentheses", () => {
-		expect(launch("agy", cfg({ model: "Gemini 4 Neon (High)" })))
+		expect(launch("agy", cfg({ model: "Gemini 4 Neon (High)" })), "quoted model")
 			.toBe(`agy --model 'Gemini 4 Neon (High)' ${SETTINGS} -i 'Fix the login bug'`);
+		// A wrapper's declared family: the same adapter on a renamed command.
+		const wrapped = getAgentAdapter("my-agy-launcher", "agy").launchArgs("my-agy-launcher", cfg(), CTX);
+		expect(wrapped[0]).toBe("my-agy-launcher");
+		expect(wrapped).toContain("-i");
 	});
-	it("quotes a conversation id that is not a plain token, on launch and on resume", () => {
+
+	it("resumes by conversation id (quoted when not a plain token) or the most recent one, with no prompt", () => {
+		expect(launch("agy", cfg({ model: "m" }), { resume: true, sessionId: "abc-123" }))
+			.toBe(`agy --conversation abc-123 --model m ${SETTINGS}`);
+		expect(launch("agy", cfg(), { resume: true })).toBe(`agy --continue ${SETTINGS}`);
 		expect(launch("agy", cfg(), { resume: true, sessionId: "a b;c" })).toContain("--conversation 'a b;c' ");
 		expect(agyAdapter.buildResumeCommand!("agy", "a b;c")).toBe("agy --conversation 'a b;c'");
 		expect(agyAdapter.buildResumeCommand!("agy", "ok-1.2_x")).toBe("agy --conversation ok-1.2_x");
 	});
+
 	it("maps every dev3 permission mode to agy's own flags", () => {
 		const flags = (permissionMode: AgentConfiguration["permissionMode"]) => launch("agy", cfg({ permissionMode })).split(` ${SETTINGS}`)[0];
 		expect(flags("acceptEdits")).toBe("agy --mode accept-edits");
@@ -549,11 +456,6 @@ describe("launchArgs — agy", () => {
 		expect(flags("dontAsk")).toBe("agy --dangerously-skip-permissions");
 		expect(flags("default")).toBe("agy");
 	});
-	it("resumes by conversation id, or the most recent one, with no prompt", () => {
-		expect(launch("agy", cfg({ model: "m" }), { resume: true, sessionId: "abc-123" }))
-			.toBe(`agy --conversation abc-123 --model m ${SETTINGS}`);
-		expect(launch("agy", cfg(), { resume: true })).toBe(`agy --continue ${SETTINGS}`);
-	});
 
 	describe("the per-session --settings", () => {
 		it("never asks agy for the terminal bell: it rings at every turn end and fought the Stop hook", () => {
@@ -561,24 +463,20 @@ describe("launchArgs — agy", () => {
 				expect(sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { resume }))).not.toHaveProperty("notifications");
 			}
 		});
-		it("trusts the worktree, on fresh and resumed launches alike", () => {
+		it("trusts the worktree (its REALPATH when resolved) on fresh and resumed launches, and nothing without one", () => {
 			const ctx = { ...CTX, worktreePath: "/w/with space/it's" };
 			for (const resume of [false, true]) {
 				const settings = sessionSettings(agyAdapter.launchArgs("agy", cfg(), ctx, { resume }));
-				expect(settings.trustedWorkspaces).toEqual(["/w/with space/it's"]);
+				expect(settings.trustedWorkspaces, `resume=${resume}`).toEqual(["/w/with space/it's"]);
 			}
+			// agy ignores /tmp, it matches /private/tmp.
+			const real = sessionSettings(agyAdapter.launchArgs("agy", cfg(), { ...CTX, worktreePath: "/tmp/wt" }, { agy: { worktreeRealPath: "/private/tmp/wt" } }));
+			expect(real.trustedWorkspaces).toEqual(["/private/tmp/wt"]);
+			const none = sessionSettings(agyAdapter.launchArgs("agy", cfg(), { ...CTX, worktreePath: "" }));
+			expect(none).not.toHaveProperty("trustedWorkspaces");
+			expect(none.permissions).toBeDefined();
 		});
-		it("trusts the worktree's REALPATH when the backend resolved one: agy ignores /tmp, it matches /private/tmp", () => {
-			const ctx = { ...CTX, worktreePath: "/tmp/wt" };
-			const settings = sessionSettings(agyAdapter.launchArgs("agy", cfg(), ctx, { agy: { worktreeRealPath: "/private/tmp/wt" } }));
-			expect(settings.trustedWorkspaces).toEqual(["/private/tmp/wt"]);
-		});
-		it("leaves the trusted workspaces out when the launch has no worktree path", () => {
-			const settings = sessionSettings(agyAdapter.launchArgs("agy", cfg(), { ...CTX, worktreePath: "" }));
-			expect(settings).not.toHaveProperty("trustedWorkspaces");
-			expect(settings.permissions).toBeDefined();
-		});
-		it("allows exactly the auto-approved dev3 metadata subcommands, one rule per word-prefix and spelling", () => {
+		it("allows exactly the auto-approved dev3 metadata subcommands, in every spelling the agent types", () => {
 			const { allow } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX)).permissions;
 			expect(allow).toEqual(["dev3", "~/.dev3.0/bin/dev3"].flatMap((cli) => DEV3_AUTO_APPROVED_SUBCOMMANDS.map((sub) => `command(${cli} ${sub})`)));
 			expect(allow).toContain("command(dev3 note)");
@@ -587,29 +485,26 @@ describe("launchArgs — agy", () => {
 			for (const rule of ["command(dev3 pane run)", "command(dev3 dev-server start)", "command(dev3 agent spawn)", "command(dev3 remote)"]) {
 				expect(allow).not.toContain(rule);
 			}
-		});
-		it("also allows the account-home absolute spelling the agent types after reading a hook command", () => {
-			const { allow } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me/" } })).permissions;
-			expect(allow).toContain("command(/Users/me/.dev3.0/bin/dev3 overview)");
-			expect(allow).toContain("command(dev3 overview)");
-			expect(allow).toContain("command(/Users/me/.dev3.0/bin/dev3 projects list)");
-			expect(allow).not.toContain("command(/Users/me/.dev3.0/bin/dev3 pane run)");
+
+			// The account-home absolute spelling the agent types after reading a hook command.
+			const home = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me/" } })).permissions.allow;
+			expect(home).toContain("command(/Users/me/.dev3.0/bin/dev3 overview)");
+			expect(home).toContain("command(dev3 overview)");
+			expect(home).toContain("command(/Users/me/.dev3.0/bin/dev3 projects list)");
+			expect(home).not.toContain("command(/Users/me/.dev3.0/bin/dev3 pane run)");
 			// `~` points into a launcher's HOME once the account home is known.
-			expect(allow.some((rule: string) => rule.includes("~"))).toBe(false);
-			expect(allow).toHaveLength(DEV3_AUTO_APPROVED_SUBCOMMANDS.length * 2);
+			expect(home.some((rule: string) => rule.includes("~"))).toBe(false);
+			expect(home).toHaveLength(DEV3_AUTO_APPROVED_SUBCOMMANDS.length * 2);
 		});
 		it("reports quota and permission waits through a silent statusLine stacked under agy's own", () => {
 			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX));
 			expect(statusLine.stack_with_default).toBe(true);
 			expect(statusLine.command).toBe(`sh -c '[ -z "$DEV3_TASK_ID" ] || exec ~/.dev3.0/bin/dev3 statusline agy'`);
-		});
-		it("runs the CLI by an absolute path under the account home the backend gives: a launcher's HOME redirects ~", () => {
-			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me" } }));
-			expect(statusLine.command).toBe(`sh -c '[ -z "$DEV3_TASK_ID" ] || exec /Users/me/.dev3.0/bin/dev3 statusline agy'`);
-		});
-		it("keeps quota out of the dump while rate-limit tracking is off", () => {
-			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { trackRateLimits: false } }));
-			expect(statusLine.command).toContain("statusline agy --no-limits");
+			// An absolute path under the account home the backend gives: a launcher's HOME redirects ~.
+			const home = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me" } })).statusLine;
+			expect(home.command).toBe(`sh -c '[ -z "$DEV3_TASK_ID" ] || exec /Users/me/.dev3.0/bin/dev3 statusline agy'`);
+			const off = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { trackRateLimits: false } })).statusLine;
+			expect(off.command, "rate-limit tracking off").toContain("statusline agy --no-limits");
 		});
 		it("comes before the user's own args, so a later --settings of theirs wins", () => {
 			const args = agyAdapter.launchArgs("agy", cfg({ additionalArgs: ["--add-dir", "/x"] }), CTX);
@@ -617,14 +512,6 @@ describe("launchArgs — agy", () => {
 		});
 	});
 
-	it("drops maxBudgetUsd — agy has no budget flag", () => {
-		expect(launch("agy", cfg({ maxBudgetUsd: 12 }))).toBe(`agy ${SETTINGS} -i 'Fix the login bug'`);
-	});
-	it("carries a wrapper's declared family: the same adapter on a renamed command", () => {
-		const args = getAgentAdapter("my-agy-launcher", "agy").launchArgs("my-agy-launcher", cfg(), CTX);
-		expect(args[0]).toBe("my-agy-launcher");
-		expect(args).toContain("-i");
-	});
 	it("renders its own skill body: hook-aware status, no approval-wait claim", () => {
 		expect(agyAdapter.skillBody).toBe(AGY_SKILL_BODY);
 		expect(AGY_SKILL_BODY).toContain("native hooks into every agy pane");
@@ -632,14 +519,6 @@ describe("launchArgs — agy", () => {
 		expect(AGY_SKILL_BODY).not.toContain("bell");
 	});
 });
-
-describe("ready evidence", () => {
-	it("only agy asks the launch handoff to wait for its session capture", () => {
-		expect(agyAdapter.readyEvidence).toBe("session-capture");
-		for (const adapter of [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter]) expect(adapter.readyEvidence).toBeUndefined();
-	});
-});
-
 describe("agy presets", () => {
 	const agy = DEFAULT_AGENTS.find((a) => a.id === "builtin-agy")!;
 	const byId = (id: string) => agy.configurations.find((c) => c.id === id)!;
@@ -689,11 +568,9 @@ describe("agy modelListProbe", () => {
 		"",
 	].join("\n");
 
-	it("lists the slugs, one per line, by the first token", () => {
+	it("lists the slugs by the first token, skipping a header and colour codes, and answers null when nothing parses", () => {
 		expect(probe.args).toEqual(["models"]);
 		expect(probe.parse(OUTPUT)).toEqual(["gemini-4-neon-high", "gemini-pro-orchestrator-neon", "claude-opus-5-5-high"]);
-	});
-	it("skips a header and colour codes, and answers null when nothing parses", () => {
 		expect(probe.parse("Available models:\n\u001B[1mgemini-4-neon-high\u001B[0m   Neon (High)\n")).toEqual(["gemini-4-neon-high"]);
 		expect(probe.parse("")).toBeNull();
 		expect(probe.parse("Error: not signed in\n")).toBeNull();
@@ -708,36 +585,33 @@ describe("agy modelListProbe", () => {
 	});
 });
 
+
 describe("launchArgs — omp", () => {
-	it("omp maps permission mode to its approval tiers", () => {
-		expect(launch("omp", cfg({ permissionMode: "acceptEdits" })))
-			.toBe("omp --approval-mode write --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
-		expect(launch("omp", cfg({ permissionMode: "bypassPermissions" })))
-			.toBe("omp --approval-mode yolo --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
-		expect(launch("omp", cfg({ permissionMode: "dontAsk" })))
-			.toBe("omp --approval-mode yolo --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
-	});
 	// With no flag omp runs at its configured tier — `yolo` out of the box — so
 	// "no mapping" must never mean "no flag". The modes without a tier of their
 	// own (plan has no launch flag on omp, auto has no classifier) fail closed.
-	it("omp says always-ask for default, plan and auto instead of inheriting yolo", () => {
+	it("maps permission modes to its approval tiers, saying always-ask instead of inheriting yolo", () => {
+		expect(launch("omp", cfg({ permissionMode: "acceptEdits" })))
+			.toBe("omp --approval-mode write --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
+		for (const permissionMode of ["bypassPermissions", "dontAsk"] as const) {
+			expect(launch("omp", cfg({ permissionMode })), permissionMode)
+				.toBe("omp --approval-mode yolo --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
+		}
 		for (const permissionMode of ["default", "plan", "auto"] as const) {
-			expect(launch("omp", cfg({ permissionMode })))
+			expect(launch("omp", cfg({ permissionMode })), permissionMode)
 				.toBe("omp --approval-mode always-ask --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
 		}
 		expect(launch("omp", cfg())).toContain("--approval-mode always-ask");
 	});
-	it("omp keeps a --approval-mode or --thinking the preset already carries, undoubled", () => {
+	it("carries effort as --thinking, drops maxBudgetUsd, and keeps a preset's own --approval-mode or --thinking undoubled", () => {
+		expect(launch("omp", cfg({ model: "opus", effort: "xhigh", maxBudgetUsd: 5 })))
+			.toBe("omp --model opus --approval-mode always-ask --thinking xhigh --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
 		expect(launch("omp", cfg({ permissionMode: "acceptEdits", additionalArgs: ["--approval-mode", "yolo"] })))
 			.toBe("omp --append-system-prompt <OMP_BODY> --approval-mode yolo -- 'Fix the login bug'");
 		expect(launch("omp", cfg({ effort: "high", additionalArgs: ["--thinking", "max"] })))
 			.toBe("omp --approval-mode always-ask --append-system-prompt <OMP_BODY> --thinking max -- 'Fix the login bug'");
 		expect(launch("omp", cfg({ effort: "high", additionalArgs: ["--thinking=max"] })))
 			.toBe("omp --approval-mode always-ask --append-system-prompt <OMP_BODY> --thinking=max -- 'Fix the login bug'");
-	});
-	it("omp carries effort as --thinking and drops maxBudgetUsd, which it has no flag for", () => {
-		expect(launch("omp", cfg({ model: "opus", effort: "xhigh", maxBudgetUsd: 5 })))
-			.toBe("omp --model opus --approval-mode always-ask --thinking xhigh --append-system-prompt <OMP_BODY> -- 'Fix the login bug'");
 	});
 	it("omp takes the protocol as a file when the backend wrote one", () => {
 		// Same flag, either form. Keeping the body out of argv is what stops
@@ -756,32 +630,25 @@ describe("launchArgs — omp", () => {
 });
 
 describe("launchArgs — pi", () => {
-	it("fresh: pins the session id, carries effort as --thinking, prompt after --", () => {
+	it("pins the session id, carries effort as --thinking, resumes without the prompt but with the protocol", () => {
 		expect(launch("pi", cfg({ model: "anthropic/claude-sonnet-5", effort: "high" }), { sessionId: "sid-1" }))
 			.toBe("pi --session-id sid-1 --model anthropic/claude-sonnet-5 --thinking high --append-system-prompt <PI_BODY> -- 'Fix the login bug'");
-	});
-	it("emits no approval or budget flag: plain pi has neither", () => {
-		for (const permissionMode of ["default", "plan", "auto", "acceptEdits", "bypassPermissions", "dontAsk"] as const) {
-			const cmd = launch("pi", cfg({ permissionMode, maxBudgetUsd: 5 }));
-			expect(cmd).toBe("pi --append-system-prompt <PI_BODY> -- 'Fix the login bug'");
-		}
-	});
-	it("takes the protocol as a file when the backend wrote one", () => {
-		const cmd = launch("pi", cfg(), { systemPromptFile: "/home/u/.dev3.0/data/agent-prompts/pi.md" });
-		expect(cmd).toBe("pi --append-system-prompt /home/u/.dev3.0/data/agent-prompts/pi.md -- 'Fix the login bug'");
-		expect(cmd).not.toContain("<PI_BODY>");
-	});
-	it("resumes the pinned session, or the latest one, without the prompt but with the protocol", () => {
 		expect(launch("pi", cfg({ model: "m" }), { resume: true, sessionId: "sid-1" })).toBe("pi --session-id sid-1 --model m --append-system-prompt <PI_BODY>");
 		expect(launch("pi", cfg(), { resume: true })).toBe("pi -c --append-system-prompt <PI_BODY>");
 	});
-	it("keeps a description that opens with @ from being read as a file to attach", () => {
-		const cmd = getAgentAdapter("pi").launchArgs("pi", cfg(), { ...CTX, taskDescription: "@src/a.ts is broken" }).join(" ");
-		expect(cmd.endsWith("-- ' @src/a.ts is broken'")).toBe(true);
-	});
-	it("puts the preset's own args before the prompt, after dev3's", () => {
+	it("emits no approval or budget flag (plain pi has neither) and puts the preset's own args after dev3's", () => {
+		for (const permissionMode of ["default", "plan", "auto", "acceptEdits", "bypassPermissions", "dontAsk"] as const) {
+			expect(launch("pi", cfg({ permissionMode, maxBudgetUsd: 5 })), permissionMode).toBe("pi --append-system-prompt <PI_BODY> -- 'Fix the login bug'");
+		}
 		expect(launch("pi", cfg({ additionalArgs: ["--provider", "openai"] })))
 			.toBe("pi --append-system-prompt <PI_BODY> --provider openai -- 'Fix the login bug'");
+	});
+	it("takes the protocol as a file, and keeps a description opening with @ from being read as an attachment", () => {
+		const cmd = launch("pi", cfg(), { systemPromptFile: "/home/u/.dev3.0/data/agent-prompts/pi.md" });
+		expect(cmd).toBe("pi --append-system-prompt /home/u/.dev3.0/data/agent-prompts/pi.md -- 'Fix the login bug'");
+		expect(cmd).not.toContain("<PI_BODY>");
+		const at = getAgentAdapter("pi").launchArgs("pi", cfg(), { ...CTX, taskDescription: "@src/a.ts is broken" }).join(" ");
+		expect(at.endsWith("-- ' @src/a.ts is broken'")).toBe(true);
 	});
 });
 
@@ -789,15 +656,12 @@ describe("launchArgs — provider routing args (registry promise)", () => {
 	// The llm-provider registry promises that a backend's enableArgs reach the
 	// launch with no adapter special-casing. Pin it for EVERY adapter so a future
 	// backend (e.g. one for gemini) can't silently drop its routing args.
-	it.each(["claude", "codex", "gemini", "agent", "opencode", "aider"])(
-		"%s emits options.providerArgs (shell-quoted)",
-		(base) => {
-			const cmd = launch(base, cfg({ model: undefined }), {
-				providerArgs: ["-c", 'model_provider="amazon-bedrock-runtime"'],
-			});
-			expect(cmd).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
-		},
-	);
+	it("every adapter emits options.providerArgs (shell-quoted)", () => {
+		for (const base of ["claude", "codex", "gemini", "agent", "opencode", "aider"]) {
+			const cmd = launch(base, cfg({ model: undefined }), { providerArgs: ["-c", 'model_provider="amazon-bedrock-runtime"'] });
+			expect(cmd, base).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
+		}
+	});
 
 	it("Codex places providerArgs BEFORE additionalArgs so a user -c override wins (last-wins)", () => {
 		const cmd = launch(

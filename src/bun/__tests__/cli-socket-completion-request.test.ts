@@ -145,15 +145,16 @@ beforeEach(() => {
 });
 
 describe("task.requestCompletion", () => {
-	it("errors when the task is already completed", async () => {
-		setupTask(makeTask({ status: "completed" }));
+	it("errors when the task is already completed (with or without --force), or when no app window is connected", async () => {
+		setupTask(makeTask({ selfCompletion: true, status: "completed" }));
 
-		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("already completed");
-	});
+		for (const force of [false, true]) {
+			const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force }));
+			expect(resp.ok, `force=${force}`).toBe(false);
+			expect(resp.error, `force=${force}`).toContain("already completed");
+		}
+		expect(moveTask).not.toHaveBeenCalled();
 
-	it("errors when no app window is connected", async () => {
 		setupTask(makeTask());
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
@@ -212,6 +213,13 @@ describe("task.requestCompletion", () => {
 		await respPromise;
 
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed", approvedAttachedRepo: "/ops/s/ab/work/wt-a" }));
+
+		// No repo in the answer (its check failed, or the answer predates the field) approves none.
+		const again = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
+		resolveAgentRequest((pushFn.mock.calls[1] as [string, { requestId: string }])[1].requestId, { approved: true });
+		await again;
+		expect(moveTask).toHaveBeenLastCalledWith(expect.objectContaining({ approvedAttachedRepo: null }));
 	});
 
 	it("flags an approved completion whose teardown left the worktree half removed (h0x91b/dev-3.0#2269)", async () => {
@@ -231,38 +239,16 @@ describe("task.requestCompletion", () => {
 		expect(resp.reason).toBe(CLI_FAILURE_WORKTREE_HALF_REMOVED);
 		expect(resp.error).toContain("/tmp/wt is half removed");
 		expect(resp.error).toContain('rm -rf "/tmp/wt"');
-	});
 
-	it("passes a teardown failure through untouched while the worktree is intact", async () => {
-		const task = makeTask();
-		setupTask(task);
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		// A teardown failure passes through untouched while the worktree is intact.
 		vi.mocked(moveTask).mockRejectedValue(new Error("Failed to remove worktree at /tmp/wt: locked"));
 		vi.mocked(existsSync).mockImplementation((path) => path === "/tmp/wt" || path === "/tmp/wt/.git");
-
-		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		resolveAgentRequest((pushFn.mock.calls[0][1] as { requestId: string }).requestId, { approved: true });
-
-		const resp = await respPromise;
-		expect(resp).toMatchObject({ ok: false, error: "Failed to remove worktree at /tmp/wt: locked" });
-		expect(resp.reason).toBeUndefined();
-	});
-
-	it("approves no repo when the dialog reports none (its check failed, or the answer predates the field)", async () => {
-		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
-		setupTask(task);
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "completed" as const });
-
-		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		resolveAgentRequest((pushFn.mock.calls[0] as [string, { requestId: string }])[1].requestId, { approved: true });
-		await respPromise;
-
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ approvedAttachedRepo: null }));
+		const intactPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
+		resolveAgentRequest((pushFn.mock.calls[1][1] as { requestId: string }).requestId, { approved: true });
+		const intact = await intactPromise;
+		expect(intact).toMatchObject({ ok: false, error: "Failed to remove worktree at /tmp/wt: locked" });
+		expect(intact.reason).toBeUndefined();
 	});
 
 	it("shows another task's --reason attributed to it, and keeps it for a replayed dialog", async () => {
@@ -331,23 +317,6 @@ describe("task.requestCompletion", () => {
 		await running;
 	});
 
-	it("returns approved:false without moving the task when declined", async () => {
-		setupTask(makeTask());
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-
-		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveAgentRequest(payload.requestId, { approved: false });
-
-		const resp = await respPromise;
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual({ approved: false });
-		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed" }));
-	});
-
 	// The agent is blocked on the user's answer, so the task reads Has Questions
 	// while it waits and goes back to work when the user says no.
 	it("parks a working task in Has Questions while the agent waits and restores it on decline", async () => {
@@ -371,33 +340,24 @@ describe("task.requestCompletion", () => {
 		});
 	});
 
-	it("leaves the task working when a peer agent asks to complete it", async () => {
-		setupTask(makeTask());
+	it("moves nothing when a peer agent asks, or when the asking task is not working; declined answers approved:false", async () => {
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: "task-peer" }));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveAgentRequest(payload.requestId, { approved: false });
-
-		expect((await respPromise).data).toEqual({ approved: false });
-		expect(moveTask).not.toHaveBeenCalled();
-	});
-
-	it("leaves a task that is not working where it is while the agent waits", async () => {
-		const task = makeTask({ status: "review-by-user" });
-		setupTask(task);
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: task.id }));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveAgentRequest(payload.requestId, { approved: false });
-
-		expect((await respPromise).data).toEqual({ approved: false });
-		expect(moveTask).not.toHaveBeenCalled();
+		const cases: Array<[string, Task, string]> = [
+			["peer asks", makeTask(), "task-peer"],
+			["task not working", makeTask({ status: "review-by-user" }), makeTask().id],
+		];
+		for (const [label, task, sourceTaskId] of cases) {
+			setupTask(task);
+			pushFn.mockClear();
+			const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId }));
+			await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+			resolveAgentRequest((pushFn.mock.calls[0][1] as { requestId: string }).requestId, { approved: false });
+			const resp = await respPromise;
+			expect(resp.ok, label).toBe(true);
+			expect(resp.data, label).toEqual({ approved: false });
+			expect(moveTask, label).not.toHaveBeenCalled();
+		}
 	});
 
 	// The orphan: a renderer that reloads before answering takes the only copy of
@@ -491,21 +451,12 @@ describe("task.requestCompletion with --force", () => {
 		expect(pushFn).not.toHaveBeenCalled();
 	});
 
-	it("errors on an opted-in task that is already completed", async () => {
-		setupTask(makeTask({ selfCompletion: true, status: "completed" }));
-
-		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("already completed");
-		expect(moveTask).not.toHaveBeenCalled();
-	});
 });
 
 describe("task.requestCompletion when the task ends by another path", () => {
 	const TASK_ID = "task-abc12345-1111-2222-3333-444444444444";
 
-	it("closes the open dialog and answers the CLI as soon as the task completes elsewhere", async () => {
+	it("closes the open dialog and answers the CLI as soon as the task completes or is deleted elsewhere", async () => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -523,6 +474,15 @@ describe("task.requestCompletion when the task ends by another path", () => {
 		expect((await resp).data).toEqual({ approved: false, stale: true, taskStatus: "completed" });
 		expect(listPendingAgentRequests("complete")).toEqual([]);
 		expect(moveTask).not.toHaveBeenCalled();
+
+		// A task deleted while the dialog was open answers with a null status.
+		setupTask(makeTask());
+		pushFn.mockClear();
+		const deleted = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledWith("agentCompletionRequested", expect.anything()));
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		voidAgentRequestsForTask(TASK_ID);
+		expect((await deleted).data).toEqual({ approved: false, stale: true, taskStatus: null });
 	});
 
 	it("never pushes a dialog when the task completed between the read and the registration", async () => {
@@ -542,19 +502,6 @@ describe("task.requestCompletion when the task ends by another path", () => {
 		expect(listPendingAgentRequests("complete")).toEqual([]);
 	});
 
-	it("answers with a null status when the task was deleted while the dialog was open", async () => {
-		setupTask(makeTask());
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledWith("agentCompletionRequested", expect.anything()));
-
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-		voidAgentRequestsForTask(TASK_ID);
-
-		expect((await resp).data).toEqual({ approved: false, stale: true, taskStatus: null });
-	});
 
 	it("still lets the user's own approval complete the task — voiding after it is a no-op", async () => {
 		const task = makeTask();
@@ -607,16 +554,6 @@ describe("task.requestCompletion parking against the real status guards", () => 
 	function stopHook(stopTarget = "review-by-user") {
 		return handleRequest({ id: "req-stop", method: "task.move", params: { taskId: TASK_ID, projectId: "proj-1", newStatus: stopTarget, ifStatus: "in-progress", sourceTaskId: TASK_ID } });
 	}
-
-	it("puts a waiting agent back to work on decline", async () => {
-		guardedBoard(makeTask());
-		const { resp, requestId } = await ownAsk();
-
-		resolveAgentRequest(requestId, { approved: false });
-
-		expect((await resp).data).toEqual({ approved: false });
-		expect(stored.status).toBe("in-progress");
-	});
 
 	it("completes a parked task on approval", async () => {
 		guardedBoard(makeTask());

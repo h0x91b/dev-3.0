@@ -298,14 +298,7 @@ describe("board copy failures never reach the board", () => {
 		expect(pushes.find((p) => p.name === "boardCopyFailed")?.payload.reason).toBe("missing-folder");
 	});
 
-	it("a full disk is classified and survives", async () => {
-		const { copy } = await load();
-		expect(copy.classifyBoardCopyError(Object.assign(new Error("full"), { code: "ENOSPC" }))).toBe("disk-full");
-		expect(copy.classifyBoardCopyError(Object.assign(new Error("ro"), { code: "EROFS" }))).toBe("not-writable");
-		expect(copy.classifyBoardCopyError(new Error("odd"))).toBe("other");
-	});
-
-	it("a disk-full write leaves the board intact", async () => {
+	it("classifies a full disk, and a disk-full write leaves the board intact", async () => {
 		vi.doMock("../atomic-write", async (importOriginal) => {
 			const real = await importOriginal<typeof import("../atomic-write")>();
 			return {
@@ -320,6 +313,10 @@ describe("board copy failures never reach the board", () => {
 		});
 		try {
 			const { data, copy } = await load();
+			expect(copy.classifyBoardCopyError(Object.assign(new Error("full"), { code: "ENOSPC" }))).toBe("disk-full");
+			expect(copy.classifyBoardCopyError(Object.assign(new Error("ro"), { code: "EROFS" }))).toBe("not-writable");
+			expect(copy.classifyBoardCopyError(new Error("odd"))).toBe("other");
+
 			const project = await enabledProject(data);
 			await data.saveTasks(project, [makeTask(project, { seq: 1, title: "Kept" })]);
 			await copy.runBoardCopy(project.id);
@@ -470,21 +467,18 @@ describe("board copy restore", () => {
 		expect(await copy.restoreBoardCopy(readded.id)).toEqual({ ok: true, restored: 2, missing: 1 });
 	});
 
-	it("offers nothing for a copy of an empty board", async () => {
+	it("offers nothing for a folder without a copy, or for a copy of an empty board", async () => {
 		const { data, copy } = await load();
-		const project = await enabledProject(data);
+		const project = await data.addProject(projectDir, "Plain");
+		expect(await copy.boardCopyOfferForNewProject(project), "no copy").toBeNull();
+		expect(await copy.restoreBoardCopy(project.id)).toEqual({ ok: false, reason: "no-copy" });
+
+		await data.updateProject(project.id, { boardCopy: true });
 		await copy.runBoardCopy(project.id);
 		expect(existsSync(join(boardDir(), "board.json"))).toBe(true);
 		freshHome();
 		const again = await load();
 		const readded = await again.data.addProject(projectDir, "P");
-		expect(await again.copy.boardCopyOfferForNewProject(readded)).toBeNull();
-	});
-
-	it("offers nothing for a folder without a copy", async () => {
-		const { data, copy } = await load();
-		const project = await data.addProject(projectDir, "Plain");
-		expect(await copy.boardCopyOfferForNewProject(project)).toBeNull();
-		expect(await copy.restoreBoardCopy(project.id)).toEqual({ ok: false, reason: "no-copy" });
+		expect(await again.copy.boardCopyOfferForNewProject(readded), "empty board copy").toBeNull();
 	});
 });

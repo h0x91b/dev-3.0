@@ -99,7 +99,7 @@ function account(name: string, layout: "linked" | "own-plugins" | "own-settings"
 }
 
 describe("getClaudeModStatus", () => {
-	it("reports an installed, enabled plugin at the pinned version", async () => {
+	it("reports an installed plugin as current only at the pinned version, and throws on an unknown mod", async () => {
 		fake.state().plugin = { version: "0.40.0", enabled: true };
 		expect(await getClaudeModStatus("prismantis")).toEqual({
 			modId: "prismantis",
@@ -110,16 +110,13 @@ describe("getClaudeModStatus", () => {
 			pinnedVersion: "0.40.0",
 			current: true,
 		});
-	});
-
-	it("flags an install that is not the pinned version", async () => {
-		fake.state().plugin = { version: "0.41.0", enabled: true };
-		expect(await getClaudeModStatus("prismantis")).toMatchObject({ installed: true, version: "0.41.0", current: false });
-	});
-
-	it("reports the CLI unavailable when `claude plugin list` fails", async () => {
-		fake.missing = true;
-		expect((await getClaudeModStatus("prismantis")).claudeAvailable).toBe(false);
+		{
+			fake.state().plugin = { version: "0.41.0", enabled: true };
+			expect(await getClaudeModStatus("prismantis")).toMatchObject({ installed: true, version: "0.41.0", current: false });
+		}
+		{
+			await expect(getClaudeModStatus("nope")).rejects.toThrow("Unknown Claude mod");
+		}
 	});
 
 	it("is not installed while an account with its own plugins dir lacks it", async () => {
@@ -128,18 +125,19 @@ describe("getClaudeModStatus", () => {
 		expect(await getClaudeModStatus("prismantis")).toMatchObject({ installed: false, version: "0.40.0" });
 	});
 
-	it("throws on an unknown mod", async () => {
-		await expect(getClaudeModStatus("nope")).rejects.toThrow("Unknown Claude mod");
-	});
 });
 
 describe("setClaudeModEnabled", () => {
-	it("adds the pinned marketplace and installs the pinned version", async () => {
+	it("adds the pinned marketplace and installs the pinned version, never auto-accepting a declared command", async () => {
 		const status = await setClaudeModEnabled("prismantis", true);
 		expect(fake.log).toContain(`plugin marketplace add ${PINNED_SOURCE}`);
 		expect(fake.log).toContain("plugin install prismantis@prismantis");
 		expect(fake.log.some((c) => c.includes("marketplace update") || c.startsWith("plugin update"))).toBe(false);
 		expect(status).toMatchObject({ installed: true, enabled: true, version: "0.40.0", current: true });
+		{
+			await setClaudeModEnabled("prismantis", true);
+			expect(fake.log.some((c) => / -y\b|--yes|--accept-command/.test(c))).toBe(false);
+		}
 	});
 
 	it("re-pins an unpinned marketplace and replaces a newer install with the pinned one", async () => {
@@ -205,11 +203,6 @@ describe("setClaudeModEnabled", () => {
 		expect(opts.env.GIT_TERMINAL_PROMPT).toBe("0");
 	});
 
-	it("never auto-accepts a marketplace-declared command", async () => {
-		await setClaudeModEnabled("prismantis", true);
-		expect(fake.log.some((c) => / -y\b|--yes|--accept-command/.test(c))).toBe(false);
-	});
-
 	it("kills a stalled command and lets the next change run", async () => {
 		vi.useFakeTimers();
 		fake.hangOn = `plugin marketplace add ${PINNED_SOURCE}`;
@@ -230,8 +223,10 @@ describe("setClaudeModEnabled", () => {
 		await expect(setClaudeModEnabled("prismantis", false)).resolves.toMatchObject({ enabled: false });
 	});
 
-	it("refuses to change anything when the CLI is missing", async () => {
+	it("reports the CLI unavailable and refuses to change anything when it is missing", async () => {
 		fake.missing = true;
+		expect((await getClaudeModStatus("prismantis")).claudeAvailable).toBe(false);
+		fake.log.length = 0;
 		await expect(setClaudeModEnabled("prismantis", true)).rejects.toThrow("not found");
 		expect(fake.log).toEqual(["plugin list --json"]);
 	});

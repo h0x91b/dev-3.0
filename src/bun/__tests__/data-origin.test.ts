@@ -41,16 +41,15 @@ const readSavedTasks = () => JSON.parse(readFileSync(tasksFilePath(), "utf8")) a
 const PARENT = { kind: "task", taskId: "parent-1", projectId: "proj-9" } as const;
 
 describe("task origin on disk", () => {
-	it("stores a task origin and reads it back", async () => {
+	it("stores a task origin and reads it back, but stores no field for the user", async () => {
 		const task = await addTask(testProject, "child", "todo", { origin: PARENT });
 		expect(task.origin).toEqual(PARENT);
 		expect(readSavedTasks()[0].origin).toEqual(PARENT);
-	});
 
-	it("stores no field for the user, and an absent field reads as the user", async () => {
+		// The user's origin stores no field, and an absent field reads as the user.
 		await addTask(testProject, "mine", "todo", { origin: { kind: "user" } });
-		expect(readSavedTasks()[0]).not.toHaveProperty("origin");
-		const [loaded] = await loadTasks(testProject);
+		expect(readSavedTasks()[1]).not.toHaveProperty("origin");
+		const [, loaded] = await loadTasks(testProject);
 		expect(taskOrigin(loaded)).toEqual({ kind: "user" });
 	});
 
@@ -82,17 +81,15 @@ describe("task origin on disk", () => {
 describe("task epic on disk", () => {
 	const otherProject: Project = { ...testProject, id: "proj-2", name: "Other", path: "/tmp/other-project" };
 
-	it("stores the epic id, and stores nothing for a task in no epic", async () => {
+	it("stores the epic id, nothing for a task in no epic, and clears it when an update removes it", async () => {
 		await addTask(testProject, "in epic", "todo", { epicId: "epic-1" });
 		await addTask(testProject, "loose", "todo");
 		const [inEpic, loose] = readSavedTasks();
 		expect(inEpic.epicId).toBe("epic-1");
 		expect(loose).not.toHaveProperty("epicId");
-	});
 
-	it("clears the field on disk when an update removes the epic", async () => {
-		const task = await addTask(testProject, "in epic", "todo", { epicId: "epic-1" });
-		await updateTask(testProject, task.id, { epicId: undefined });
+		// An update that removes the epic clears the field on disk.
+		await updateTask(testProject, (await loadTasks(testProject))[0].id, { epicId: undefined });
 		expect(readSavedTasks()[0]).not.toHaveProperty("epicId");
 	});
 

@@ -49,7 +49,7 @@ describe("dev3ShellPromptEnv", () => {
 	});
 	const onPlatform = (platform: string) => Object.defineProperty(process, "platform", { value: platform, configurable: true });
 
-	it("points zsh and sh at the dev3 init files and forwards the user's $ENV", () => {
+	it("points zsh and sh at the dev3 init files and forwards the user's $ENV — never our own file", () => {
 		onPlatform("darwin");
 		process.env.ENV = "/home/me/.shrc";
 		expect(dev3ShellPromptEnv("/wt/task")).toEqual({
@@ -58,9 +58,6 @@ describe("dev3ShellPromptEnv", () => {
 			DEV3_USER_ENV: "/home/me/.shrc",
 			DEV3_WORKTREE_ROOT: "/wt/task",
 		});
-	});
-
-	it("does not forward an $ENV that is already our own file", () => {
 		onPlatform("linux");
 		process.env.ENV = `${SHELL_INIT_DIR}/.shrc`;
 		expect(dev3ShellPromptEnv("/wt/task")).not.toHaveProperty("DEV3_USER_ENV");
@@ -182,13 +179,10 @@ describe("dev3 prompt style choice", () => {
 
 	afterAll(() => writeShellInit({}));
 
-	it("writes the chosen style into the prompt file the zshrc sources", () => {
+	it("writes the chosen style into the prompt file the zshrc sources, custom code verbatim, and the default style for empty custom code", () => {
 		writeShellInit({ shellPrompt: "minimal" });
 		expect(readFileSync(PROMPT_FILE, "utf8").trim()).toBe(SHELL_PROMPT_STYLES.find((s) => s.id === "minimal")!.source);
 		expect(zshrc()).toContain(`source "${PROMPT_FILE}"`);
-	});
-
-	it("writes custom code verbatim, and the default style when the custom is empty", () => {
 		writeShellInit({ shellPrompt: "custom", shellPromptCustom: "PROMPT='mine> '" });
 		expect(readFileSync(PROMPT_FILE, "utf8").trim()).toBe("PROMPT='mine> '");
 		writeShellInit({ shellPrompt: "custom", shellPromptCustom: "  " });
@@ -216,7 +210,7 @@ describe("dev3 prompt style choice", () => {
 	});
 
 	// Bun.spawn is stubbed under vitest, so this drives the same script through node.
-	it.skipIf(!zsh)("renders every built-in style through the preview script with real zsh", () => {
+	it.skipIf(!zsh)("parses and renders every built-in style through the preview script with real zsh", () => {
 		const worktree = dirtyWorktree();
 		const engine = join(worktree, ".git", "engine.zsh");
 		writeFileSync(engine, ZSH_PROMPT_ENGINE);
@@ -242,6 +236,7 @@ describe("dev3 prompt style choice", () => {
 			const slow = preview.afterSlowCommand.join("\n").replace(SGR, "");
 			expect(slow.trim().length, style.id).toBeGreaterThan(0);
 			expect(failed, style.id).not.toContain("dev3_");
+			expect(spawnSync("zsh", ["-f", "-n", "-c", style.source]).status, `${style.id} parses`).toBe(0);
 		}
 	});
 
@@ -269,11 +264,6 @@ describe("dev3 prompt style choice", () => {
 		expect(preview.afterSlowCommand[0].replace(SGR, "")).toContain("#42");
 	});
 
-	it.skipIf(!zsh)("every built-in style parses", () => {
-		for (const style of SHELL_PROMPT_STYLES) {
-			expect(spawnSync("zsh", ["-f", "-n", "-c", style.source]).status, style.id).toBe(0);
-		}
-	});
 
 });
 

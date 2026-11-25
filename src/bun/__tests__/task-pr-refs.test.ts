@@ -42,17 +42,12 @@ beforeEach(() => {
 });
 
 describe("resolveTaskPrRef", () => {
-	it("resolves a bare task ref on the context project", async () => {
+	it("resolves a bare task ref on the context project, follows a project qualifier over it, and picks a variant group's first member", async () => {
 		expect(await resolveTaskPrRef("<seq:115>", BREW.id)).toMatchObject({ kind: "task", taskId: "b-115", projectId: BREW.id, title: "Bump cask" });
 		expect(await resolveTaskPrRef("seq:115", DEV3.id)).toMatchObject({ taskId: "d-115", projectName: "dev-3.0" });
-	});
-
-	it("follows a project qualifier — id prefix or name — over the context", async () => {
+		// Qualifier: id prefix or name.
 		expect(await resolveTaskPrRef("<seq:271edc14/115>", DEV3.id)).toMatchObject({ taskId: "b-115" });
 		expect(await resolveTaskPrRef("<seq:homebrew-dev3/115>", DEV3.id)).toMatchObject({ taskId: "b-115" });
-	});
-
-	it("picks the first member of a variant group", async () => {
 		expect(await resolveTaskPrRef("<seq:200>", DEV3.id)).toMatchObject({ taskId: "d-200a" });
 	});
 
@@ -63,16 +58,14 @@ describe("resolveTaskPrRef", () => {
 		expect(await resolveTaskPrRef("#115", DEV3.id)).toBeNull();
 	});
 
-	it("finds a PR's URL and owner on the board without asking GitHub", async () => {
+	it("finds a PR's URL and owner on the board without asking GitHub, and asks GitHub only when the board knows no PR of the repo", async () => {
 		expect(await resolveTaskPrRef("<pr:2187>", DEV3.id)).toEqual({
 			kind: "pr", number: 2187, projectId: DEV3.id, projectName: "dev-3.0",
 			url: "https://github.com/h0x91b/dev-3.0/pull/2187", taskId: "d-pr",
 		});
 		expect(await resolveTaskPrRef("<pr:42>", DEV3.id)).toMatchObject({ url: "https://github.com/h0x91b/dev-3.0/pull/42" });
 		expect(readTaskPullRequest).not.toHaveBeenCalled();
-	});
 
-	it("asks GitHub only when the board knows no PR of the repo", async () => {
 		vi.mocked(readTaskPullRequest).mockResolvedValue({ pr: { url: "https://github.com/h0x91b/homebrew-dev3/pull/5" } } as never);
 		expect(await resolveTaskPrRef("<pr:5>", BREW.id)).toMatchObject({ url: "https://github.com/h0x91b/homebrew-dev3/pull/5" });
 		expect(readTaskPullRequest).toHaveBeenCalledWith(BREW, BREW.path, "", 5, undefined);
@@ -80,7 +73,7 @@ describe("resolveTaskPrRef", () => {
 });
 
 describe("previewTaskPrRef", () => {
-	it("carries the last notes (clipped), the newest images first and the artifacts", async () => {
+	it("carries the last notes (clipped), the newest images first and the artifacts; null for a reference that does not resolve", async () => {
 		const preview = await previewTaskPrRef("<seq:400>", DEV3.id);
 		if (preview?.kind !== "task") throw new Error("expected a task preview");
 		expect(preview.notes.map((n) => n.id)).toEqual(["n2", "n3"]);
@@ -88,6 +81,7 @@ describe("previewTaskPrRef", () => {
 		expect(preview.images.map((i) => i.id)).toEqual(["i4", "i3", "i2"]);
 		expect(preview.imageCount).toBe(4);
 		expect(preview.artifacts.map((a) => a.title)).toEqual(["Report"]);
+		expect(await previewTaskPrRef("<seq:999>", DEV3.id)).toBeNull();
 	});
 
 	it("serves a PR from its owner's polled cache, and from GitHub when asked fresh", async () => {
@@ -102,9 +96,5 @@ describe("previewTaskPrRef", () => {
 		const fresh = await previewTaskPrRef("<pr:2187>", DEV3.id, true);
 		expect(fresh).toMatchObject({ badge: { prTitle: "Live", mergeState: { state: "MERGED" } } });
 		expect(readTaskPullRequest).toHaveBeenCalledWith(DEV3, DEV3.path, "", 2187, { force: true });
-	});
-
-	it("returns null for a reference that does not resolve", async () => {
-		expect(await previewTaskPrRef("<seq:999>", DEV3.id)).toBeNull();
 	});
 });

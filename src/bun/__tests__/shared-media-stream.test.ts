@@ -61,16 +61,14 @@ describe("sharedMediaUrlPath", () => {
 });
 
 describe("parseByteRange", () => {
-	it("reads open, closed and suffix ranges and clamps the end", () => {
+	it("reads open, closed and suffix ranges, clamps the end, and marks unsatisfiable ones", () => {
 		expect(parseByteRange("bytes=0-", 100)).toEqual({ start: 0, end: 99 });
 		expect(parseByteRange("bytes=10-19", 100)).toEqual({ start: 10, end: 19 });
 		expect(parseByteRange("bytes=90-500", 100)).toEqual({ start: 90, end: 99 });
 		expect(parseByteRange("bytes=-10", 100)).toEqual({ start: 90, end: 99 });
 		expect(parseByteRange(null, 100)).toBeNull();
 		expect(parseByteRange("bytes=0-1,5-6", 100)).toBeNull();
-	});
-
-	it("marks an unsatisfiable range", () => {
+		// Unsatisfiable ranges are marked invalid.
 		expect(parseByteRange("bytes=100-", 100)).toBe("invalid");
 		expect(parseByteRange("bytes=20-10", 100)).toBe("invalid");
 		expect(parseByteRange("bytes=-0", 100)).toBe("invalid");
@@ -88,27 +86,27 @@ describe("serveSharedMedia", () => {
 		expect(Buffer.from(await res.arrayBuffer()).equals(BYTES)).toBe(true);
 	});
 
-	it.each([["mp3", "audio/mpeg"], ["m4a", "audio/mp4"], ["wav", "audio/wav"], ["ogg", "audio/ogg"], ["webm", "video/webm"]])("serves a .%s clip as %s with ranges", async (ext, mime) => {
-		const track = `${STORE}/shared-2-abcd.${ext}`;
-		writeFileSync(track, BYTES);
-		const res = await get(sharedMediaUrlPath(track)!, "bytes=0-99");
-		expect(res.status).toBe(206);
-		expect(res.headers.get("content-type")).toBe(mime);
-		expect(res.headers.get("content-range")).toBe("bytes 0-99/5000");
+	it("serves every other container with its own type and ranges", async () => {
+		for (const [ext, mime] of [["mp3", "audio/mpeg"], ["m4a", "audio/mp4"], ["wav", "audio/wav"], ["ogg", "audio/ogg"], ["webm", "video/webm"]]) {
+			const track = `${STORE}/shared-2-abcd.${ext}`;
+			writeFileSync(track, BYTES);
+			const res = await get(sharedMediaUrlPath(track)!, "bytes=0-99");
+			expect(res.status, ext).toBe(206);
+			expect(res.headers.get("content-type"), ext).toBe(mime);
+			expect(res.headers.get("content-range"), ext).toBe("bytes 0-99/5000");
+		}
 	});
 
-	it("answers a range with 206 and exactly those bytes", async () => {
+	it("answers a range with 206 and exactly those bytes, and an unsatisfiable one with 416", async () => {
 		const res = await get(sharedMediaUrlPath(CLIP)!, "bytes=1000-1999");
 		expect(res.status).toBe(206);
 		expect(res.headers.get("content-range")).toBe("bytes 1000-1999/5000");
 		expect(res.headers.get("content-length")).toBe("1000");
 		expect(Buffer.from(await res.arrayBuffer()).equals(BYTES.subarray(1000, 2000))).toBe(true);
-	});
 
-	it("answers an unsatisfiable range with 416", async () => {
-		const res = await get(sharedMediaUrlPath(CLIP)!, "bytes=5000-");
-		expect(res.status).toBe(416);
-		expect(res.headers.get("content-range")).toBe("bytes */5000");
+		const unsatisfiable = await get(sharedMediaUrlPath(CLIP)!, "bytes=5000-");
+		expect(unsatisfiable.status).toBe(416);
+		expect(unsatisfiable.headers.get("content-range")).toBe("bytes */5000");
 	});
 
 	it("streams a 300 MB clip's tail without reading the file into memory", async () => {

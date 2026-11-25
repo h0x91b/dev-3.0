@@ -189,58 +189,27 @@ beforeEach(() => {
 });
 
 describe("task.move — agent-initiated launch approval", () => {
-	it("moves silently when the agent moves its OWN task", async () => {
-		setupBoard(makeTask());
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		const moved = { ...requester, status: "review-by-ai" as const };
-		vi.mocked(moveTask).mockResolvedValue(moved);
+	it("moves silently — no dialog, no sender capture — for own-task, human, and foreign non-activating moves", async () => {
+		const cases = [
+			{ name: "own task", board: makeTask(), moved: { ...requester, status: "review-by-ai" as const }, params: { taskId: REQUESTER_ID, newStatus: "review-by-ai", sourceTaskId: REQUESTER_ID } },
+			{ name: "human into active", board: makeTask(), moved: makeTask({ status: "in-progress" }), params: { taskId: TARGET_ID, newStatus: "in-progress" } },
+			{ name: "foreign non-activating", board: makeTask({ status: "in-progress" }), moved: makeTask({ status: "review-by-user" }), params: { taskId: TARGET_ID, newStatus: "review-by-user", sourceTaskId: REQUESTER_ID, sourcePaneId: "%2", sourcePid: 4242 } },
+		];
+		for (const c of cases) {
+			vi.mocked(moveTask).mockClear();
+			setupBoard(c.board);
+			const pushFn = vi.fn();
+			vi.mocked(getPushMessage).mockReturnValue(pushFn);
+			vi.mocked(moveTask).mockResolvedValue(c.moved);
 
-		const resp = await handleRequest(moveRequest({
-			taskId: REQUESTER_ID,
-			newStatus: "review-by-ai",
-			projectId: "proj-1",
-			sourceTaskId: REQUESTER_ID,
-		}));
+			const resp = await handleRequest(moveRequest({ projectId: "proj-1", ...c.params }));
 
-		expect(resp.ok).toBe(true);
-		expect(moveTask).toHaveBeenCalled();
-		expect(pushFn).not.toHaveBeenCalledWith("agentLaunchRequested", expect.anything());
-	});
-
-	it("moves silently for a human (no sourceTaskId) even into an active status", async () => {
-		setupBoard(makeTask());
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(moveTask).mockResolvedValue(makeTask({ status: "in-progress" }));
-
-		const resp = await handleRequest(moveRequest({
-			taskId: TARGET_ID,
-			newStatus: "in-progress",
-			projectId: "proj-1",
-		}));
-
-		expect(resp.ok).toBe(true);
-		expect(moveTask).toHaveBeenCalled();
-		expect(pushFn).not.toHaveBeenCalled();
-	});
-
-	it("moves silently when an agent shuffles a FOREIGN task between non-activating columns", async () => {
-		setupBoard(makeTask({ status: "in-progress" }));
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(moveTask).mockResolvedValue(makeTask({ status: "review-by-user" }));
-
-		const resp = await handleRequest(moveRequest({
-			taskId: TARGET_ID,
-			newStatus: "review-by-user",
-			projectId: "proj-1",
-			sourceTaskId: REQUESTER_ID,
-		}));
-
-		expect(resp.ok).toBe(true);
-		expect(moveTask).toHaveBeenCalled();
-		expect(pushFn).not.toHaveBeenCalled();
+			expect(resp.ok, c.name).toBe(true);
+			expect(moveTask, c.name).toHaveBeenCalled();
+			expect(pushFn, c.name).not.toHaveBeenCalled();
+		}
+		// A plain move that launches nothing never captures a sender.
+		expect(captureSenderAgent).not.toHaveBeenCalled();
 	});
 
 	it("asks the user, then launches with the picked agent and hands off to the child", async () => {
@@ -349,7 +318,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		expect(data.getTask).toHaveBeenCalledTimes(2);
 	});
 
-	it("lists the pending launch in approvals.list with the dialog's context and who asked", async () => {
+	it("lists the pending launch in approvals.list, and a decline launches nothing and clears it", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -365,12 +334,15 @@ describe("task.move — agent-initiated launch approval", () => {
 		})]);
 
 		resolveAgentRequest((pushFn.mock.calls[0]![1] as { requestId: string }).requestId, { approved: false });
-		await respPromise;
+		// Declining launches nothing.
+		expect((await respPromise).data).toEqual({ approved: false });
+		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
+		expect(deliverLaunchHandoff).not.toHaveBeenCalled();
 		const after = await handleRequest({ id: "req-3", method: "approvals.list", params: {} });
 		expect(after.data).toEqual({ requests: [] });
 	});
 
-	it("hands the child a reply command that reaches the asking AGENT, not just its task", async () => {
+	it("hands the child a reply command that reaches the asking AGENT, plus the launcher's --handoff-file note", async () => {
 		const target = makeTask();
 		setupBoard(target);
 		const pushFn = vi.fn();
@@ -384,6 +356,7 @@ describe("task.move — agent-initiated launch approval", () => {
 			sourceTaskId: REQUESTER_ID,
 			sourcePaneId: "%2",
 			sourcePid: 4242,
+			handoffNote: "Report to Seq 1141 only.",
 		}));
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
 		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
@@ -396,101 +369,42 @@ describe("task.move — agent-initiated launch approval", () => {
 		expect(captureSenderAgent).toHaveBeenCalledWith(expect.objectContaining({ id: REQUESTER_ID }), "%2", 4242, { tmuxEnv: null, envTaskId: null });
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			source: expect.objectContaining({ seq: 3, agent: expect.objectContaining({ paneId: "%2", agentProcess: "77@x" }) }),
-		}));
-	});
-
-	it("never captures a sender for a plain move that launches nothing", async () => {
-		setupBoard(makeTask({ status: "in-progress" }));
-		vi.mocked(moveTask).mockResolvedValue(makeTask({ status: "review-by-user" }));
-		await handleRequest(moveRequest({
-			taskId: TARGET_ID, newStatus: "review-by-user", projectId: "proj-1", sourceTaskId: REQUESTER_ID, sourcePaneId: "%2", sourcePid: 4242,
-		}));
-		expect(captureSenderAgent).not.toHaveBeenCalled();
-	});
-
-	it("passes the launcher's --handoff-file text through to the child's note", async () => {
-		const target = makeTask();
-		setupBoard(target);
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" as const }]);
-
-		const respPromise = handleRequest(moveRequest({
-			taskId: TARGET_ID,
-			newStatus: "in-progress",
-			projectId: "proj-1",
-			sourceTaskId: REQUESTER_ID,
-			handoffNote: "Report to Seq 1141 only.",
-		}));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
-		resolveAgentRequest(payload.requestId as string, {
-			approved: true,
-			launch: { variants: [{ agentId: null, configId: null }] },
-		});
-		await respPromise;
-
-		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
+			// The launcher's --handoff-file text reaches the child's note.
 			launcherNote: "Report to Seq 1141 only.",
 		}));
 	});
 
-	it("defaults the launch to the requester's priority when the target has none", async () => {
+	it("defaults the launch to the requester's priority when the target has none, but keeps an explicit band", async () => {
 		// Issue #1496: a P0 agent's helper used to start at P3 and sink to the
 		// bottom of the board.
-		const target = makeTask();
-		const project = makeProject();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
+		for (const [own, expected] of [[undefined, "P0"], ["P4", "P4"]] as const) {
+			const target = makeTask(own ? { priority: own } : {});
+			const project = makeProject();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadProjects).mockResolvedValue([project]);
+			vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
+			const pushFn = vi.fn();
+			vi.mocked(getPushMessage).mockReturnValue(pushFn);
+			vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
-		const respPromise = handleRequest(moveRequest({
-			taskId: TARGET_ID,
-			newStatus: "in-progress",
-			projectId: "proj-1",
-			sourceTaskId: REQUESTER_ID,
-		}));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
-		expect(payload.defaultPriority).toBe("P0");
+			const respPromise = handleRequest(moveRequest({
+				taskId: TARGET_ID,
+				newStatus: "in-progress",
+				projectId: "proj-1",
+				sourceTaskId: REQUESTER_ID,
+			}));
+			await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+			const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+			expect(payload.defaultPriority, `target ${own ?? "none"}`).toBe(expected);
 
-		// Auto-approval with nobody watching carries no choice at all; the
-		// inherited priority must still be applied.
-		resolveAgentRequest(payload.requestId as string, { approved: true });
-		await respPromise;
-		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
-			choice: expect.objectContaining({ priority: "P0" }),
-		}));
-	});
-
-	it("keeps the target's own priority — an explicit band is not overwritten", async () => {
-		const target = makeTask({ priority: "P4" });
-		const project = makeProject();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
-
-		const respPromise = handleRequest(moveRequest({
-			taskId: TARGET_ID,
-			newStatus: "in-progress",
-			projectId: "proj-1",
-			sourceTaskId: REQUESTER_ID,
-		}));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
-		expect(payload.defaultPriority).toBe("P4");
-
-		resolveAgentRequest(payload.requestId as string, { approved: true });
-		await respPromise;
-		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
-			choice: expect.objectContaining({ priority: "P4" }),
-		}));
+			// Auto-approval with nobody watching carries no choice at all; the
+			// inherited priority must still be applied.
+			resolveAgentRequest(payload.requestId as string, { approved: true });
+			await respPromise;
+			expect(launchTaskWithAgentChoice).toHaveBeenLastCalledWith(expect.objectContaining({
+				choice: expect.objectContaining({ priority: expected }),
+			}));
+		}
 	});
 
 	it("launches with the priority the user picked in the dialog", async () => {
@@ -612,28 +526,6 @@ describe("task.move — agent-initiated launch approval", () => {
 		);
 	});
 
-	it("launches nothing when the user declines", async () => {
-		setupBoard(makeTask());
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const respPromise = handleRequest(moveRequest({
-			taskId: TARGET_ID,
-			newStatus: "in-progress",
-			projectId: "proj-1",
-			sourceTaskId: REQUESTER_ID,
-		}));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-
-		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveAgentRequest(payload.requestId, { approved: false });
-
-		const resp = await respPromise;
-		expect(resp.data).toEqual({ approved: false });
-		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
-		expect(deliverLaunchHandoff).not.toHaveBeenCalled();
-	});
-
 	it("errors instead of launching when no app window can show the dialog", async () => {
 		setupBoard(makeTask());
 		vi.mocked(getPushMessage).mockReturnValue(null);
@@ -687,16 +579,14 @@ describe("task.createScratchAndRun", () => {
 		return { id: "req-1", method: "task.createScratchAndRun", params };
 	}
 
-	it("requires a requesting task — a human has the Scratch Task button", async () => {
+	it("requires a requesting task, then creates the scratch task and launches it with the picked agent", async () => {
+		// A human has the Scratch Task button.
 		setupBoard(makeTask());
-
-		const resp = await handleRequest(scratchRequest({ projectId: "proj-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("inside a task worktree");
+		const refused = await handleRequest(scratchRequest({ projectId: "proj-1" }));
+		expect(refused.ok).toBe(false);
+		expect(refused.error).toContain("inside a task worktree");
 		expect(createScratchTask).not.toHaveBeenCalled();
-	});
 
-	it("creates the scratch task and launches it with the picked agent", async () => {
 		const scratch = makeTask({ title: "Scratch — 14:32", description: "Scratch — 14:32", scratch: true, seq: 9 });
 		setupBoard(scratch);
 		vi.mocked(createScratchTask).mockResolvedValue(scratch);
@@ -836,22 +726,6 @@ describe("task.move — agent-initiated launch with variants", () => {
 		return { resp: await respPromise, payload };
 	}
 
-	it("tells the dialog whether the target can be spawned as a group", async () => {
-		const pushFn = vi.fn();
-		setupBoard(makeTask());
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([makeTask({ status: "in-progress" })]);
-
-		const respPromise = handleRequest(moveRequest({
-			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
-		}));
-		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
-		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
-		expect(payload.canAddVariants).toBe(true);
-		resolveAgentRequest(payload.requestId as string, { approved: true });
-		await respPromise;
-	});
-
 	it("refuses variants for a target that is already in a group", async () => {
 		// spawnVariants mints a FRESH group off a todo source; a member of an
 		// existing group has nothing to branch from.
@@ -889,7 +763,9 @@ describe("task.move — agent-initiated launch with variants", () => {
 			{ agentId: "builtin-codex", configId: "codex-default" },
 		];
 		// The board AFTER the launch — this is what makes seq:7 ambiguous.
-		const { resp } = await approveWith({ variants }, [head, sibling, requester]);
+		const { resp, payload } = await approveWith({ variants }, [head, sibling, requester]);
+		// A todo target outside any group may be spawned as one.
+		expect(payload.canAddVariants).toBe(true);
 
 		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
 			choice: expect.objectContaining({ variants }),
@@ -934,16 +810,10 @@ describe("launch requests with a suggested agent/config (issue #1911)", () => {
 		vi.mocked(loadSettings).mockReturnValue({ agentLaunchAutoApproveMinutes: 0 } as never);
 	});
 
-	it("validates the suggestion and hands it to the dialog as a preselection", async () => {
+	it("validates the suggestion, preselects it in the dialog, and launches what the user picked over it", async () => {
 		const { respPromise, payload } = await startMove({ agentId: "builtin-codex", configId: "codex-low" });
 		expect(validateLaunchSuggestion).toHaveBeenCalledWith({ agentId: "builtin-codex", configId: "codex-low" });
 		expect(payload.suggested).toEqual(SUGGESTED);
-		resolveAgentRequest(payload.requestId as string, { approved: false });
-		expect((await respPromise).data).toEqual({ approved: false });
-	});
-
-	it("launches what the user picked when they override the suggestion", async () => {
-		const { respPromise, payload } = await startMove({ agentId: "builtin-codex", configId: "codex-low" });
 		const launch = { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] };
 		resolveAgentRequest(payload.requestId as string, { approved: true, launch });
 		await respPromise;
@@ -999,54 +869,36 @@ describe("launch requests with a suggested agent/config (issue #1911)", () => {
 		}));
 	});
 
-	it("fails an invalid suggestion before any dialog opens", async () => {
+	it("refuses an invalid suggestion, an account id, or a suggestion on a non-launch move before any dialog", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(validateLaunchSuggestion).mockRejectedValue(new Error('Unknown config "codex-max" for agent "builtin-codex".'));
-
-		const resp = await handleRequest(moveRequest({
-			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
-			agentId: "builtin-codex", configId: "codex-max",
-		}));
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Unknown config");
+		vi.mocked(validateLaunchSuggestion).mockRejectedValueOnce(new Error('Unknown config "codex-max" for agent "builtin-codex".'));
+		const launch = { taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID };
+		const cases = [
+			{ params: { ...launch, agentId: "builtin-codex", configId: "codex-max" }, error: "Unknown config" },
+			// The account stays the user's pick.
+			{ params: { ...launch, agentId: "builtin-codex", accountId: "slot-1" }, error: "Account selection is not supported" },
+			{ params: { taskId: REQUESTER_ID, newStatus: "review-by-ai", projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "builtin-codex" }, error: "only apply when the move asks to start" },
+		];
+		for (const c of cases) {
+			const resp = await handleRequest(moveRequest(c.params));
+			expect(resp.ok, c.error).toBe(false);
+			expect(resp.error).toContain(c.error);
+		}
 		expect(pushFn).not.toHaveBeenCalled();
 		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
-	});
-
-	it("refuses an account id — the account stays the user's pick", async () => {
-		setupBoard(makeTask());
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-		const resp = await handleRequest(moveRequest({
-			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
-			agentId: "builtin-codex", accountId: "slot-1",
-		}));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Account selection is not supported");
-	});
-
-	it("refuses a suggestion on a move that is not a launch", async () => {
-		setupBoard(makeTask());
-		const resp = await handleRequest(moveRequest({
-			taskId: REQUESTER_ID, newStatus: "review-by-ai", projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "builtin-codex",
-		}));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("only apply when the move asks to start");
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
-	it("scratch: an invalid suggestion creates no placeholder task", async () => {
+	it("scratch: an invalid suggestion creates no placeholder task, a valid one preselects the dialog", async () => {
 		setupBoard(makeTask());
-		vi.mocked(validateLaunchSuggestion).mockRejectedValue(new Error('Unknown agent "nope" — see dev3 agent list.'));
-		const resp = await handleRequest({ id: "req-1", method: "task.createScratchAndRun", params: { projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "nope" } });
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Unknown agent");
+		vi.mocked(validateLaunchSuggestion).mockRejectedValueOnce(new Error('Unknown agent "nope" — see dev3 agent list.'));
+		const bad = await handleRequest({ id: "req-1", method: "task.createScratchAndRun", params: { projectId: "proj-1", sourceTaskId: REQUESTER_ID, agentId: "nope" } });
+		expect(bad.ok).toBe(false);
+		expect(bad.error).toContain("Unknown agent");
 		expect(createScratchTask).not.toHaveBeenCalled();
-	});
 
-	it("scratch: a valid suggestion preselects the dialog", async () => {
 		const scratch = makeTask({ title: "Scratch — 14:32", scratch: true, seq: 9 });
 		setupBoard(scratch);
 		vi.mocked(createScratchTask).mockResolvedValue(scratch);
@@ -1065,14 +917,6 @@ describe("task.moveAsSender — a start an external sender asks for", () => {
 	function senderMoveRequest(params: Record<string, unknown>): CliRequest {
 		return { id: "req-1", method: "task.moveAsSender", params };
 	}
-
-	it("is refused on plain task.move, so no app ever runs a sender's start as an ordinary move", async () => {
-		setupBoard(makeTask());
-		const resp = await handleRequest(moveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("task.moveAsSender") });
-		expect(moveTask).not.toHaveBeenCalled();
-		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
-	});
 
 	it("goes through the same dialog, naming the sender, and hands back an --as-sender reply command", async () => {
 		const target = makeTask();
@@ -1102,49 +946,37 @@ describe("task.moveAsSender — a start an external sender asks for", () => {
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
-	it("refuses a handoff note from a sender instead of dropping it", async () => {
+	it("refuses a sender start that is malformed, from a task, from an unknown sender, or on plain task.move", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		const resp = await handleRequest(senderMoveRequest({
-			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main", handoffNote: "brief",
-		}));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("--handoff-file does not apply with --as-sender") });
+		const base = { taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" };
+		const cases: Array<[CliRequest, RegExp | string]> = [
+			// No app ever runs a sender's start as an ordinary move.
+			[moveRequest(base), "task.moveAsSender"],
+			// Refused instead of silently dropped.
+			[senderMoveRequest({ ...base, handoffNote: "brief" }), "--handoff-file does not apply with --as-sender"],
+			[senderMoveRequest({ ...base, asSender: "ghost" }), /^Unknown external sender/],
+			[senderMoveRequest({ ...base, sourceTaskId: REQUESTER_ID }), "--as-sender cannot be used from inside a task"],
+		];
+		for (const [req, error] of cases) {
+			const resp = await handleRequest(req);
+			expect(resp, String(error)).toMatchObject({ ok: false, error: typeof error === "string" ? expect.stringContaining(error) : expect.stringMatching(error) });
+		}
 		expect(pushFn).not.toHaveBeenCalled();
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
 	});
 
-	it("refuses moving a task that is already running, so no column agent starts without a dialog", async () => {
+	it("refuses moving a running task, so no column agent starts without a dialog, but a repeated start is a no-op", async () => {
 		setupBoard(makeTask({ status: "in-progress" }));
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "review-by-ai", projectId: "proj-1", asSender: "openclaw:home:main" }));
-		expect(resp).toMatchObject({ ok: false, error: "A sender can only start a task that is not running." });
+		const refused = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "review-by-ai", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(refused).toMatchObject({ ok: false, error: "A sender can only start a task that is not running." });
+		const repeated = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(repeated).toMatchObject({ ok: true, data: { id: TARGET_ID, status: "in-progress" } });
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(pushFn).not.toHaveBeenCalled();
-	});
-
-	it("treats a repeated start of a running task as a no-op", async () => {
-		setupBoard(makeTask({ status: "in-progress" }));
-		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" }));
-		expect(resp).toMatchObject({ ok: true, data: { id: TARGET_ID, status: "in-progress" } });
-		expect(moveTask).not.toHaveBeenCalled();
-	});
-
-	it("refuses an unknown sender before any dialog", async () => {
-		setupBoard(makeTask());
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "ghost" }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringMatching(/^Unknown external sender/) });
-		expect(pushFn).not.toHaveBeenCalled();
-		expect(moveTask).not.toHaveBeenCalled();
-	});
-
-	it("refuses a request that comes from a task AND claims a sender", async () => {
-		setupBoard(makeTask());
-		const resp = await handleRequest(senderMoveRequest({
-			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main", sourceTaskId: REQUESTER_ID,
-		}));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("--as-sender cannot be used from inside a task") });
 	});
 });

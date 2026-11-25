@@ -29,7 +29,7 @@ describe("Cursor accounting hook installation", () => {
 		return text;
 	}
 
-	it("installs both response and aborted-generation accounting without a task guard", async () => {
+	it("installs both response and aborted-generation accounting without a task guard, idempotently", async () => {
 		await writeCursorUsageHooks(userHome, POSIX, { create: true });
 		expect(JSON.parse(readFileSync(hooksPath, "utf8"))).toEqual({
 			version: 1,
@@ -38,13 +38,8 @@ describe("Cursor accounting hook installation", () => {
 				stop: [{ command: POSIX_COMMAND }],
 			},
 		});
-	});
-
-	it("uses the Windows CLI dialect without POSIX-only shell syntax", async () => {
-		await writeCursorUsageHooks(userHome, WINDOWS, { create: true });
-		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.stop).toEqual([
-			{ command: WINDOWS_COMMAND },
-		]);
+		// Idempotent after the initial write.
+		expect((await writeCursorUsageHooks(userHome, POSIX)).status).toBe("unchanged");
 	});
 
 	it("preserves user settings and other hooks on the same events", async () => {
@@ -56,18 +51,17 @@ describe("Cursor accounting hook installation", () => {
 		});
 	});
 
-	it("replaces only managed hooks and leaves commands merely mentioning the invocation", async () => {
+	it("replaces only managed hooks (Windows dialect, no POSIX syntax) and leaves commands merely mentioning the invocation", async () => {
 		const custom = { command: "echo hook cursor-usage" };
 		writeConfig({ version: 1, hooks: { stop: [custom, { command: "/old/dev3 hook cursor-usage", timeout: 4 }] } });
 		await writeCursorUsageHooks(userHome, WINDOWS);
 		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.stop).toEqual([
 			custom, { command: WINDOWS_COMMAND },
 		]);
-	});
-
-	it("is idempotent after the initial write", async () => {
-		await writeCursorUsageHooks(userHome, POSIX, { create: true });
-		expect((await writeCursorUsageHooks(userHome, POSIX)).status).toBe("unchanged");
+		// Repeated installs across dialects keep exactly one guarded command.
+		await writeCursorUsageHooks(userHome, WINDOWS);
+		await writeCursorUsageHooks(userHome, POSIX);
+		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.stop).toEqual([custom, { command: POSIX_COMMAND }]);
 	});
 
 	it("serializes simultaneous installations without stacking duplicate commands", async () => {
@@ -75,51 +69,42 @@ describe("Cursor accounting hook installation", () => {
 		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.stop).toHaveLength(1);
 	});
 
-	it.each([
-		"{ malformed JSON",
-		"null",
-		{ version: 2, hooks: {} },
-		{ version: 1, hooks: [] },
-		{ version: 1, hooks: { stop: "custom-command" } },
-		{ version: 1, hooks: { stop: [null] } },
-	])("keeps malformed or unsupported existing configuration intact (%j)", async (config) => {
-		const original = writeConfig(config);
-		const result = await writeCursorUsageHooks(userHome, POSIX);
-		expect([result.status, readFileSync(hooksPath, "utf8")]).toEqual(["skipped", original]);
+	it("keeps malformed or unsupported existing configuration intact", async () => {
+		const configs: unknown[] = [
+			"{ malformed JSON",
+			"null",
+			{ version: 2, hooks: {} },
+			{ version: 1, hooks: [] },
+			{ version: 1, hooks: { stop: "custom-command" } },
+			{ version: 1, hooks: { stop: [null] } },
+		];
+		for (const config of configs) {
+			const original = writeConfig(config);
+			const result = await writeCursorUsageHooks(userHome, POSIX);
+			expect([result.status, readFileSync(hooksPath, "utf8")], JSON.stringify(config)).toEqual(["skipped", original]);
+		}
 	});
 
-	it("does not overwrite a hook file linked outside the user's home", async () => {
+	it("does not write through a hook file or a Cursor directory linked outside the user's home", async () => {
 		const outside = join(root, "shared-hooks.json");
 		writeFileSync(outside, "{}");
 		mkdirSync(join(userHome, ".cursor"));
 		symlinkSync(outside, hooksPath, "file");
 		const result = await writeCursorUsageHooks(userHome, POSIX);
 		expect([result.reason, readFileSync(outside, "utf8")]).toEqual(["symlink", "{}"]);
-	});
 
-	it("does not write through a Cursor configuration directory linked outside home", async () => {
-		const outside = join(root, "shared-cursor");
-		mkdirSync(outside);
-		symlinkSync(outside, join(userHome, ".cursor"), process.platform === "win32" ? "junction" : "dir");
+		rmSync(join(userHome, ".cursor"), { recursive: true });
+		const outsideDir = join(root, "shared-cursor");
+		mkdirSync(outsideDir);
+		symlinkSync(outsideDir, join(userHome, ".cursor"), process.platform === "win32" ? "junction" : "dir");
 		expect((await writeCursorUsageHooks(userHome, POSIX)).reason).toBe("symlink");
 	});
 
-	it("does not create Cursor configuration during generic hook installation", async () => {
+	it("creates no Cursor configuration during generic installation, but installs into an existing directory", async () => {
 		const result = await writeCursorUsageHooks(userHome, POSIX);
 		expect({ reason: result.reason, cursorExists: existsSync(join(userHome, ".cursor")) }).toEqual({ reason: "absent", cursorExists: false });
-	});
-
-	it("installs hooks for an existing Cursor directory without an explicit create option", async () => {
 		mkdirSync(join(userHome, ".cursor"));
 		expect((await writeCursorUsageHooks(userHome, POSIX)).status).toBe("installed");
-	});
-
-	it("upgrades legacy hooks and keeps exactly one guarded command on repeated installation", async () => {
-		writeConfig({ version: 1, hooks: { stop: [{ command: "/old/dev3 hook cursor-usage" }] } });
-		await writeCursorUsageHooks(userHome, WINDOWS);
-		await writeCursorUsageHooks(userHome, WINDOWS);
-		await writeCursorUsageHooks(userHome, POSIX);
-		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.stop).toEqual([{ command: POSIX_COMMAND }]);
 	});
 
 	it("removes legacy and guarded hooks while preserving unrelated hooks and settings", async () => {
@@ -132,24 +117,18 @@ describe("Cursor accounting hook installation", () => {
 		expect(JSON.parse(readFileSync(hooksPath, "utf8"))).toEqual({ version: 1, setting: { enabled: true }, hooks: {
 			stop: [custom], beforeShellExecution: [{ command: "./audit.sh" }],
 		} });
+		// Repeated removal is a no-op that leaves the file in place.
+		expect((await removeCursorUsageHooks(userHome)).status).toBe("unchanged");
+		expect(existsSync(hooksPath)).toBe(true);
 	});
 
-	it("leaves user configuration untouched when removal finds no managed hooks", async () => {
+
+	it("creates no Cursor directory on an unused machine, and leaves config without managed hooks untouched", async () => {
+		await removeCursorUsageHooks(userHome);
+		expect(existsSync(join(userHome, ".cursor"))).toBe(false);
 		const original = writeConfig({ version: 1, hooks: { stop: [{ command: "./audit.sh" }] } });
 		const result = await removeCursorUsageHooks(userHome);
 		expect([result.status, readFileSync(hooksPath, "utf8")]).toEqual(["unchanged", original]);
-	});
-
-	it("leaves the configuration file in place and allows repeated removal", async () => {
-		await writeCursorUsageHooks(userHome, POSIX, { create: true });
-		await removeCursorUsageHooks(userHome);
-		const result = await removeCursorUsageHooks(userHome);
-		expect([result.status, JSON.parse(readFileSync(hooksPath, "utf8"))]).toEqual(["unchanged", { version: 1, hooks: {} }]);
-	});
-
-	it("does not create a Cursor directory when removing hooks on an unused machine", async () => {
-		await removeCursorUsageHooks(userHome);
-		expect(existsSync(join(userHome, ".cursor"))).toBe(false);
 	});
 
 	it.runIf(process.platform !== "win32")("exits successfully when the configured POSIX dev3 executable was removed", async () => {

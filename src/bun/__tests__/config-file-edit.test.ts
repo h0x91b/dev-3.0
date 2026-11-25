@@ -16,9 +16,7 @@ describe("editJsonMember", () => {
 
 	it("replaces one value and leaves every other byte alone", () => {
 		expect(edit(TABS, "portCount", 3)).toBe(TABS.replace('"portCount": 1', '"portCount": 3'));
-	});
-
-	it("keeps an inline array on another key inline", () => {
+		// An inline array on another key stays inline.
 		expect(edit(TABS, "setupScript", "bun install")).toContain('"clonePaths": ["node_modules", ".env"]');
 	});
 
@@ -33,13 +31,10 @@ describe("editJsonMember", () => {
 		expect(out).toBe('{\n  "a": 1,\n  "env": {\n    "X": "1"\n  }\n}\n');
 	});
 
-	it("removes the first, a middle and the last member", () => {
+	it("removes the first, a middle, the last and the only member", () => {
 		expect(edit(TABS, "setupScript", undefined)).toBe('{\n\t"clonePaths": ["node_modules", ".env"],\n\t"portCount": 1\n}\n');
 		expect(edit(TABS, "clonePaths", undefined)).toBe('{\n\t"setupScript": "npm i",\n\t"portCount": 1\n}\n');
 		expect(edit(TABS, "portCount", undefined)).toBe('{\n\t"setupScript": "npm i",\n\t"clonePaths": ["node_modules", ".env"]\n}\n');
-	});
-
-	it("removes the only member", () => {
 		expect(edit('{\n  "a": 1\n}\n', "a", undefined)).toBe("{}\n");
 	});
 
@@ -54,11 +49,9 @@ describe("editJsonMember", () => {
 		expect(edit(text, "n", 2)).toBe('{\n  "s": "a \\"}\\" b {",\n  "n": 2\n}\n');
 	});
 
-	it("re-stringifies a compact file in its own format", () => {
+	it("re-stringifies a compact file in its own format and creates content for an empty one", () => {
 		expect(edit('{"a":1}', "b", 2)).toBe('{\n  "a": 1,\n  "b": 2\n}');
-	});
-
-	it("creates content for an empty file", () => {
+		// An empty file gets fresh content.
 		expect(editJsonMember("", "a", 1, { a: 1 })).toBe('{\n  "a": 1\n}\n');
 	});
 });

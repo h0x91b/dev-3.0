@@ -92,9 +92,10 @@ afterEach(() => {
 	exitSpy.mockRestore();
 });
 
-describe("tasks list", () => {
+const LIST = (flags: Record<string, string> = {}) => ({ positional: [], flags: { project: "proj-001", ...flags } });
 
-	it("filters closed tasks before paging without dropping drafts or custom columns", async () => {
+describe("tasks list", () => {
+	it("filters closed tasks before paging without dropping drafts or custom columns, and pages past the end to an empty JSON page", async () => {
 		const base = TASKS[0]!;
 		mockSend.mockResolvedValue(okResp([
 			{ ...base, id: "done", status: "completed", seq: 99 },
@@ -111,36 +112,55 @@ describe("tasks list", () => {
 		expect(page.tasks[1].draft).toBe(true);
 		expect(mockSend).toHaveBeenCalledTimes(1);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: CTX.projectId });
-	});
 
-	it("returns an empty structured page with the correct total", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp(TASKS));
 		await handleTasks("list", { positional: [], flags: { open: "true", json: "true", offset: "100" } }, SOCKET, CTX);
 		expect(JSON.parse(stdoutOutput)).toEqual({ schemaVersion: 1, tasks: [], total: TASKS.length, offset: 100, limit: 50 });
 	});
 
-	it("rejects contradictory open and terminal filters without a request", async () => {
-		await expect(handleTasks("list", { positional: [], flags: { open: "true", status: "completed" } }, SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-	it("lists tasks with explicit --project", async () => {
+	it("renders a table newest first, with short ids, status labels, truncated titles and a window footer", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "0" } }, SOCKET, null);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: "proj-001" });
 		expect(stdoutOutput).toContain("SEQ");
 		expect(stdoutOutput).toContain("First task");
 		expect(stdoutOutput).toContain("To Do");
 		expect(stdoutOutput).toContain("Agent is Working");
+		// The second task has a title > 60 chars, truncated with "...".
+		expect(stdoutOutput).toContain("...");
+		expect(stdoutOutput).toContain("aaaaaaaa");
+		expect(stdoutOutput).not.toContain("aaaaaaaa-1111");
+		expect(stdoutOutput).toContain("Showing 1-2 of 2.");
+		// Server returns ascending; the CLI flips to descending by seq.
+		expect(stdoutOutput.indexOf("bbbbbbbb")).toBeGreaterThan(-1);
+		expect(stdoutOutput.indexOf("bbbbbbbb")).toBeLessThan(stdoutOutput.indexOf("aaaaaaaa"));
 	});
 
-	it("marks draft tasks in the status column", async () => {
-		mockSend.mockResolvedValue(okResp([{ ...TASKS[0], draft: true }]));
+	it("marks drafts, shows the custom title, and never mutates or writes a task (read-only render)", async () => {
+		const original: Task = {
+			...TASKS[0],
+			id: "dddddddd-1111-2222-3333-444444444444",
+			seq: 4,
+			title: "Bug (from bug-hunt review): the raw auto-generated description blob",
+			customTitle: "Fix custom title display",
+			titleEditedByUser: true,
+		};
+		const snapshot = JSON.stringify(original);
+		mockSend.mockResolvedValue(okResp([original, { ...TASKS[0], draft: true }]));
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+		await handleTasks("list", LIST(), SOCKET, null);
 
 		expect(stdoutOutput).toContain("To Do (draft)");
+		expect(stdoutOutput).toContain("Fix custom title display");
+		expect(stdoutOutput).not.toContain("Bug (from bug-hunt review)");
+		// Listing is purely a read — the task object must be byte-identical after.
+		expect(JSON.stringify(original)).toBe(snapshot);
+		// No write RPC should ever be issued by `tasks list`.
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: "proj-001" });
 	});
 
 	it("marks blocked and ready tasks, and names a cancelled dependency instead of calling it done", async () => {
@@ -160,106 +180,24 @@ describe("tasks list", () => {
 		expect(rows.find((r) => r.seq === 32)?.dependency).toEqual({ state: "ready", blockedBy: [], cancelled: [5] });
 	});
 
-	it("auto-detects projectId from context", async () => {
+	it("auto-detects projectId from context, passes --status to the server, and keeps --limit client-side", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 
 		await handleTasks("list", { positional: [], flags: {} }, SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "tasks.list", { projectId: CTX.projectId });
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: CTX.projectId });
-	});
+		await handleTasks("list", LIST({ status: "todo" }), SOCKET, null);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "tasks.list", { projectId: "proj-001", status: "todo" });
 
-	it("passes --status filter to server", async () => {
-		mockSend.mockResolvedValue(okResp([TASKS[0]]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", status: "todo" } }, SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", {
-			projectId: "proj-001",
-			status: "todo",
-		});
-	});
-
-	it("prints 'No tasks found' for empty list", async () => {
-		mockSend.mockResolvedValue(okResp([]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("No tasks found");
-	});
-
-	it("truncates long titles at 60 chars", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		// The second task has a title > 60 chars, should be truncated with "..."
-		expect(stdoutOutput).toContain("...");
-	});
-
-	it("shows the custom title (customTitle), not the auto-generated title", async () => {
-		const taskWithCustomTitle: Task = {
-			...TASKS[0],
-			id: "cccccccc-1111-2222-3333-444444444444",
-			seq: 3,
-			title: "Bug (from bug-hunt review): the raw auto-generated description blob",
-			customTitle: "Fix custom title display",
-		};
-		mockSend.mockResolvedValue(okResp([taskWithCustomTitle]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("Fix custom title display");
-		expect(stdoutOutput).not.toContain("Bug (from bug-hunt review)");
-	});
-
-	it("does not mutate or persist task fields (read-only render)", async () => {
-		const original: Task = {
-			...TASKS[0],
-			id: "dddddddd-1111-2222-3333-444444444444",
-			seq: 4,
-			title: "auto-generated title",
-			customTitle: "custom title",
-			titleEditedByUser: true,
-		};
-		const snapshot = JSON.stringify(original);
-		mockSend.mockResolvedValue(okResp([original]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		// Listing is purely a read — the task object must be byte-identical after.
-		expect(JSON.stringify(original)).toBe(snapshot);
-		// No write RPC should ever be issued by `tasks list`.
-		expect(mockSend).toHaveBeenCalledTimes(1);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: "proj-001" });
-	});
-
-	it("shows short (8-char) task IDs", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("aaaaaaaa");
+		stdoutOutput = "";
+		await handleTasks("list", LIST({ limit: "100" }), SOCKET, null);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "tasks.list", { projectId: "proj-001" });
+		// A --limit above the task count shows them all.
+		expect(stdoutOutput).toContain("First task");
 		expect(stdoutOutput).toContain("bbbbbbbb");
-		// Full UUIDs should NOT appear
-		expect(stdoutOutput).not.toContain("aaaaaaaa-1111");
 	});
 
-	it("exits with usage error when --project missing and no context", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: {} }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--project");
-	});
-
-	it("exits on server error", async () => {
-		mockSend.mockResolvedValue(errResp("Project not found"));
-
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "bad" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-	});
-
-	it("defaults to 'list' when no subcommand", async () => {
+	it("defaults to 'list' when no subcommand, and prints 'No tasks found' for an empty list", async () => {
 		mockSend.mockResolvedValue(okResp([]));
 
 		// Use a full-length (>=36 char) id so expandShortProjectId returns it
@@ -269,121 +207,52 @@ describe("tasks list", () => {
 		await handleTasks(undefined, { positional: [], flags: { project: fullId } }, SOCKET, null);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: fullId });
+		expect(stdoutOutput).toContain("No tasks found");
 	});
 
-	it("exits with error for unknown subcommand", async () => {
+	it("exits on server error", async () => {
+		mockSend.mockResolvedValue(errResp("Project not found"));
+
 		await expect(
-			handleTasks("delete", { positional: [], flags: {} }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Unknown subcommand");
+			handleTasks("list", { positional: [], flags: { project: "bad" } }, SOCKET, null),
+		).rejects.toThrow("EXIT_1");
 	});
 });
 
-// ─── tasks list: status validation ───────────────────────────────────────────
-// CLI doesn't validate --status value before sending to server.
-// Invalid values should be caught early with a helpful error message.
+// ─── tasks list: usage errors ────────────────────────────────────────────────
+// Every bad flag value is refused with exit 3 before any request. parseInt("abc")
+// is NaN and parseInt("10abc") is 10 — both must be rejected, not sent.
 
-describe("tasks list status validation", () => {
-	it("rejects invalid --status values before sending to server", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", status: "garbage" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Invalid status");
+describe("tasks list usage errors", () => {
+	async function expectUsageError(name: string, subcommand: string, flags: Record<string, string>, ctx: CliContext | null, message?: string) {
+		stderrOutput = "";
+		await expect(handleTasks(subcommand, { positional: [], flags }, SOCKET, ctx), name).rejects.toThrow("EXIT_3");
+		if (message) expect(stderrOutput, name).toContain(message);
+	}
+
+	it("rejects a missing project, an unknown subcommand, and bad filter values before any request", async () => {
+		await expectUsageError("no --project, no context", "list", {}, null, "--project");
+		await expectUsageError("unknown subcommand", "delete", {}, null, "Unknown subcommand");
+		await expectUsageError("--open with a terminal --status", "list", { open: "true", status: "completed" }, CTX);
+		await expectUsageError("garbage --status", "list", { project: "proj-001", status: "garbage" }, null, "Invalid status");
+		await expectUsageError("typo'd --status", "list", { project: "proj-001", status: "inprogress" }, null);
+		await expectUsageError("unknown --sort", "list", { project: "proj-001", sort: "title" }, null, "--sort");
+		await expectUsageError("invalid --priority", "list", { project: "proj-001", priority: "P9" }, null, "--priority");
+		await expectUsageError("empty --priority", "list", { project: "proj-001", priority: "," }, null);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("rejects typo'd status (e.g. 'inprogress')", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", status: "inprogress" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-// ─── tasks list: --limit support ─────────────────────────────────────────────
-
-describe("tasks list --limit", () => {
-	it("does not send limit to server (applied client-side)", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "10" } }, SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", {
-			projectId: "proj-001",
-		});
-	});
-
-	it("truncates results to --limit count (keeps the newest)", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "1" } }, SOCKET, null);
-
-		// Newest-first ordering means --limit 1 keeps seq 2 (the newer task).
-		expect(stdoutOutput).toContain("Second task");
-		expect(stdoutOutput).not.toContain("First task");
-	});
-
-	it("prints a footer showing the visible window and total", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("Showing 1-2 of 2.");
-	});
-
-	it("orders newest first (highest seq) regardless of server order", async () => {
-		// Server returns ascending; CLI must flip to descending by seq.
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		const firstIdx = stdoutOutput.indexOf("bbbbbbbb"); // seq 2
-		const secondIdx = stdoutOutput.indexOf("aaaaaaaa"); // seq 1
-		expect(firstIdx).toBeGreaterThan(-1);
-		expect(secondIdx).toBeGreaterThan(-1);
-		expect(firstIdx).toBeLessThan(secondIdx);
-	});
-
-	it("shows all tasks when --limit exceeds task count", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "100" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("First task");
-		expect(stdoutOutput).toContain("bbbbbbbb");
-	});
-});
-
-// ─── tasks list: --limit validation ─────────────────────────────────────────
-// parseInt("abc", 10) returns NaN, parseInt("10abc", 10) returns 10.
-// Both are wrong — the CLI should reject non-numeric and negative values
-// instead of silently sending garbage to the server.
-
-describe("tasks list --limit validation", () => {
-	it("rejects non-numeric --limit (e.g. 'abc') before sending to server", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "abc" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--limit");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects negative --limit (e.g. '-5')", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "-5" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects partial number --limit (e.g. '10abc') — parseInt silently truncates", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "10abc" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
+	it("rejects non-numeric, negative and partial-number --limit / --offset before any request", async () => {
+		await expectUsageError("--limit abc", "list", { project: "proj-001", limit: "abc" }, null, "--limit");
+		await expectUsageError("--limit -5", "list", { project: "proj-001", limit: "-5" }, null);
+		await expectUsageError("--limit 10abc", "list", { project: "proj-001", limit: "10abc" }, null);
+		await expectUsageError("--offset abc", "list", { project: "proj-001", offset: "abc" }, null, "--offset");
+		await expectUsageError("--offset -1", "list", { project: "proj-001", offset: "-1" }, null);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
-// ─── tasks list: default limit + --offset paging ─────────────────────────────
+// ─── tasks list: --limit, default limit and --offset paging ──────────────────
 
 function makeTasks(count: number): Task[] {
 	return Array.from({ length: count }, (_, i) => ({
@@ -394,27 +263,58 @@ function makeTasks(count: number): Task[] {
 	}));
 }
 
-describe("tasks list default limit", () => {
-	it("shows only the newest 50 tasks when --limit is omitted", async () => {
+describe("tasks list paging", () => {
+	it("truncates results to --limit count (keeps the newest)", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", LIST({ limit: "1" }), SOCKET, null);
+
+		expect(stdoutOutput).toContain("Second task");
+		expect(stdoutOutput).not.toContain("First task");
+	});
+
+	it("shows only the newest 50 tasks when --limit is omitted, and does not paginate when the total fits", async () => {
 		mockSend.mockResolvedValue(okResp(makeTasks(60)));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
+		await handleTasks("list", LIST(), SOCKET, null);
 		// Newest is seq 60; oldest in window is seq 11 (60 down to 11 = 50 rows).
 		expect(stdoutOutput).toContain("task number 60");
 		expect(stdoutOutput).toContain("task number 11");
 		expect(stdoutOutput).not.toContain("task number 10");
 		expect(stdoutOutput).toContain("Showing 1-50 of 60.");
 		expect(stdoutOutput).toContain("Next page: --offset 50");
-	});
 
-	it("does not paginate when total fits in the default page", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp(makeTasks(3)));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
+		await handleTasks("list", LIST(), SOCKET, null);
 		expect(stdoutOutput).toContain("Showing 1-3 of 3.");
 		expect(stdoutOutput).not.toContain("Next page");
+	});
+
+	it("skips the first N tasks (after newest-first sort), and reports an offset past the end", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", LIST({ offset: "1" }), SOCKET, null);
+		expect(stdoutOutput).toContain("First task");
+		expect(stdoutOutput).not.toContain("Second task");
+		expect(stdoutOutput).toContain("Showing 2-2 of 2.");
+
+		stdoutOutput = "";
+		await handleTasks("list", LIST({ offset: "5" }), SOCKET, null);
+		expect(stdoutOutput).toContain("No tasks at offset 5 (2 total).");
+	});
+
+	it("combines --offset with --limit for a middle window", async () => {
+		mockSend.mockResolvedValue(okResp(makeTasks(10)));
+
+		await handleTasks("list", LIST({ offset: "2", limit: "3" }), SOCKET, null);
+
+		// Newest-first: seq 10,9,8 (offset 2 → start at seq 8), 3 rows → 8,7,6.
+		expect(stdoutOutput).toContain("task number 8");
+		expect(stdoutOutput).toContain("task number 6");
+		expect(stdoutOutput).not.toContain("task number 9");
+		expect(stdoutOutput).not.toContain("task number 5");
+		expect(stdoutOutput).toContain("Showing 3-5 of 10.");
+		expect(stdoutOutput).toContain("Next page: --offset 5 --limit 3");
 	});
 });
 
@@ -432,36 +332,28 @@ describe("tasks list status grouping", () => {
 		};
 	}
 
-	function order(output: string, ...titles: string[]): number[] {
-		return titles.map((title) => output.indexOf(title));
-	}
-
-	it("puts live work first, then To Do, then completed, then cancelled", async () => {
+	it("puts live work first (newest first inside it), then To Do, then completed, then cancelled", async () => {
 		mockSend.mockResolvedValue(
 			okResp([
 				withStatus(1, "cancelled"),
 				withStatus(2, "completed"),
 				withStatus(3, "todo"),
 				withStatus(4, "in-progress"),
+				withStatus(7, "in-progress"),
 			]),
 		);
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+		await handleTasks("list", LIST(), SOCKET, null);
 
-		const [live, todo, done, cancelled] = order(
-			stdoutOutput,
-			"task in-progress 4",
-			"task todo 3",
-			"task completed 2",
-			"task cancelled 1",
-		);
-		expect(live).toBeGreaterThan(-1);
-		expect(live).toBeLessThan(todo);
-		expect(todo).toBeLessThan(done);
-		expect(done).toBeLessThan(cancelled);
+		const at = (title: string) => stdoutOutput.indexOf(title);
+		expect(at("task in-progress 7")).toBeGreaterThan(-1);
+		expect(at("task in-progress 7")).toBeLessThan(at("task in-progress 4"));
+		expect(at("task in-progress 4")).toBeLessThan(at("task todo 3"));
+		expect(at("task todo 3")).toBeLessThan(at("task completed 2"));
+		expect(at("task completed 2")).toBeLessThan(at("task cancelled 1"));
 	});
 
-	it("treats every review/question column as live work", async () => {
+	it("treats every review/question column and a custom column as live work", async () => {
 		mockSend.mockResolvedValue(
 			okResp([
 				withStatus(10, "todo"),
@@ -469,10 +361,11 @@ describe("tasks list status grouping", () => {
 				withStatus(2, "review-by-ai"),
 				withStatus(3, "review-by-user"),
 				withStatus(4, "review-by-colleague"),
+				withStatus(5, "todo", { customColumnId: "3d339f70" }),
 			]),
 		);
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+		await handleTasks("list", LIST(), SOCKET, null);
 
 		const todoIdx = stdoutOutput.indexOf("task todo 10");
 		for (const title of [
@@ -480,29 +373,11 @@ describe("tasks list status grouping", () => {
 			"task review-by-ai 2",
 			"task review-by-user 3",
 			"task review-by-colleague 4",
+			"task todo 5",
 		]) {
-			expect(stdoutOutput.indexOf(title)).toBeLessThan(todoIdx);
+			expect(stdoutOutput.indexOf(title), title).toBeGreaterThan(-1);
+			expect(stdoutOutput.indexOf(title), title).toBeLessThan(todoIdx);
 		}
-	});
-
-	it("ranks a custom-column task as live work", async () => {
-		mockSend.mockResolvedValue(
-			okResp([withStatus(9, "todo"), withStatus(1, "todo", { customColumnId: "3d339f70" })]),
-		);
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput.indexOf("task todo 1")).toBeLessThan(stdoutOutput.indexOf("task todo 9"));
-	});
-
-	it("keeps newest-first inside a group", async () => {
-		mockSend.mockResolvedValue(okResp([withStatus(5, "in-progress"), withStatus(7, "in-progress")]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput.indexOf("task in-progress 7")).toBeLessThan(
-			stdoutOutput.indexOf("task in-progress 5"),
-		);
 	});
 
 	it("fills a small --limit with live work before completed tasks", async () => {
@@ -510,68 +385,10 @@ describe("tasks list status grouping", () => {
 			okResp([withStatus(50, "completed"), withStatus(49, "completed"), withStatus(2, "in-progress")]),
 		);
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "1" } }, SOCKET, null);
+		await handleTasks("list", LIST({ limit: "1" }), SOCKET, null);
 
 		expect(stdoutOutput).toContain("task in-progress 2");
 		expect(stdoutOutput).not.toContain("task completed 50");
-	});
-});
-
-describe("tasks list --offset paging", () => {
-	it("skips the first N tasks (after newest-first sort)", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "1" } }, SOCKET, null);
-
-		// Offset 1 skips the newest (seq 2), leaving seq 1.
-		expect(stdoutOutput).toContain("First task");
-		expect(stdoutOutput).not.toContain("Second task");
-		expect(stdoutOutput).toContain("Showing 2-2 of 2.");
-	});
-
-	it("combines --offset with --limit for a middle window", async () => {
-		mockSend.mockResolvedValue(okResp(makeTasks(10)));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "2", limit: "3" } }, SOCKET, null);
-
-		// Newest-first: seq 10,9,8 (offset 2 → start at seq 8), 3 rows → 8,7,6.
-		expect(stdoutOutput).toContain("task number 8");
-		expect(stdoutOutput).toContain("task number 6");
-		expect(stdoutOutput).not.toContain("task number 9");
-		expect(stdoutOutput).not.toContain("task number 5");
-		expect(stdoutOutput).toContain("Showing 3-5 of 10.");
-		expect(stdoutOutput).toContain("Next page: --offset 5 --limit 3");
-	});
-
-	it("reports when offset is past the end", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "5" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("No tasks at offset 5 (2 total).");
-	});
-
-	it("accepts --offset 0 as the first page", async () => {
-		mockSend.mockResolvedValue(okResp(TASKS));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "0" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("Showing 1-2 of 2.");
-	});
-
-	it("rejects non-numeric --offset before sending to server", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "abc" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--offset");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects negative --offset", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "-1" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
@@ -593,113 +410,80 @@ describe("tasks list priority", () => {
 		};
 	}
 
-	it("prints a PRI column carrying each task's priority", async () => {
+	it("prints a PRI column, defaulting a task that predates the field to P3 (which --priority P3 matches)", async () => {
 		mockSend.mockResolvedValue(okResp([withPriority(1, "P0")]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
+		await handleTasks("list", LIST(), SOCKET, null);
 		expect(stdoutOutput).toContain("PRI");
 		expect(stdoutOutput).toMatch(/P0\s+To Do\s+task 1/);
-	});
 
-	it("shows the default priority for a task that predates the field", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp([{ ...TASKS[0], priority: undefined }]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
+		await handleTasks("list", LIST(), SOCKET, null);
 		expect(stdoutOutput).toMatch(/P3\s+To Do\s+First task/);
+
+		stdoutOutput = "";
+		await handleTasks("list", LIST({ priority: "P3" }), SOCKET, null);
+		expect(stdoutOutput).toContain("First task");
 	});
 
-	it("sorts by priority inside a group, highest first", async () => {
+	it("sorts by priority inside a group, highest first, breaking a tie with newest seq", async () => {
 		mockSend.mockResolvedValue(
-			okResp([withPriority(1, "P4"), withPriority(2, "P0"), withPriority(3, "P2")]),
+			okResp([withPriority(1, "P4"), withPriority(2, "P0"), withPriority(3, "P2"), withPriority(5, "P1"), withPriority(9, "P1")]),
 		);
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+		await handleTasks("list", LIST(), SOCKET, null);
 
 		const at = (title: string) => stdoutOutput.indexOf(title);
-		expect(at("task 2")).toBeLessThan(at("task 3"));
+		expect(at("task 2")).toBeLessThan(at("task 9"));
+		expect(at("task 9")).toBeLessThan(at("task 5"));
+		expect(at("task 5")).toBeLessThan(at("task 3"));
 		expect(at("task 3")).toBeLessThan(at("task 1"));
 	});
 
-	it("breaks a priority tie with newest seq first", async () => {
-		mockSend.mockResolvedValue(okResp([withPriority(5, "P1"), withPriority(9, "P1")]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput.indexOf("task 9")).toBeLessThan(stdoutOutput.indexOf("task 5"));
-	});
-
-	it("keeps the status grouping above priority — a P0 in To Do stays under live work", async () => {
-		mockSend.mockResolvedValue(
-			okResp([withPriority(1, "P0"), withPriority(2, "P4", { status: "in-progress" })]),
-		);
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
-
-		expect(stdoutOutput.indexOf("task 2")).toBeLessThan(stdoutOutput.indexOf("task 1"));
-	});
-
-	it("sinks a hibernated task below every live priority, as the board does", async () => {
-		mockSend.mockResolvedValue(
-			okResp([
+	it("keeps the status grouping above priority, and sinks a hibernated task below every live priority, as the board does", async () => {
+		const cases: Array<[string, Task[]]> = [
+			["a P0 in To Do stays under live work", [withPriority(1, "P0"), withPriority(2, "P4", { status: "in-progress" })]],
+			["a hibernated P0 sinks", [
 				withPriority(1, "P0", { status: "in-progress", hibernated: true }),
 				withPriority(2, "P4", { status: "in-progress" }),
-			]),
-		);
+			]],
+		];
+		for (const [name, tasks] of cases) {
+			stdoutOutput = "";
+			mockSend.mockResolvedValue(okResp(tasks));
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+			await handleTasks("list", LIST(), SOCKET, null);
 
-		expect(stdoutOutput.indexOf("task 2")).toBeLessThan(stdoutOutput.indexOf("task 1"));
+			expect(stdoutOutput.indexOf("task 2"), name).toBeLessThan(stdoutOutput.indexOf("task 1"));
+		}
 	});
 
 	it("--sort seq restores plain newest-first inside a group", async () => {
 		mockSend.mockResolvedValue(okResp([withPriority(1, "P0"), withPriority(2, "P4")]));
 
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", sort: "seq" } }, SOCKET, null);
+		await handleTasks("list", LIST({ sort: "seq" }), SOCKET, null);
 
 		expect(stdoutOutput.indexOf("task 2")).toBeLessThan(stdoutOutput.indexOf("task 1"));
 	});
 
-	it("rejects an unknown --sort key", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", sort: "title" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--sort");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("--priority keeps only the named band", async () => {
+	it("--priority keeps only the named band, or a comma-separated list in any case and bare digits", async () => {
 		mockSend.mockResolvedValue(
 			okResp([withPriority(1, "P0"), withPriority(2, "P2"), withPriority(3, "P4")]),
 		);
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "P2" } }, SOCKET, null);
-
+		await handleTasks("list", LIST({ priority: "P2" }), SOCKET, null);
 		expect(stdoutOutput).toContain("task 2");
 		expect(stdoutOutput).not.toContain("task 1");
 		expect(stdoutOutput).not.toContain("task 3");
 		expect(stdoutOutput).toContain("Showing 1-1 of 1.");
-	});
 
-	it("--priority accepts a comma-separated list, in any case and bare digits", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(
 			okResp([withPriority(1, "P0"), withPriority(2, "P1"), withPriority(3, "P4")]),
 		);
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "p0,1" } }, SOCKET, null);
-
+		await handleTasks("list", LIST({ priority: "p0,1" }), SOCKET, null);
 		expect(stdoutOutput).toContain("task 1");
 		expect(stdoutOutput).toContain("task 2");
 		expect(stdoutOutput).not.toContain("task 3");
-	});
-
-	it("--priority P3 matches a task that predates the field", async () => {
-		mockSend.mockResolvedValue(okResp([{ ...TASKS[0], priority: undefined }]));
-
-		await handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "P3" } }, SOCKET, null);
-
-		expect(stdoutOutput).toContain("First task");
 	});
 
 	it("composes --priority with --label", async () => {
@@ -710,30 +494,10 @@ describe("tasks list priority", () => {
 			]),
 		);
 
-		await handleTasks(
-			"list",
-			{ positional: [], flags: { project: "proj-001", priority: "P0", label: "lab00001" } },
-			SOCKET,
-			null,
-		);
+		await handleTasks("list", LIST({ priority: "P0", label: "lab00001" }), SOCKET, null);
 
 		expect(stdoutOutput).toContain("task 1");
 		expect(stdoutOutput).not.toContain("task 2");
-	});
-
-	it("rejects an invalid --priority before sending to the server", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "P9" } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--priority");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an empty --priority", async () => {
-		await expect(
-			handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "," } }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
@@ -758,16 +522,15 @@ describe("tasks list --children-of", () => {
 		expect(stdoutOutput.indexOf("dev-3.0  ")).toBeLessThan(stdoutOutput.indexOf("homebrew"));
 	});
 
-	it("resolves the parent in --project and prints JSON", async () => {
+	it("resolves the parent in --project and prints JSON; says so when there are no children", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
 		await handleTasks("list", { positional: [], flags: { "children-of": "seq:1801", project: "proj-009", json: "true" } }, SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.children", { taskId: "seq:1801", projectId: "proj-009" });
 		const parsed = JSON.parse(stdoutOutput);
 		expect(parsed.children.map((c: { seq: number }) => c.seq)).toEqual([1802, 9]);
-	});
 
-	it("says so when the parent has no children", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: { ...RESULT, children: [] } } as CliResponse);
 		await handleTasks("list", { positional: [], flags: { "children-of": "seq:1801" } }, SOCKET, CTX);
 		expect(stdoutOutput).toContain("No children.");
@@ -783,7 +546,7 @@ describe("tasks list --epic", () => {
 		],
 	};
 
-	it("lists the epic's tasks from every project and every status, ignoring the current project", async () => {
+	it("lists the epic's tasks from every project and every status, ignoring the current project, as text and JSON", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
 		await handleTasks("list", { positional: [], flags: { epic: "Payments v2" } }, SOCKET, CTX);
 
@@ -792,10 +555,8 @@ describe("tasks list --epic", () => {
 		expect(stdoutOutput).toContain("backend");
 		expect(stdoutOutput).toContain("Completed");
 		expect(stdoutOutput.indexOf("app  ")).toBeLessThan(stdoutOutput.indexOf("backend"));
-	});
 
-	it("prints JSON", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
+		stdoutOutput = "";
 		await handleTasks("list", { positional: [], flags: { epic: "Payments v2", json: "true" } }, SOCKET, CTX);
 		expect(JSON.parse(stdoutOutput).tasks.map((t: { seq: number }) => t.seq)).toEqual([1802, 9]);
 	});

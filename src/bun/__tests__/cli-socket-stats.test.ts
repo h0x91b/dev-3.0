@@ -47,15 +47,7 @@ beforeEach(() => {
 });
 
 describe("stats.* socket methods", () => {
-	it("hands stats.usage a string since so the scan can skip old transcripts", async () => {
-		await statsHandlers["stats.usage"]({ since: "2026-10-25T00:00:00.000Z" });
-		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({ since: "2026-10-25T00:00:00.000Z" });
-		await statsHandlers["stats.usage"]({ since: 7 });
-		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({});
-	});
-
-
-	it("pass the renderer handlers' answers through unchanged", async () => {
+	it("pass the renderer handlers' answers through unchanged, and stats.usage only a string since", async () => {
 		expect(await statsHandlers["stats.productivity"]({})).toEqual({ events: [], generatedAt: "2026-10-27T00:00:00.000Z" });
 		expect(await statsHandlers["stats.usage"]({})).toMatchObject({ days: [], hasUnpricedModels: false });
 		expect(await statsHandlers["stats.limits"]({})).toEqual({ snapshots: [], generatedAt: 1 });
@@ -64,6 +56,12 @@ describe("stats.* socket methods", () => {
 		expect(rpc.getAgentUsage).toHaveBeenCalledWith({});
 		expect(rpc.getProductivityStats).toHaveBeenCalledTimes(1);
 		expect(rpc.getSystemMemory).toHaveBeenCalledTimes(1);
+
+		// stats.usage forwards a string since so the scan can skip old transcripts, and drops any other type.
+		await statsHandlers["stats.usage"]({ since: "2026-10-25T00:00:00.000Z" });
+		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({ since: "2026-10-25T00:00:00.000Z" });
+		await statsHandlers["stats.usage"]({ since: 7 });
+		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({});
 	});
 });
 
@@ -90,10 +88,6 @@ describe("stats.prices", () => {
 
 describe("approvals.list", () => {
 	const asker = { taskId: "task-r", seq: 7, title: "Coordinator", senderId: null };
-
-	it("is empty with nothing pending", async () => {
-		expect(await statsHandlers["approvals.list"]({})).toEqual({ requests: [] });
-	});
 
 	it("lists every pending kind with its dialog context, oldest first, and drops settled ones", async () => {
 		vi.useFakeTimers();
@@ -137,7 +131,8 @@ describe("approvals.list", () => {
 		expect(requests[0]).toMatchObject({ requesterSenderId: "openclaw", requesterTaskId: null, requesterSeq: null, heldByUser: true, autoApproveAt: null });
 	});
 
-	it("reports a request created without dialog context as nulls, not a crash", async () => {
+	it("is empty with nothing pending, and reports a request created without dialog context as nulls, not a crash", async () => {
+		expect(await statsHandlers["approvals.list"]({})).toEqual({ requests: [] });
 		createAgentRequest("launch", "task-b", "proj-1");
 		const { requests } = await statsHandlers["approvals.list"]({}) as { requests: Array<Record<string, unknown>> };
 		expect(requests[0]).toMatchObject({ kind: "launch", taskTitle: null, seqLabel: null, projectName: null, requesterTaskId: null });

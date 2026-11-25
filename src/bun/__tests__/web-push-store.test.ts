@@ -41,22 +41,14 @@ describe("loading", () => {
 });
 
 describe("registering a device", () => {
-	it("stores it and stamps when it happened", () => {
+	it("stores it with a timestamp, replaces rather than duplicates on re-subscribe, and keeps distinct devices apart", () => {
 		const subs = addSubscription(sub("https://a/1"), "iPhone", file, new Date("2026-08-26T10:00:00Z"));
 		expect(subs).toHaveLength(1);
 		expect(subs[0].label).toBe("iPhone");
 		expect(subs[0].createdAt).toBe("2026-08-26T10:00:00.000Z");
-	});
-
-	it("replaces rather than duplicates when the same device re-subscribes", () => {
-		addSubscription(sub("https://a/1"), "iPhone", file);
-		const subs = addSubscription(sub("https://a/1"), "iPhone renamed", file);
-		expect(subs).toHaveLength(1);
-		expect(subs[0].label).toBe("iPhone renamed");
-	});
-
-	it("keeps distinct devices apart", () => {
-		addSubscription(sub("https://a/1"), "iPhone", file);
+		const resubscribed = addSubscription(sub("https://a/1"), "iPhone renamed", file);
+		expect(resubscribed).toHaveLength(1);
+		expect(resubscribed[0].label).toBe("iPhone renamed");
 		expect(addSubscription(sub("https://b/2"), "Mac", file)).toHaveLength(2);
 	});
 
@@ -75,17 +67,13 @@ describe("registering a device", () => {
 });
 
 describe("removing a device", () => {
-	it("takes it out of the store", () => {
+	it("takes it out of the store, and is a no-op for an endpoint that was never there", () => {
 		addSubscription(sub("https://a/1"), "iPhone", file);
 		addSubscription(sub("https://b/2"), "Mac", file);
+		expect(removeSubscription("https://nope/9", file)).toHaveLength(2);
 		const left = removeSubscription("https://a/1", file);
 		expect(left).toHaveLength(1);
 		expect(left[0].endpoint).toBe("https://b/2");
-	});
-
-	it("is a no-op for an endpoint that was never there", () => {
-		addSubscription(sub("https://a/1"), "iPhone", file);
-		expect(removeSubscription("https://nope/9", file)).toHaveLength(1);
 	});
 });
 

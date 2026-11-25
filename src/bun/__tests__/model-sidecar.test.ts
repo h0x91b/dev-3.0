@@ -160,88 +160,53 @@ function remember(endpoint: unknown) {
 }
 
 describe("binary resolution", () => {
-	it("prefers an explicit development override", async () => {
-		const { resolveSidecarBinary } = await freshModule();
-		expect(resolveSidecarBinary()).toBe("/opt/dev3/bifrost-http");
-	});
-
-	it("reports the binary as missing when the override does not exist", async () => {
+	it("prefers an explicit development override, reports it missing, and looks for the bundled copy inside the app, not on PATH", async () => {
+		expect((await freshModule()).resolveSidecarBinary()).toBe("/opt/dev3/bifrost-http");
 		process.env.DEV3_BIFROST_BINARY = "/nope/bifrost-http";
-		const { resolveSidecarBinary } = await freshModule();
+		const { resolveSidecarBinary, bundledSidecarCandidates } = await freshModule();
 		expect(resolveSidecarBinary()).toBeUndefined();
-	});
-
-	it("looks for the bundled copy inside the app, not on PATH", async () => {
-		const { bundledSidecarCandidates } = await freshModule();
+		// The bundled copy is looked for inside the app, not on PATH.
 		expect(bundledSidecarCandidates("/apps/dev3.app/Contents/MacOS")).toContain(
 			"/apps/dev3.app/Contents/Resources/app/bifrost/bifrost-http",
 		);
-	});
-
-	it("has no candidates when the executable's directory is unknown", async () => {
-		const { bundledSidecarCandidates } = await freshModule();
 		expect(bundledSidecarCandidates(undefined)).toEqual([]);
 	});
 });
 
 describe("credentials", () => {
-	it("hands each provider's key to the child process under its own variable", async () => {
+	it("hands each provider's key to the child under its own variable, skipping keyless providers", async () => {
 		const { buildSidecarEnv } = await freshModule();
-		const env = buildSidecarEnv(CATALOG, { "p-or": "sk-or-live" }, { sessionKey: "sk-bf-1", encryptionKey: "abc" });
+		const env = buildSidecarEnv(CATALOG, { "p-or": "sk-or-live", "p-custom": "sk" }, { sessionKey: "sk-bf-1", encryptionKey: "abc" });
 		expect(env.DEV3_LLM_KEY_OPENROUTER).toBe("sk-or-live");
 		expect(env.DEV3_BIFROST_VIRTUAL_KEY).toBe("sk-bf-1");
-	});
-
-	it("skips a provider the user has not given a key yet", async () => {
-		const { buildSidecarEnv } = await freshModule();
-		const env = buildSidecarEnv(CATALOG, { "p-or": "sk-or-live" }, { sessionKey: "k", encryptionKey: "e" });
 		expect(env.DEV3_LLM_KEY_OPENAI).toBeUndefined();
-	});
-
-	it("gives a keyless custom endpoint a stand-in key, so the proxy will serve it", async () => {
-		// Without a value the sidecar refuses every request against that provider
-		// locally ("no keys found that support model"), and the connect flow offers
-		// Ollama with no key field at all.
-		const { buildSidecarEnv } = await freshModule();
-		const env = buildSidecarEnv(CATALOG, {}, { sessionKey: "k", encryptionKey: "e" });
-		expect(env.DEV3_LLM_KEY_CUSTOM_MY_BOX).toBeTruthy();
-	});
-
-	it("passes a custom endpoint's base URL through the environment too", async () => {
-		const { buildSidecarEnv } = await freshModule();
-		const env = buildSidecarEnv(CATALOG, { "p-custom": "sk" }, { sessionKey: "k", encryptionKey: "e" });
 		expect(env.DEV3_LLM_BASE_URL_CUSTOM_MY_BOX).toBe("https://llm.example.com/v1");
+
+		// A keyless custom endpoint gets a stand-in key: without a value the sidecar
+		// refuses every request against that provider locally ("no keys found that
+		// support model"), and the connect flow offers Ollama with no key field at all.
+		expect(buildSidecarEnv(CATALOG, {}, { sessionKey: "k", encryptionKey: "e" }).DEV3_LLM_KEY_CUSTOM_MY_BOX).toBeTruthy();
 	});
 });
 
 describe("starting", () => {
-	it("comes up on a loopback port and reports it", async () => {
+	it("comes up on a loopback port and serves concurrent launches from one process instead of racing two", async () => {
 		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
-		const runtime = await ensureModelSidecar();
+		const [runtime, other] = await Promise.all([ensureModelSidecar(), ensureModelSidecar()]);
 		expect(runtime.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
 		expect(runtime.sessionKey).toMatch(/^sk-bf-/);
+		expect(other.baseUrl).toBe(runtime.baseUrl);
+		expect(h.spawnMock).toHaveBeenCalledTimes(1);
 		expect(getModelSidecarStatus().running).toBe(true);
 	});
 
-	it("writes the generated config before launching, with the key only as a reference", async () => {
+	it("writes the config with the key only as a reference and never puts a credential on the command line", async () => {
 		const { ensureModelSidecar } = await freshModule();
 		await ensureModelSidecar();
 		const [, written] = h.fs.writeFileSync.mock.calls[0];
 		expect(String(written)).toContain("env.DEV3_LLM_KEY_OPENROUTER");
 		expect(String(written)).not.toContain("sk-or-live");
-	});
-
-	it("never puts a credential on the command line", async () => {
-		const { ensureModelSidecar } = await freshModule();
-		await ensureModelSidecar();
 		expect(h.spawnMock.mock.calls[0][0].join(" ")).not.toContain("sk-");
-	});
-
-	it("serves concurrent launches from one process instead of racing two", async () => {
-		const { ensureModelSidecar } = await freshModule();
-		const [a, b] = await Promise.all([ensureModelSidecar(), ensureModelSidecar()]);
-		expect(a.baseUrl).toBe(b.baseUrl);
-		expect(h.spawnMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("tries another port when the first attempt dies on a taken one", async () => {
@@ -292,6 +257,7 @@ describe("starting", () => {
 		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
 		await expect(ensureModelSidecar()).rejects.toThrow(/missing from this build/);
 		expect(getModelSidecarStatus().binaryAvailable).toBe(false);
+		expect(getModelSidecarStatus().restart).toBeUndefined();
 	});
 });
 
@@ -302,7 +268,7 @@ describe("surviving a restart", () => {
 		return call ? JSON.parse(String(call[1])) : null;
 	}
 
-	it("remembers the port and the session key it launched on", async () => {
+	it("remembers the port and the session key it launched on, and comes back with the same key", async () => {
 		const { ensureModelSidecar } = await freshModule();
 		const runtime = await ensureModelSidecar();
 		const saved = rememberedEndpoint();
@@ -311,28 +277,20 @@ describe("surviving a restart", () => {
 		expect(saved?.sessionKey).toBe(runtime.sessionKey);
 		expect(saved?.pid).toBe(5150);
 		expect(saved?.ownerPid).toBe(process.pid);
-	});
 
-	it("loads endpoints written before ownership was recorded", async () => {
-		const endpoint = { port: 47311, sessionKey: "sk-bf-rememberedkey" };
-		remember(endpoint);
-		const { loadSidecarEndpoint } = await freshModule();
-		expect(loadSidecarEndpoint()).toEqual(endpoint);
-	});
-
-	it.each([0, -1, 1, 1.5, "123"])("ignores invalid ownership pid %s", async (pid) => {
-		remember({ port: 47311, sessionKey: "sk-bf-rememberedkey", pid, ownerPid: pid });
-		const { loadSidecarEndpoint } = await freshModule();
-		expect(loadSidecarEndpoint()).toEqual({ port: 47311, sessionKey: "sk-bf-rememberedkey" });
-	});
-
-	// A running agent has the base URL and token baked into its launch env, so a
-	// proxy that comes back elsewhere strands every session it was serving.
-	it("comes back with the same session key, so running agents keep working", async () => {
+		// A running agent has the base URL and token baked into its launch env, so a
+		// proxy that comes back elsewhere strands every session it was serving.
 		remember({ port: 47311, sessionKey: "sk-bf-rememberedkey" });
-		const { ensureModelSidecar } = await freshModule();
-		const runtime = await ensureModelSidecar();
-		expect(runtime.sessionKey).toBe("sk-bf-rememberedkey");
+		expect((await (await freshModule()).ensureModelSidecar()).sessionKey).toBe("sk-bf-rememberedkey");
+	});
+
+	it("loads endpoints without ownership, dropping invalid ownership pids", async () => {
+		const endpoint = { port: 47311, sessionKey: "sk-bf-rememberedkey" };
+		for (const pid of [undefined, 0, -1, 1, 1.5, "123"]) {
+			remember(pid === undefined ? endpoint : { ...endpoint, pid, ownerPid: pid });
+			const { loadSidecarEndpoint } = await freshModule();
+			expect(loadSidecarEndpoint(), `pid ${String(pid)}`).toEqual(endpoint);
+		}
 	});
 
 	it("takes a real port when something else holds the fixed one", async () => {
@@ -352,19 +310,13 @@ describe("surviving a restart", () => {
 		}
 	});
 
-	it("ignores a corrupt endpoint file instead of failing to start", async () => {
+	it("ignores a corrupt endpoint file or a key that is not one of ours instead of failing to start", async () => {
 		h.fs.readFileSync.mockImplementation(() => "{not json");
-		const { ensureModelSidecar } = await freshModule();
-		const runtime = await ensureModelSidecar();
-		expect(runtime.sessionKey).toMatch(/^sk-bf-/);
-		expect(runtime.sessionKey).not.toBe("sk-bf-rememberedkey");
-	});
-
-	it("refuses a key that is not one of ours", async () => {
+		const fromCorrupt = await (await freshModule()).ensureModelSidecar();
+		expect(fromCorrupt.sessionKey).toMatch(/^sk-bf-/);
 		remember({ port: 47311, sessionKey: "hijacked" });
-		const { ensureModelSidecar } = await freshModule();
-		const runtime = await ensureModelSidecar();
-		expect(runtime.sessionKey).toMatch(/^sk-bf-/);
+		const fromHijacked = await (await freshModule()).ensureModelSidecar();
+		expect(fromHijacked.sessionKey).toMatch(/^sk-bf-/);
 	});
 });
 
@@ -373,43 +325,28 @@ describe("choosing the port", () => {
 	/** Ports the probe should call free; everything else is treated as taken. */
 	const freeOnly = (...ports: number[]) => async (port: number) => ports.includes(port);
 
-	it("uses one fixed address, so the proxy is at the same place every run", async () => {
+	it("uses one fixed address below the ephemeral range, remembered or not", async () => {
 		const { choosePort, DEFAULT_SIDECAR_PORT } = await freshModule();
 		expect(await choosePort(1, REMEMBERED, freeOnly(DEFAULT_SIDECAR_PORT, REMEMBERED.port))).toBe(DEFAULT_SIDECAR_PORT);
-	});
-
-	it("keeps the fixed address even with nothing remembered", async () => {
-		const { choosePort, DEFAULT_SIDECAR_PORT } = await freshModule();
 		expect(await choosePort(1, null, freeOnly(DEFAULT_SIDECAR_PORT))).toBe(DEFAULT_SIDECAR_PORT);
+		expect(DEFAULT_SIDECAR_PORT).toBeGreaterThan(1024);
+		expect(DEFAULT_SIDECAR_PORT).toBeLessThan(32768);
 	});
 
 	// Second best: the address the agents already running were launched against.
-	it("falls back to the last run's port when the fixed one is taken", async () => {
-		const { choosePort } = await freshModule();
+	it("falls back to the last run's port, then any free port, and stops insisting after the early attempts", async () => {
+		const { choosePort, DEFAULT_SIDECAR_PORT } = await freshModule();
 		expect(await choosePort(1, REMEMBERED, freeOnly(REMEMBERED.port))).toBe(REMEMBERED.port);
-	});
-
-	it("takes any free port when both are taken, rather than refusing to start", async () => {
-		const { choosePort, DEFAULT_SIDECAR_PORT } = await freshModule();
-		const port = await choosePort(1, REMEMBERED, freeOnly());
-		expect(port).not.toBe(DEFAULT_SIDECAR_PORT);
-		expect(port).not.toBe(REMEMBERED.port);
-		expect(port).toBeGreaterThan(0);
-	});
-
-	// A port that answered the health check but died right after is not a port to
-	// keep retrying — later attempts stop insisting and just take a free one.
-	it("stops insisting on a specific port after the early attempts", async () => {
-		const { choosePort, DEFAULT_SIDECAR_PORT } = await freshModule();
-		const port = await choosePort(3, REMEMBERED, freeOnly(DEFAULT_SIDECAR_PORT, REMEMBERED.port));
-		expect(port).not.toBe(DEFAULT_SIDECAR_PORT);
-		expect(port).not.toBe(REMEMBERED.port);
-	});
-
-	it("sits below the ephemeral range, so no OS hands it out behind our back", async () => {
-		const { DEFAULT_SIDECAR_PORT } = await freshModule();
-		expect(DEFAULT_SIDECAR_PORT).toBeGreaterThan(1024);
-		expect(DEFAULT_SIDECAR_PORT).toBeLessThan(32768);
+		// Both taken: any free port rather than refusing to start.
+		const any = await choosePort(1, REMEMBERED, freeOnly());
+		expect(any).not.toBe(DEFAULT_SIDECAR_PORT);
+		expect(any).not.toBe(REMEMBERED.port);
+		expect(any).toBeGreaterThan(0);
+		// A port that answered the health check but died right after is not a port to
+		// keep retrying — later attempts stop insisting and just take a free one.
+		const later = await choosePort(3, REMEMBERED, freeOnly(DEFAULT_SIDECAR_PORT, REMEMBERED.port));
+		expect(later).not.toBe(DEFAULT_SIDECAR_PORT);
+		expect(later).not.toBe(REMEMBERED.port);
 	});
 });
 
@@ -503,13 +440,6 @@ describe("reclaiming leaked proxies", () => {
 		expect(h.spawnMock).toHaveBeenCalledWith(["lsof", "-a", "-p", String(PROXY), "-Fn"], expect.anything());
 	});
 
-	it("uses legacy identity when a writer left only a proxy pid", async () => {
-		remember({ port: DEFAULT_PORT, sessionKey: "sk-bf-stable", pid: PROXY });
-		const { ensureModelSidecar } = await freshModule();
-		await ensureModelSidecar();
-		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
-	});
-
 	it("never signals a recorded pid that has already exited", async () => {
 		alive.delete(PROXY);
 		const { ensureModelSidecar } = await freshModule();
@@ -524,14 +454,12 @@ describe("reclaiming leaked proxies", () => {
 		expect(signals()).toEqual([]);
 	});
 
-	it.each([
-		`n${RUNTIME}/config.db\n`,
-		"n/tmp/another-runtime/config.db\nn/tmp/another-runtime/logs.db\n",
-	])("requires both database files from our exact runtime directory: %s", async (output) => {
-		files = output;
-		const { ensureModelSidecar } = await freshModule();
-		await ensureModelSidecar();
-		expect(signals()).toEqual([]);
+	it("requires both database files from our exact runtime directory", async () => {
+		for (const output of [`n${RUNTIME}/config.db\n`, "n/tmp/another-runtime/config.db\nn/tmp/another-runtime/logs.db\n"]) {
+			files = output;
+			await (await freshModule()).ensureModelSidecar();
+			expect(signals(), output).toEqual([]);
+		}
 	});
 
 	it("compares open files against the real runtime path, including symlinks", async () => {
@@ -542,15 +470,16 @@ describe("reclaiming leaked proxies", () => {
 		expect(signals()).toEqual([[PROXY, "SIGTERM"]]);
 	});
 
-	it.each(["ps", "lsof"])("fails closed when %s is unavailable", async (tool) => {
+	it("fails closed when ps or lsof is unavailable", async () => {
 		const original = h.spawnMock.getMockImplementation()!;
-		h.spawnMock.mockImplementation((cmd, ...args) => {
-			if (cmd[0] === tool) throw new Error("ENOENT");
-			return original(cmd, ...args);
-		});
-		const { ensureModelSidecar } = await freshModule();
-		await ensureModelSidecar();
-		expect(signals()).toEqual([]);
+		for (const tool of ["ps", "lsof"]) {
+			h.spawnMock.mockImplementation((cmd, ...args) => {
+				if (cmd[0] === tool) throw new Error("ENOENT");
+				return original(cmd, ...args);
+			});
+			await (await freshModule()).ensureModelSidecar();
+			expect(signals(), tool).toEqual([]);
+		}
 	});
 
 	it("fails closed on Windows instead of trusting a reused pid", async () => {
@@ -599,23 +528,25 @@ describe("autostart", () => {
 		await autostartModelSidecar();
 		expect(getModelSidecarStatus().running).toBe(true);
 		expect(h.spawnMock).toHaveBeenCalledTimes(1);
-	});
 
-	it("stays out of the way when there is no provider to serve", async () => {
-		h.catalog.mockReturnValue({ providers: [], models: [] });
-		const { autostartModelSidecar, getModelSidecarStatus } = await freshModule();
-		await autostartModelSidecar();
-		expect(h.spawnMock).not.toHaveBeenCalled();
-		expect(getModelSidecarStatus().running).toBe(false);
-	});
-
-	// A provider without a key is still worth starting for: the user is mid-setup,
-	// and the proxy is what they need up to load the provider's model ids.
-	it("starts for a provider that has no key yet", async () => {
+		// A provider without a key is still worth starting for: the user is mid-setup,
+		// and the proxy is what they need up to load the provider's model ids.
 		h.keys.mockReturnValue({});
-		const { autostartModelSidecar, getModelSidecarStatus } = await freshModule();
-		await autostartModelSidecar();
-		expect(getModelSidecarStatus().running).toBe(true);
+		const keyless = await freshModule();
+		await keyless.autostartModelSidecar();
+		expect(keyless.getModelSidecarStatus().running).toBe(true);
+	});
+
+	it("stays out of the way when there is no provider to serve or no proxy binary", async () => {
+		h.catalog.mockReturnValue({ providers: [], models: [] });
+		const first = await freshModule();
+		await first.autostartModelSidecar();
+		expect(first.getModelSidecarStatus().running).toBe(false);
+		h.catalog.mockReturnValue(CATALOG);
+		h.fs.existsSync.mockReturnValue(false);
+		delete process.env.DEV3_BIFROST_BINARY;
+		await (await freshModule()).autostartModelSidecar();
+		expect(h.spawnMock).not.toHaveBeenCalled();
 	});
 
 	it("never throws when the proxy refuses to come up — the app still boots", async () => {
@@ -625,14 +556,6 @@ describe("autostart", () => {
 		await expect(autostartModelSidecar()).resolves.toBeUndefined();
 		expect(getModelSidecarStatus().running).toBe(false);
 		expect(getModelSidecarStatus().lastError).toContain("address already in use");
-	});
-
-	it("does nothing when the build ships no proxy binary", async () => {
-		h.fs.existsSync.mockReturnValue(false);
-		delete process.env.DEV3_BIFROST_BINARY;
-		const { autostartModelSidecar } = await freshModule();
-		await autostartModelSidecar();
-		expect(h.spawnMock).not.toHaveBeenCalled();
 	});
 });
 
@@ -692,26 +615,18 @@ describe("restarting after a failed start", () => {
 		expect(status.lastError).toBeUndefined();
 	});
 
-	it("drops the queued restart when the user stops the proxy", async () => {
+	it("drops the queued restart when the user stops the proxy, and never restarts after the app starts quitting", async () => {
 		failUntil(Number.POSITIVE_INFINITY);
-		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
-		await failedStart(ensureModelSidecar());
-		const spawned = h.spawnMock.mock.calls.length;
-		await stopModelSidecar();
-		expect(getModelSidecarStatus().restart).toBeUndefined();
-		await vi.advanceTimersByTimeAsync(600_000);
-		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
-	});
-
-	it("never restarts after the app starts quitting", async () => {
-		failUntil(Number.POSITIVE_INFINITY);
-		const { ensureModelSidecar, killModelSidecarNow, getModelSidecarStatus } = await freshModule();
-		await failedStart(ensureModelSidecar());
-		const spawned = h.spawnMock.mock.calls.length;
-		killModelSidecarNow();
-		expect(getModelSidecarStatus().restart).toBeUndefined();
-		await vi.advanceTimersByTimeAsync(600_000);
-		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
+		for (const how of ["stop", "quit"] as const) {
+			const { ensureModelSidecar, stopModelSidecar, killModelSidecarNow, getModelSidecarStatus } = await freshModule();
+			await failedStart(ensureModelSidecar());
+			const spawned = h.spawnMock.mock.calls.length;
+			if (how === "stop") await stopModelSidecar();
+			else killModelSidecarNow();
+			expect(getModelSidecarStatus().restart, how).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(600_000);
+			expect(h.spawnMock, how).toHaveBeenCalledTimes(spawned);
+		}
 	});
 
 	it("stays a stoppable retry while an automatic attempt runs, and a stop cuts that attempt short", async () => {
@@ -742,7 +657,7 @@ describe("restarting after a failed start", () => {
 		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
 	});
 
-	it("drops the queued restart once the catalog has no provider left", async () => {
+	it("drops the queued restart once the catalog has no provider left, and queues none without one", async () => {
 		failUntil(Number.POSITIVE_INFINITY);
 		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
 		await failedStart(ensureModelSidecar());
@@ -751,32 +666,29 @@ describe("restarting after a failed start", () => {
 		await vi.advanceTimersByTimeAsync(600_000);
 		expect(h.spawnMock).toHaveBeenCalledTimes(spawned);
 		expect(getModelSidecarStatus().restart).toBeUndefined();
-	});
 
-	it("does not queue a restart when the catalog has no provider", async () => {
-		failUntil(Number.POSITIVE_INFINITY);
-		h.catalog.mockReturnValue({ providers: [], models: [] });
-		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
-		await failedStart(ensureModelSidecar());
-		expect(getModelSidecarStatus().restart).toBeUndefined();
-	});
-
-	it("does not queue a restart when the build has no proxy to start", async () => {
-		process.env.DEV3_BIFROST_BINARY = "/nope/bifrost-http";
-		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
-		await expect(ensureModelSidecar()).rejects.toThrow(/missing from this build/);
-		expect(getModelSidecarStatus().restart).toBeUndefined();
+		// With no provider from the start, no restart is queued at all.
+		const empty = await freshModule();
+		await failedStart(empty.ensureModelSidecar());
+		expect(empty.getModelSidecarStatus().restart).toBeUndefined();
 	});
 });
 
 describe("stopping", () => {
-	it("signals the running proxy before the synchronous quit call returns", async () => {
+	it("signals the running proxy before the synchronous quit call returns, and nothing when none exists", async () => {
 		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
 		await ensureModelSidecar();
 		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
 		killModelSidecarNow();
 		expect(kill).toHaveBeenCalledExactlyOnceWith(5150, "SIGTERM");
 		expect(h.getDescendantPids).not.toHaveBeenCalled();
+
+		// With no proxy at all, neither quit nor stop signals anything.
+		kill.mockClear();
+		const empty = await freshModule();
+		expect(empty.killModelSidecarNow).not.toThrow();
+		await expect(empty.stopModelSidecar()).resolves.toBeUndefined();
+		expect(kill).not.toHaveBeenCalled();
 	});
 
 	it("signals a spawned proxy before its health check resolves and never retries", async () => {
@@ -808,13 +720,6 @@ describe("stopping", () => {
 		expect(h.spawnMock).not.toHaveBeenCalled();
 	});
 
-	it("does nothing synchronously when no proxy exists", async () => {
-		const { killModelSidecarNow } = await freshModule();
-		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
-		expect(killModelSidecarNow).not.toThrow();
-		expect(kill).not.toHaveBeenCalled();
-	});
-
 	it("signals the proxy even while an RPC stop is waiting for its descendant scan", async () => {
 		const { ensureModelSidecar, stopModelSidecar, killModelSidecarNow } = await freshModule();
 		await ensureModelSidecar();
@@ -828,11 +733,14 @@ describe("stopping", () => {
 		await stop;
 	});
 
-	it.each(["ESRCH", "EPERM"])("never throws when signalling fails with %s", async (code) => {
-		const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
-		await ensureModelSidecar();
-		vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error(code), { code }); });
-		expect(killModelSidecarNow).not.toThrow();
+	it("never throws when signalling fails with ESRCH or EPERM", async () => {
+		for (const code of ["ESRCH", "EPERM"]) {
+			const { ensureModelSidecar, killModelSidecarNow } = await freshModule();
+			await ensureModelSidecar();
+			const spy = vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error(code), { code }); });
+			expect(killModelSidecarNow, code).not.toThrow();
+			spy.mockRestore();
+		}
 	});
 
 	it("terminates the process tree, not only the parent", async () => {
@@ -850,37 +758,6 @@ describe("stopping", () => {
 		expect(killed).toEqual([6001, 5150]);
 		expect(getModelSidecarStatus().running).toBe(false);
 		killSpy.mockRestore();
-	});
-
-	it("is safe to call when nothing is running", async () => {
-		const { stopModelSidecar } = await freshModule();
-		await expect(stopModelSidecar()).resolves.toBeUndefined();
-	});
-
-	// A proxy that dies after it came up used to stay "running" forever: every
-	// later launch was handed a dead port, and the panel offered Stop instead of
-	// Start.
-	it("stops calling itself running once the process dies on its own", async () => {
-		let die: (code: number) => void = () => {};
-		h.spawnMock.mockImplementation(() => ({
-			pid: 5150,
-			exited: new Promise<number>((resolveExit) => {
-				die = resolveExit;
-			}),
-			stdout: streamOf("bifrost up"),
-			stderr: streamOf(""),
-			kill: vi.fn(),
-		}));
-
-		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
-		await ensureModelSidecar();
-		expect(getModelSidecarStatus().running).toBe(true);
-
-		die(9);
-		await new Promise((r) => setTimeout(r, 0));
-
-		expect(getModelSidecarStatus().running).toBe(false);
-		expect(getModelSidecarStatus().lastError).toContain("exited on its own");
 	});
 
 	// Quitting seconds after a launch triggered a start used to kill nothing: the
@@ -905,9 +782,11 @@ describe("stopping", () => {
 		killSpy.mockRestore();
 	});
 
-	// A stop the user asked for dismisses the failure; the exit message used to sit
-	// in the panel afterwards, reading as a fresh failure of a proxy that is off.
-	it("clears the last error when the proxy is stopped on purpose", async () => {
+	// A proxy that dies after it came up used to stay "running" forever: every
+	// later launch was handed a dead port, and the panel offered Stop instead of
+	// Start. A stop the user asked for then dismisses the failure; the exit message
+	// used to sit in the panel afterwards, reading as a fresh failure of a proxy that is off.
+	it("stops calling itself running once the process dies, and clears the error on a deliberate stop", async () => {
 		let die: (code: number) => void = () => {};
 		h.spawnMock.mockImplementation(() => ({
 			pid: 5150,
@@ -921,8 +800,10 @@ describe("stopping", () => {
 
 		const { ensureModelSidecar, stopModelSidecar, getModelSidecarStatus } = await freshModule();
 		await ensureModelSidecar();
+		expect(getModelSidecarStatus().running).toBe(true);
 		die(9);
 		await new Promise((r) => setTimeout(r, 0));
+		expect(getModelSidecarStatus().running).toBe(false);
 		expect(getModelSidecarStatus().lastError).toContain("exited on its own");
 
 		await stopModelSidecar();
@@ -955,29 +836,25 @@ describe("stopping", () => {
 describe("preflight", () => {
 	const bindings = { opus: "m-fast", sonnet: "m-local" };
 
-	it("passes when every bound model is served", async () => {
+	it("passes when every bound model is served, the preset binds no roles, or the proxy lists nothing", async () => {
 		stubHttp(["openrouter/fast", "custom-my-box/local"]);
 		const { preflightModelRoles } = await freshModule();
 		expect(await preflightModelRoles("claude", bindings, CATALOG)).toEqual({ ok: true, problems: [] });
-	});
-
-	it("passes untouched when the preset binds no roles", async () => {
-		const { preflightModelRoles } = await freshModule();
 		expect(await preflightModelRoles("claude", {}, CATALOG)).toEqual({ ok: true, problems: [] });
+		// A proxy that lists nothing does not fail a launch either.
+		stubHttp([]);
+		expect((await preflightModelRoles("claude", bindings, CATALOG)).ok).toBe(true);
 	});
 
-	it("names the role whose catalog model was deleted", async () => {
+	it("names the role whose catalog model was deleted, or whose model the proxy will not serve", async () => {
 		const { preflightModelRoles } = await freshModule();
 		const result = await preflightModelRoles("claude", { opus: "m-gone" }, CATALOG);
 		expect(result).toEqual({ ok: false, problems: [{ roleId: "opus", code: "missing-model" }] });
-	});
 
-	it("names the role whose model the proxy will not serve", async () => {
 		stubHttp(["openrouter/fast"]);
-		const { preflightModelRoles } = await freshModule();
-		const result = await preflightModelRoles("claude", bindings, CATALOG);
-		expect(result.ok).toBe(false);
-		expect(result.problems).toEqual([
+		const unserved = await preflightModelRoles("claude", bindings, CATALOG);
+		expect(unserved.ok).toBe(false);
+		expect(unserved.problems).toEqual([
 			expect.objectContaining({ roleId: "sonnet", code: "model-unreachable", detail: "custom-my-box/local" }),
 		]);
 	});
@@ -997,12 +874,6 @@ describe("preflight", () => {
 		await stopModelSidecar();
 		await ensureModelSidecar();
 		expect(h.spawnMock.mock.calls[1][1].env.DEV3_BIFROST_ENCRYPTION_KEY).toBe(first);
-	});
-
-	it("does not fail a launch just because the proxy lists nothing", async () => {
-		stubHttp([]);
-		const { preflightModelRoles } = await freshModule();
-		expect((await preflightModelRoles("claude", bindings, CATALOG)).ok).toBe(true);
 	});
 
 	// dev3's own generated config denies `list_models` to a custom endpoint

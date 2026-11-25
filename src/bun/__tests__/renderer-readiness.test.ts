@@ -60,32 +60,23 @@ describe("the renderer ready budget", () => {
 	 */
 	const SLOWEST_MEASURED_HEALTHY_LAUNCH_MS = 40_534;
 
-	it("keeps at least 3x headroom over the slowest measured healthy launch", () => {
+	it("keeps at least 3x headroom over the slowest measured healthy launch, yet stays bounded so a dead renderer still fails", () => {
 		expect(RENDERER_READY_TIMEOUT_MS).toBeGreaterThanOrEqual(SLOWEST_MEASURED_HEALTHY_LAUNCH_MS * 3);
-	});
-
-	it("stays bounded, so a machine that never produces a renderer still fails", () => {
 		expect(RENDERER_READY_TIMEOUT_MS).toBeLessThanOrEqual(300_000);
 	});
 });
 
 describe("resolveRendererReadyTimeoutMs", () => {
-	it("watches win32 by default and leaves macOS/Linux untouched", () => {
+	it("watches win32 by default, leaves macOS/Linux untouched, and treats 0 as 'disable the watchdog'", () => {
 		expect(resolveRendererReadyTimeoutMs({}, "win32")).toBe(RENDERER_READY_TIMEOUT_MS);
 		expect(resolveRendererReadyTimeoutMs({}, "darwin")).toBeNull();
 		expect(resolveRendererReadyTimeoutMs({}, "linux")).toBeNull();
-	});
-
-	it("honours an explicit budget on every platform", () => {
-		expect(resolveRendererReadyTimeoutMs({ DEV3_RENDERER_READY_TIMEOUT_MS: "2500" }, "darwin")).toBe(2500);
-		expect(resolveRendererReadyTimeoutMs({ DEV3_RENDERER_READY_TIMEOUT_MS: " 900 " }, "win32")).toBe(900);
-	});
-
-	it("treats 0 as 'disable the watchdog'", () => {
 		expect(resolveRendererReadyTimeoutMs({ DEV3_RENDERER_READY_TIMEOUT_MS: "0" }, "win32")).toBeNull();
 	});
 
-	it("falls back to the platform default rather than disabling on garbage", () => {
+	it("honours an explicit budget on every platform, falling back to the platform default rather than disabling on garbage", () => {
+		expect(resolveRendererReadyTimeoutMs({ DEV3_RENDERER_READY_TIMEOUT_MS: "2500" }, "darwin")).toBe(2500);
+		expect(resolveRendererReadyTimeoutMs({ DEV3_RENDERER_READY_TIMEOUT_MS: " 900 " }, "win32")).toBe(900);
 		for (const raw of ["", "  ", "abc", "-5", "NaN", "Infinity"]) {
 			expect(resolveRendererReadyTimeoutMs({ DEV3_RENDERER_READY_TIMEOUT_MS: raw }, "win32")).toBe(
 				RENDERER_READY_TIMEOUT_MS,
@@ -95,9 +86,13 @@ describe("resolveRendererReadyTimeoutMs", () => {
 });
 
 describe("renderer readiness watchdog", () => {
-	it("fires the failure path exactly once when no renderer reports", () => {
+	it("arms only once and fires the failure path exactly once when no renderer reports", () => {
 		const { watchdog, timers, onTimeout, onArmed } = watchdogWith(1_000);
 		watchdog.arm();
+		// Extra windows never restart the budget.
+		watchdog.arm();
+		expect(onArmed).toHaveBeenCalledTimes(1);
+		expect(timers.pendingCount()).toBe(1);
 
 		expect(onArmed).toHaveBeenCalledWith(1_000);
 		expect(watchdog.state()).toBe("armed");
@@ -129,14 +124,6 @@ describe("renderer readiness watchdog", () => {
 		expect(watchdog.markReady("dom-ready")).toBe(false);
 	});
 
-	it("arms only once, so extra windows never restart the budget", () => {
-		const { watchdog, timers, onArmed } = watchdogWith(1_000);
-		watchdog.arm();
-		watchdog.arm();
-		expect(onArmed).toHaveBeenCalledTimes(1);
-		expect(timers.pendingCount()).toBe(1);
-	});
-
 	it("never arms a timer when disabled, but still gates first-ready work", () => {
 		const { watchdog, timers, onTimeout, onReady } = watchdogWith(null);
 		expect(watchdog.state()).toBe("disabled");
@@ -155,15 +142,11 @@ describe("renderer readiness watchdog", () => {
 });
 
 describe("renderer-unavailable diagnostic", () => {
-	it("carries the grep marker, the budget and the documented exit code", () => {
+	it("carries the grep marker, the budget, the documented exit code, and the two real Windows causes with runnable next steps", () => {
 		const text = buildRendererUnavailableDiagnostic(45_000, "win32");
 		expect(text).toContain(RENDERER_UNAVAILABLE_MARKER);
 		expect(text).toContain("45000ms");
 		expect(text).toContain(`code ${CLI_EXIT_CODE_RENDERER_UNAVAILABLE}`);
-	});
-
-	it("names the two real Windows causes with runnable next steps", () => {
-		const text = buildRendererUnavailableDiagnostic(45_000, "win32");
 		expect(text).toContain("0x80070578");
 		expect(text).toContain("winget install --id Microsoft.EdgeWebView2Runtime -e");
 		expect(text).toContain("dev3 remote");
@@ -193,17 +176,15 @@ describe("hardExit", () => {
 		expect(osExit).toHaveBeenCalledWith(8, "win32");
 	});
 
-	it("falls back to reallyExit and then process.exit when the OS exit fails", async () => {
+	it("falls back to reallyExit and then process.exit when the OS exit fails, even with no reallyExit at all", async () => {
 		const osExit = vi.fn(() => { throw new Error("dlopen failed"); });
 		const proc = fakeProc();
 		await hardExit(8, { proc, osExit });
 		expect(proc.reallyExit).toHaveBeenCalledWith(8);
 		expect(proc.exit).toHaveBeenCalledWith(8);
-	});
 
-	it("still exits when the process has no reallyExit at all", async () => {
-		const proc = fakeProc("linux", false);
-		await hardExit(8, { proc, osExit: () => { throw new Error("no libc"); } });
-		expect(proc.exit).toHaveBeenCalledWith(8);
+		const bare = fakeProc("linux", false);
+		await hardExit(8, { proc: bare, osExit: () => { throw new Error("no libc"); } });
+		expect(bare.exit).toHaveBeenCalledWith(8);
 	});
 });

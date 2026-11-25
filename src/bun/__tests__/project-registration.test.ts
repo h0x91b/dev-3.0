@@ -124,7 +124,7 @@ describe("registerProject", () => {
 		expect(await spaceNamesOf("new-project-id")).toEqual(["Tools"]);
 	});
 
-	it("refuses an unknown space BEFORE anything is added", async () => {
+	it("refuses an unknown space, or --new-space naming an existing one, BEFORE anything is added", async () => {
 		await createSpace("Personal", ["other-1"]);
 		addSucceeds();
 
@@ -132,13 +132,6 @@ describe("registerProject", () => {
 
 		await expect(attempt).rejects.toThrow(SPACE_REF_INVALID_PREFIX);
 		await expect(attempt).rejects.toThrow(/Spaces: "Personal"/);
-		expect(mocks.addProject).not.toHaveBeenCalled();
-	});
-
-	it("refuses --new-space naming an existing space, adding nothing", async () => {
-		await createSpace("Personal", ["other-1"]);
-		addSucceeds();
-
 		await expect(registerProject({ path: REPO, newSpaces: ["personal"] })).rejects.toThrow(/already exists/);
 		expect(mocks.addProject).not.toHaveBeenCalled();
 	});
@@ -165,9 +158,10 @@ describe("registerProject", () => {
 		expect((await registerProject({ path: link })).outcome).toBe("exists");
 	});
 
-	it("refuses a relative path, a missing folder and a file", async () => {
+	it("refuses a relative path, a missing folder, and --no-space together with --space", async () => {
 		await expect(registerProject({ path: "repos/app" })).rejects.toThrow(/absolute path/);
 		await expect(registerProject({ path: `${ROOT}/nope` })).rejects.toThrow(/does not exist/);
+		await expect(registerProject({ path: REPO, noSpace: true, spaces: ["x"] })).rejects.toThrow(/--no-space/);
 		expect(mocks.addProject).not.toHaveBeenCalled();
 	});
 
@@ -201,10 +195,6 @@ describe("registerProject", () => {
 		expect(result.project.spaces).toEqual([]);
 		expect(await spaceNamesOf("app-old")).toEqual([]);
 	});
-
-	it("refuses --no-space together with --space", async () => {
-		await expect(registerProject({ path: REPO, noSpace: true, spaces: ["x"] })).rejects.toThrow(/--no-space/);
-	});
 });
 
 describe("cloneProject", () => {
@@ -217,8 +207,10 @@ describe("cloneProject", () => {
 		}));
 	}
 
-	it("needs a clone folder from --dir or the app's setting", async () => {
+	it("refuses before cloning: no clone folder, a URL as the folder name, an unknown space", async () => {
 		await expect(cloneProject({ url: URL })).rejects.toThrow(/No clone folder/);
+		await expect(cloneProject({ url: URL, dir: CLONES, name: URL })).rejects.toThrow(/is a URL/);
+		await expect(cloneProject({ url: URL, dir: CLONES, spaces: ["Nope"] })).rejects.toThrow(SPACE_REF_INVALID_PREFIX);
 		expect(mocks.cloneAndAddProject).not.toHaveBeenCalled();
 	});
 
@@ -232,22 +224,12 @@ describe("cloneProject", () => {
 		expect(result.project.path).toBe(`${CLONES}/app`);
 	});
 
-	it("refuses a URL given as the folder name before cloning anything", async () => {
-		await expect(cloneProject({ url: URL, dir: CLONES, name: URL })).rejects.toThrow(/is a URL/);
-		expect(mocks.cloneAndAddProject).not.toHaveBeenCalled();
-	});
-
 	it("reports an already-registered target without cloning", async () => {
 		mocks.projects.push(project("app-1", `${CLONES}/app`));
 
 		const result = await cloneProject({ url: URL, dir: CLONES });
 
 		expect(result.outcome).toBe("exists");
-		expect(mocks.cloneAndAddProject).not.toHaveBeenCalled();
-	});
-
-	it("checks spaces before cloning", async () => {
-		await expect(cloneProject({ url: URL, dir: CLONES, spaces: ["Nope"] })).rejects.toThrow(SPACE_REF_INVALID_PREFIX);
 		expect(mocks.cloneAndAddProject).not.toHaveBeenCalled();
 	});
 
@@ -318,14 +300,11 @@ describe("changeProjectSpaces", () => {
 		expect(await spaceNamesOf("p1")).toEqual(["B"]);
 	});
 
-	it("changes nothing for an unknown space", async () => {
+	it("changes nothing for an unknown space, and refuses an unknown project", async () => {
 		await createSpace("A", ["other-1", "p1"]);
 
 		await expect(changeProjectSpaces({ projectId: "p1", mode: "set", spaces: ["A", "Nope"] })).rejects.toThrow(SPACE_REF_INVALID_PREFIX);
 		expect(await spaceNamesOf("p1")).toEqual(["A"]);
-	});
-
-	it("refuses an unknown project", async () => {
 		await expect(changeProjectSpaces({ projectId: "ghost", mode: "add", spaces: ["A"] })).rejects.toThrow(/Project not found/);
 	});
 });

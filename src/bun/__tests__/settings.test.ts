@@ -153,95 +153,31 @@ describe("saveSettings", () => {
 		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(previousSettings);
 	});
 
-	it("defaults importShellEnv to on (undefined) and only stores it when explicitly disabled", async () => {
-		// No file → default: undefined means "on" (consumers gate with `!== false`).
-		expect((await loadSettings()).importShellEnv).toBeUndefined();
-
-		// Explicit false is preserved so users can opt into an isolated environment.
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ importShellEnv: false }), null, 2), "utf-8");
-		expect((await loadSettings()).importShellEnv).toBe(false);
-
-		// Explicit true normalizes back to undefined (the default-on representation).
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ importShellEnv: true }), null, 2), "utf-8");
-		expect((await loadSettings()).importShellEnv).toBeUndefined();
-	});
-
-	it("defaults prOriginTaskLink to on and stores only an explicit opt-out", async () => {
-		// No file → default on; every consumer gates with `!== false` / `=== false`.
-		expect((await loadSettings()).prOriginTaskLink).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ prOriginTaskLink: false }), null, 2), "utf-8");
-		expect((await loadSettings()).prOriginTaskLink).toBe(false);
-
-		// Explicit true normalizes back to undefined — the default-on representation.
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ prOriginTaskLink: true }), null, 2), "utf-8");
-		expect((await loadSettings()).prOriginTaskLink).toBeUndefined();
-	});
-
-	/**
-	 * Legacy key of the removed low-battery feature: `true` is the proof startup needs
-	 * to delete dev3's files, and the `false` it stores afterwards must survive.
-	 */
-	it("passes the legacy lowBatteryEnabled key through in both polarities", async () => {
-		expect((await loadSettings()).lowBatteryEnabled).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ lowBatteryEnabled: true }), null, 2), "utf-8");
-		expect((await loadSettings()).lowBatteryEnabled).toBe(true);
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ lowBatteryEnabled: false }), null, 2), "utf-8");
-		expect((await loadSettings()).lowBatteryEnabled).toBe(false);
-	});
-
-	/**
-	 * Agent traffic is default-on, so absent must stay absent (the renderer reads it
-	 * as "on") while an explicit false survives as the user's opt-out.
-	 */
-	it("keeps both explicit agent-traffic choices and stores no default", async () => {
-		expect((await loadSettings()).experimentalAgentTraffic).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalAgentTraffic: false }), null, 2), "utf-8");
-		expect((await loadSettings()).experimentalAgentTraffic).toBe(false);
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalAgentTraffic: true }), null, 2), "utf-8");
-		expect((await loadSettings()).experimentalAgentTraffic).toBe(true);
-	});
-
-	/**
-	 * Freeze diagnostics is default-off: only an explicit true is a stored opt-in,
-	 * so a stray `false` never keeps the key alive on disk.
-	 */
-	it("stores only an explicit freeze-diagnostics opt-in", async () => {
-		expect((await loadSettings()).freezeDiagnosticsEnabled).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ freezeDiagnosticsEnabled: false }), null, 2), "utf-8");
-		expect((await loadSettings()).freezeDiagnosticsEnabled).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ freezeDiagnosticsEnabled: true }), null, 2), "utf-8");
-		expect((await loadSettings()).freezeDiagnosticsEnabled).toBe(true);
-	});
-
-	/** Terminal bidi is default-on too: an explicit false is the opt-out and must survive. */
-	it("keeps both explicit terminal-bidi choices and stores no default", async () => {
-		expect((await loadSettings()).experimentalTerminalBidi).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalTerminalBidi: false }), null, 2), "utf-8");
-		expect((await loadSettings()).experimentalTerminalBidi).toBe(false);
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ experimentalTerminalBidi: true }), null, 2), "utf-8");
-		expect((await loadSettings()).experimentalTerminalBidi).toBe(true);
-	});
-
-	// Absent = the docked artifact panel, which is what every existing install gets
-	// without ever being asked. An explicit false is the user picking the panel and
-	// must survive a restart as a choice, not collapse back into "unset".
-	it("defaults openArtifactsInPopup to off and keeps both explicit choices", async () => {
-		expect((await loadSettings()).openArtifactsInPopup).toBeUndefined();
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ openArtifactsInPopup: true }), null, 2), "utf-8");
-		expect((await loadSettings()).openArtifactsInPopup).toBe(true);
-
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ openArtifactsInPopup: false }), null, 2), "utf-8");
-		expect((await loadSettings()).openArtifactsInPopup).toBe(false);
+	it("stores each boolean flag per its default: absent stays absent, explicit choices per field", async () => {
+		// [field, loaded when absent, loaded from false, loaded from true]
+		const cases: Array<[keyof GlobalSettings, boolean | undefined, boolean | undefined, boolean | undefined]> = [
+			// Default-on: consumers gate with `!== false`; explicit true normalizes back to absent.
+			["importShellEnv", undefined, false, undefined],
+			["prOriginTaskLink", undefined, false, undefined],
+			// Legacy key of the removed low-battery feature: `true` is the proof startup needs
+			// to delete dev3's files, and the `false` it stores afterwards must survive.
+			["lowBatteryEnabled", undefined, false, true],
+			// Default-on, but both explicit choices survive (absent reads as "on").
+			["experimentalAgentTraffic", undefined, false, true],
+			["experimentalTerminalBidi", undefined, false, true],
+			// Default-off: only an explicit true is a stored opt-in.
+			["freezeDiagnosticsEnabled", undefined, undefined, true],
+			// Absent = the docked panel; an explicit false is a choice and must survive a restart.
+			["openArtifactsInPopup", undefined, false, true],
+		];
+		for (const [field, absent, fromFalse, fromTrue] of cases) {
+			rmSync(settingsPath, { force: true });
+			expect((await loadSettings())[field], `${field} absent`).toBe(absent);
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ [field]: false }), null, 2), "utf-8");
+			expect((await loadSettings())[field], `${field} false`).toBe(fromFalse);
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ [field]: true }), null, 2), "utf-8");
+			expect((await loadSettings())[field], `${field} true`).toBe(fromTrue);
+		}
 	});
 
 	// Opt-in: an install that never chose must stay silent on every agent turn.
@@ -329,6 +265,10 @@ describe("saveSettings", () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");
 		expect((await loadSettings()).tipsDisabled).toBe(true);
 		expect(loadSettingsSync().tipsDisabled).toBe(true);
+
+		// Upgrade-safe: an older settings.json without tipsDisabled loads with the flag absent.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings(), null, 2), "utf-8");
+		expect((await loadSettings()).tipsDisabled).toBeUndefined();
 	});
 
 	it("does not erase tipsDisabled on the next settings save", async () => {
@@ -347,31 +287,21 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).tipsDisabled).toBe(true);
 	});
 
-	it("upgrade-safe: an older settings.json without tipsDisabled loads with the flag absent", async () => {
-		writeFileSync(settingsPath, JSON.stringify(makeSettings(), null, 2), "utf-8");
-		expect((await loadSettings()).tipsDisabled).toBeUndefined();
-	});
-
-	it("remaps a stored defaultConfigId that was removed in a preset cleanup", async () => {
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass-opus48" }), null, 2), "utf-8");
-		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus48-xhigh");
-	});
-
-	it("lands the retired plain Auto/Bypass ids on the default Opus 5.5 Medium tier", async () => {
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-auto" }), null, 2), "utf-8");
-		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass" }), null, 2), "utf-8");
-		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus55-medium");
-	});
-
-	it("falls back to the current default for a dangling builtin-looking id with no remap entry", async () => {
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-some-preset-that-never-existed" }), null, 2), "utf-8");
-		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
-	});
-
-	it("leaves a non-builtin (custom) defaultConfigId untouched", async () => {
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "my-custom-config" }), null, 2), "utf-8");
-		expect((await loadSettings()).defaultConfigId).toBe("my-custom-config");
+	it("remaps retired builtin defaultConfigIds, falls back for dangling ones, and leaves custom ids alone", async () => {
+		const cases: Array<[string, string]> = [
+			// Removed in a preset cleanup.
+			["claude-bypass-opus48", "claude-bypass-opus48-xhigh"],
+			// Retired plain Auto/Bypass land on the default Opus 5.5 Medium tier.
+			["claude-auto", "claude-auto-opus55-medium"],
+			["claude-bypass", "claude-bypass-opus55-medium"],
+			// Dangling builtin-looking id with no remap entry → current default.
+			["claude-some-preset-that-never-existed", "claude-auto-opus55-medium"],
+			["my-custom-config", "my-custom-config"],
+		];
+		for (const [stored, expected] of cases) {
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: stored }), null, 2), "utf-8");
+			expect((await loadSettings()).defaultConfigId, stored).toBe(expected);
+		}
 	});
 
 	it("keeps only string-or-null shortcut slots and drops garbage from untrusted input", async () => {
@@ -396,9 +326,8 @@ describe("saveSettings", () => {
 			mixed: { alias: "Mod+KeyB" },
 		});
 		expect(loadSettingsSync().keyboardShortcuts).toEqual(loaded.keyboardShortcuts);
-	});
 
-	it("drops the whole keyboardShortcuts map when nothing in it is valid", async () => {
+		// The whole map is dropped when nothing in it is valid.
 		writeFileSync(settingsPath, JSON.stringify({
 			...makeSettings(),
 			keyboardShortcuts: { "go-to-project": { primary: 42 }, other: [] },

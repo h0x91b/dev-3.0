@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 describe("show-artifact", () => {
-	it("sends one HTML file plus every path following --assets", async () => {
+	it("sends one HTML file plus every path following --assets, or none without --assets", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
 		await handleShowArtifact([HTML, "--assets", CSS, JS, PNG, "--title", "Metrics"], SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", {
@@ -61,6 +61,8 @@ describe("show-artifact", () => {
 			assetPaths: [CSS, JS, PNG],
 			title: "Metrics",
 		});
+		await handleShowArtifact([HTML], SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ assetPaths: [] }));
 	});
 
 	it("publishes a report directory as index.html plus every asset under it", async () => {
@@ -97,13 +99,7 @@ describe("show-artifact", () => {
 		await expect(handleShowArtifact([empty], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 	});
 
-	it("supports an artifact with no local assets", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
-		await handleShowArtifact([HTML], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ assetPaths: [] }));
-	});
-
-	it("passes --artifact-id and --new through, and names the version it produced", async () => {
+	it("passes --artifact-id/--new through, names a later version, stays quiet on a first, and reports a Focus Mode queue", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId, version: 3 }));
 		await handleShowArtifact([HTML, "--title", "Metrics", "--artifact-id", "weekly", "--new"], SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({
@@ -112,16 +108,12 @@ describe("show-artifact", () => {
 			forceNew: true,
 		}));
 		expect(stdoutSpy).toHaveBeenCalledWith(`Shared artifact (version 3) to task ${CTX.taskId.slice(0, 8)}.\n`);
-	});
 
-	it("says nothing about versions for a first publish", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId, version: 1 }));
 		await handleShowArtifact([HTML], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.not.objectContaining({ forceNew: true }));
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "ui.show-artifact", expect.not.objectContaining({ forceNew: true }));
 		expect(stdoutSpy).toHaveBeenCalledWith(`Shared artifact to task ${CTX.taskId.slice(0, 8)}.\n`);
-	});
 
-	it("reports an artifact viewer queued by Focus Mode", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, stored: 1, taskId: CTX.taskId }));
 		await handleShowArtifact([HTML], SOCKET, CTX);
 		expect(stdoutSpy).toHaveBeenCalledWith("Stored artifact — viewer queued until Focus Mode ends.\n");

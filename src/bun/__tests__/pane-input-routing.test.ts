@@ -104,25 +104,25 @@ describe("a delivery id is unique per call", () => {
 });
 
 describe("the task's persisted backend picks the adapter", () => {
-	it("sends a native task through the native adapter only", async () => {
+	it("sends a native task through the native adapter only, as a frozen snapshot nothing downstream can edit", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("native");
 		await deliverPaneInput(task(), program(NATIVE_PIN));
 		expect(deliverNativePaneInput).toHaveBeenCalledTimes(1);
 		expect(executeTmuxPaneInput).not.toHaveBeenCalled();
+		const handed = vi.mocked(deliverNativePaneInput).mock.calls[0]?.[1];
+		expect(Object.isFrozen(handed)).toBe(true);
+		expect(Object.isFrozen(handed?.stages)).toBe(true);
+		expect(Object.isFrozen(handed?.stages[0].steps[0])).toBe(true);
 	});
 
-	it("sends a tmux task through the tmux adapter only, on the task's socket", async () => {
+	it("sends a tmux task through the tmux adapter only, on the task's socket or the default one", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 		await deliverPaneInput(task({ tmuxSocket: "custom" }), program(TMUX_PIN));
 		expect(executeTmuxPaneInput).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(executeTmuxPaneInput).mock.calls[0]?.[1]).toBe("custom");
 		expect(deliverNativePaneInput).not.toHaveBeenCalled();
-	});
-
-	it("falls back to the default tmux socket when the task has none", async () => {
-		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 		await deliverPaneInput(task(), program(TMUX_PIN));
-		expect(vi.mocked(executeTmuxPaneInput).mock.calls[0]?.[1]).toBe("dev3");
+		expect(vi.mocked(executeTmuxPaneInput).mock.calls[1]?.[1]).toBe("dev3");
 	});
 });
 
@@ -137,12 +137,12 @@ describe("a request cannot steer its own routing", () => {
 		expect(result.detail).toContain("task runs on the native backend");
 	});
 
-	it("refuses a tmux task whose program claims the native backend", async () => {
+	it("refuses a tmux task whose program claims the native backend, reporting the TASK's backend", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 		const result = await deliverPaneInput(task(), program(NATIVE_PIN));
 		expect(deliverNativePaneInput).not.toHaveBeenCalled();
 		expect(executeTmuxPaneInput).not.toHaveBeenCalled();
-		expect(result).toMatchObject({ status: "not-started", reason: "invalid-input" });
+		expect(result).toMatchObject({ status: "not-started", reason: "invalid-input", backend: "tmux" });
 	});
 
 	it("refuses a program pinned to a different task", async () => {
@@ -152,12 +152,6 @@ describe("a request cannot steer its own routing", () => {
 		expect(result).toMatchObject({ status: "not-started", reason: "invalid-input" });
 		if (result.status !== "not-started") return;
 		expect(result.detail).toContain(OTHER_TASK_ID);
-	});
-
-	it("reports the TASK's backend on a refusal, not the one the request claimed", async () => {
-		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
-		const result = await deliverPaneInput(task(), program(NATIVE_PIN));
-		expect(result.backend).toBe("tmux");
 	});
 
 	it("validates the program before it looks at anything else", async () => {
@@ -253,14 +247,6 @@ describe("the request is owned before anything awaits", () => {
 		expect(deliverNativePaneInput).not.toHaveBeenCalled();
 	});
 
-	it("freezes the snapshot it hands on, so nothing downstream can be edited either", async () => {
-		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("native");
-		await deliverPaneInput(task(), program(NATIVE_PIN));
-		const handed = vi.mocked(deliverNativePaneInput).mock.calls[0]?.[1];
-		expect(Object.isFrozen(handed)).toBe(true);
-		expect(Object.isFrozen(handed?.stages)).toBe(true);
-		expect(Object.isFrozen(handed?.stages[0].steps[0])).toBe(true);
-	});
 });
 
 describe("pinning follows the same rule", () => {
@@ -303,18 +289,15 @@ describe("pinning follows the same rule", () => {
 
 	// The preflight can PROVE absence; without it a gone pane only surfaced later as a
 	// changed incarnation.
-	it("reports an observed tmux pane as absent, and an unusable observation as backend-failure", async () => {
+	it("reports an observed tmux pane as absent, an unusable observation as backend-failure, and a pane in another session as absent", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" });
 		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: false, reason: "pane-absent" });
 
 		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "unusable", detail: "no server running" });
 		await expect(pinTaskPane(task(), "%3")).resolves.toMatchObject({ ok: false, reason: "backend-failure" });
-	});
 
-	// A pane that lives in ANOTHER task's session is not this task's pane.
-	it("reports a pane observed in a different session as absent", async () => {
-		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
+		// A pane that lives in ANOTHER task's session is not this task's pane.
 		vi.mocked(tmux.observePane).mockResolvedValue({
 			kind: "present",
 			sessionName: "dev3-task-someone-else",
@@ -328,7 +311,7 @@ describe("pinning follows the same rule", () => {
 });
 
 describe("sendPaneInput wires the pieces together", () => {
-	it("pins, then delivers, and passes the caller's attempt through", async () => {
+	it("pins, then delivers, passing the caller's attempt through or stamping attempt 1", async () => {
 		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("native");
 		await sendPaneInput(task(), "pane-2", [{ steps: [{ kind: "key", key: "left", count: 2 }] }], {
 			deliveryId: "stable-id",
@@ -336,13 +319,10 @@ describe("sendPaneInput wires the pieces together", () => {
 		});
 		const forwarded = vi.mocked(deliverNativePaneInput).mock.calls[0]?.[1];
 		expect(forwarded).toMatchObject({ deliveryId: "stable-id", attempt: 3, incarnation: NATIVE_PIN });
-	});
 
-	// attempt is mandatory, so a caller that does not set one is a first dispatch.
-	it("stamps attempt 1 when the caller does not set one", async () => {
-		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("native");
+		// attempt is mandatory, so a caller that does not set one is a first dispatch.
 		await sendPaneInput(task(), "pane-2", [{ steps: [{ kind: "text", text: "hi" }] }]);
-		expect(vi.mocked(deliverNativePaneInput).mock.calls[0]?.[1]?.attempt).toBe(1);
+		expect(vi.mocked(deliverNativePaneInput).mock.calls[1]?.[1]?.attempt).toBe(1);
 	});
 
 	it("passes a failed pin's own reason through, without calling an adapter", async () => {

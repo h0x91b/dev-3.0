@@ -31,20 +31,12 @@ function event(at: string, id: string, overrides?: Partial<BoardEvent>): BoardEv
 }
 
 describe("parseEventCursor", () => {
-	it("accepts the printed cursor — an instant to the millisecond, no Z, no id half", () => {
+	it("accepts the printed cursor (ms instant, no Z), a Z or second-precision form, a plain date, and a duration back from now", () => {
 		expect(parseEventCursor("2026-08-29T10:12:03.114")).toBe("2026-08-29T10:12:03.114Z");
-	});
-
-	it("still accepts the same instant written with a Z or without milliseconds", () => {
+		// The same instant with a Z or without milliseconds, and a plain date as the wider sweep form.
 		expect(parseEventCursor("2026-08-29T10:12:03.114Z")).toBe("2026-08-29T10:12:03.114Z");
 		expect(parseEventCursor("2026-08-29T10:12:03")).toBe("2026-08-29T10:12:03.000Z");
-	});
-
-	it("accepts a plain date as the wider sweep form", () => {
 		expect(parseEventCursor("2026-08-01")).toBe("2026-08-01T00:00:00.000Z");
-	});
-
-	it("accepts a duration back from now", () => {
 		expect(parseEventCursor("2h", NOW)).toBe("2026-08-29T10:00:00.000Z");
 		expect(parseEventCursor("30m", NOW)).toBe("2026-08-29T11:30:00.000Z");
 		expect(parseEventCursor("3d", NOW)).toBe("2026-08-26T12:00:00.000Z");
@@ -67,9 +59,7 @@ describe("parseEventCursor", () => {
 describe("normalizeEventInstant", () => {
 	it("normalises a second-precision timestamp so lexicographic sorting is honest", () => {
 		expect(normalizeEventInstant("2026-03-02T10:00:00Z")).toBe("2026-03-02T10:00:00.000Z");
-	});
-
-	it("returns null for junk rather than 1970", () => {
+		// Junk is null rather than 1970.
 		expect(normalizeEventInstant("not a date")).toBeNull();
 		expect(normalizeEventInstant(undefined)).toBeNull();
 	});
@@ -82,22 +72,16 @@ describe("selectEvents — the cursor advances", () => {
 		event("2026-08-29T11:00:00.000Z", "cccccccc"),
 	];
 
-	it("returns everything in the window, oldest first", () => {
+	it("returns the window oldest first, then NOTHING from the printed cursor, then exactly a new event", () => {
 		const first = selectEvents(all, { cursor: null, limit: 100, now: NOW });
 		expect(first.events.map((e) => e.id)).toEqual(["aaaaaaaa", "bbbbbbbb", "cccccccc"]);
 		expect(first.cursor).toBe("2026-08-29T11:00:00.000");
-	});
 
-	it("returns NOTHING on a second read from the cursor the first read printed", () => {
-		const first = selectEvents(all, { cursor: null, limit: 100, now: NOW });
 		const second = selectEvents(all, { cursor: parseEventCursor(first.cursor!), limit: 100, now: NOW });
 		expect(second.events).toEqual([]);
 		expect(second.matched).toBe(0);
 		expect(second.cursor).toBeNull();
-	});
 
-	it("returns exactly the new event once one is added after that cursor", () => {
-		const first = selectEvents(all, { cursor: null, limit: 100, now: NOW });
 		const fresh = event("2026-08-29T11:30:00.000Z", "dddddddd");
 		const third = selectEvents([...all, fresh], { cursor: parseEventCursor(first.cursor!), limit: 100, now: NOW });
 		expect(third.events.map((e) => e.id)).toEqual(["dddddddd"]);
@@ -149,14 +133,13 @@ describe("selectEvents — the bare window reports what it cut off", () => {
 		const sel = selectEvents([...inside, ...outside], { cursor: null, limit: 100, now: NOW });
 		expect(sel.events).toHaveLength(3);
 		expect(sel.olderThanWindow).toBe(7);
-	});
 
-	it("uses a 24h window by default", () => {
+		// The default window is 24h.
 		const justInside = event(new Date(NOW - DEFAULT_EVENT_WINDOW_MS + 1000).toISOString(), "inside01");
 		const justOutside = event(new Date(NOW - DEFAULT_EVENT_WINDOW_MS - 1000).toISOString(), "outside1");
-		const sel = selectEvents([justInside, justOutside], { cursor: null, limit: 100, now: NOW });
-		expect(sel.events.map((e) => e.id)).toEqual(["inside01"]);
-		expect(sel.olderThanWindow).toBe(1);
+		const edge = selectEvents([justInside, justOutside], { cursor: null, limit: 100, now: NOW });
+		expect(edge.events.map((e) => e.id)).toEqual(["inside01"]);
+		expect(edge.olderThanWindow).toBe(1);
 	});
 
 	it("does not report a window cut when a cursor was supplied", () => {
@@ -174,30 +157,21 @@ describe("event ids as a cursor", () => {
 		event("2026-08-29T11:00:00.000Z", "cafe0001-1111-2222-3333-444444444444"),
 	];
 
-	it("recognises a hex id prefix, and nothing that is already an instant or duration", () => {
+	it("recognises a hex id prefix (not an instant or duration) and resolves a full or unambiguous shorter one to its instant", () => {
 		expect(isEventIdPrefix("8eb2da3d")).toBe(true);
 		expect(isEventIdPrefix("cafe")).toBe(true);
 		expect(isEventIdPrefix("2h")).toBe(false);
 		expect(isEventIdPrefix("2026-08-01")).toBe(false);
 		expect(isEventIdPrefix("abc")).toBe(false);
-	});
-
-	it("resolves a full 8-char id to that event's instant", () => {
 		expect(resolveEventIdPrefix(all, "cafe0001")).toBe("2026-08-29T11:00:00.000Z");
+		expect(resolveEventIdPrefix(all, "CAFE"), "unambiguous shorter prefix, any case").toBe("2026-08-29T11:00:00.000Z");
 	});
 
-	it("resolves a shorter prefix when it is unambiguous, ignoring case", () => {
-		expect(resolveEventIdPrefix(all, "CAFE")).toBe("2026-08-29T11:00:00.000Z");
-	});
-
-	it("refuses an ambiguous prefix and names the candidates", () => {
+	it("refuses an ambiguous prefix naming the candidates, and an id that resolves to nothing saying why", () => {
 		expect(() => resolveEventIdPrefix(all, "8eb2")).toThrow(/matches 2 events/);
 		expect(() => resolveEventIdPrefix(all, "8eb2")).toThrow(/8eb2da3d/);
-	});
-
-	// A vanished id must never be answered with "nothing since then" — that reads
-	// as a quiet board when it actually means the position was lost.
-	it("refuses an id that resolves to nothing and says why it may be gone", () => {
+		// A vanished id must never be answered with "nothing since then" — that reads
+		// as a quiet board when it actually means the position was lost.
 		expect(() => resolveEventIdPrefix(all, "deadbeef")).toThrow(/no event id starts with/);
 		expect(() => resolveEventIdPrefix(all, "deadbeef")).toThrow(/50 most recent/);
 	});
@@ -213,11 +187,9 @@ describe("event ids as a cursor", () => {
 describe("formatMovementText", () => {
 	const label = (status: string) => ({ todo: "To Do", "in-progress": "Agent is Working", completed: "Completed" } as Record<string, string>)[status] ?? status;
 
-	it("reads creation as an arrival, with no arrow from nowhere", () => {
+	it("reads creation as an arrival with no arrow from nowhere, and a status change as column → column", () => {
 		expect(formatMovementText({ kind: "created", to: "todo" }, label as never)).toBe("created in To Do");
-	});
-
-	it("reads a status change as one column to the next", () => {
+		// A status change reads as one column to the next.
 		expect(formatMovementText({ kind: "status", from: "in-progress", to: "completed" }, label as never))
 			.toBe("Agent is Working → Completed");
 	});

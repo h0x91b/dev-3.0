@@ -28,29 +28,20 @@ describe("detectRosetta", () => {
 		expect(detectRosetta("darwin", "x64")).toBe(true);
 	});
 
-	it("returns false on a real Intel Mac (proc_translated = 0)", () => {
-		sysctlReturns("0\n");
+	it("returns false on a real Intel Mac, a missing sysctl OID, or a throwing sysctl", () => {
+		sysctlReturns("0\n"); // real Intel Mac
 		expect(detectRosetta("darwin", "x64")).toBe(false);
-	});
-
-	it("returns false when the sysctl OID does not exist (old Intel Macs)", () => {
-		sysctlReturns("", 1);
+		sysctlReturns("", 1); // OID missing (old Intel Macs)
 		expect(detectRosetta("darwin", "x64")).toBe(false);
-	});
 
-	it("returns false when sysctl throws", () => {
 		spawnSyncMock.mockImplementation(() => {
 			throw new Error("spawn failed");
 		});
 		expect(detectRosetta("darwin", "x64")).toBe(false);
 	});
 
-	it("never probes on native arm64", () => {
+	it("never probes on native arm64 or non-macOS platforms", () => {
 		expect(detectRosetta("darwin", "arm64")).toBe(false);
-		expect(spawnSyncMock).not.toHaveBeenCalled();
-	});
-
-	it("never probes on non-macOS platforms", () => {
 		expect(detectRosetta("linux", "x64")).toBe(false);
 		expect(spawnSyncMock).not.toHaveBeenCalled();
 	});
@@ -62,12 +53,8 @@ describe("buildReinstallCommand", () => {
 
 		expect(kind).toBe("brew");
 		expect(command).toBe('rm -rf "/Applications/dev-3.0.app" && brew install --cask h0x91b/dev3/dev3');
-	});
-
-	it("falls back to the default bundle location when the running path is not an .app", () => {
-		const { command } = buildReinstallCommand(true, "/opt/somewhere/bin");
-
-		expect(command).toContain('rm -rf "/Applications/dev-3.0.app"');
+		// A running path that is not an .app falls back to the default bundle location.
+		expect(buildReinstallCommand(true, "/opt/somewhere/bin").command).toContain('rm -rf "/Applications/dev-3.0.app"');
 	});
 
 	it("falls back to the arm64 DMG when native Homebrew is absent", () => {
@@ -80,11 +67,8 @@ describe("buildReinstallCommand", () => {
 });
 
 describe("getRosettaWarningInfo", () => {
-	it("returns null when not under Rosetta", () => {
+	it("returns a reinstall command under Rosetta, null otherwise", () => {
 		expect(getRosettaWarningInfo(false)).toBeNull();
-	});
-
-	it("returns a reinstall command under Rosetta", () => {
 		const info = getRosettaWarningInfo(true);
 
 		expect(info).not.toBeNull();

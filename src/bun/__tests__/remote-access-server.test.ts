@@ -218,6 +218,12 @@ describe("serveStatic path traversal protection", () => {
 		expect(result).toBe(join(testStaticRoot, "assets", "app.js"));
 	});
 
+	it("allows root path", () => {
+		const result = resolveSafePath(testStaticRoot, "/");
+		// resolve(root, "./" ) === root, which matches filePath === staticRoot
+		expect(result).not.toBeNull();
+	});
+
 	it("rejects basic path traversal (..)", () => {
 		const result = resolveSafePath(testStaticRoot, "/../../../etc/passwd");
 		expect(result).toBeNull();
@@ -235,12 +241,6 @@ describe("serveStatic path traversal protection", () => {
 	it("rejects traversal via double dots in middle", () => {
 		const result = resolveSafePath(testStaticRoot, "/assets/../../etc/passwd");
 		expect(result).toBeNull();
-	});
-
-	it("allows root path", () => {
-		const result = resolveSafePath(testStaticRoot, "/");
-		// resolve(root, "./" ) === root, which matches filePath === staticRoot
-		expect(result).not.toBeNull();
 	});
 
 	it("rejects paths that resolve outside root via symlink-like patterns", () => {
@@ -288,17 +288,17 @@ describe("serveStatic (real function)", () => {
 		expect(await resp!.text()).toBe(js);
 	});
 
+	it("serves index.html when the path resolves to a directory", async () => {
+		const resp = await serveStatic("/subdir", testStaticRoot);
+		expect(resp).not.toBeNull();
+		expect(await resp!.text()).toContain("sub");
+	});
+
 	it("injects the theme bootstrap into an HTML file", async () => {
 		const resp = await serveStatic("/index.html", testStaticRoot);
 		expect(resp).not.toBeNull();
 		expect(resp!.headers.get("content-type")).toBe("text/html; charset=utf-8");
 		expect(await resp!.text()).toContain("window.__DEV3_INITIAL_THEME__");
-	});
-
-	it("serves index.html when the path resolves to a directory", async () => {
-		const resp = await serveStatic("/subdir", testStaticRoot);
-		expect(resp).not.toBeNull();
-		expect(await resp!.text()).toContain("sub");
 	});
 
 	it("returns null for a missing file", async () => {
@@ -350,14 +350,11 @@ describe("MIME types", () => {
 		".map": "application/json",
 	};
 
-	it("maps common extensions correctly", () => {
+	it("maps common extensions and every web font type", () => {
 		expect(MIME_TYPES[".html"]).toBe("text/html; charset=utf-8");
 		expect(MIME_TYPES[".js"]).toBe("application/javascript; charset=utf-8");
 		expect(MIME_TYPES[".css"]).toBe("text/css; charset=utf-8");
 		expect(MIME_TYPES[".png"]).toBe("image/png");
-	});
-
-	it("covers all web font types", () => {
 		expect(MIME_TYPES[".woff2"]).toBe("font/woff2");
 		expect(MIME_TYPES[".woff"]).toBe("font/woff");
 		expect(MIME_TYPES[".ttf"]).toBe("font/ttf");
@@ -382,42 +379,24 @@ describe("resolveListenPort", () => {
 		delete mockSettings.remotePort;
 	});
 
-	it("returns 0 when env var is unset", () => {
+	it("returns 0 without the env var, and any valid port 1-65535 from it — privileged ones too (bind() surfaces EACCES)", () => {
 		delete process.env.DEV3_REMOTE_PORT;
 		expect(resolveListenPort()).toBe(0);
-	});
-
-	it("returns parsed port for a valid numeric value", () => {
 		process.env.DEV3_REMOTE_PORT = "3000";
 		expect(resolveListenPort()).toBe(3000);
-	});
-
-	it("accepts privileged ports (1-1023) — bind() will surface EACCES at startup", () => {
 		process.env.DEV3_REMOTE_PORT = "80";
 		expect(resolveListenPort()).toBe(80);
-	});
-
-	it("accepts the max valid port 65535", () => {
 		process.env.DEV3_REMOTE_PORT = "65535";
 		expect(resolveListenPort()).toBe(65535);
 	});
 
-	it("falls back to 0 for non-numeric values", () => {
+	it("falls back to 0 for a non-numeric, zero, negative or over-65535 value", () => {
 		process.env.DEV3_REMOTE_PORT = "abc";
 		expect(resolveListenPort()).toBe(0);
-	});
-
-	it("falls back to 0 for port below range", () => {
 		process.env.DEV3_REMOTE_PORT = "0";
 		expect(resolveListenPort()).toBe(0);
-	});
-
-	it("falls back to 0 for port above 65535", () => {
 		process.env.DEV3_REMOTE_PORT = "70000";
 		expect(resolveListenPort()).toBe(0);
-	});
-
-	it("falls back to 0 for negative port", () => {
 		process.env.DEV3_REMOTE_PORT = "-1";
 		expect(resolveListenPort()).toBe(0);
 	});
@@ -425,40 +404,16 @@ describe("resolveListenPort", () => {
 	// The desktop app never sees DEV3_REMOTE_PORT — every DEV3_* key is stripped
 	// out of the imported shell environment — so the setting is its only way to
 	// pin the port a tunnel ingress or reverse proxy is aimed at.
-	it("uses the remotePort setting when the env is unset", () => {
+	it("uses the remotePort setting without the env, but lets the env — random-port sentinel included — win", () => {
 		delete process.env.DEV3_REMOTE_PORT;
 		mockSettings.remotePort = 41234;
 		expect(resolveListenPort()).toBe(41234);
-	});
-
-	it("lets the env win over the setting — it names this launch", () => {
 		process.env.DEV3_REMOTE_PORT = "3000";
 		mockSettings.remotePort = 41234;
 		expect(resolveListenPort()).toBe(3000);
-	});
-
-	it("honours the env random-port sentinel over a pinned setting", () => {
 		process.env.DEV3_REMOTE_PORT = "0";
 		mockSettings.remotePort = 41234;
 		expect(resolveListenPort()).toBe(0);
-	});
-});
-
-// ================================================================
-// uploadImageBase64 size limit
-// ================================================================
-
-describe("uploadImageBase64 size limit", () => {
-	it("rejects payloads over 10 MB", () => {
-		const MAX_BASE64_SIZE = 10 * 1024 * 1024;
-		const bigPayload = "A".repeat(MAX_BASE64_SIZE + 1);
-		expect(bigPayload.length).toBeGreaterThan(MAX_BASE64_SIZE);
-	});
-
-	it("accepts payloads under 10 MB", () => {
-		const MAX_BASE64_SIZE = 10 * 1024 * 1024;
-		const smallPayload = "A".repeat(1024);
-		expect(smallPayload.length).toBeLessThan(MAX_BASE64_SIZE);
 	});
 });
 
@@ -486,15 +441,15 @@ describe("resolveAccessHost", () => {
 		expect(resolveAccessHost("localhost")).toBe("localhost");
 	});
 
-	it("rejects a host that is not one of our addresses (falls back to auto)", () => {
-		// 8.8.8.8 is not a local interface — must NOT be echoed back into the URL.
-		expect(resolveAccessHost("8.8.8.8")).not.toBe("8.8.8.8");
-	});
-
 	it("falls back to the auto host when none is given", () => {
 		const auto = resolveAccessHost();
 		expect(typeof auto).toBe("string");
 		expect(auto.length).toBeGreaterThan(0);
+	});
+
+	it("rejects a host that is not one of our addresses (falls back to auto)", () => {
+		// 8.8.8.8 is not a local interface — must NOT be echoed back into the URL.
+		expect(resolveAccessHost("8.8.8.8")).not.toBe("8.8.8.8");
 	});
 });
 
@@ -509,14 +464,14 @@ describe("getAccessUrl host override", () => {
 		expect(url).toContain("?token=test-token");
 	});
 
-	it("ignores a disallowed host (does not inject it)", async () => {
-		const url = await getAccessUrl("8.8.8.8");
-		expect(url).not.toContain("8.8.8.8");
-	});
-
 	it("generateQrDataUrl threads the host through to the QR image", async () => {
 		const qr = await generateQrDataUrl("127.0.0.1");
 		expect(qr).toBe("data:image/png;base64,test");
+	});
+
+	it("ignores a disallowed host (does not inject it)", async () => {
+		const url = await getAccessUrl("8.8.8.8");
+		expect(url).not.toContain("8.8.8.8");
 	});
 
 	// The static code is a PERMANENT credential. In a URL it would land in browser
@@ -551,21 +506,18 @@ describe("closeUpstreamSocket (F5)", () => {
 		expect(ws.close).toHaveBeenCalledOnce();
 	});
 
-	it("closes an OPEN upstream", () => {
+	it("closes an OPEN upstream, and is a no-op for a missing one", () => {
 		const ws = fakeWs(WebSocket.OPEN); // 1
 		closeUpstreamSocket(ws);
 		expect(ws.close).toHaveBeenCalledOnce();
+		expect(() => closeUpstreamSocket(undefined)).not.toThrow();
+		expect(() => closeUpstreamSocket(null)).not.toThrow();
 	});
 
 	it("does not re-close an already-CLOSED upstream", () => {
 		const ws = fakeWs(WebSocket.CLOSED); // 3
 		closeUpstreamSocket(ws);
 		expect(ws.close).not.toHaveBeenCalled();
-	});
-
-	it("is a no-op for a missing upstream", () => {
-		expect(() => closeUpstreamSocket(undefined)).not.toThrow();
-		expect(() => closeUpstreamSocket(null)).not.toThrow();
 	});
 });
 
@@ -579,24 +531,15 @@ import { getTunnelState } from "../cloudflare-tunnel";
 describe("isRemoteAccessActive", () => {
 	const mockedTunnelState = vi.mocked(getTunnelState);
 
-	it("is false with the tunnel idle and nobody attached", () => {
+	it("is true only while the tunnel starts or is connected — not idle or failed", () => {
 		mockedTunnelState.mockReturnValue("idle");
 		expect(isRemoteAccessActive()).toBe(false);
-	});
-
-	// The LAN server always listens, so only a deliberate tunnel counts — and it counts
-	// from the moment the user asks for it, not once cloudflared finishes handshaking.
-	it("is true while the tunnel is still starting", () => {
+		// The LAN server always listens, so only a deliberate tunnel counts — and it counts
+		// from the moment the user asks for it, not once cloudflared finishes handshaking.
 		mockedTunnelState.mockReturnValue("starting");
 		expect(isRemoteAccessActive()).toBe(true);
-	});
-
-	it("is true once the tunnel is connected", () => {
 		mockedTunnelState.mockReturnValue("connected");
 		expect(isRemoteAccessActive()).toBe(true);
-	});
-
-	it("is false when the tunnel failed", () => {
 		mockedTunnelState.mockReturnValue("failed");
 		expect(isRemoteAccessActive()).toBe(false);
 	});
@@ -614,12 +557,9 @@ describe("resolveListenHost", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("defaults to 0.0.0.0 when unset, keeping the historical bind", () => {
+	it("defaults to 0.0.0.0 when unset, and honours loopback, mapping localhost to 127.0.0.1", () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "");
 		expect(resolveListenHost()).toBe("0.0.0.0");
-	});
-
-	it("honours loopback and maps localhost to 127.0.0.1", () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
 		expect(resolveListenHost()).toBe("127.0.0.1");
 		vi.stubEnv("DEV3_REMOTE_HOST", "localhost");
@@ -639,14 +579,11 @@ describe("resolveListenHost", () => {
 		expect(isLoopbackListen("192.168.1.5")).toBe(false);
 	});
 
-	it("isScannableAccessUrl rejects loopback URLs and keeps LAN and tunnel ones", () => {
+	it("isScannableAccessUrl rejects loopback URLs; listenHostError accepts only loopback or every interface", () => {
 		expect(isScannableAccessUrl("http://localhost:8090/?token=t")).toBe(false);
 		expect(isScannableAccessUrl("http://127.0.0.1:8090/?token=t")).toBe(false);
 		expect(isScannableAccessUrl("http://192.168.1.5:8090/?token=t")).toBe(true);
 		expect(isScannableAccessUrl("https://x.trycloudflare.com/?token=t")).toBe(true);
-	});
-
-	it("listenHostError accepts loopback or every interface, nothing else", () => {
 		expect(listenHostError("127.0.0.1")).toBeNull();
 		expect(listenHostError("localhost")).toBeNull();
 		expect(listenHostError("0.0.0.0")).toBeNull();
@@ -662,13 +599,10 @@ describe("loopback bind narrows the advertised addresses", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("offers only loopback in the interface picker", () => {
+	it("offers only loopback in the interface picker and builds the default access URL on localhost", async () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
 		expect(getLocalInterfaces()).toEqual([{ name: "loopback", address: "localhost", internal: true }]);
 		expect(getLocalInterfaces().map((i) => i.address)).toContain(resolveAccessHost());
-	});
-
-	it("builds the default access URL on localhost, not a LAN address", async () => {
 		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.1");
 		expect(resolveAccessHost()).toBe("localhost");
 		expect(await getAccessUrl()).toContain("http://localhost:");

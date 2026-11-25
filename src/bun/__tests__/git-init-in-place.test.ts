@@ -79,16 +79,6 @@ describe("probeGitInit", () => {
 		expect(await probeGitInit(folder)).toEqual({ path: folder, mode: "init", placeholder: "create", existingEntries: 3 });
 	});
 
-	it("offers nothing for a repo with history", async () => {
-		sh("git init -q && git add a.txt && git commit -qm first", folder);
-		expect(await probeGitInit(folder)).toBeNull();
-	});
-
-	it("offers nothing for a folder inside a parent repo", async () => {
-		sh("git init -q && git commit -q --allow-empty -m first", root);
-		expect(await probeGitInit(folder)).toBeNull();
-	});
-
 	it("never commits into a commit-less parent repo through a subfolder", async () => {
 		sh("git init -q", root);
 		expect(await probeGitInit(folder)).toBeNull();
@@ -99,11 +89,6 @@ describe("probeGitInit", () => {
 	it("offers nothing when a .git exists that git cannot read", async () => {
 		writeFileSync(join(folder, ".git"), "gitdir: /nowhere\n");
 		expect(await probeGitInit(folder)).toBeNull();
-	});
-
-	it("offers a first commit for a repo that has none", async () => {
-		sh("git init -q", folder);
-		expect(await probeGitInit(folder)).toMatchObject({ mode: "first-commit", placeholder: "create" });
 	});
 });
 
@@ -148,6 +133,7 @@ describe("initGitInPlace", () => {
 	it("refuses a repo with history and leaves it exactly as it was", async () => {
 		sh("git init -q && git add a.txt && git commit -qm first", folder);
 		const head = sh("git rev-parse HEAD", folder);
+		expect(await probeGitInit(folder)).toBeNull();
 
 		const result = await initGitInPlace(folder);
 		expect(result.ok).toBe(false);
@@ -157,12 +143,15 @@ describe("initGitInPlace", () => {
 
 	it("never creates a nested repo inside a parent repo", async () => {
 		sh("git init -q && git commit -q --allow-empty -m first", root);
+		expect(await probeGitInit(folder)).toBeNull();
 		expect((await initGitInPlace(folder)).ok).toBe(false);
 		expect(existsSync(join(folder, ".git"))).toBe(false);
 	});
 
 	it("finishes a commit-less repo without committing what the user staged", async () => {
-		sh("git init -q && git add a.txt", folder);
+		sh("git init -q", folder);
+		expect(await probeGitInit(folder)).toMatchObject({ mode: "first-commit", placeholder: "create" });
+		sh("git add a.txt", folder);
 
 		expect((await initGitInPlace(folder)).ok).toBe(true);
 		expect(committedFiles(folder)).toEqual([".dev3/README.md"]);

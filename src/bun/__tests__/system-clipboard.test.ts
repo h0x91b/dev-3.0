@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe("writeSystemClipboard", () => {
-	it("uses pbcopy on macOS", () => {
+	it("uses pbcopy on macOS, resolving the tool only once across calls", () => {
 		setPlatform("darwin");
 		mockWhichSync.mockReturnValue("/usr/bin/pbcopy");
 
@@ -75,6 +75,11 @@ describe("writeSystemClipboard", () => {
 		const proc = mockSpawn.mock.results[0]!.value;
 		expect(proc.stdin.write).toHaveBeenCalledWith("hello");
 		expect(proc.stdin.end).toHaveBeenCalled();
+
+		writeSystemClipboard("b");
+		writeSystemClipboard("c");
+		expect(mockWhichSync).toHaveBeenCalledTimes(1);
+		expect(mockSpawn).toHaveBeenCalledTimes(3);
 	});
 
 	it("falls back to bare 'pbcopy' when which fails on macOS", () => {
@@ -111,17 +116,12 @@ describe("writeSystemClipboard", () => {
 		);
 	});
 
-	it("returns null on Linux when no clipboard tool exists", () => {
+	it("returns null on Linux with no clipboard tool, and on win32 (unsupported)", () => {
 		setPlatform("linux");
 		mockWhichSync.mockReturnValue(null);
+		expect(writeSystemClipboard("hi")).toBeNull();
 
-		const tool = writeSystemClipboard("hi");
-
-		expect(tool).toBeNull();
-		expect(mockSpawn).not.toHaveBeenCalled();
-	});
-
-	it("returns null on win32 (unsupported)", () => {
+		_resetClipboardToolForTests();
 		setPlatform("win32");
 		mockWhichSync.mockReturnValue(null);
 
@@ -129,18 +129,6 @@ describe("writeSystemClipboard", () => {
 
 		expect(tool).toBeNull();
 		expect(mockSpawn).not.toHaveBeenCalled();
-	});
-
-	it("caches the resolved tool — only resolves once across calls", () => {
-		setPlatform("darwin");
-		mockWhichSync.mockReturnValue("/usr/bin/pbcopy");
-
-		writeSystemClipboard("a");
-		writeSystemClipboard("b");
-		writeSystemClipboard("c");
-
-		expect(mockWhichSync).toHaveBeenCalledTimes(1);
-		expect(mockSpawn).toHaveBeenCalledTimes(3);
 	});
 
 	it("returns null and does not throw if spawn fails", () => {

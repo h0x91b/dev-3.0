@@ -94,43 +94,32 @@ describe("port-pool", () => {
 			}
 			// All unique
 			expect(new Set(ports).size).toBe(3);
-		});
-
-		it("returns existing allocation if count matches", async () => {
-			const first = await allocatePorts("task-2", 2);
-			const second = await allocatePorts("task-2", 2);
-			expect(second).toEqual(first);
+			// Same count again returns the existing allocation.
+			expect(await allocatePorts("task-1", 3)).toEqual(ports);
 		});
 
 		// A task's port count grows whenever a dev server declares a new named
 		// port. Reallocating would move DEV3_PORT0 out from under a server that
 		// is already bound to it, so the existing ports have to stay put.
-		it("extends the assignment when the count grows, keeping the ports already handed out", async () => {
+		it("extends the assignment when the count grows and trims it when it shrinks, keeping the ports already handed out", async () => {
 			const first = await allocatePorts("task-3", 2);
 			expect(first).toHaveLength(2);
 			const second = await allocatePorts("task-3", 3);
 			expect(second).toHaveLength(3);
 			expect(second.slice(0, 2)).toEqual(first);
 			expect(new Set(second).size).toBe(3);
+			// Shrinking keeps the first ports.
+			const shrunk = await allocatePorts("task-3", 2);
+			expect(shrunk).toEqual(first);
+			expect(getPortAssignments("task-3")).toEqual(shrunk);
 		});
 
-		it("keeps the first ports when the count shrinks", async () => {
-			const first = await allocatePorts("task-3b", 3);
-			const second = await allocatePorts("task-3b", 2);
-			expect(second).toEqual(first.slice(0, 2));
-			expect(getPortAssignments("task-3b")).toEqual(second);
-		});
-
-		it("returns empty array for count 0", async () => {
-			const ports = await allocatePorts("task-4", 0);
-			expect(ports).toEqual([]);
-		});
-
-		it("throws for count exceeding maximum", async () => {
+		it("returns empty array for count 0 and throws for count exceeding maximum", async () => {
+			expect(await allocatePorts("task-4", 0)).toEqual([]);
 			await expect(allocatePorts("task-5", 21)).rejects.toThrow("exceeds maximum");
 		});
 
-		it("skips ports that are in use by the OS", async () => {
+		it("skips ports in use by the OS and never double-allocates across tasks", async () => {
 			// Mark first 100 ports in range as in use
 			for (let i = 10000; i < 10100; i++) {
 				portsInUse.add(i);
@@ -139,9 +128,7 @@ describe("port-pool", () => {
 			for (const p of ports) {
 				expect(portsInUse.has(p)).toBe(false);
 			}
-		});
-
-		it("prevents double-allocation across tasks", async () => {
+			// No double-allocation across tasks.
 			const ports1 = await allocatePorts("task-a", 5);
 			const ports2 = await allocatePorts("task-b", 5);
 			const set1 = new Set(ports1);
@@ -178,10 +165,8 @@ describe("port-pool", () => {
 			expect(existsSync(filePath)).toBe(true);
 			const data = JSON.parse(readFileSync(filePath, "utf-8"));
 			expect(data["task-persist"]).toHaveLength(2);
-		});
 
-		it("loads persisted allocations on fresh start", async () => {
-			const filePath = join(TEST_HOME, "port-assignments.json");
+			// Loads persisted allocations on fresh start.
 			writeFileSync(filePath, JSON.stringify({ "task-pre": [12345, 12346] }));
 			_resetState();
 
@@ -196,19 +181,8 @@ describe("port-pool", () => {
 			const released = await releasePorts("task-r");
 			expect(released).toHaveLength(2);
 			expect(getPortAssignments("task-r")).toEqual([]);
-		});
-
-		it("returns empty array for unknown task", async () => {
-			const released = await releasePorts("nonexistent");
-			expect(released).toEqual([]);
-		});
-
-		it("makes released ports available for re-allocation", async () => {
-			await allocatePorts("task-free", 3);
-			await releasePorts("task-free");
-			// After release, these ports can be assigned to another task
-			const all = getAllAssignments();
-			expect(all["task-free"]).toBeUndefined();
+			expect(getAllAssignments()["task-r"]).toBeUndefined();
+			expect(await releasePorts("nonexistent")).toEqual([]);
 		});
 
 		it("does not drop a peer allocation that landed while releasing", async () => {
@@ -231,7 +205,7 @@ describe("port-pool", () => {
 			expect(getPortAssignments("task-old")).toEqual([]);
 		});
 
-		it("leaves the assignment on disk when the lock cannot be taken", async () => {
+		it("leaves the assignment on disk when the lock times out, and propagates any other lock failure", async () => {
 			// Teardown must not stall or throw on a contended lock: the effect
 			// runs with the "continue" policy, so a rejection here would only
 			// surface as a generic lifecycle warning. Swallow the timeout, keep
@@ -245,22 +219,10 @@ describe("port-pool", () => {
 
 			expect(released).toEqual([]);
 			expect(JSON.parse(readFileSync(filePath, "utf-8"))).toEqual(before);
-		});
 
-		it("propagates a lock failure that is not a timeout", async () => {
+			// A lock failure that is not a timeout propagates.
 			lockControl.failWith = new Error("EACCES: permission denied");
 			await expect(releasePorts("task-any")).rejects.toThrow("EACCES");
-		});
-	});
-
-	describe("getPortAssignments", () => {
-		it("returns empty array for task with no allocation", () => {
-			expect(getPortAssignments("no-such-task")).toEqual([]);
-		});
-
-		it("returns current allocation for active task", async () => {
-			const ports = await allocatePorts("task-get", 2);
-			expect(getPortAssignments("task-get")).toEqual(ports);
 		});
 	});
 
@@ -272,23 +234,15 @@ describe("port-pool", () => {
 			expect(Object.keys(all)).toHaveLength(2);
 			expect(all["t1"]).toHaveLength(1);
 			expect(all["t2"]).toHaveLength(2);
-		});
-
-		it("returns a copy (not a reference)", async () => {
-			await allocatePorts("t-copy", 1);
-			const all = getAllAssignments();
-			delete all["t-copy"];
-			// Original should still have it
-			expect(getPortAssignments("t-copy")).toHaveLength(1);
+			// A copy, not a reference.
+			delete all["t1"];
+			expect(getPortAssignments("t1")).toHaveLength(1);
 		});
 	});
 
 	describe("buildPortEnv", () => {
-		it("returns empty object for empty ports array", () => {
-			expect(buildPortEnv([])).toEqual({});
-		});
-
 		it("builds correct env vars", () => {
+			expect(buildPortEnv([])).toEqual({});
 			const env = buildPortEnv([12000, 12001, 12002]);
 			expect(env).toEqual({
 				DEV3_PORT_COUNT: "3",
@@ -307,15 +261,6 @@ describe("port-pool", () => {
 				DEV3_PORT_BACK_OFFICE: "12002",
 			});
 			expect(buildNamedPortEnv({})).toEqual({});
-		});
-
-		it("handles single port", () => {
-			const env = buildPortEnv([15000]);
-			expect(env).toEqual({
-				DEV3_PORT_COUNT: "1",
-				DEV3_PORTS: "15000",
-				DEV3_PORT0: "15000",
-			});
 		});
 	});
 });

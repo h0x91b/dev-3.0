@@ -47,7 +47,7 @@ const throwingScanners: TerminalOwnershipScanners = {
 };
 
 describe("ownership snapshot", () => {
-	it("attributes nested descendants and their listening ports", () => {
+	it("attributes nested descendants and their listening ports, never an unrelated process", () => {
 		const snapshot = buildOwnershipSnapshot(ownedNative, evidence);
 		expect(snapshot.backend).toBe("native");
 		expect(snapshot.sessionId).toBe("sess-1");
@@ -61,11 +61,8 @@ describe("ownership snapshot", () => {
 		expect(snapshot.ports).toEqual([{ port: 4321, pid: 4300, processName: "bun" }]);
 		expect(snapshot.resources).toEqual({ rss: 15_000, cpu: 15 });
 		expect(snapshot.coverage).toEqual({ descendants: true, resources: true, ports: true });
-	});
 
-	it("never attributes an unrelated process, its cost, or its port", () => {
-		const snapshot = buildOwnershipSnapshot(ownedNative, evidence);
-		if (snapshot.ownership.state !== "owned") throw new Error("expected owned ownership");
+		// Never an unrelated process, its cost, or its port.
 		const pids = snapshot.ownership.processes.map((process) => process.pid);
 		expect(pids).not.toContain(9000);
 		expect(pids).not.toContain(9001);
@@ -73,7 +70,7 @@ describe("ownership snapshot", () => {
 		expect(snapshot.resources?.rss).toBeLessThan(999_000);
 	});
 
-	it("counts nothing for an exited (stale) session", () => {
+	it("counts nothing for an exited (stale) session or a reused PID", () => {
 		const claim = nativeOwnershipClaim({
 			sessionId: "sess-1",
 			record: { sessionId: "sess-1", host: { pid: 4100 }, shell: { pid: 4101 } },
@@ -87,19 +84,18 @@ describe("ownership snapshot", () => {
 		expect(snapshot.resources).toBeNull();
 		expect(snapshot.ports).toEqual([]);
 		expect(snapshot.coverage).toEqual({ descendants: false, resources: false, ports: false });
-	});
 
-	it("counts nothing for a reused PID even though the PID is alive and busy", () => {
-		const claim = nativeOwnershipClaim({
+		// Nor for a reused PID, even though the PID is alive and busy.
+		const reusedClaim = nativeOwnershipClaim({
 			sessionId: "sess-1",
 			// 9001 is alive in the evidence and holds a port — but it is not ours.
 			record: { sessionId: "sess-1", host: { pid: 9000 }, shell: { pid: 9001 } },
 			verdict: "reused",
 		});
-		const snapshot = buildOwnershipSnapshot(claim, evidence);
-		expect(snapshot.ownership).toMatchObject({ state: "reused" });
-		expect(snapshot.resources).toBeNull();
-		expect(snapshot.ports).toEqual([]);
+		const reused = buildOwnershipSnapshot(reusedClaim, evidence);
+		expect(reused.ownership).toMatchObject({ state: "reused" });
+		expect(reused.resources).toBeNull();
+		expect(reused.ports).toEqual([]);
 	});
 
 	it("reports absent scanners as unmeasured coverage, not as an empty result", () => {
@@ -111,7 +107,7 @@ describe("ownership snapshot", () => {
 		expect(snapshot.coverage).toEqual({ descendants: false, resources: false, ports: false });
 	});
 
-	it("keeps tmux pane roots and their descendants distinct per role", () => {
+	it("keeps tmux pane roots and their descendants distinct per role, without duplicates", () => {
 		const snapshot = buildOwnershipSnapshot(tmuxOwnershipClaimFromPanePids("dev3-task-abc", [4101]), evidence);
 		if (snapshot.ownership.state !== "owned") throw new Error("expected owned ownership");
 		expect(snapshot.backend).toBe("tmux");
@@ -120,15 +116,14 @@ describe("ownership snapshot", () => {
 			{ pid: 4200, role: "descendant" },
 			{ pid: 4300, role: "descendant" },
 		]);
-	});
 
-	it("does not list a shared PID twice when roots overlap", () => {
-		const snapshot = buildOwnershipSnapshot(verifiedClaim("tmux", "dev3-task-abc", [
+		// A shared PID is not listed twice when roots overlap.
+		const overlap = buildOwnershipSnapshot(verifiedClaim("tmux", "dev3-task-abc", [
 			{ pid: 4101, role: "pane" },
 			{ pid: 4200, role: "pane" },
 		]), evidence);
-		if (snapshot.ownership.state !== "owned") throw new Error("expected owned ownership");
-		expect(snapshot.ownership.processes.map((process) => process.pid)).toEqual([4101, 4200, 4300]);
+		if (overlap.ownership.state !== "owned") throw new Error("expected owned ownership");
+		expect(overlap.ownership.processes.map((process) => process.pid)).toEqual([4101, 4200, 4300]);
 	});
 });
 
@@ -147,14 +142,13 @@ describe("collectOwnershipSnapshot", () => {
 		expect(processInfo).toHaveBeenCalledTimes(1);
 		expect(lsof).toHaveBeenCalledTimes(1);
 		expect(snapshot.ports).toEqual([{ port: 4321, pid: 4300, processName: "bun" }]);
-	});
 
-	it("survives scanners that report nothing measurable", async () => {
-		const snapshot = await collectOwnershipSnapshot(ownedNative, {
+		// Scanners that report nothing measurable leave coverage false, ownership intact.
+		const empty = await collectOwnershipSnapshot(ownedNative, {
 			processInfo: async () => null,
 			lsof: async () => null,
 		});
-		expect(snapshot.coverage).toEqual({ descendants: false, resources: false, ports: false });
-		expect(snapshot.ownership).toMatchObject({ state: "owned" });
+		expect(empty.coverage).toEqual({ descendants: false, resources: false, ports: false });
+		expect(empty.ownership).toMatchObject({ state: "owned" });
 	});
 });

@@ -139,15 +139,20 @@ describe("evaluateTask", () => {
 		expect(lastPatch()).toMatchObject({ status: "reviving", lastVerdict: "rate-limited", nextAttemptAt: NOW + 10_000 + KEEP_ALIVE_RATE_LIMIT_BUFFER_MS });
 	});
 
-	it("holds during the backoff window", async () => {
-		const task = makeTask({ enabled: true, status: "reviving", attempts: 1, nextAttemptAt: NOW + 50_000 });
-		H.task = task;
-		await evaluateTask(project, task, NOW);
+	it("holds during the backoff window, and does nothing once it has already given up", async () => {
+		for (const keepAlive of [
+			{ enabled: true, status: "reviving", attempts: 1, nextAttemptAt: NOW + 50_000 },
+			{ enabled: true, status: "gave-up", attempts: KEEP_ALIVE_MAX_ATTEMPTS + 1 },
+		] as KeepAliveState[]) {
+			const task = makeTask(keepAlive);
+			H.task = task;
+			await evaluateTask(project, task, NOW);
+		}
 		expect(resumeTaskSession).not.toHaveBeenCalled();
 		expect(H.patches).toHaveLength(0);
 	});
 
-	it("gives up and escalates after the retry cap", async () => {
+	it("gives up and escalates after the retry cap, naming unreadable history when that was the last verdict", async () => {
 		const task = makeTask({ enabled: true, status: "reviving", attempts: KEEP_ALIVE_MAX_ATTEMPTS });
 		H.task = task;
 		await evaluateTask(project, task, NOW);
@@ -155,6 +160,11 @@ describe("evaluateTask", () => {
 		expect(lastPatch()).toMatchObject({ status: "gave-up", lastVerdict: "gave-up" });
 		expect(pushCliAttention).toHaveBeenCalledTimes(1);
 		expect(pushCliToast).toHaveBeenCalledTimes(1);
+
+		const unreadable = makeTask({ enabled: true, status: "reviving", attempts: KEEP_ALIVE_MAX_ATTEMPTS, lastVerdict: "history-unreadable" });
+		H.task = unreadable;
+		await evaluateTask(project, unreadable, NOW);
+		expect(lastPatch()).toMatchObject({ status: "gave-up", gaveUpReason: expect.stringContaining("history could not be read") });
 	});
 
 	it("gives up when the conversation cannot be resumed", async () => {
@@ -174,21 +184,6 @@ describe("evaluateTask", () => {
 		expect(lastPatch()).toMatchObject({ lastVerdict: "history-unreadable" });
 		expect(H.patches.some((patch) => patch.status === "gave-up")).toBe(false);
 		expect(pushCliAttention).not.toHaveBeenCalled();
-	});
-
-	it("says the history could not be read when it finally gives up on one", async () => {
-		const task = makeTask({ enabled: true, status: "reviving", attempts: KEEP_ALIVE_MAX_ATTEMPTS, lastVerdict: "history-unreadable" });
-		H.task = task;
-		await evaluateTask(project, task, NOW);
-		expect(lastPatch()).toMatchObject({ status: "gave-up", gaveUpReason: expect.stringContaining("history could not be read") });
-	});
-
-	it("does nothing once it has already given up", async () => {
-		const task = makeTask({ enabled: true, status: "gave-up", attempts: KEEP_ALIVE_MAX_ATTEMPTS + 1 });
-		H.task = task;
-		await evaluateTask(project, task, NOW);
-		expect(resumeTaskSession).not.toHaveBeenCalled();
-		expect(H.patches).toHaveLength(0);
 	});
 });
 

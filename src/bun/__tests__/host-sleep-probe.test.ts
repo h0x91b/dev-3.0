@@ -6,36 +6,26 @@ const SLEPT_AT = 1_792_694_081_825;
 const WOKE_AT = 1_792_694_207_184;
 
 describe("parseSysctlTimeval", () => {
-	it("reads the timeval sysctl prints, to the millisecond", () => {
+	it("reads the timeval sysctl prints, to the millisecond, and gives up on anything else rather than guessing", () => {
 		expect(parseSysctlTimeval("kern.waketime: { sec = 1792694207, usec = 184004 } Thu Oct 22 21:36:47 2026")).toBe(WOKE_AT);
-	});
-
-	it("gives up on anything else rather than guessing", () => {
 		expect(parseSysctlTimeval("")).toBeNull();
 		expect(parseSysctlTimeval("sysctl: unknown oid 'kern.waketime'")).toBeNull();
 	});
 });
 
 describe("classifyGap", () => {
-	it("calls it a sleep when the machine woke inside the gap", () => {
-		expect(classifyGap(WOKE_AT - 30_000, { sleptAtMs: SLEPT_AT, wokeAtMs: WOKE_AT })).toBe("slept");
-	});
-
-	it("calls it a sleep when the machine went to sleep inside the gap and has not woken since", () => {
-		expect(classifyGap(SLEPT_AT - 2_000, { sleptAtMs: SLEPT_AT, wokeAtMs: SLEPT_AT - 600_000 })).toBe("slept");
-	});
-
-	it("absorbs the OS stamping its sleep a moment after the last tick", () => {
-		expect(classifyGap(SLEPT_AT + 500, { sleptAtMs: SLEPT_AT, wokeAtMs: null })).toBe("slept");
-	});
-
-	it("calls it a starved host when the last sleep and wake both predate the gap", () => {
-		// The field case: woke at 10:22:09, late ticks from 10:22:32 on.
-		expect(classifyGap(WOKE_AT + 23_000, { sleptAtMs: SLEPT_AT, wokeAtMs: WOKE_AT })).toBe("starved");
-	});
-
-	it("admits it does not know when the OS gave no stamps", () => {
-		expect(classifyGap(WOKE_AT, { sleptAtMs: null, wokeAtMs: null })).toBe("unknown");
+	it("tells a sleep from a starved host, and admits when it does not know", () => {
+		const cases: Array<[name: string, lastTickMs: number, stamps: Parameters<typeof classifyGap>[1], expected: ReturnType<typeof classifyGap>]> = [
+			["woke inside the gap", WOKE_AT - 30_000, { sleptAtMs: SLEPT_AT, wokeAtMs: WOKE_AT }, "slept"],
+			["went to sleep inside the gap, not woken since", SLEPT_AT - 2_000, { sleptAtMs: SLEPT_AT, wokeAtMs: SLEPT_AT - 600_000 }, "slept"],
+			["OS stamped its sleep a moment after the last tick", SLEPT_AT + 500, { sleptAtMs: SLEPT_AT, wokeAtMs: null }, "slept"],
+			// The field case: woke at 10:22:09, late ticks from 10:22:32 on.
+			["last sleep and wake both predate the gap", WOKE_AT + 23_000, { sleptAtMs: SLEPT_AT, wokeAtMs: WOKE_AT }, "starved"],
+			["the OS gave no stamps", WOKE_AT, { sleptAtMs: null, wokeAtMs: null }, "unknown"],
+		];
+		for (const [name, lastTickMs, stamps, expected] of cases) {
+			expect(classifyGap(lastTickMs, stamps), name).toBe(expected);
+		}
 	});
 });
 

@@ -49,38 +49,17 @@ describe("collectCoordinatorBoard", () => {
 		expect(snap.live.map((r) => r.seq).sort()).toEqual([2, 3, 4]);
 	});
 
-	it("shows a task finished inside the 24-hour window", async () => {
-		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1", seq: 1, status: "completed", movedAt: "2026-08-25T16:00:00.000Z" }),
-		], NOW);
-
-		expect(snap.finished.map((r) => r.seq)).toEqual([1]);
-		expect(snap.live).toHaveLength(0);
-	});
-
-	it("drops a task finished before the window opened", async () => {
-		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1", seq: 1, status: "completed", movedAt: "2026-08-23T16:00:00.000Z" }),
-		], NOW);
-
-		expect(snap.finished).toHaveLength(0);
-	});
-
-	it("counts a cancelled task as finished too", async () => {
-		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1", seq: 1, status: "cancelled", movedAt: "2026-08-25T17:00:00.000Z" }),
-		], NOW);
-
-		expect(snap.finished.map((r) => r.seq)).toEqual([1]);
-	});
-
-	it("lists the freshly finished first", async () => {
+	it("shows completed and cancelled tasks finished inside the 24-hour window, freshest first", async () => {
 		const snap = await collectCoordinatorBoard(project, [
 			task({ id: "a1", seq: 1, status: "completed", movedAt: "2026-08-25T09:00:00.000Z" }),
-			task({ id: "a2", seq: 2, status: "completed", movedAt: "2026-08-25T17:00:00.000Z" }),
+			task({ id: "a2", seq: 2, status: "completed", movedAt: "2026-08-25T16:00:00.000Z" }),
+			task({ id: "a3", seq: 3, status: "cancelled", movedAt: "2026-08-25T17:00:00.000Z" }),
+			// Finished before the window opened: dropped.
+			task({ id: "a4", seq: 4, status: "completed", movedAt: "2026-08-23T16:00:00.000Z" }),
 		], NOW);
 
-		expect(snap.finished.map((r) => r.seq)).toEqual([2, 1]);
+		expect(snap.finished.map((r) => r.seq)).toEqual([3, 2, 1]);
+		expect(snap.live).toHaveLength(0);
 	});
 
 	// Only a LIVE sibling makes a seq ambiguous, which is what decides whether
@@ -90,50 +69,33 @@ describe("collectCoordinatorBoard", () => {
 			task({ id: "a1", seq: 7, variantIndex: 1, status: "in-progress" }),
 			task({ id: "a2", seq: 7, variantIndex: 2, status: "in-progress" }),
 			task({ id: "a3", seq: 8, variantIndex: 1, status: "in-progress" }),
+			// A finished sibling does not make the live seq 8 look shared.
+			task({ id: "a4", seq: 8, variantIndex: 2, status: "completed", movedAt: "2026-08-25T17:00:00.000Z" }),
 		], NOW);
 
 		expect(snap.live.filter((r) => r.seq === 7).every((r) => r.seqShared)).toBe(true);
 		expect(snap.live.find((r) => r.seq === 8)?.seqShared).toBe(false);
 	});
 
-	it("does not let a finished sibling make a live seq look shared", async () => {
-		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1", seq: 7, variantIndex: 1, status: "in-progress" }),
-			task({ id: "a2", seq: 7, variantIndex: 2, status: "completed", movedAt: "2026-08-25T17:00:00.000Z" }),
-		], NOW);
-
-		expect(snap.live[0].seqShared).toBe(false);
-	});
-
 	// `statusEnteredAt` is stamped on every status change and is the precise
-	// answer to "how long has it been sitting there".
-	it("dates the stint from statusEnteredAt when the task has one", async () => {
+	// answer to "how long has it been sitting there"; older tasks fall back to
+	// movedAt, then createdAt — "unknown" is reserved for a task with no stamp.
+	it("dates the stint from statusEnteredAt, then movedAt, then createdAt", async () => {
 		const snap = await collectCoordinatorBoard(project, [
-			task({ statusEnteredAt: "2026-08-25T17:19:00.000Z", movedAt: "2026-08-25T12:00:00.000Z" }),
+			task({ id: "a1", seq: 1, statusEnteredAt: "2026-08-25T17:19:00.000Z", movedAt: "2026-08-25T12:00:00.000Z" }),
+			task({ id: "a2", seq: 2, statusEnteredAt: undefined, movedAt: "2026-08-25T12:00:00.000Z" }),
+			task({ id: "a3", seq: 3, statusEnteredAt: undefined, movedAt: undefined }),
 		], NOW);
 
-		expect(snap.live[0].columnSince).toBe("2026-08-25T17:19:00.000Z");
+		const since = new Map(snap.live.map((r) => [r.seq, r.columnSince]));
+		expect(since.get(1)).toBe("2026-08-25T17:19:00.000Z");
+		expect(since.get(2)).toBe("2026-08-25T12:00:00.000Z");
+		expect(since.get(3)).toBe("2026-08-25T10:00:00.000Z");
 	});
 
-	it("falls back to movedAt for a task older than status tracking", async () => {
-		const snap = await collectCoordinatorBoard(project, [
-			task({ statusEnteredAt: undefined, movedAt: "2026-08-25T12:00:00.000Z" }),
-		], NOW);
-
-		expect(snap.live[0].columnSince).toBe("2026-08-25T12:00:00.000Z");
-	});
-
-	// Never null while a createdAt exists: "unknown" is reserved for a task that
-	// genuinely carries no stamp at all.
-	it("falls back to createdAt when the task never moved", async () => {
-		const snap = await collectCoordinatorBoard(project, [
-			task({ statusEnteredAt: undefined, movedAt: undefined }),
-		], NOW);
-
-		expect(snap.live[0].columnSince).toBe("2026-08-25T10:00:00.000Z");
-	});
-
-	it("names a custom column by the name the user gave it", async () => {
+	// A task created before the priority field existed must band as P3 on the
+	// board, the same value `priorityRank` sorts it with.
+	it("carries the custom column name, hibernated flag and priority (default P3) onto the row", async () => {
 		const withColumn = {
 			id: "p1",
 			name: "dev-3.0",
@@ -141,16 +103,15 @@ describe("collectCoordinatorBoard", () => {
 		} as unknown as Project;
 
 		const snap = await collectCoordinatorBoard(withColumn, [
-			task({ status: "in-progress", customColumnId: "c9" }),
+			task({ id: "a1", seq: 1, status: "in-progress", customColumnId: "c9", hibernated: true, priority: "P0" }),
+			task({ id: "a2", seq: 2, priority: undefined }),
 		], NOW);
 
-		expect(snap.live[0].column).toBe("On hold");
-	});
-
-	it("carries the hibernated flag through to the row", async () => {
-		const snap = await collectCoordinatorBoard(project, [task({ hibernated: true })], NOW);
-
-		expect(snap.live[0].hibernated).toBe(true);
+		const [first, second] = [snap.live.find((r) => r.seq === 1)!, snap.live.find((r) => r.seq === 2)!];
+		expect(first.column).toBe("On hold");
+		expect(first.hibernated).toBe(true);
+		expect(first.priority).toBe("P0");
+		expect(second.priority).toBe("P3");
 	});
 });
 
@@ -171,40 +132,22 @@ describe("coordinatorBoardEpilogue", () => {
 
 	// The trailer rides on every message dev3 delivers; only a coordinator's job
 	// is the board, and every other task would just pay bytes for it.
-	it("adds nothing for an ordinary task", async () => {
+	it("adds nothing for an ordinary or pr-review task", async () => {
 		expect(await coordinatorBoardEpilogue(task())).toBe("");
-		expect(loadTasks).not.toHaveBeenCalled();
-	});
-
-	it("adds nothing for a pr-review task", async () => {
 		expect(await coordinatorBoardEpilogue(task({ taskType: "pr-review" }))).toBe("");
+		expect(loadTasks).not.toHaveBeenCalled();
 	});
 
 	// A message that arrives without its trailer is worth incomparably more than
 	// a message that does not arrive.
-	it("returns an empty trailer instead of throwing when the board cannot be read", async () => {
+	it("returns an empty trailer instead of throwing when the board or project cannot be read", async () => {
 		loadTasks.mockRejectedValue(new Error("tasks.json is locked"));
 
 		await expect(coordinatorBoardEpilogue(task({ taskType: "coordinator" }))).resolves.toBe("");
-	});
 
-	it("returns an empty trailer when the project is gone", async () => {
+		// Same when the project is gone.
+		loadTasks.mockResolvedValue([]);
 		getProject.mockRejectedValue(new Error("no such project"));
-
 		await expect(coordinatorBoardEpilogue(task({ taskType: "coordinator" }))).resolves.toBe("");
-	});
-});
-
-describe("collectCoordinatorBoard priority", () => {
-	it("carries the task's priority onto its row", () => {
-		const snap = collectCoordinatorBoard(project, [task({ priority: "P0" })], NOW);
-		expect(snap.live[0].priority).toBe("P0");
-	});
-
-	// A task created before the field existed must band as P3 on the board, the
-	// same value `priorityRank` sorts it with.
-	it("stamps a task with no priority as the default", () => {
-		const snap = collectCoordinatorBoard(project, [task({ priority: undefined })], NOW);
-		expect(snap.live[0].priority).toBe("P3");
 	});
 });

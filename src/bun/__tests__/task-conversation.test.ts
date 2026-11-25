@@ -152,7 +152,7 @@ describe("readTaskConversation", () => {
 		expect(earlier.turns[earlier.turns.length - 1].index).toBe(19);
 	});
 
-	it("sends a long message whole, so the panel can open it without another read", () => {
+	it("sends a long message whole, but still refuses to carry a pathological one and counts what it left", () => {
 		const task = taskWith("long-turn");
 		const long = "x".repeat(12_000);
 		writeDump(task, "claude-s4.json", { source: "claude", sessionId: "s4", turns: [turn(0, long, "ok")] });
@@ -160,16 +160,13 @@ describe("readTaskConversation", () => {
 		const view = readTaskConversation(project, task);
 		expect(view.turns[0].userText).toHaveLength(12_000);
 		expect(view.turns[0].clippedChars).toBe(0);
-	});
 
-	it("still refuses to carry a pathological message, and counts what it left", () => {
-		const task = taskWith("pathological-turn");
+		const pathological = taskWith("pathological-turn");
 		const huge = "x".repeat(60_000);
-		writeDump(task, "claude-s5.json", { source: "claude", sessionId: "s5", turns: [turn(0, huge, "ok")] });
-
-		const view = readTaskConversation(project, task);
-		expect(view.turns[0].clippedChars).toBe(10_000);
-		expect(view.turns[0].userText?.endsWith("…")).toBe(true);
+		writeDump(pathological, "claude-s5.json", { source: "claude", sessionId: "s5", turns: [turn(0, huge, "ok")] });
+		const clipped = readTaskConversation(project, pathological);
+		expect(clipped.turns[0].clippedChars).toBe(10_000);
+		expect(clipped.turns[0].userText?.endsWith("…")).toBe(true);
 	});
 
 	it("answers with no sessions rather than an error when nothing is readable", () => {

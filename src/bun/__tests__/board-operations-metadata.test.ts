@@ -53,7 +53,7 @@ describe("board operations — title rules and the actor", () => {
 		expect(forced.task.customTitle).toBe("Agent's");
 	});
 
-	it("a refused title does not block the rest of the same change", async () => {
+	it("a refused title does not block the rest of the same change, nor touches the terminal", async () => {
 		board = await createBoard({ tasks: [makeTask({ customTitle: "User's", titleEditedByUser: true })] });
 		const { meta, types } = await ops();
 		const ports = recordingPorts();
@@ -66,6 +66,8 @@ describe("board operations — title rules and the actor", () => {
 		expect(result).toMatchObject({ verdict: "applied", rejected: ["title"] });
 		expect(result.task).toMatchObject({ customTitle: "User's", overview: "progress" });
 		expect(ports.pushes.map((p) => p.name)).toEqual(["taskUpdated"]);
+		// The refused title leaves the terminal alone.
+		expect(ports.syncedTerminalTitles).toEqual([]);
 	});
 
 	it("clearing a title recomputes the auto title from the description, for either actor", async () => {
@@ -200,15 +202,6 @@ describe("board operations — terminal title", () => {
 
 		await meta.updateTaskMetadata(ports, board.project, "task-1", { title: { value: "Renamed" } }, types.USER_ACTOR);
 		expect(ports.syncedTerminalTitles).toEqual(["task-1"]);
-	});
-
-	it("a refused title leaves the terminal alone", async () => {
-		board = await createBoard({ tasks: [makeTask({ customTitle: "User's", titleEditedByUser: true })] });
-		const { meta, types } = await ops();
-		const ports = recordingPorts();
-
-		await meta.updateTaskMetadata(ports, board.project, "task-1", { title: { value: "Agent's" }, overview: "x" }, types.AGENT_ACTOR);
-		expect(ports.syncedTerminalTitles).toEqual([]);
 	});
 });
 

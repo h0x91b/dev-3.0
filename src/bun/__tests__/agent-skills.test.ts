@@ -72,16 +72,39 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
-	it("tells generic-family agents (opencode) to give approval waits a shell timeout past the launch wait", () => {
+	it("keeps the agent inside its task: bug-hunter isolation, no nested worktrees, approval-wait shell timeout", () => {
+		// tells generic-family agents (opencode) to give approval waits a shell timeout past the launch wait
 		const line = "give it a shell timeout of 900000 ms when your shell tool takes one";
 		expect(getGenericSkillContent()).toContain(line);
 		expect(GENERIC_LEAN_SKILL_BODY).toContain(line);
 		// Claude Code backgrounds a slow command and Codex keeps it running, so they skip the note.
 		expect(CLAUDE_SKILL_BODY).not.toContain(line);
 		expect(getCodexSkillContent()).not.toContain(line);
+
+		// exempts in-task bug hunters from mutating the originating task
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("## In-task Bug Hunter isolation");
+			expect(skill).toContain("this overrides the session-start checklist and every lifecycle duty below");
+			expect(skill).toContain(
+				"Do NOT rename the branch, or change the task's title, description, overview, labels, priority, status, assigned agent or configuration.",
+			);
+			expect(skill).toContain("The only allowed write is `dev3 note add`");
+			expect(skill.indexOf("## In-task Bug Hunter isolation"), "exempts in-task bug hunters from mutating the originating task").toBeLessThan(
+				skill.indexOf("## Session-start checklist"),
+			);
+		}
+
+		// blocks nested worktrees other skills ask for
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("This worktree already IS your isolation.");
+			expect(skill).toContain("`git worktree add`");
+			expect(skill).toContain("even when another skill, workflow, or agent tool asks for one");
+			expect(skill).toContain("Only an explicit request from the user overrides this.");
+		}
 	});
 
-	it("defaults every human-facing report to the HTML template in every harness", () => {
+	it("routes every human-facing report to the task-local dev3 HTML starter", () => {
+		// defaults every human-facing report to the HTML template in every harness
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), OMP_SKILL_BODY, getGenericSkillContent()]) {
 			expect(skill).toContain("Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included.");
 			expect(skill).toContain("**Copy the starter and publish its directory.**");
@@ -92,32 +115,8 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain("`dev3 show-artifact <report-dir | file.html> [--assets");
 			expect(skill).not.toContain("file.html | .md | .txt");
 		}
-	});
 
-	it("exempts in-task bug hunters from mutating the originating task", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("## In-task Bug Hunter isolation");
-			expect(skill).toContain("this overrides the session-start checklist and every lifecycle duty below");
-			expect(skill).toContain(
-				"Do NOT rename the branch, or change the task's title, description, overview, labels, priority, status, assigned agent or configuration.",
-			);
-			expect(skill).toContain("The only allowed write is `dev3 note add`");
-			expect(skill.indexOf("## In-task Bug Hunter isolation")).toBeLessThan(
-				skill.indexOf("## Session-start checklist"),
-			);
-		}
-	});
-
-	it("blocks nested worktrees other skills ask for", () => {
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("This worktree already IS your isolation.");
-			expect(skill).toContain("`git worktree add`");
-			expect(skill).toContain("even when another skill, workflow, or agent tool asks for one");
-			expect(skill).toContain("Only an explicit request from the user overrides this.");
-		}
-	});
-
-	it("routes unqualified artifacts to the task-local dev3 starter", () => {
+		// routes unqualified artifacts to the task-local dev3 starter
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## dev3 HTML artifacts");
 			expect(skill).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
@@ -137,7 +136,8 @@ describe("dev3 skill content", () => {
 		}
 	});
 
-	it("folds label guidance into the session-start title pass", () => {
+	it("front-loads the session-start checklist with title and label guidance in every variant", () => {
+		// folds label guidance into the session-start title pass
 		const codexSkill = getCodexSkillContent();
 		expect(codexSkill).toContain("aiming for **1-2 meaningful labels**");
 		expect(codexSkill).toContain("Labels, same session-start pass:");
@@ -148,12 +148,11 @@ describe("dev3 skill content", () => {
 		expect(codexSkill).not.toContain("dev3 label set <id>");
 		expect(codexSkill).toContain("creating without attaching does **not** complete this step");
 		expect(codexSkill).not.toContain("## Task labels");
-		expect(codexSkill.indexOf("## Title generation")).toBeLessThan(
+		expect(codexSkill.indexOf("## Title generation"), "folds label guidance into the session-start title pass").toBeLessThan(
 			codexSkill.indexOf("dev3 label list"),
 		);
-	});
 
-	it("front-loads a session-start checklist with an event-anchored hard gate", () => {
+		// front-loads a session-start checklist with an event-anchored hard gate
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## Session-start checklist");
 			// Event-anchored gate, not "session start" which agents race past
@@ -161,18 +160,16 @@ describe("dev3 skill content", () => {
 			// Title step explicitly covers the scratch placeholder, the case that fell through
 			expect(skill).toContain("replace a scratch placeholder");
 			// Checklist precedes the detailed sections it points at
-			expect(skill.indexOf("## Session-start checklist")).toBeLessThan(skill.indexOf("## Branch naming"));
-			expect(skill.indexOf("## Session-start checklist")).toBeLessThan(skill.indexOf("## Title generation"));
+			expect(skill.indexOf("## Session-start checklist"), "front-loads a session-start checklist with an event-anchored hard gate").toBeLessThan(skill.indexOf("## Branch naming"));
+			expect(skill.indexOf("## Session-start checklist"), "front-loads a session-start checklist with an event-anchored hard gate").toBeLessThan(skill.indexOf("## Title generation"));
 		}
-	});
 
-	it("couples title-setting to the initial-overview moment", () => {
+		// couples title-setting to the initial-overview moment
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("same pass as the title and labels");
 		}
-	});
 
-	it("keeps embedded label guidance consistent across agent variants", () => {
+		// keeps embedded label guidance consistent across agent variants
 		expect(CLAUDE_SKILL_BODY).toContain("Labels, same session-start pass:");
 		expect(getGenericSkillContent()).toContain("Labels, same session-start pass:");
 		expect(CLAUDE_SKILL_BODY).toContain("reuse existing ones");
@@ -181,7 +178,8 @@ describe("dev3 skill content", () => {
 		expect(getGenericSkillContent()).toContain("attach it at once");
 	});
 
-	it("gates completion on preserved work or an explicit user request", () => {
+	it("gates completion on preserved work, has the agent request it itself, and says exit hooks run first", () => {
+		// gates completion on preserved work or an explicit user request
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("never move a task to `completed` or request approval while its work exists only in a disposable worktree");
 			expect(skill).toContain("preserved in the destination the task requires");
@@ -191,9 +189,8 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain("A local commit, passing tests, or an open unmerged PR is not enough");
 			expect(skill).toContain("Unclear destination or unpreserved work → keep the task open and ask");
 		}
-	});
 
-	it("has the agent request completion itself, except where the user owns completion", () => {
+		// has the agent request completion itself, except where the user owns completion
 		for (const family of ["claude", "codex", "omp", "pi", "agy", "generic"] as const) {
 			for (const mode of ["worktree", "shared-folder"] as const) {
 				const skill = skillBodyFor(family, mode);
@@ -206,9 +203,8 @@ describe("dev3 skill content", () => {
 				expect(skill).not.toContain("flow below stay allowed");
 			}
 		}
-	});
 
-	it("tells the agent its exit hooks run before the worktree is destroyed", () => {
+		// tells the agent its exit hooks run before the worktree is destroyed
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			// Harness-neutral on purpose: the quit command differs per CLI (`/exit` vs
 			// `/quit`) and only Claude Code calls its exit hooks "SessionEnd".
@@ -217,17 +213,17 @@ describe("dev3 skill content", () => {
 		}
 	});
 
-	it("adds conservative dev-server control guidance across agent variants", () => {
+	it("teaches conservative and named dev-server control, and the notify forms", () => {
+		// adds conservative dev-server control guidance across agent variants
 		expect(getCodexSkillContent()).toContain("## Dev Server Control");
 		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` and `logs` are low-risk");
 		expect(getCodexSkillContent()).toContain("have visible side effects");
 		expect(CLAUDE_SKILL_BODY).toContain("say what you are about to do first");
 		expect(getGenericSkillContent()).toContain("stop it again afterwards unless asked to keep it running");
-	});
 
-	// A project can declare several dev servers, so "start the dev server" is no
-	// longer one unambiguous action — the agent has to know it may need a name.
-	it("teaches the named dev-server commands in every agent variant", () => {
+		// teaches the named dev-server commands in every agent variant
+		// A project can declare several dev servers, so "start the dev server" is no
+		// longer one unambiguous action — the agent has to know it may need a name.
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("several dev servers by name");
 			expect(skill).toContain("dev3 dev-server start api");
@@ -235,9 +231,8 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain(String(CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED));
 			expect(skill).toContain("DEV3_PORT_<NAME>");
 		}
-	});
 
-	it("documents mutually exclusive notify duration and desktop forms", () => {
+		// documents mutually exclusive notify duration and desktop forms
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain(
 				'`dev3 notify "message" [--level info|success|error] [--duration <seconds>]` — clickable in-app toast',
@@ -247,11 +242,12 @@ describe("dev3 skill content", () => {
 
 			const notifyExamples = skill.split("\n").filter((line) => line.startsWith("- `dev3 notify"));
 			const notifyCommands = notifyExamples.map((line) => line.match(/^- `([^`]+)`/)?.[1] ?? "");
-			expect(notifyCommands.every((command) => !(command.includes("--duration") && command.includes("--desktop")))).toBe(true);
+			expect(notifyCommands.every((command) => !(command.includes("--duration") && command.includes("--desktop"))), "documents mutually exclusive notify duration and desktop forms").toBe(true);
 		}
 	});
 
-	it("teaches the backend-neutral pane commands, so a Windows agent is not sent to a binary it has no chance of finding", () => {
+	it("teaches the backend-neutral pane commands and keeps the full tmux reference out of the main skill", () => {
+		// teaches the backend-neutral pane commands, so a Windows agent is not sent to a binary it has no chance of finding
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## Panes — for what the user wants to watch");
 			// A pane is opt-in: the user asked, or the process outlives the turn. Slowness alone is not a trigger.
@@ -265,6 +261,15 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain("exit code N");
 			// Short version still points to the full tmux reference for tmux-only work.
 			expect(skill).toContain("/dev3-tmux");
+		}
+
+		// keeps the main /dev3 pane summary short (does not duplicate the full tmux reference)
+		// The detailed command reference must live in the separate /dev3-tmux skill,
+		// not be duplicated inline in the main skill body.
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).not.toContain("Open a pane or window and run a command");
+			expect(skill).not.toContain("Resize a pane — absolute width / height");
+			expect(skill).not.toContain("Re-tile all panes in the window");
 		}
 	});
 
@@ -288,16 +293,6 @@ describe("dev3 skill content", () => {
 		}
 	});
 
-	it("keeps the main /dev3 pane summary short (does not duplicate the full tmux reference)", () => {
-		// The detailed command reference must live in the separate /dev3-tmux skill,
-		// not be duplicated inline in the main skill body.
-		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).not.toContain("Open a pane or window and run a command");
-			expect(skill).not.toContain("Resize a pane — absolute width / height");
-			expect(skill).not.toContain("Re-tile all panes in the window");
-		}
-	});
-
 	// A retune of the coalescing window used to leave hand-written "ten seconds"
 	// behind in this text, so every agent on the board was told a number the code
 	// no longer honoured — and then peeked at or chased a peer that was still
@@ -316,49 +311,44 @@ describe("dev3 skill content", () => {
 });
 
 describe("Claude SKILL.md (short variant — protocol lives in the system prompt)", () => {
-	it("does not duplicate the protocol body that --append-system-prompt already injects", () => {
+	it("Claude SKILL.md stays short: no protocol duplicate, PROTOCOL.md fallback, zero-tool-call status, recent notes injected", () => {
+		// does not duplicate the protocol body that --append-system-prompt already injects
 		const skill = getClaudeSkillContent();
 		expect(skill).not.toContain("## Session-start checklist");
 		expect(skill).not.toContain("## Platform feedback — vents");
 		expect(skill).not.toContain("## Getting the user's attention");
-	});
 
-	it("points sessions started outside the launcher at the PROTOCOL.md fallback", () => {
+		// points sessions started outside the launcher at the PROTOCOL.md fallback
 		expect(getClaudeSkillContent()).toContain("PROTOCOL.md");
-	});
 
-	it("keeps the zero-tool-call status auto-set and the brief task snapshot", () => {
-		const skill = getClaudeSkillContent();
+		// keeps the zero-tool-call status auto-set and the brief task snapshot
 		expect(skill).toContain("task move --status in-progress --if-status-not review-by-ai");
 		expect(skill).toContain("dev3 current --brief");
 		// The full `dev3 current` would re-print the description Claude already
 		// holds as its initial prompt.
 		expect(skill).not.toContain("dev3 current`\n");
-	});
 
-	it("injects the task's recent notes automatically on every /dev3 load", () => {
-		const skill = getClaudeSkillContent();
+		// injects the task's recent notes automatically on every /dev3 load
 		expect(skill).toContain("## Recent notes on this task");
 		expect(skill).toContain("!`~/.dev3.0/bin/dev3 note recent 2>&1`");
 	});
 
-	it("Codex skills only INSTRUCT running `note recent` — there is no injection to do it for them", () => {
+	it("Codex and generic skills keep the full body, instruct `note recent`, and Codex leaves lifecycle moves to hooks", () => {
+		// Codex skills only INSTRUCT running `note recent` — there is no injection to do it for them
 		const full = buildCodexSkillContent(hookCliDialect({ platform: "darwin" }));
 		const compact = buildCodexSkillContent(hookCliDialect({ platform: "darwin" }), true);
 		for (const content of [full, compact]) {
 			expect(content).toContain("run `~/.dev3.0/bin/dev3 note recent`");
 			expect(content).not.toContain("!`");
 		}
-	});
 
-	it("codex and generic skill files keep the full body (their only reliable channel)", () => {
+		// codex and generic skill files keep the full body (their only reliable channel)
 		// Codex scratch tasks and Gemini/Cursor/OpenCode sessions get no
 		// system-prompt injection — SKILL.md is load-bearing for them.
 		expect(getCodexSkillContent()).toContain("## Session-start checklist");
 		expect(getGenericSkillContent()).toContain("## Session-start checklist");
-	});
 
-	it("keeps normal Codex lifecycle transitions exclusively hook-owned", () => {
+		// keeps normal Codex lifecycle transitions exclusively hook-owned
 		const codexSkill = getCodexSkillContent();
 
 		expect(codexSkill).toContain("Never call `dev3 task move` for normal lifecycle transitions");
@@ -371,20 +361,22 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 		// Agents without native hooks still need the manual protocol.
 		expect(getGenericSkillContent()).toContain("task move --status in-progress");
 	});
+
 });
 
 describe("dev3-tmux skill content", () => {
-	/**
-	 * The reference itself is fine; loading it on a task that has no tmux is not.
-	 * The gate has to be the FIRST thing the agent reads, before any command it
-	 * could try, and it has to name the check rather than the platform.
-	 */
-	it("gates itself on the backend before handing out a single tmux command", () => {
+	it("gates itself on the backend, in the body and in the description an agent decides from", () => {
+		// gates itself on the backend before handing out a single tmux command
+		/**
+		 * The reference itself is fine; loading it on a task that has no tmux is not.
+		 * The gate has to be the FIRST thing the agent reads, before any command it
+		 * could try, and it has to name the check rather than the platform.
+		 */
 		const skill = getTmuxSkillContent();
 		const gate = skill.indexOf("## Check this first — tmux is not a given");
 		const firstTmuxCommand = skill.indexOf("tmux -L dev3");
-		expect(gate).toBeGreaterThanOrEqual(0);
-		expect(gate).toBeLessThan(firstTmuxCommand);
+		expect(gate, "gates itself on the backend before handing out a single tmux command").toBeGreaterThanOrEqual(0);
+		expect(gate, "gates itself on the backend before handing out a single tmux command").toBeLessThan(firstTmuxCommand);
 		expect(skill).toContain("dev3 pane list");
 		expect(skill).toContain("Everything below applies only if that says `tmux`");
 		// Never "you are on Windows, so…": the native backend is not Windows-only.
@@ -392,16 +384,16 @@ describe("dev3-tmux skill content", () => {
 		// And it must send the agent to the surface that works everywhere.
 		expect(skill).toContain("dev3 pane run");
 		expect(skill).toContain("dev3 pane logs");
-	});
 
-	it("declares itself tmux-only in the description an agent decides from", () => {
+		// declares itself tmux-only in the description an agent decides from
 		const description = getTmuxSkillDescription();
 		expect(description).toMatch(/TMUX-backed task only/i);
 		expect(description).toContain("dev3 pane list");
 		expect(description).toContain("dev3 pane run");
 	});
 
-	it("contains the full tmux command reference", () => {
+	it("contains the full tmux command reference with its pitfalls, split-window default and window naming", () => {
+		// contains the full tmux command reference
 		const skill = getTmuxSkillContent();
 		expect(skill).toContain("# dev3-tmux — Full tmux reference");
 		expect(skill).toContain("## 1. Session layout");
@@ -420,48 +412,41 @@ describe("dev3-tmux skill content", () => {
 		expect(skill).toContain("tmux -L dev3 resize-pane");
 		expect(skill).toContain("tmux -L dev3 capture-pane");
 		expect(skill).toContain("tmux -L dev3 kill-pane");
-	});
 
-	it("warns about the most common pitfalls", () => {
-		const skill = getTmuxSkillContent();
+		// warns about the most common pitfalls
 		expect(skill).toContain("Forgetting `-L dev3`");
 		expect(skill).toContain("Forgetting `Enter` in `send-keys`");
 		expect(skill).toContain("Caching pane ids");
 		expect(skill).toContain("Running the canonical dev server in an ad-hoc pane");
 		expect(skill).toContain("Opening a new-window for a background process");
-	});
 
-	it("makes split-window the explicit default and restricts new-window to explicit user request", () => {
+		// makes split-window the explicit default and restricts new-window to explicit user request
 		// Background-process bug: agent kept opening a new tmux tab for celery
 		// workers / docker exec instead of splitting a pane next to itself.
 		// The skill must be unambiguous about the default.
-		const skill = getTmuxSkillContent();
 		expect(skill).toContain("Default: split-window (pane). Use new-window only when the user explicitly asks for a tab.");
 		expect(skill).toMatch(/always.*split-window.*never.*new-window/i);
-	});
 
-	it("tells the agent to give windows human names instead of the auto command-name", () => {
-		const skill = getTmuxSkillContent();
+		// tells the agent to give windows human names instead of the auto command-name
 		expect(skill).toContain("**Always name a window you open**");
 		expect(skill).toMatch(/turns off automatic-rename/i);
-	});
 
-	it("tells the agent to proactively rename generic windows it did not open", () => {
-		const skill = getTmuxSkillContent();
+		// tells the agent to proactively rename generic windows it did not open
 		expect(skill).toContain("**Also tidy windows you did not open.**");
 		expect(skill).toMatch(/list-windows/);
 		expect(skill).toMatch(/proactively/i);
 	});
+
 });
 
 describe("dev3-project-config skill content", () => {
-	it("requires repo-specific evidence for each port mapping", () => {
+	it("demands repo evidence for ports and env vars, a smoke test, and the env secret boundary", () => {
+		// requires repo-specific evidence for each port mapping
 		expect(getProjectConfigSkillContent()).toContain(
 			"For every mapping, record the exact evidence from this repo",
 		);
-	});
 
-	it("keeps port discovery guidance tool-agnostic", () => {
+		// keeps port discovery guidance tool-agnostic
 		expect(getProjectConfigSkillContent()).toContain(
 			"Inspect the codebase and dev/runtime configuration to estimate how many concurrent ports the dev stack needs",
 		);
@@ -471,33 +456,28 @@ describe("dev3-project-config skill content", () => {
 		expect(getProjectConfigSkillContent()).not.toContain(
 			"Look at `package.json` scripts and `docker-compose.yml` to estimate",
 		);
-	});
 
-	it("forbids inferring env vars from the framework name alone", () => {
+		// forbids inferring env vars from the framework name alone
 		expect(getProjectConfigSkillContent()).toContain(
 			"Do NOT infer env vars from the framework name alone.",
 		);
-	});
 
-	it("does not include the generic framework env var table", () => {
+		// does not include the generic framework env var table
 		expect(getProjectConfigSkillContent()).not.toContain(
 			"Common frameworks & their port env vars",
 		);
-	});
 
-	it("requires disabling portCount when no explicit override exists", () => {
+		// requires disabling portCount when no explicit override exists
 		expect(getProjectConfigSkillContent()).toContain(
 			"If you cannot find an explicit port override mechanism in this project, do NOT guess with a generic `PORT=` assignment. Set `portCount: 0` and explain why.",
 		);
-	});
 
-	it("requires a smoke test when ports are mapped", () => {
+		// requires a smoke test when ports are mapped
 		expect(getProjectConfigSkillContent()).toContain(
 			"If `portCount > 0`, also smoke-test the mapping:",
 		);
-	});
 
-	it("documents project environment variables and their secret-storage boundary", () => {
+		// documents project environment variables and their secret-storage boundary
 		const skill = getProjectConfigSkillContent();
 		expect(skill).toContain("| `env` | { [name]: string } |");
 		expect(skill).toContain("This field is not for secrets; `.dev3/config.json` is committed.");
@@ -513,7 +493,8 @@ describe("dev3-project-config skill content", () => {
 });
 
 describe("dev3 Bug Hunter skill content", () => {
-	it("keeps the seeded initialization sequence intact", () => {
+	it("keeps the seeded start, the assigned area, read-only findings format and the in-task note channel", () => {
+		// keeps the seeded initialization sequence intact
 		const skill = getBugHunterSkillContent();
 
 		expect(skill).toContain("name: dev3-bug-hunter");
@@ -522,20 +503,14 @@ describe("dev3 Bug Hunter skill content", () => {
 		expect(skill).toContain("strategy = seed % 6");
 		expect(skill).toContain("style = floor(seed / 6) % 4");
 		expect(skill).toContain("Agent [LETTER] | Strategy: [name] | Style: [name] | Seed: [number]");
-	});
 
-	it("forces bug hunts to start from the assigned strategy area", () => {
-		const skill = getBugHunterSkillContent();
-
+		// forces bug hunts to start from the assigned strategy area
 		expect(skill).toContain("You MUST begin from your assigned area.");
 		expect(skill).toContain("Do not jump to other areas until you have examined yours thoroughly.");
 		expect(skill).toContain("Logic errors and off-by-one mistakes");
 		expect(skill).toContain("Silent failures and swallowed errors");
-	});
 
-	it("stays read-only and requires a uniform findings format", () => {
-		const skill = getBugHunterSkillContent();
-
+		// stays read-only and requires a uniform findings format
 		expect(skill).toContain("This skill is review-only.");
 		expect(skill).toContain("Do NOT modify code, apply patches, create commits, or rewrite files.");
 		expect(skill).toContain("Do NOT run the dev3 session-start checklist");
@@ -566,11 +541,8 @@ describe("dev3 Bug Hunter skill content", () => {
 		expect(skill).toContain(
 			"I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.",
 		);
-	});
 
-	it("documents the in-task note reporting channel", () => {
-		const skill = getBugHunterSkillContent();
-
+		// documents the in-task note reporting channel
 		expect(skill).toContain("## Task mode: record findings as dev3 notes");
 		// The main agent, not the pane, is the real consumer in task mode.
 		expect(skill).toContain(
@@ -585,54 +557,53 @@ describe("dev3 Bug Hunter skill content", () => {
 			'do NOT emit the "Next step offer" question and do NOT create dev3 tasks yourself',
 		);
 	});
+
 });
 
 describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)", () => {
 	const SOCKETS = "/Users/testuser/.dev3.0/sockets";
 
-	it("adds the dev3 CLI permission and the sockets dir to a fresh settings object", () => {
+	it("adds the permissions and the sockets DIRECTORY once, preserving everything else", () => {
+		// adds the dev3 CLI permission and the sockets dir to a fresh settings object
 		const settings: Record<string, unknown> = {};
 		const changed = applyClaudeSettings(settings, SOCKETS);
 
-		expect(changed).toBe(true);
+		expect(changed, "adds the dev3 CLI permission and the sockets dir to a fresh settings object").toBe(true);
 		const permissions = settings.permissions as { allow: string[] };
-		expect(permissions.allow).toEqual(claudeBashPermissions());
+		expect(permissions.allow, "adds the dev3 CLI permission and the sockets dir to a fresh settings object").toEqual(claudeBashPermissions());
 		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
-		expect(sandbox.network.allowUnixSockets).toEqual([SOCKETS]);
-	});
+		expect(sandbox.network.allowUnixSockets, "adds the dev3 CLI permission and the sockets dir to a fresh settings object").toEqual([SOCKETS]);
 
-	it("allow-lists the sockets DIRECTORY, not a *.sock glob", () => {
-		const settings: Record<string, unknown> = {};
-		applyClaudeSettings(settings, SOCKETS);
-		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
-		expect(sandbox.network.allowUnixSockets[0]).toBe(SOCKETS);
-		expect(sandbox.network.allowUnixSockets[0]).not.toContain("*");
-	});
+		// allow-lists the sockets DIRECTORY, not a *.sock glob
+		const settings2: Record<string, unknown> = {};
+		applyClaudeSettings(settings2, SOCKETS);
+		const sandbox2 = settings2.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox2.network.allowUnixSockets[0], "allow-lists the sockets DIRECTORY, not a *.sock glob").toBe(SOCKETS);
+		expect(sandbox2.network.allowUnixSockets[0]).not.toContain("*");
 
-	it("is a no-op (returns false) when every entry is already present", () => {
-		const settings: Record<string, unknown> = {
+		// is a no-op (returns false) when every entry is already present
+		const settings3: Record<string, unknown> = {
 			permissions: { allow: claudeBashPermissions() },
 			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
 			autoMode: { allow: ["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES] },
 		};
-		expect(applyClaudeSettings(settings, SOCKETS)).toBe(false);
-	});
+		expect(applyClaudeSettings(settings3, SOCKETS), "is a no-op (returns false) when every entry is already present").toBe(false);
 
-	it("preserves unrelated settings and existing allow/socket entries", () => {
-		const settings: Record<string, unknown> = {
+		// preserves unrelated settings and existing allow/socket entries
+		const settings4: Record<string, unknown> = {
 			model: "claude-opus-4-8",
 			permissions: { allow: ["Bash(ls *)"], deny: ["Bash(rm *)"] },
 			sandbox: { network: { allowUnixSockets: ["/tmp/other.sock"] } },
 		};
-		const changed = applyClaudeSettings(settings, SOCKETS);
+		const changed2 = applyClaudeSettings(settings4, SOCKETS);
 
-		expect(changed).toBe(true);
-		expect(settings.model).toBe("claude-opus-4-8");
-		const permissions = settings.permissions as { allow: string[]; deny: string[] };
-		expect(permissions.allow).toEqual(["Bash(ls *)", ...claudeBashPermissions()]);
-		expect(permissions.deny).toEqual(["Bash(rm *)"]);
-		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
-		expect(sandbox.network.allowUnixSockets).toEqual(["/tmp/other.sock", SOCKETS]);
+		expect(changed2, "preserves unrelated settings and existing allow/socket entries").toBe(true);
+		expect(settings4.model, "preserves unrelated settings and existing allow/socket entries").toBe("claude-opus-4-8");
+		const permissions2 = settings4.permissions as { allow: string[]; deny: string[] };
+		expect(permissions2.allow, "preserves unrelated settings and existing allow/socket entries").toEqual(["Bash(ls *)", ...claudeBashPermissions()]);
+		expect(permissions2.deny, "preserves unrelated settings and existing allow/socket entries").toEqual(["Bash(rm *)"]);
+		const sandbox3 = settings4.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox3.network.allowUnixSockets, "preserves unrelated settings and existing allow/socket entries").toEqual(["/tmp/other.sock", SOCKETS]);
 	});
 
 	// Issue #2043: the whole-CLI rule an older dev3 wrote here approved
@@ -649,49 +620,66 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(permissions.allow.some((rule) => rule.includes("pane run"))).toBe(false);
 	});
 
-	// The classifier is a second gate, and it reads autoMode ONLY from this file —
-	// never from a worktree's .claude/settings*.json. Without the entry,
-	// `dev3 task move --status completed` comes back as "Blocked by classifier".
-	it("declares the dev3 exception to the auto-mode classifier, with the built-ins kept", () => {
+	it("declares the dev3 classifier exception, naming only the CLI and judging what a pane run executes", () => {
+		// declares the dev3 exception to the auto-mode classifier, with the built-ins kept
+		// The classifier is a second gate, and it reads autoMode ONLY from this file —
+		// never from a worktree's .claude/settings*.json. Without the entry,
+		// `dev3 task move --status completed` comes back as "Blocked by classifier".
 		const settings: Record<string, unknown> = {};
 		applyClaudeSettings(settings, SOCKETS);
 
 		const autoMode = settings.autoMode as { allow: string[] };
-		expect(autoMode.allow).toEqual(["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
-	});
+		expect(autoMode.allow, "declares the dev3 exception to the auto-mode classifier, with the built-ins kept").toEqual(["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 
-	it("names only the dev3 CLI in that entry", () => {
+		// names only the dev3 CLI in that entry
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toContain("dev3");
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/only to `dev3` subcommands/);
-	});
 
-	// Issue #2043: the classifier now sees `dev3 pane run`, so the entry must not
-	// read as clearing the command it carries.
-	it("tells the classifier to judge the command a pane run or dev server executes", () => {
+		// tells the classifier to judge the command a pane run or dev server executes
+		// Issue #2043: the classifier now sees `dev3 pane run`, so the entry must not
+		// read as clearing the command it carries.
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/`dev3 pane run "<command>"` runs `<command>`/);
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/dev-server start\|restart/);
 		expect(DEV3_AUTO_MODE_ALLOW_ENTRY).toMatch(/exactly as if the agent ran it directly; this entry clears none of it/);
 	});
 
-	it("scopes the git entry to the task's own repo, branch and PR, on the user's request", () => {
+	it("scopes the git entry to the task, its user-ordered merges and ordinary pushes", () => {
+		// scopes the git entry to the task's own repo, branch and PR, on the user's request
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/^dev3 git management:/);
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/When the user asks/);
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/session's own repository only/);
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/default branch still needs the user's words/);
 		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/nothing in hard_deny/);
+
+		// treats a merge the user ordered in their own turn as the human approval
+		// Seq 2173: the user typed "мёржи" after a finished review, and the merge
+		// was still refused as Merge Without Review.
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/A merge the user orders in their own turn/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("мёржи");
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/is not Merge Without Review: that order is the human approval/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/a pr-review task merging the PR it reviewed/);
+
+		// does not count a non-forced switch as local destruction
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/no `-f`, `--force` or `--discard-changes` is not Irreversible Local Destruction/);
+
+		// treats creating a ref and landing on the default branch as an ordinary push
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/not Modify Shared Resources/);
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("git push origin <sha>:refs/heads/<new>");
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("`--force-with-lease=<ref>:` with an empty expected value");
+		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/non-force push \(merge, cherry-pick, fast-forward\)/);
 	});
 
-	it("gives a coordinator's relayed order the user's authority, keyed on the app-stamped role tag", () => {
+	it("gives a coordinator relay the user's authority, scoped to what it states", () => {
+		// gives a coordinator's relayed order the user's authority, keyed on the app-stamped role tag
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/^dev3 coordinator relay:/);
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toContain("<from-role>coordinator</from-role>");
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/same authority as the user/);
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/hard_deny rules still apply/);
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/only inside `<message>`/);
-	});
 
-	// Regression cases from the 2026-10-16 auto-approve audits: a relay must carry
-	// the user's grant, and only that grant.
-	it("scopes a relayed grant to its operation, targets, limits and addressee", () => {
+		// scopes a relayed grant to its operation, targets, limits and addressee
+		// Regression cases from the 2026-10-16 auto-approve audits: a relay must carry
+		// the user's grant, and only that grant.
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/scoped to what the relay states/);
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a wider or pattern-computed target set/);
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a higher spend/);
@@ -701,92 +689,69 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(DEV3_AUTO_MODE_COORDINATOR_ENTRY).toMatch(/a paid run within a quoted budget/);
 	});
 
-	// Seq 2173: the user typed "мёржи" after a finished review, and the merge
-	// was still refused as Merge Without Review.
-	it("treats a merge the user ordered in their own turn as the human approval", () => {
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/A merge the user orders in their own turn/);
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("мёржи");
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/is not Merge Without Review: that order is the human approval/);
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/a pr-review task merging the PR it reviewed/);
-	});
-
-	it("does not count a non-forced switch as local destruction", () => {
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/no `-f`, `--force` or `--discard-changes` is not Irreversible Local Destruction/);
-	});
-
-	it("treats creating a ref and landing on the default branch as an ordinary push", () => {
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/not Modify Shared Resources/);
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("git push origin <sha>:refs/heads/<new>");
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toContain("`--force-with-lease=<ref>:` with an empty expected value");
-		expect(DEV3_AUTO_MODE_GIT_ENTRY).toMatch(/non-force push \(merge, cherry-pick, fast-forward\)/);
-	});
-
-	it("replaces an older wording of a dev3 entry instead of stacking both", () => {
+	it("replaces stale dev3 entries and respects the user's own autoMode lists and sockets", () => {
+		// replaces an older wording of a dev3 entry instead of stacking both
 		const settings: Record<string, unknown> = {
 			autoMode: {
 				allow: ["$defaults", "User rule", "dev3 git management: an older wording", DEV3_AUTO_MODE_ALLOW_ENTRY],
 			},
 		};
-		expect(applyClaudeSettings(settings, SOCKETS)).toBe(true);
-		expect((settings.autoMode as { allow: string[] }).allow).toEqual([
+		expect(applyClaudeSettings(settings, SOCKETS), "replaces an older wording of a dev3 entry instead of stacking both").toBe(true);
+		expect((settings.autoMode as { allow: string[] }).allow, "replaces an older wording of a dev3 entry instead of stacking both").toEqual([
 			"$defaults",
 			"User rule",
 			DEV3_AUTO_MODE_ALLOW_ENTRY,
 			DEV3_AUTO_MODE_GIT_ENTRY,
 			DEV3_AUTO_MODE_COORDINATOR_ENTRY,
 		]);
-	});
 
-	it("does not bring $defaults back when dropping a stale entry empties the list", () => {
-		const settings: Record<string, unknown> = {
+		// does not bring $defaults back when dropping a stale entry empties the list
+		const settings2: Record<string, unknown> = {
 			autoMode: { allow: ["dev3 task lifecycle: an older wording"] },
 		};
-		applyClaudeSettings(settings, SOCKETS);
-		expect((settings.autoMode as { allow: string[] }).allow).toEqual([...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
-	});
+		applyClaudeSettings(settings2, SOCKETS);
+		expect((settings2.autoMode as { allow: string[] }).allow, "does not bring $defaults back when dropping a stale entry empties the list").toEqual([...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 
-	it("appends to an owned allow list without re-adding $defaults the user dropped", () => {
-		const settings: Record<string, unknown> = {
+		// appends to an owned allow list without re-adding $defaults the user dropped
+		const settings3: Record<string, unknown> = {
 			autoMode: { allow: ["Deploying to staging is allowed"], environment: ["$defaults"] },
 		};
-		const changed = applyClaudeSettings(settings, SOCKETS);
+		const changed = applyClaudeSettings(settings3, SOCKETS);
 
-		expect(changed).toBe(true);
-		const autoMode = settings.autoMode as { allow: string[]; environment: string[] };
-		expect(autoMode.allow).toEqual(["Deploying to staging is allowed", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
-		expect(autoMode.environment).toEqual(["$defaults"]);
-	});
+		expect(changed, "appends to an owned allow list without re-adding $defaults the user dropped").toBe(true);
+		const autoMode = settings3.autoMode as { allow: string[]; environment: string[] };
+		expect(autoMode.allow, "appends to an owned allow list without re-adding $defaults the user dropped").toEqual(["Deploying to staging is allowed", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
+		expect(autoMode.environment, "appends to an owned allow list without re-adding $defaults the user dropped").toEqual(["$defaults"]);
 
-	it("keeps the user's own soft_deny and hard_deny lists untouched", () => {
-		const settings: Record<string, unknown> = {
+		// keeps the user's own soft_deny and hard_deny lists untouched
+		const settings4: Record<string, unknown> = {
 			autoMode: { soft_deny: ["$defaults", "Never touch prod"], hard_deny: ["$defaults"] },
 		};
-		applyClaudeSettings(settings, SOCKETS);
+		applyClaudeSettings(settings4, SOCKETS);
 
-		const autoMode = settings.autoMode as Record<string, string[]>;
-		expect(autoMode.soft_deny).toEqual(["$defaults", "Never touch prod"]);
-		expect(autoMode.hard_deny).toEqual(["$defaults"]);
-		expect(autoMode.allow).toEqual(["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
-	});
+		const autoMode2 = settings4.autoMode as Record<string, string[]>;
+		expect(autoMode2.soft_deny, "keeps the user's own soft_deny and hard_deny lists untouched").toEqual(["$defaults", "Never touch prod"]);
+		expect(autoMode2.hard_deny, "keeps the user's own soft_deny and hard_deny lists untouched").toEqual(["$defaults"]);
+		expect(autoMode2.allow, "keeps the user's own soft_deny and hard_deny lists untouched").toEqual(["$defaults", ...DEV3_AUTO_MODE_ALLOW_ENTRIES]);
 
-	it("replaces a non-array autoMode.allow rather than throwing", () => {
-		const settings: Record<string, unknown> = { autoMode: { allow: "everything" } };
-		expect(() => applyClaudeSettings(settings, SOCKETS)).not.toThrow();
-		expect((settings.autoMode as { allow: string[] }).allow).toEqual([
+		// replaces a non-array autoMode.allow rather than throwing
+		const settings5: Record<string, unknown> = { autoMode: { allow: "everything" } };
+		expect(() => applyClaudeSettings(settings5, SOCKETS), "replaces a non-array autoMode.allow rather than throwing").not.toThrow();
+		expect((settings5.autoMode as { allow: string[] }).allow, "replaces a non-array autoMode.allow rather than throwing").toEqual([
 			"$defaults",
 			...DEV3_AUTO_MODE_ALLOW_ENTRIES,
 		]);
-	});
 
-	it("does not duplicate the socket when only the permission is missing", () => {
-		const settings: Record<string, unknown> = {
+		// does not duplicate the socket when only the permission is missing
+		const settings6: Record<string, unknown> = {
 			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
 		};
-		const changed = applyClaudeSettings(settings, SOCKETS);
-		expect(changed).toBe(true); // permission was added
-		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
-		expect(sandbox.network.allowUnixSockets).toEqual([SOCKETS]);
+		const changed2 = applyClaudeSettings(settings6, SOCKETS);
+		expect(changed2, "does not duplicate the socket when only the permission is missing").toBe(true); // permission was added
+		const sandbox = settings6.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox.network.allowUnixSockets, "does not duplicate the socket when only the permission is missing").toEqual([SOCKETS]);
 	});
+
 });
 
 describe("skill content per platform dialect", () => {
@@ -835,33 +800,29 @@ describe("skill content per platform dialect", () => {
 // `dev3://`, so on every other platform the injected skill must say the command
 // leaves it out — and must never order the agent to hand-write one.
 describe("PR instruction — dev3 pr create, and the footer it owns", () => {
-	it("routes macOS through the command and says the footer is automatic", () => {
-		const text = skillPrLinkInstruction("darwin");
-		expect(text).toContain("dev3 pr create");
-		expect(text).toContain("dev3 pr auto-merge");
-		expect(text).toContain("links the PR back to this task itself");
+	it("routes every platform through the command, with the footer only where dev3:// resolves, and never gh pr create or git push", () => {
+		const mac = skillPrLinkInstruction("darwin");
+		expect(mac).toContain("dev3 pr create");
+		expect(mac).toContain("dev3 pr auto-merge");
+		expect(mac).toContain("links the PR back to this task itself");
 		// The old instruction pasted the footer template for the agent to copy.
 		// `dev3 pr create` builds it, so the template must not reappear here.
-		expect(text).not.toContain("open.html");
-		expect(text).not.toContain("<TASK_ID>");
-	});
+		expect(mac).not.toContain("open.html");
+		expect(mac).not.toContain("<TASK_ID>");
 
-	for (const platform of ["win32", "linux"] as NodeJS.Platform[]) {
-		it(`still routes ${platform} through the command, with no link anywhere`, () => {
+		for (const platform of ["win32", "linux"] as NodeJS.Platform[]) {
 			const text = skillPrLinkInstruction(platform);
-			expect(text).toContain("dev3 pr create");
-			expect(text).toContain("adds no origin-task footer here");
-			expect(text).not.toContain("open.html");
-			expect(text).not.toContain("dev3://task/");
-			expect(text).not.toContain("Origin task in dev3");
-		});
-	}
+			expect(text, platform).toContain("dev3 pr create");
+			expect(text, platform).toContain("adds no origin-task footer here");
+			expect(text, platform).not.toContain("open.html");
+			expect(text, platform).not.toContain("dev3://task/");
+			expect(text, platform).not.toContain("Origin task in dev3");
+		}
 
-	it("never tells the agent to run gh pr create or git push itself", () => {
 		for (const platform of ["darwin", "win32", "linux"] as NodeJS.Platform[]) {
 			const text = skillPrLinkInstruction(platform);
-			expect(text).not.toContain("gh pr create");
-			expect(text).not.toContain("git push");
+			expect(text, platform).not.toContain("gh pr create");
+			expect(text, platform).not.toContain("git push");
 		}
 	});
 
@@ -892,10 +853,18 @@ describe("PR instruction — dev3 pr create, and the footer it owns", () => {
 });
 
 describe("dev3-artifact skill content", () => {
-	it("is a user-invocable skill named for the slash command", () => {
+	it("is a user-invocable skill for in-app publishing that warns about overwriting an edited copy", () => {
+		// is a user-invocable skill named for the slash command
 		const skill = getArtifactSkillContent();
 		expect(skill).toContain("name: dev3-artifact");
 		expect(skill).toContain("user-invocable: true");
+
+		// warns that re-running the starter command overwrites an edited copy
+		expect(getArtifactSkillContent()).toContain("`index.html` and `report.js` included, and your edits are gone");
+
+		// separates in-app publishing from sharing a link
+		expect(skill).toContain("`/dev3-share-artifact`, a separate step that publishes a GitHub gist");
+		expect(skill).toContain("Not for Claude Artifacts, CI/build artifacts or package outputs.");
 	});
 
 	// One source: the protocol section and this skill must never disagree on format or steps.
@@ -934,164 +903,135 @@ describe("dev3-artifact skill content", () => {
 		}
 	});
 
-	it("warns that re-running the starter command overwrites an edited copy", () => {
-		expect(getArtifactSkillContent()).toContain("`index.html` and `report.js` included, and your edits are gone");
-	});
-
-	it("separates in-app publishing from sharing a link", () => {
-		const skill = getArtifactSkillContent();
-		expect(skill).toContain("`/dev3-share-artifact`, a separate step that publishes a GitHub gist");
-		expect(skill).toContain("Not for Claude Artifacts, CI/build artifacts or package outputs.");
-	});
 });
 
 describe("dev3-share-artifact skill content", () => {
-	it("is named with the correct spelling and is user-invocable", () => {
+	it("is a correctly spelled user-invocable skill driving the dev3 inliner and its exit codes", () => {
+		// is named with the correct spelling and is user-invocable
 		const skill = getShareArtifactSkillContent();
 
 		expect(skill).toContain("name: dev3-share-artifact");
 		expect(skill).toContain("user-invocable: true");
 		expect(skill).not.toContain("artefact");
-	});
 
-	it("drives publishing through the dev3 inliner rather than an external script", () => {
-		const skill = getShareArtifactSkillContent();
-
+		// drives publishing through the dev3 inliner rather than an external script
 		expect(skill).toContain("dev3 inline-html <artifact-dir-or-index.html> -o /tmp/<name>.html");
 		expect(skill).not.toContain("inline_html.py");
 		expect(skill).not.toContain("python3");
-	});
 
-	it("documents the two refusals with the CLI's own exit codes", () => {
-		const skill = getShareArtifactSkillContent();
-
+		// documents the two refusals with the CLI's own exit codes
 		expect(skill).toContain(`| \`${CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING}\` | A referenced local file is missing`);
 		expect(skill).toContain(`| \`${CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND}\` | A credential-shaped string is embedded`);
 	});
 
-	it("checks .gist-id before deciding create-vs-update, and defaults to secret", () => {
+	it("updates an existing gist, defaults to secret, ships no account mapping and opens the preview first", () => {
+		// checks .gist-id before deciding create-vs-update, and defaults to secret
 		const skill = getShareArtifactSkillContent();
 
 		expect(skill).toContain("cat <artifact-dir>/.gist-id 2>/dev/null");
 		expect(skill).toContain("**Default to secret.**");
 		expect(skill).toContain("an existing gist should be updated, not\nduplicated");
-	});
 
-	it("carries no machine-specific account mapping — it ships to every user", () => {
-		const skill = getShareArtifactSkillContent();
-
+		// carries no machine-specific account mapping — it ships to every user
 		expect(skill).not.toContain("h0x91b");
 		expect(skill).not.toContain("/Users/");
 		expect(skill).not.toContain("Desktop/src");
 		expect(skill).toContain("If `gh auth status` lists more than one account");
-	});
 
-	it("requires the preview URL to be opened before it is handed over", () => {
-		const skill = getShareArtifactSkillContent();
-
+		// requires the preview URL to be opened before it is handed over
 		expect(skill).toContain("A link you have not opened is a guess.");
 		expect(skill).toContain("https://htmlpreview.github.io/?https://gist.githubusercontent.com/");
 	});
+
 });
 
 describe("dev3-extensions skill content", () => {
-	// The skill ships to agents with no dev3 clone, so it carries the contract itself.
-	// These pin it to the code so a contract change cannot leave it quietly stale.
-	it("documents every public ctx.board member", () => {
+	it("pins ctx.board, the manifest example and the view id to the code", () => {
+		// documents every public ctx.board member
+		// The skill ships to agents with no dev3 clone, so it carries the contract itself.
+		// These pin it to the code so a contract change cannot leave it quietly stale.
 		const skill = getExtensionsSkillContent();
 		const members = Object.getOwnPropertyNames(BoardService.prototype).filter((name) => name !== "constructor" && name !== "model");
 		const missing = members.filter((name) => !new RegExp(`\\b${name}\\b`).test(skill));
 
-		expect(members.length).toBeGreaterThan(20);
-		expect(missing).toEqual([]);
-	});
+		expect(members.length, "documents every public ctx.board member").toBeGreaterThan(20);
+		expect(missing, "documents every public ctx.board member").toEqual([]);
 
-	it("ships a manifest example the real validator accepts, under the current API version", () => {
-		const skill = getExtensionsSkillContent();
+		// ships a manifest example the real validator accepts, under the current API version
 		const json = /```json\n([\s\S]*?)\n```/.exec(skill)?.[1];
 		const result = validateExtensionManifest(JSON.parse(json ?? "null"), "my-view");
 
-		expect(result.ok).toBe(true);
-		expect(result.ok && satisfiesRange(EXTENSION_API_VERSION, result.manifest.engines.dev3)).toBe(true);
+		expect(result.ok, "ships a manifest example the real validator accepts, under the current API version").toBe(true);
+		expect(result.ok && satisfiesRange(EXTENSION_API_VERSION, result.manifest.engines.dev3), "ships a manifest example the real validator accepts, under the current API version").toBe(true);
 		expect(skill).toContain(`\`${EXTENSION_API_VERSION}\` today`);
-	});
 
-	it("registers the view id its own manifest declares", () => {
-		const skill = getExtensionsSkillContent();
-
+		// registers the view id its own manifest declares
 		expect(skill).toContain('const VIEW_ID = "my-view:main"');
 		expect(skill).toContain('"boardViews": [{ "id": "main", "label": "My view" }]');
 		expect(skill).toContain('inject: ["board", "boardViews"]');
 	});
 
-	it("never teaches forging consent on the user's real dev3", () => {
+	it("never forges consent and stays out of the capped protocol body", () => {
+		// never teaches forging consent on the user's real dev3
 		const skill = getExtensionsSkillContent();
 
 		expect(skill).toContain("**Never write trust into the user's real `~/.dev3.0/extensions-state.json` yourself**");
 		expect(skill).toContain("scoped home ONLY");
 		expect(skill).toContain("**Streamer mode (`&streamer=on`) is mandatory**");
+
+		// stays out of the capped dev3 protocol body
+		// The protocol body is capped by the Windows command line; this skill must stay out of it.
+		expect(getClaudeSkillContent()).not.toContain("ctx.boardViews");
+		expect(getGenericSkillContent()).not.toContain("ctx.boardViews");
 	});
 
-	it("names the render-crash console line the slot host really prints", () => {
+	it("names real console lines and known gaps honestly", () => {
+		// names the render-crash console line the slot host really prints
 		const skill = getExtensionsSkillContent();
 		const slotHost = readFileSync(join(__dirname, "../../mainview/plugins/SlotHost.tsx"), "utf8");
 
 		expect(slotHost).toContain("`[slots] ${this.props.slot} item ${");
 		expect(skill).toContain("`[slots] boardViews item <id> crashed: …`");
 		expect(skill).not.toContain("[board-views] view");
-	});
 
-	it("does not promise Failed to load for an apply() that throws after load", () => {
-		const skill = getExtensionsSkillContent();
+		// does not promise Failed to load for an apply() that throws after load
 		const docs = readFileSync(join(__dirname, "../../../docs/extensions.md"), "utf8");
 		const platform = readFileSync(join(__dirname, "../../../docs/extensions-platform.md"), "utf8");
 
 		expect(skill).toContain("that throw is not reported yet (known gap, tracked for the opening track)");
 		expect(docs).toContain("Known gap: a plugin whose `apply()` throws after the extension has loaded");
 		expect(platform).toContain("A plugin whose `apply()` throws after load");
-	});
 
-	it("names the missing tooling plainly, in one replaceable section", () => {
-		const skill = getExtensionsSkillContent();
-
+		// names the missing tooling plainly, in one replaceable section
 		expect(skill).toContain("## What is not there yet (be honest with the user)");
 		expect(skill).toContain("`dev3 extension` CLI");
 	});
 
-	// The protocol body is capped by the Windows command line; this skill must stay out of it.
-	it("stays out of the capped dev3 protocol body", () => {
-		expect(getClaudeSkillContent()).not.toContain("ctx.boardViews");
-		expect(getGenericSkillContent()).not.toContain("ctx.boardViews");
-	});
 });
 
 describe("dev3-coordinator skill content", () => {
-	it("is user-invocable and named for the slash command", () => {
+	it("is user-invocable and carries the generated brief, which a printed override beats", () => {
+		// is user-invocable and named for the slash command
 		const skill = getCoordinatorSkillContent();
 
 		expect(skill).toContain("name: dev3-coordinator");
 		expect(skill).toContain("user-invocable: true");
-	});
 
-	// The skill must work as the whole instruction on its own, yet never become a
-	// second hand-edited copy: it is generated from the constant on every launch.
-	it("carries the complete built-in brief, generated from COORDINATOR_PROMPT", () => {
-		const skill = getCoordinatorSkillContent();
-
+		// carries the complete built-in brief, generated from COORDINATOR_PROMPT
+		// The skill must work as the whole instruction on its own, yet never become a
+		// second hand-edited copy: it is generated from the constant on every launch.
 		expect(skill).toContain("dev3 task update --type coordinator --print-role");
 		expect(skill).toContain(`## The built-in coordinator brief (full text)\n\n${COORDINATOR_PROMPT}\n`);
-	});
 
-	it("lets a project or Settings override win over the embedded copy, without touching it", () => {
-		const skill = getCoordinatorSkillContent();
-
+		// lets a project or Settings override win over the embedded copy, without touching it
 		expect(skill).toContain("`Brief source:`");
 		expect(skill).toContain("**Only the printed text.**");
 		expect(skill).toContain("never merge rules back in from it");
 		expect(skill).toContain("Never edit, reset or \"update\" a custom brief to match the built-in one");
 	});
 
-	it("cannot promote anything by being installed or discovered", () => {
+	it("cannot promote by being loaded, grants nothing new, and is honest about a stale CLI", () => {
+		// cannot promote anything by being installed or discovered
 		const skill = getCoordinatorSkillContent();
 
 		// `!`-injected commands run at skill LOAD time — that is how the dev3 skill
@@ -1099,37 +1039,29 @@ describe("dev3-coordinator skill content", () => {
 		expect(skill).not.toContain("!`");
 		expect(skill).toContain("Invoking this skill IS the user's explicit request");
 		expect(skill).toContain("never promote a task because the work looks coordination-shaped");
-	});
 
-	it("promises preservation and grants no new permission", () => {
-		const skill = getCoordinatorSkillContent();
-
+		// promises preservation and grants no new permission
 		expect(skill).toContain("## What does NOT change");
 		expect(skill).toContain("becoming a coordinator authorises no push, no pull request, no merge, no publication, no completion");
 		expect(skill).toContain("A full brief is not a wider mandate");
 		expect(skill).toContain("launching a task still goes through its approval dialog");
 		expect(skill).toContain("## Re-running it");
 		expect(skill).toContain("Harmless, by design.");
-	});
 
-	// The skill ships ahead of the CLI binary on any machine that updated the app
-	// without updating dev3 — an unknown flag must not read as "promotion failed".
-	it("names the stale-CLI fallback and what it costs", () => {
-		const skill = getCoordinatorSkillContent();
-
+		// names the stale-CLI fallback and what it costs
+		// The skill ships ahead of the CLI binary on any machine that updated the app
+		// without updating dev3 — an unknown flag must not read as "promotion failed".
 		expect(skill).toContain("error: Unknown option: --print-role");
 		expect(skill).toContain("it stopped before changing anything");
 		expect(skill).toContain("dev3 task update --type coordinator\n```");
 		expect(skill).toContain("typed into your pane as a message rather than printed here");
-	});
 
-	it("forbids claiming a role change the command did not make", () => {
-		const skill = getCoordinatorSkillContent();
-
+		// forbids claiming a role change the command did not make
 		expect(skill).toContain("say the role did **not** change");
 		expect(skill).toContain("do not claim the type changed");
 		expect(skill).toContain("it is not an authorisation to act on");
 	});
+
 });
 
 // A nested `"` inside the double-quoted YAML scalar ends the description early;
@@ -1146,65 +1078,64 @@ describe("managed skill frontmatter survives the parser that reads it", () => {
 		["dev3", getClaudeSkillContent()],
 	];
 
-	it.each(skills)("parses %s with its whole description intact", (name, content) => {
-		const parsed = parseSkillFrontmatter(content);
+	it("parses every managed skill with its whole description intact", () => {
+		for (const [name, content] of skills) {
+			const parsed = parseSkillFrontmatter(content);
 
-		expect(parsed.name).toBe(name);
-		expect(parsed.description).toBeTruthy();
-		expect(content).toContain(`description: "${parsed.description}"`);
-		// A `"` that is not backslash-escaped closes the scalar early.
-		expect(parsed.description).not.toMatch(/(^|[^\\])"/);
+			expect(parsed.name).toBe(name);
+			expect(parsed.description, name).toBeTruthy();
+			expect(content, name).toContain(`description: "${parsed.description}"`);
+			// A `"` that is not backslash-escaped closes the scalar early.
+			expect(parsed.description, name).not.toMatch(/(^|[^\\])"/);
+		}
 	});
 });
 
 describe("managed skill installation surface", () => {
-	it("installs the coordinator skill for every supported agent", () => {
+	it("installs every managed skill for every supported agent, each listed once", () => {
+		// installs the coordinator skill for every supported agent
 		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode"]) {
 			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-coordinator/SKILL.md`);
 		}
-	});
 
-	it("installs the artifact skill for every supported agent", () => {
+		// installs the artifact skill for every supported agent
 		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode", ".omp/agent"]) {
 			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-artifact/SKILL.md`);
 		}
-	});
 
-	it("installs the extensions skill for every supported agent", () => {
+		// installs the extensions skill for every supported agent
 		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode", ".omp/agent"]) {
 			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-extensions/SKILL.md`);
 		}
-	});
 
-	it("installs the share-artifact skill for every supported agent", () => {
+		// installs the share-artifact skill for every supported agent
 		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode"]) {
 			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-share-artifact/SKILL.md`);
 		}
-	});
 
-	it("lists every managed skill exactly once so `dev3 install-skills` cannot drift", () => {
-		expect(new Set(MANAGED_SKILL_FILES).size).toBe(MANAGED_SKILL_FILES.length);
+		// lists every managed skill exactly once so `dev3 install-skills` cannot drift
+		expect(new Set(MANAGED_SKILL_FILES).size, "lists every managed skill exactly once so `dev3 install-skills` cannot drift").toBe(MANAGED_SKILL_FILES.length);
 		for (const name of ["dev3", "dev3-project-config", "dev3-tmux", "dev3-extensions", "dev3-bug-hunter", "ask-dev3", "dev3-artifact", "dev3-share-artifact", "dev3-coordinator"]) {
-			expect(MANAGED_SKILL_FILES.some((file) => file.includes(`/skills/${name}/`))).toBe(true);
+			expect(MANAGED_SKILL_FILES.some((file) => file.includes(`/skills/${name}/`)), "lists every managed skill exactly once so `dev3 install-skills` cannot drift").toBe(true);
 		}
 	});
+
 });
 
 describe("ask-dev3 skill routing", () => {
-	it("teaches sharing a report outside the app and lists the sibling skill", () => {
+	it("routes report sharing and custom board views to their sibling skills", () => {
+		// teaches sharing a report outside the app and lists the sibling skill
 		const skill = getAskDev3SkillContent();
 
 		expect(skill).toContain("Send a report to someone outside dev3 → ask for a link.");
 		expect(skill).toContain("`/dev3-share-artifact`** — publish an HTML report as a gist");
 		expect(skill).toContain("`/dev3-artifact`** — make, publish and revise an HTML report inside dev3");
-	});
 
-	it("routes writing a custom board view to the extensions skill", () => {
-		const skill = getAskDev3SkillContent();
-
+		// routes writing a custom board view to the extensions skill
 		expect(skill).toContain("**None of the views fits → write your own board view as an extension.**");
 		expect(skill).toContain("`/dev3-extensions`** — write, install, screenshot and debug a board-view extension.");
 	});
+
 });
 
 

@@ -61,37 +61,35 @@ const MATRIX: Array<{
 ];
 
 describe("capture mode — the four-mode matrix", () => {
-	it("covers every mode exactly once, with no fifth", () => {
+	it("covers every mode exactly once in both the matrix and the production table", () => {
 		expect(MATRIX.map((row) => row.mode)).toEqual([...NATIVE_CAPTURE_MODES]);
+		{
+			expect(Object.keys(CAPTURE_MODE_PLAN).sort()).toEqual([...NATIVE_CAPTURE_MODES].sort());
+		}
 	});
 
-	it.each(MATRIX)("$mode runs the parser: $parser, semantic: $semantic, compact: $compact", (row) => {
+	it("plans every mode's parser, semantic, compact and surfaces as the matrix says", () => {
 		// Against the PRODUCTION table, not a re-implementation of it.
-		const plan = captureModePlan(row.mode);
-		expect(plan.runsParser).toBe(row.parser);
-		expect(plan.semantic).toBe(row.semantic);
-		expect(plan.compact).toBe(row.compact);
-		expect(plan.surfaces).toEqual(row.surfaces);
+		for (const row of MATRIX) {
+			const plan = captureModePlan(row.mode);
+			expect({ runsParser: plan.runsParser, semantic: plan.semantic, compact: plan.compact, surfaces: plan.surfaces }, row.mode)
+				.toEqual({ runsParser: row.parser, semantic: row.semantic, compact: row.compact, surfaces: row.surfaces });
+		}
 	});
 
-	it("has no mode that runs a parser with nowhere to publish", () => {
+	it("never runs a parser with nowhere to publish, and advertises a surface only for a sink it writes", () => {
 		// The hole three independent predicates left open: a fifth mode could compile
 		// into parser-on with no sink. The table cannot express that unnoticed.
 		for (const mode of NATIVE_CAPTURE_MODES) {
 			const plan = captureModePlan(mode);
 			expect(plan.runsParser).toBe(plan.semantic || plan.compact);
 		}
-	});
-
-	it("advertises a surface only for a sink it actually writes", () => {
-		for (const mode of NATIVE_CAPTURE_MODES) {
-			const plan = captureModePlan(mode);
-			expect(plan.surfaces.length).toBe(Number(plan.semantic) + Number(plan.compact));
+		{
+			for (const mode of NATIVE_CAPTURE_MODES) {
+				const plan = captureModePlan(mode);
+				expect(plan.surfaces.length).toBe(Number(plan.semantic) + Number(plan.compact));
+			}
 		}
-	});
-
-	it("covers every mode in the table itself, so a new one cannot be forgotten", () => {
-		expect(Object.keys(CAPTURE_MODE_PLAN).sort()).toEqual([...NATIVE_CAPTURE_MODES].sort());
 	});
 
 	it("rejects typed user input instead of silently disabling capture", () => {

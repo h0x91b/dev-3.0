@@ -14,33 +14,28 @@ function remoteFlags(rawArgs: string[]): Record<string, string> {
 }
 
 describe("expandLocalAlias", () => {
-	it("turns bare `local` into a loopback, tunnel-less `remote` start", () => {
+	it("turns bare `local` into a loopback, tunnel-less `remote` start, keeping user flags after the alias flags", () => {
 		expect(expandLocalAlias(["local"])).toEqual(["remote", "--no-tunnel", "--host", "127.0.0.1"]);
-	});
-
-	it("keeps user flags after the alias flags", () => {
 		expect(expandLocalAlias(["local", "--port", "8090", "--no-detach"])).toEqual([
 			"remote", "--no-tunnel", "--host", "127.0.0.1", "--port", "8090", "--no-detach",
 		]);
 	});
 
-	it.each(["start", "restart", "install-service"])("adds the alias flags to `%s`", (sub) => {
-		expect(expandLocalAlias(["local", sub, "--port", "8090"])).toEqual([
-			"remote", sub, "--no-tunnel", "--host", "127.0.0.1", "--port", "8090",
-		]);
+	it("adds the alias flags to the starting subcommands and passes the others through unchanged", () => {
+		for (const sub of ["start", "restart", "install-service"]) {
+			expect(expandLocalAlias(["local", sub, "--port", "8090"]), sub).toEqual([
+				"remote", sub, "--no-tunnel", "--host", "127.0.0.1", "--port", "8090",
+			]);
+		}
+		for (const sub of ["status", "url", "logs", "stop", "uninstall-service"]) {
+			expect(expandLocalAlias(["local", sub, "--lines", "5"]), sub).toEqual(["remote", sub, "--lines", "5"]);
+		}
 	});
 
-	it.each(["status", "url", "logs", "stop", "uninstall-service"])("passes `%s` through unchanged", (sub) => {
-		expect(expandLocalAlias(["local", sub, "--lines", "5"])).toEqual(["remote", sub, "--lines", "5"]);
-	});
-
-	it("parses into the same flags as the long form", () => {
+	it("parses into the same flags as the long form, and a user --host overrides the default", () => {
 		expect(remoteFlags(["local", "--port", "8090"])).toEqual(
 			parseArgs(["--no-tunnel", "--host", "127.0.0.1", "--port", "8090"]).flags,
 		);
-	});
-
-	it("lets a user --host override the alias default", () => {
 		expect(remoteFlags(["local", "--host", "localhost"]).host).toBe("localhost");
 	});
 });
@@ -48,30 +43,28 @@ describe("expandLocalAlias", () => {
 describe("localHostError", () => {
 	const check = (argv: string[]) => localHostError(expandLocalAlias(argv));
 
-	it.each([
-		[["local"]],
-		[["local", "--host", "localhost"]],
-		[["local", "start", "--host", "127.0.0.1"]],
-		[["local", "install-service", "--host=localhost"]],
-	])("accepts a loopback bind: %j", (argv) => {
-		expect(check(argv)).toBeNull();
+	it("accepts a loopback bind, leaves a bare --host to remote, and ignores subcommands that start nothing", () => {
+		for (const argv of [
+			["local"],
+			["local", "--host", "localhost"],
+			["local", "start", "--host", "127.0.0.1"],
+			["local", "install-service", "--host=localhost"],
+			["local", "--host"],
+			["local", "status", "--host", "0.0.0.0"],
+		]) {
+			expect(check(argv), argv.join(" ")).toBeNull();
+		}
 	});
 
-	it.each([
-		[["local", "--host", "0.0.0.0"]],
-		[["local", "restart", "--host", "0.0.0.0"]],
-		[["local", "install-service", "--host=0.0.0.0"]],
-		[["local", "--host", "1.2.3.4"]],
-	])("refuses a bind beyond this machine: %j", (argv) => {
-		expect(check(argv)).toContain("this machine only");
-	});
-
-	it("leaves a bare --host to remote's own missing-value error", () => {
-		expect(check(["local", "--host"])).toBeNull();
-	});
-
-	it("ignores subcommands that start nothing", () => {
-		expect(check(["local", "status", "--host", "0.0.0.0"])).toBeNull();
+	it("refuses a bind beyond this machine", () => {
+		for (const argv of [
+			["local", "--host", "0.0.0.0"],
+			["local", "restart", "--host", "0.0.0.0"],
+			["local", "install-service", "--host=0.0.0.0"],
+			["local", "--host", "1.2.3.4"],
+		]) {
+			expect(check(argv), argv.join(" ")).toContain("this machine only");
+		}
 	});
 });
 

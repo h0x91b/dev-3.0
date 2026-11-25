@@ -21,12 +21,10 @@ afterAll(() => {
 });
 
 describe("imageExt / isSupportedImage", () => {
-	it("normalizes the extension to lowercase without the dot", () => {
+	it("normalizes the extension and accepts only raster types", () => {
 		expect(imageExt("/a/B/Shot.PNG")).toBe("png");
 		expect(imageExt("/a/b/no-ext")).toBe("");
-	});
-
-	it("accepts raster types and rejects svg / others", () => {
+		// Raster types are accepted; svg and others are not.
 		expect(isSupportedImage("/a.png")).toBe(true);
 		expect(isSupportedImage("/a.jpeg")).toBe(true);
 		expect(isSupportedImage("/a.webp")).toBe(true);
@@ -64,19 +62,10 @@ describe("saveSharedImage", () => {
 		expect(saveSharedImage({ path: "/my/project" }, src).caption).toBeUndefined();
 	});
 
-	it("rejects a relative path", () => {
+	it("rejects a relative path, a path containing .., a missing file and an unsupported type", () => {
 		expect(() => saveSharedImage({ path: "/my/project" }, "rel/a.png")).toThrow(SharedImageError);
-	});
-
-	it("rejects a path containing ..", () => {
 		expect(() => saveSharedImage({ path: "/my/project" }, "/a/../b.png")).toThrow(SharedImageError);
-	});
-
-	it("rejects a missing file", () => {
 		expect(() => saveSharedImage({ path: "/my/project" }, join(SRC_DIR, "nope.png"))).toThrow(/File not found/);
-	});
-
-	it("rejects an unsupported type", () => {
 		const src = join(SRC_DIR, "notes.txt");
 		writeFileSync(src, "hi");
 		expect(() => saveSharedImage({ path: "/my/project" }, src)).toThrow(/Unsupported image type/);

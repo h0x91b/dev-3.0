@@ -132,20 +132,16 @@ beforeEach(() => {
 // ─── fetchOrigin ─────────────────────────────────────────────────────────────
 
 describe("fetchOrigin", () => {
-	it("returns true on successful fetch", async () => {
+	it("returns true on success with a non-interactive env, false on failure", async () => {
 		queueResponse(0, "");
-		const ok = await fetchOrigin("/repo");
+		expect(await fetchOrigin("/repo", "a")).toBe(true);
 		expect(lastSpawnOptions?.env).toMatchObject({
 			GIT_TERMINAL_PROMPT: "0",
 			GIT_SSH_COMMAND: expect.stringContaining("ssh -o BatchMode=yes -o ConnectTimeout=10"),
 		});
-		expect(ok).toBe(true);
-	});
 
-	it("returns false when fetch fails", async () => {
 		queueResponse(128, "", "fatal: no remote");
-		const ok = await fetchOrigin("/repo");
-		expect(ok).toBe(false);
+		expect(await fetchOrigin("/repo", "b")).toBe(false);
 	});
 
 	it("kills a fetch that exceeds its deadline and releases the project queue", async () => {
@@ -169,100 +165,51 @@ describe("fetchOrigin", () => {
 		expect(spawnResponses).toHaveLength(0);
 	});
 
-	it("deduplicates concurrent fetches for the same project", async () => {
-		// Only one spawn call should happen despite 3 concurrent requests
-		queueResponse(0, "");
+	it("deduplicates concurrent fetches for one project (force included) but runs other projects too", async () => {
+		queueResponse(0, ""); // /repo (shared by all four calls)
+		queueResponse(0, ""); // /repo-b
 		const results = await Promise.all([
 			fetchOrigin("/repo"),
 			fetchOrigin("/repo"),
 			fetchOrigin("/repo"),
+			fetchOrigin("/repo", undefined, undefined, { force: true }),
+			fetchOrigin("/repo-b"),
 		]);
-		expect(results).toEqual([true, true, true]);
-		// Only 1 response consumed — the other 2 reused the same promise
-		expect(spawnResponses).toHaveLength(0);
+		expect(results).toEqual([true, true, true, true, true]);
+		expect(fetchArgs()).toHaveLength(2);
 	});
 
-	it("skips fetch within cooldown period", async () => {
-		queueResponse(0, "");
-		const ok1 = await fetchOrigin("/repo");
-		expect(ok1).toBe(true);
-
-		// Second call should skip (no spawn needed)
-		const ok2 = await fetchOrigin("/repo");
-		expect(ok2).toBe(true);
-	});
-
-	it("skips retry while in failure backoff", async () => {
-		queueResponse(128, "", "fatal: no remote");
-		const ok1 = await fetchOrigin("/repo");
-		expect(ok1).toBe(false);
-
-		// Immediate retry must be skipped without spawning git
-		queueResponse(0, "");
-		const ok2 = await fetchOrigin("/repo");
-		expect(ok2).toBe(false);
-		expect(spawnResponses).toHaveLength(1); // queued response not consumed
-	});
-
-	it("force bypasses the success cooldown", async () => {
+	it("skips a fetch within the success cooldown unless forced", async () => {
 		queueResponse(0, "");
 		expect(await fetchOrigin("/repo")).toBe(true);
+		expect(await fetchOrigin("/repo")).toBe(true);
+		expect(fetchArgs()).toHaveLength(1);
 
 		queueResponse(0, "");
 		expect(await fetchOrigin("/repo", undefined, undefined, { force: true })).toBe(true);
-		expect(spawnResponses).toHaveLength(0); // second fetch actually ran
+		expect(fetchArgs()).toHaveLength(2);
 	});
 
-	it("force bypasses the failure backoff and clears it on success", async () => {
+	it("skips retry while in failure backoff, and force bypasses it", async () => {
 		queueResponse(128, "", "fatal: no remote");
 		expect(await fetchOrigin("/repo")).toBe(false);
 
+		// Immediate retry must be skipped without spawning git
 		queueResponse(0, "");
+		expect(await fetchOrigin("/repo")).toBe(false);
+		expect(spawnResponses).toHaveLength(1); // queued response not consumed
+
 		expect(await fetchOrigin("/repo", undefined, undefined, { force: true })).toBe(true);
 		expect(spawnResponses).toHaveLength(0);
 	});
 
-	it("force still reuses an in-flight fetch for the same key", async () => {
-		queueResponse(0, "");
-		queueResponse(0, "");
-		const [a, b] = await Promise.all([
-			fetchOrigin("/repo", "main"),
-			fetchOrigin("/repo", "main", undefined, { force: true }),
-		]);
-		expect(a && b).toBe(true);
-		expect(spawnResponses).toHaveLength(1);
-	});
-
-	it("fetchCompareRef passes force through", async () => {
-		queueResponse(128, "", "fatal");
-		expect(await fetchCompareRef("/repo", "main")).toBe(false);
-
-		queueResponse(0, "");
-		expect(await fetchCompareRef("/repo", "main", undefined, { force: true })).toBe(true);
-	});
-
-	it("retries after the failure backoff window elapses", async () => {
+	it("retries after the backoff window and doubles it on consecutive failures", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		try {
 			queueResponse(128, "", "fatal: no remote");
 			expect(await fetchOrigin("/repo")).toBe(false);
 
 			// First failure backoff is 2 minutes — jump past it
-			vi.setSystemTime(Date.now() + 3 * 60_000);
-			queueResponse(0, "");
-			expect(await fetchOrigin("/repo")).toBe(true);
-			expect(spawnResponses).toHaveLength(0);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("doubles the backoff on consecutive failures", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
-		try {
-			queueResponse(128, "", "fatal: no remote");
-			expect(await fetchOrigin("/repo")).toBe(false);
-
 			vi.setSystemTime(Date.now() + 3 * 60_000);
 			queueResponse(128, "", "fatal: no remote");
 			expect(await fetchOrigin("/repo")).toBe(false);
@@ -275,6 +222,12 @@ describe("fetchOrigin", () => {
 
 			// Another 2 minutes (5 total) clears the 4-minute backoff
 			vi.setSystemTime(Date.now() + 2 * 60_000);
+			expect(await fetchOrigin("/repo")).toBe(true);
+			expect(spawnResponses).toHaveLength(0);
+
+			// The success cleared the backoff: past the success cooldown the next fetch runs at once.
+			vi.setSystemTime(Date.now() + 10_000);
+			queueResponse(0, "");
 			expect(await fetchOrigin("/repo")).toBe(true);
 			expect(spawnResponses).toHaveLength(0);
 		} finally {
@@ -292,38 +245,6 @@ describe("fetchOrigin", () => {
 		expect(await fetchOrigin("/repo", "feat/x", undefined, { force: true })).toBe(true);
 		expect(lastOriginFetchError("/repo", "feat/x")).toBeNull();
 	});
-
-	it("a successful fetch clears the failure backoff", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
-		try {
-			queueResponse(128, "", "fatal: no remote");
-			expect(await fetchOrigin("/repo")).toBe(false);
-
-			vi.setSystemTime(Date.now() + 3 * 60_000);
-			queueResponse(0, "");
-			expect(await fetchOrigin("/repo")).toBe(true);
-
-			// Past the success cooldown: next fetch runs immediately (no backoff left)
-			vi.setSystemTime(Date.now() + 10_000);
-			queueResponse(0, "");
-			expect(await fetchOrigin("/repo")).toBe(true);
-			expect(spawnResponses).toHaveLength(0);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("allows fetch for different projects concurrently", async () => {
-		queueResponse(0, ""); // for /repo-a
-		queueResponse(0, ""); // for /repo-b
-		const [ok1, ok2] = await Promise.all([
-			fetchOrigin("/repo-a"),
-			fetchOrigin("/repo-b"),
-		]);
-		expect(ok1).toBe(true);
-		expect(ok2).toBe(true);
-		expect(spawnResponses).toHaveLength(0); // both consumed
-	});
 });
 
 // ─── fetchCompareRef ─────────────────────────────────────────────────────────
@@ -340,13 +261,16 @@ describe("fetch SSH connection reuse", () => {
 	const work = "git@github.com-work:";
 	const socketOf = (cmd: string) => /ControlPath="([^"]+)"/.exec(cmd)?.[1];
 
-	it("adds ControlMaster options on unix", () => {
+	it("adds ControlMaster options on unix, quoting the control dir for sh", () => {
 		for (const platform of ["darwin", "linux"] as const) {
 			const cmd = fetchSshCommand(platform, "/home/u/.dev3.0/ssh-mux", work);
 			expect(cmd).toContain(`${base} -o ControlMaster=auto`);
 			expect(socketOf(cmd)).toMatch(/^\/home\/u\/\.dev3\.0\/ssh-mux\/[0-9a-f]{16}$/);
 			expect(cmd).toContain("-o ControlPersist=300");
 		}
+		expect(fetchSshCommand("linux", "/Users/a b/it's/ssh-mux", work)).toMatch(
+			/-o 'ControlPath="\/Users\/a b\/it'\\''s\/ssh-mux\/[0-9a-f]{16}"'/,
+		);
 	});
 
 	// Two ~/.ssh/config aliases resolving to one HostName share ssh's %C, and so one
@@ -373,13 +297,11 @@ describe("fetch SSH connection reuse", () => {
 		expect(sshEndpointOf("./sub:dir/r.git")).toBeNull();
 	});
 
-	it("leaves the command unchanged on Windows, without a control dir, or without an ssh endpoint", () => {
+	it("leaves the command unchanged on Windows, without a control dir or ssh endpoint, or past sun_path", () => {
 		expect(fetchSshCommand("win32", "C:/dev3/ssh-mux", work)).toBe(base);
 		expect(fetchSshCommand("linux", null, work)).toBe(base);
 		expect(fetchSshCommand("linux", "/home/u/.dev3.0/ssh-mux", null)).toBe(base);
-	});
 
-	it("drops connection reuse when the socket path would not fit sun_path", () => {
 		const qaHome = "/var/folders/04/ym_1nnl161n0p59pjl247ynr0000gn/T/dev3-qa/0123456789ab/seeded/home/.dev3.0/ssh-mux";
 		expect(fetchSshCommand("darwin", qaHome, work)).toBe(base);
 		expect(fetchSshCommand("darwin", `/${"a".repeat(68)}`, work)).toContain("ControlMaster=auto");
@@ -387,43 +309,26 @@ describe("fetch SSH connection reuse", () => {
 		expect(fetchSshCommand("linux", `/${"é".repeat(35)}`, work)).toBe(base);
 	});
 
-	it("quotes a control dir with spaces and single quotes for sh", () => {
-		expect(fetchSshCommand("linux", "/Users/a b/it's/ssh-mux", work)).toMatch(
-			/-o 'ControlPath="\/Users\/a b\/it'\\''s\/ssh-mux\/[0-9a-f]{16}"'/,
-		);
-	});
-
-	it("fetchOrigin passes the platform's command to git", async () => {
+	it("fetchOrigin passes the platform's command to git, keyed by the remote being fetched", async () => {
 		const platform = vi.spyOn(process, "platform", "get");
 		try {
 			platform.mockReturnValue("linux");
+			remoteUrl = "git@github.com-work:base44-dev/apper.git";
 			queueResponse(0, "");
-			await fetchOrigin("/repo", "a");
+			await fetchOrigin("/work", "a");
+			const workSocket = socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "");
 			expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toContain("ControlMaster=auto");
-			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).toMatch(/^\/tmp\/dev3-test\/ssh-mux\/[0-9a-f]{16}$/);
+			expect(workSocket).toMatch(/^\/tmp\/dev3-test\/ssh-mux\/[0-9a-f]{16}$/);
+
+			remoteUrl = "git@github.com-personal:h0x91b/dev-3.0.git";
+			queueResponse(0, "");
+			await fetchOrigin("/personal", "a");
+			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).not.toBe(workSocket);
 
 			platform.mockReturnValue("win32");
 			queueResponse(0, "");
 			await fetchOrigin("/repo", "b");
 			expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).not.toContain("ControlMaster");
-		} finally {
-			platform.mockRestore();
-		}
-	});
-
-	it("keys the socket by the remote being fetched", async () => {
-		const platform = vi.spyOn(process, "platform", "get");
-		try {
-			platform.mockReturnValue("darwin");
-			remoteUrl = "git@github.com-work:base44-dev/apper.git";
-			queueResponse(0, "");
-			await fetchOrigin("/work", "main");
-			const workSocket = socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "");
-			remoteUrl = "git@github.com-personal:h0x91b/dev-3.0.git";
-			queueResponse(0, "");
-			await fetchOrigin("/personal", "main");
-			expect(workSocket).toBeDefined();
-			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).not.toBe(workSocket);
 		} finally {
 			platform.mockRestore();
 		}
@@ -439,27 +344,8 @@ describe("fetch SSH connection reuse", () => {
 });
 
 describe("fetch queue priority", () => {
-	it("runs a priority job before a queued normal job, one git fetch at a time", async () => {
+	it("runs priority jobs (FIFO among themselves) before queued normal ones, one git fetch at a time", async () => {
 		spawnResponses.push({ exitCode: 0, stdout: "", stderr: "", gated: true }); // running job
-		queueResponse(0, "");
-		queueResponse(0, "");
-
-		const running = fetchOrigin("/repo", "running");
-		await vi.waitFor(() => expect(gates).toHaveLength(1));
-		const normal = fetchOrigin("/repo", "normal");
-		const priority = fetchOrigin("/repo", "urgent", undefined, { priority: true });
-		await new Promise((r) => setTimeout(r, 20));
-		expect(fetchArgs()).toHaveLength(1); // nothing else started while the first runs
-
-		gates[0]();
-		await Promise.all([running, normal, priority]);
-
-		expect(fetchArgs().map((cmd) => cmd[3])).toEqual(["running", "urgent", "normal"]);
-		expect(maxActiveSpawns).toBe(1);
-	});
-
-	it("keeps FIFO order among priority jobs", async () => {
-		spawnResponses.push({ exitCode: 0, stdout: "", stderr: "", gated: true });
 		queueResponse(0, "");
 		queueResponse(0, "");
 		queueResponse(0, "");
@@ -472,10 +358,13 @@ describe("fetch queue priority", () => {
 			fetchOrigin("/repo", "p2", undefined, { priority: true }),
 		];
 		await new Promise((r) => setTimeout(r, 20));
+		expect(fetchArgs()).toHaveLength(1); // nothing else started while the first runs
+
 		gates[0]();
 		await Promise.all([running, ...jobs]);
 
 		expect(fetchArgs().map((cmd) => cmd[3])).toEqual(["running", "p1", "p2", "n1"]);
+		expect(maxActiveSpawns).toBe(1);
 	});
 });
 
@@ -541,7 +430,10 @@ describe("unreachable remote backoff", () => {
 });
 
 describe("fetchOriginBranches", () => {
-	it("fetches both branches in one git process and sets each cooldown", async () => {
+	it("fetches both branches in one git process and sets each cooldown; empty list is a no-op", async () => {
+		expect(await fetchOriginBranches("/repo", [])).toBe(true);
+		expect(spawnCommands).toHaveLength(0);
+
 		queueResponse(0, "");
 		expect(await fetchOriginBranches("/repo", ["main", "dev3/t"])).toBe(true);
 		expect(fetchArgs()).toEqual([["git", "fetch", "origin", "main", "dev3/t", "--quiet"]]);
@@ -553,20 +445,16 @@ describe("fetchOriginBranches", () => {
 		expect(fetchArgs()).toHaveLength(1);
 	});
 
-	it("skips only the branches in cooldown", async () => {
+	it("skips only the branches in cooldown, unless forced", async () => {
 		queueResponse(0, "");
 		await fetchOrigin("/repo", "main");
 		queueResponse(0, "");
 		expect(await fetchOriginBranches("/repo", ["main", "dev3/t"])).toBe(true);
 		expect(fetchArgs().map((cmd) => cmd.slice(2))).toEqual([["origin", "main", "--quiet"], ["origin", "dev3/t", "--quiet"]]);
-	});
 
-	it("force fetches branches that are in cooldown", async () => {
 		queueResponse(0, "");
-		await fetchOriginBranches("/repo", ["a", "b"]);
-		queueResponse(0, "");
-		expect(await fetchOriginBranches("/repo", ["a", "b"], undefined, { force: true })).toBe(true);
-		expect(fetchArgs()).toHaveLength(2);
+		expect(await fetchOriginBranches("/repo", ["main", "dev3/t"], undefined, { force: true })).toBe(true);
+		expect(fetchArgs()).toHaveLength(3);
 	});
 
 	it("falls back to per-branch fetches when the combined fetch fails", async () => {
@@ -584,56 +472,47 @@ describe("fetchOriginBranches", () => {
 		expect(await fetchOriginBranches("/repo", ["main", "dead"])).toBe(false);
 		expect(fetchArgs()).toHaveLength(3);
 	});
-
-	it("does nothing for an empty list", async () => {
-		expect(await fetchOriginBranches("/repo", [])).toBe(true);
-		expect(spawnCommands).toHaveLength(0);
-	});
 });
 
 describe("fetchCompareRef", () => {
-	/** Spawned fetches, minus the `-c core.quotepath=false` every git call carries. */
-	function fetchCommands(): string[][] {
-		return spawnCommands
-			.map((cmd) => cmd.filter((arg) => arg !== "-c" && arg !== "core.quotepath=false"))
-			.filter((cmd) => cmd[1] === "fetch");
-	}
-
 	it("fetches a fork-qualified base from the remote that owns it", async () => {
 		queueResponse(0, "origin\narditti\n"); // git remote
 		queueResponse(0, ""); // git fetch
 
 		expect(await fetchCompareRef("/repo", "arditti/feat/file-path-open")).toBe(true);
-		expect(fetchCommands()).toEqual([[
+		expect(fetchArgs()).toEqual([[
 			"git", "fetch", "arditti",
 			"+refs/heads/feat/file-path-open:refs/remotes/arditti/feat/file-path-open",
 			"--quiet",
 		]]);
 	});
 
-	it("treats a slashed branch name as an origin branch when no such remote exists", async () => {
+	it("fetches a slashed name with no matching remote, or an unslashed one, from origin", async () => {
 		queueResponse(0, "origin\n"); // git remote
 		queueResponse(0, ""); // git fetch
-
 		expect(await fetchCompareRef("/repo", "feat/file-path-open")).toBe(true);
-		expect(fetchCommands()).toEqual([["git", "fetch", "origin", "feat/file-path-open", "--quiet"]]);
-	});
+		expect(fetchArgs()).toEqual([["git", "fetch", "origin", "feat/file-path-open", "--quiet"]]);
 
-	it("does not consult remotes for an unslashed branch", async () => {
-		queueResponse(0, ""); // git fetch
-
+		spawnCommands = [];
+		queueResponse(0, ""); // git fetch — no `git remote` lookup for an unslashed branch
 		expect(await fetchCompareRef("/repo", "main")).toBe(true);
 		expect(spawnCommands.some((cmd) => cmd[cmd.length - 1] === "remote")).toBe(false);
 	});
 
-	it("keeps the origin and fork fetches of the same branch on separate cooldowns", async () => {
+	it("keeps origin and fork fetches of one branch on separate cooldowns, and passes force through", async () => {
 		queueResponse(0, "origin\narditti\n");
 		queueResponse(0, "");
 		expect(await fetchCompareRef("/repo", "arditti/feat/x")).toBe(true);
 
 		queueResponse(0, "");
 		expect(await fetchOrigin("/repo", "arditti/feat/x")).toBe(true);
-		expect(fetchCommands()).toHaveLength(2);
+		expect(fetchArgs()).toHaveLength(2);
+
+		// force passes through: a failed unslashed fetch is retried at once when forced.
+		queueResponse(128, "", "fatal");
+		expect(await fetchCompareRef("/repo", "main")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchCompareRef("/repo", "main", undefined, { force: true })).toBe(true);
 	});
 });
 
@@ -670,66 +549,24 @@ describe("saveDiffSnapshot", () => {
 		expect(readDiffSnapshot(join(diffsDir, files[0]))).toContain("feature.ts");
 	});
 
-	it("skips saving when there is no diff", async () => {
+	it("skips saving an empty diff, or one over 1 MB by shortstat estimate or actual size", async () => {
 		queueResponse(0, ""); // empty shortstat → no diff
 		await saveDiffSnapshot(project, task, "origin/main");
 
-		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = listDiffSnapshots(diffsDir);
-		expect(files).toHaveLength(0);
+		// 20000 insertions × 80 bytes/line = ~1.6 MB → pre-check aborts before the diff spawn
+		queueResponse(0, " 100 files changed, 20000 insertions(+), 5000 deletions(-)");
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		// shortstat looks small but actual diff is huge (e.g. binary-like content)
+		queueResponse(0, " 1 file changed, 10 insertions(+)"); // shortstat
+		queueResponse(0, "x".repeat(1_100_000) + "\n"); // actual diff exceeds limit
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		expect(spawnResponses).toHaveLength(0);
+		expect(listDiffSnapshots(join(taskDir(project, task), "diffs"))).toHaveLength(0);
 	});
 
-	it("skips saving when diff is unchanged from the last snapshot", async () => {
-		const diffContent = "diff --git a/f.ts b/f.ts\n+line\n";
-		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
-		queueResponse(0, diffContent);
-		await saveDiffSnapshot(project, task, "origin/main");
-
-		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
-		queueResponse(0, diffContent); // same diff
-		await saveDiffSnapshot(project, task, "origin/main");
-
-		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = listDiffSnapshots(diffsDir);
-		expect(files).toHaveLength(1);
-	});
-
-	it("saves a new file when diff changes", async () => {
-		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
-		queueResponse(0, "diff v1\n");
-		await saveDiffSnapshot(project, task, "origin/main");
-
-		// Advance time to get a different timestamp
-		vi.useFakeTimers({ shouldAdvanceTime: true });
-		vi.advanceTimersByTime(60_000);
-		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
-		queueResponse(0, "diff v2\n");
-		await saveDiffSnapshot(project, task, "origin/main");
-		vi.useRealTimers();
-
-		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = listDiffSnapshots(diffsDir);
-		expect(files).toHaveLength(2);
-	});
-
-	it("prunes old snapshots beyond MAX_DIFF_SNAPSHOTS", async () => {
-		const diffsDir = join(taskDir(project, task), "diffs");
-		mkdirSync(diffsDir, { recursive: true });
-
-		for (let i = 0; i < 55; i++) {
-			const name = `2025-01-01T00-00-${String(i).padStart(2, "0")}.patch`;
-			writeFileSync(join(diffsDir, name), `patch-${i}`);
-		}
-
-		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
-		queueResponse(0, "new diff content\n");
-		await saveDiffSnapshot(project, task, "origin/main");
-
-		const files = listDiffSnapshots(diffsDir);
-		expect(files.length).toBeLessThanOrEqual(50);
-	});
-
-	it("skips saving when the newest snapshot is an older version's plain .patch with the same diff", async () => {
+	it("skips a diff equal to the newest snapshot (gzip or an older plain .patch), saves a changed one", async () => {
 		const diffsDir = join(taskDir(project, task), "diffs");
 		mkdirSync(diffsDir, { recursive: true });
 		writeFileSync(join(diffsDir, "2025-01-01T00-00-00.patch"), "same diff");
@@ -737,11 +574,28 @@ describe("saveDiffSnapshot", () => {
 		queueResponse(0, " 1 file changed, 1 insertion(+)");
 		queueResponse(0, "same diff\n");
 		await saveDiffSnapshot(project, task, "origin/main");
-
 		expect(listDiffSnapshots(diffsDir)).toEqual(["2025-01-01T00-00-00.patch"]);
+
+		const diffContent = "diff --git a/f.ts b/f.ts\n+line\n";
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
+		queueResponse(0, diffContent);
+		await saveDiffSnapshot(project, task, "origin/main");
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
+		queueResponse(0, diffContent); // same diff
+		await saveDiffSnapshot(project, task, "origin/main");
+		expect(listDiffSnapshots(diffsDir)).toHaveLength(2);
+
+		// A changed diff a minute later is saved as a new file.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		vi.advanceTimersByTime(60_000);
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
+		queueResponse(0, "diff v2\n");
+		await saveDiffSnapshot(project, task, "origin/main");
+		vi.useRealTimers();
+		expect(listDiffSnapshots(diffsDir)).toHaveLength(3);
 	});
 
-	it("prunes plain and gzip snapshots together, oldest first", async () => {
+	it("prunes plain and gzip snapshots together beyond MAX_DIFF_SNAPSHOTS, oldest first", async () => {
 		const diffsDir = join(taskDir(project, task), "diffs");
 		mkdirSync(diffsDir, { recursive: true });
 		for (let i = 0; i < 30; i++) {
@@ -758,27 +612,5 @@ describe("saveDiffSnapshot", () => {
 		expect(files[0]).toBe("2025-01-01T00-00-22.patch");
 		expect(files[files.length - 1]).toMatch(/\.patch\.gz$/);
 		expect(readDiffSnapshot(join(diffsDir, files[files.length - 1]))).toBe("new diff content");
-	});
-
-	it("skips saving when shortstat estimates diff exceeds 1 MB", async () => {
-		// 20000 insertions × 80 bytes/line = ~1.6 MB → exceeds 1 MB limit
-		queueResponse(0, " 100 files changed, 20000 insertions(+), 5000 deletions(-)");
-		// No second spawn should happen — pre-check aborts early
-		await saveDiffSnapshot(project, task, "origin/main");
-
-		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = listDiffSnapshots(diffsDir);
-		expect(files).toHaveLength(0);
-	});
-
-	it("skips saving when actual diff exceeds 1 MB despite small shortstat estimate", async () => {
-		// shortstat looks small but actual diff is huge (e.g. binary-like content)
-		queueResponse(0, " 1 file changed, 10 insertions(+)"); // shortstat
-		queueResponse(0, "x".repeat(1_100_000) + "\n"); // actual diff exceeds limit
-		await saveDiffSnapshot(project, task, "origin/main");
-
-		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = listDiffSnapshots(diffsDir);
-		expect(files).toHaveLength(0);
 	});
 });

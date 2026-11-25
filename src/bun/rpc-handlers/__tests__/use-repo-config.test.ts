@@ -134,18 +134,17 @@ describe("updateProjectSettings — save target", () => {
 });
 
 describe("reading .dev3 files while the switch is off", () => {
-	it("getProjectConfigs opens neither file and returns empty layers", async () => {
+	it("getProjectConfigs and getRepoConfigSources open no file while off", async () => {
 		withProject({ useRepoConfig: false });
 		const configs = await (await handlers()).getProjectConfigs({ projectId: "p1", worktreePath: "/wt" });
 		expect(configs).toEqual({ repo: {}, local: {} });
 		expect(mocks.loadRepoConfigRaw).not.toHaveBeenCalled();
 		expect(mocks.loadLocalConfigRaw).not.toHaveBeenCalled();
-	});
-
-	it("getRepoConfigSources attributes nothing to a file", async () => {
-		withProject({ useRepoConfig: false });
-		expect(await (await handlers()).getRepoConfigSources({ projectId: "p1" })).toEqual([]);
-		expect(mocks.getConfigSources).not.toHaveBeenCalled();
+		{
+			withProject({ useRepoConfig: false });
+			expect(await (await handlers()).getRepoConfigSources({ projectId: "p1" })).toEqual([]);
+			expect(mocks.getConfigSources).not.toHaveBeenCalled();
+		}
 	});
 
 	it("both still read the files by default", async () => {
@@ -159,18 +158,17 @@ describe("reading .dev3 files while the switch is off", () => {
 });
 
 describe("writing .dev3 files while the switch is off", () => {
-	it("saveRepoConfig refuses instead of creating an unread file", async () => {
+	it("saveRepoConfig and saveLocalConfig refuse instead of creating an unread file", async () => {
 		withProject({ useRepoConfig: false });
 		await expect((await handlers()).saveRepoConfig({ projectId: "p1", setupScript: "x" }))
 			.rejects.toThrow(/disabled for this project/);
 		expect(mocks.saveRepoConfig).not.toHaveBeenCalled();
-	});
-
-	it("saveLocalConfig refuses too", async () => {
-		withProject({ useRepoConfig: false });
-		await expect((await handlers()).saveLocalConfig({ projectId: "p1", setupScript: "x" }))
-			.rejects.toThrow(/disabled for this project/);
-		expect(mocks.saveRepoLocalConfig).not.toHaveBeenCalled();
+		{
+			withProject({ useRepoConfig: false });
+			await expect((await handlers()).saveLocalConfig({ projectId: "p1", setupScript: "x" }))
+				.rejects.toThrow(/disabled for this project/);
+			expect(mocks.saveRepoLocalConfig).not.toHaveBeenCalled();
+		}
 	});
 
 	it("both write normally by default", async () => {

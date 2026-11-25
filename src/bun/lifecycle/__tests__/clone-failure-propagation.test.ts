@@ -156,7 +156,7 @@ beforeEach(() => {
 });
 
 describe("clone failures during task preparation", () => {
-	it("records the failed paths on the task and pushes the update", async () => {
+	it("records the failed paths on the task, pushes the update and still launches the agent", async () => {
 		clonePaths.mockResolvedValue([
 			{ path: "node_modules", method: "clonefile", durationMs: 3 },
 			{ path: ".env", method: "copy", durationMs: 2, error: "Permission denied (cp -R exited 1)" },
@@ -168,19 +168,11 @@ describe("clone failures during task preparation", () => {
 			{ cloneFailures: [{ path: ".env", error: "Permission denied (cp -R exited 1)" }] },
 		]);
 		expect(pushMessage).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "proj-1" }));
-	});
-
-	it("still launches the agent — a missing cache must not cost the whole task", async () => {
-		clonePaths.mockResolvedValue([
-			{ path: ".env", method: "copy", durationMs: 2, error: "cp -R exited 1" },
-		]);
-
-		await executeLifecycleEffect(prepareEffect, context(project([".env"]), task()));
-
+		// Still launches the agent — a missing cache must not cost the whole task.
 		expect(launchTaskPty).toHaveBeenCalled();
 	});
 
-	it("writes nothing when every path copied or was skipped", async () => {
+	it("writes nothing when every path copied or was skipped, and clears a previous launch's failures", async () => {
 		clonePaths.mockResolvedValue([
 			{ path: "node_modules", method: "copy", durationMs: 2 },
 			{ path: ".venv", method: "copy", durationMs: 1, skipped: true },
@@ -189,9 +181,9 @@ describe("clone failures during task preparation", () => {
 		await executeLifecycleEffect(prepareEffect, context(project(["node_modules", ".venv"]), task()));
 
 		expect(cloneWrites()).toEqual([]);
-	});
 
-	it("clears a previous launch's failures when the retry copies everything", async () => {
+		// A retry that copies everything clears a previous launch's failures.
+		vi.mocked(data.updateTask).mockClear();
 		clonePaths.mockResolvedValue([{ path: ".env", method: "copy", durationMs: 1 }]);
 
 		await executeLifecycleEffect(

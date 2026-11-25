@@ -132,17 +132,7 @@ describe("moveTaskToProject", () => {
 
 		const targetTasks = await loadTasks(target);
 		expect(targetTasks.map((t) => t.id).sort()).toEqual(["existing", "task-move"]);
-	});
-
-	it("removes the task from the source project", async () => {
-		seed(source, [makeTask({ id: "a", seq: 1 }), makeTask({ id: "task-move", seq: 2 })]);
-		seed(target, []);
-
-		await moveTaskToProject(source, target, "task-move");
-
-		const sourceTasks = await loadTasks(source);
-		expect(sourceTasks.map((t) => t.id)).toEqual(["a"]);
-		expect(sourceTasks.some((t) => t.id === "task-move")).toBe(false);
+		expect(targetTasks.find((t) => t.id === "task-move")!.scheduledLaunch ?? null).toBeNull();
 	});
 
 	it("remaps a label that exists by name in the target and drops one that does not", async () => {
@@ -155,17 +145,6 @@ describe("moveTaskToProject", () => {
 		expect(moved.labelIds).toEqual([bugTgt.id]);
 	});
 
-	it("clears scheduledLaunch on move", async () => {
-		seed(source, [makeTask({ id: "task-move", scheduledLaunch })]);
-		seed(target, []);
-
-		const moved = await moveTaskToProject(source, target, "task-move");
-
-		expect(moved.scheduledLaunch ?? null).toBeNull();
-		const persisted = (await loadTasks(target)).find((t) => t.id === "task-move")!;
-		expect(persisted.scheduledLaunch ?? null).toBeNull();
-	});
-
 	it("rejects a task that is not in To Do", async () => {
 		seed(source, [makeTask({ id: "task-move", status: "in-progress" })]);
 		seed(target, []);
@@ -176,14 +155,10 @@ describe("moveTaskToProject", () => {
 		expect(await loadTasks(target)).toHaveLength(0);
 	});
 
-	it("rejects a move to the same project", async () => {
-		seed(source, [makeTask({ id: "task-move" })]);
-		await expect(moveTaskToProject(source, source, "task-move")).rejects.toThrow(/already in/);
-	});
-
-	it("rejects a move to a deleted project", async () => {
+	it("rejects a move to the same project or to a deleted one", async () => {
 		seed(source, [makeTask({ id: "task-move" })]);
 		seed(target, []);
+		await expect(moveTaskToProject(source, source, "task-move")).rejects.toThrow(/already in/);
 		await expect(moveTaskToProject(source, { ...target, deleted: true }, "task-move")).rejects.toThrow(/deleted/);
 	});
 
@@ -196,6 +171,7 @@ describe("moveTaskToProject", () => {
 
 		expect(moved.projectId).toBe("proj-virt");
 		expect((await loadTasks(virtualTarget)).some((t) => t.id === "task-move")).toBe(true);
+		// The task leaves the source project.
 		expect((await loadTasks(source)).some((t) => t.id === "task-move")).toBe(false);
 	});
 

@@ -25,21 +25,14 @@ describe("isLaunchedByLaunchServices", () => {
 		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: LAUNCHER_PID, parentOf: table({ [LAUNCHER_PID]: 1 }) })).toBe(true);
 	});
 
-	it("is false when the launcher runs under another process (electrobun dev in a dev-server pane)", () => {
-		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: LAUNCHER_PID, parentOf: table({ [LAUNCHER_PID]: 4242 }) })).toBe(false);
-	});
-
-	it("is false when the grandparent cannot be read", () => {
-		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: LAUNCHER_PID, parentOf: () => null })).toBe(false);
-	});
-
-	it("is false for an orphaned process (ppid 1): its own parent is not a launcher", () => {
-		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: 1, parentOf: table({ 1: 0 }) })).toBe(false);
-	});
-
-	it("is false on every other OS", () => {
+	it("is false under another process, with an unreadable grandparent, for an orphan, and on every other OS", () => {
+		// electrobun dev in a dev-server pane: the launcher runs under another process.
+		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: LAUNCHER_PID, parentOf: table({ [LAUNCHER_PID]: 4242 }) }), "nested").toBe(false);
+		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: LAUNCHER_PID, parentOf: () => null }), "unreadable").toBe(false);
+		// An orphan (ppid 1): its own parent is not a launcher.
+		expect(isLaunchedByLaunchServices({ platform: "darwin", ppid: 1, parentOf: table({ 1: 0 }) }), "orphan").toBe(false);
 		for (const platform of ["linux", "win32"] as const) {
-			expect(isLaunchedByLaunchServices({ platform, ppid: LAUNCHER_PID, parentOf: table({ [LAUNCHER_PID]: 1 }) })).toBe(false);
+			expect(isLaunchedByLaunchServices({ platform, ppid: LAUNCHER_PID, parentOf: table({ [LAUNCHER_PID]: 1 }) }), platform).toBe(false);
 		}
 	});
 });
@@ -95,11 +88,9 @@ describe("readParentPid", () => {
 		expect(cmd).toEqual(["ps", "-o", "ppid=", "-p", String(LAUNCHER_PID)]);
 	});
 
-	it("returns null when the pid does not exist (ps exits 1, prints nothing)", () => {
+	it("returns null for a pid that does not exist, unparsable output, or a spawn that throws", () => {
+		// ps exits 1 and prints nothing for a missing pid.
 		expect(readParentPid(LAUNCHER_PID, ps(1, ""))).toBeNull();
-	});
-
-	it("returns null on unparsable output or a spawn that throws", () => {
 		expect(readParentPid(LAUNCHER_PID, ps(0, "\n"))).toBeNull();
 		expect(readParentPid(LAUNCHER_PID, () => {
 			throw new Error("ENOENT");

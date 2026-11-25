@@ -26,22 +26,18 @@ describe("resolveLogDir", () => {
 	it("honors an explicit DEV3_LOG_DIR override above everything else", () => {
 		expect(resolveLogDir({ DEV3_LOG_DIR: "/custom/logs", VITEST: "true" })).toBe("/custom/logs");
 		expect(resolveLogDir({ DEV3_LOG_DIR: "  /trimmed  " })).toBe("/trimmed");
+		// A blank override falls through to the next rule.
+		expect(resolveLogDir({ DEV3_LOG_DIR: "   ", VITEST: "true" })).toContain("dev3-test-logs");
 	});
 
-	it("redirects to an isolated tmp dir under a test runner (never the real ~/.dev3.0/logs)", () => {
+	it("redirects to an isolated tmp dir under a test runner, and to the real ${DEV3_HOME}/logs otherwise", () => {
 		const underVitest = resolveLogDir({ VITEST: "true" });
 		const underNodeEnv = resolveLogDir({ NODE_ENV: "test" });
 		expect(underVitest).toContain("dev3-test-logs");
 		expect(underNodeEnv).toContain("dev3-test-logs");
 		expect(underVitest).not.toContain("/.dev3.0/logs");
-	});
-
-	it("uses the real ${DEV3_HOME}/logs for the app / CLI (no test signal, no override)", () => {
+		// The app / CLI (no test signal, no override) uses the real ${DEV3_HOME}/logs.
 		expect(resolveLogDir({})).toMatch(/\.dev3\.0\/logs$/);
-	});
-
-	it("ignores a blank DEV3_LOG_DIR and falls through to the next rule", () => {
-		expect(resolveLogDir({ DEV3_LOG_DIR: "   ", VITEST: "true" })).toContain("dev3-test-logs");
 	});
 });
 
@@ -55,22 +51,17 @@ describe("test-run log isolation (regression: fake ERROR/WARN pollution)", () =>
 });
 
 describe("resolveLogLevel", () => {
-	it("honors an explicit DEV3_LOG_LEVEL override (case-insensitive)", () => {
+	it("honors a valid DEV3_LOG_LEVEL override (case-insensitive) and ignores an invalid one", () => {
 		expect(resolveLogLevel({ DEV3_LOG_LEVEL: "debug", DEV3_CHANNEL: "prod" })).toBe("debug");
 		expect(resolveLogLevel({ DEV3_LOG_LEVEL: "WARN" })).toBe("warn");
 		expect(resolveLogLevel({ DEV3_LOG_LEVEL: "error", DEV3_CHANNEL: "dev" })).toBe("error");
-	});
-
-	it("ignores an invalid DEV3_LOG_LEVEL and falls back to channel default", () => {
+		// An invalid override falls back to the channel default.
 		expect(resolveLogLevel({ DEV3_LOG_LEVEL: "verbose", DEV3_CHANNEL: "prod" })).toBe("info");
 		expect(resolveLogLevel({ DEV3_LOG_LEVEL: "", DEV3_CHANNEL: "dev" })).toBe("debug");
 	});
 
-	it("keeps full debug logs on the dev channel", () => {
+	it("keeps full debug logs on the dev channel, and info for prod / staging / canary / unset", () => {
 		expect(resolveLogLevel({ DEV3_CHANNEL: "dev" })).toBe("debug");
-	});
-
-	it("defaults to info for prod / staging / canary / unset channel", () => {
 		expect(resolveLogLevel({ DEV3_CHANNEL: "prod" })).toBe("info");
 		expect(resolveLogLevel({ DEV3_CHANNEL: "staging" })).toBe("info");
 		expect(resolveLogLevel({ DEV3_CHANNEL: "canary" })).toBe("info");
@@ -93,7 +84,7 @@ describe("level gating", () => {
 		for (const s of consoleSpies) s.mockClear();
 	});
 
-	it("suppresses debug lines at info level (the prod default)", () => {
+	it("suppresses debug at info (the prod default), writes it at debug, and only errors at error", () => {
 		setMinLevel("info");
 		expect(getMinLevel()).toBe("info");
 		const log = createLogger("test");
@@ -105,21 +96,17 @@ describe("level gating", () => {
 		log.warn("and this");
 		log.error("and this too");
 		expect(appendFileSync).toHaveBeenCalledTimes(3);
-	});
 
-	it("writes debug lines once the level is debug (dev)", () => {
+		// Debug lines are written once the level is debug (dev).
+		appendFileSync.mockClear();
 		setMinLevel("debug");
-		const log = createLogger("test");
-
 		log.debug("now visible");
 		expect(appendFileSync).toHaveBeenCalledTimes(1);
 		expect(String(appendFileSync.mock.calls[0]?.[1])).toContain(`[${process.pid}:test] now visible`);
-	});
 
-	it("only writes errors at error level", () => {
+		// Only errors are written at error level.
+		appendFileSync.mockClear();
 		setMinLevel("error");
-		const log = createLogger("test");
-
 		log.debug("no");
 		log.info("no");
 		log.warn("no");

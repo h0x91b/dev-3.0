@@ -19,11 +19,8 @@ beforeEach(() => {
 import { getRememberedBedrockProfile, rememberBedrockProfile, setLastPickedFolder } from "../data";
 
 describe("remembered AWS profile pick", () => {
-	it("is undefined for a project that never picked one", async () => {
+	it("is undefined until a pick, then remembers the last explicit pick per project", async () => {
 		expect(await getRememberedBedrockProfile("p1")).toBeUndefined();
-	});
-
-	it("remembers the last explicit pick per project", async () => {
 		await rememberBedrockProfile("p1", ["og"]);
 		await rememberBedrockProfile("p2", ["sandbox"]);
 		expect(await getRememberedBedrockProfile("p1")).toBe("og");
@@ -36,13 +33,11 @@ describe("remembered AWS profile pick", () => {
 		expect(await getRememberedBedrockProfile("p1")).toBeNull();
 	});
 
-	it("ignores launches with no explicit pick and keeps the previous one", async () => {
+	it("ignores launches with no explicit pick, and takes the last explicit pick of a multi-variant launch", async () => {
 		await rememberBedrockProfile("p1", ["og"]);
 		await rememberBedrockProfile("p1", [undefined, undefined]);
 		expect(await getRememberedBedrockProfile("p1")).toBe("og");
-	});
-
-	it("takes the last explicit pick of a multi-variant launch", async () => {
+		// A multi-variant launch remembers its last explicit pick.
 		await rememberBedrockProfile("p1", ["og", undefined, "kort"]);
 		expect(await getRememberedBedrockProfile("p1")).toBe("kort");
 	});

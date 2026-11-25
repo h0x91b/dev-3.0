@@ -61,7 +61,7 @@ describe("native-session writer ownership", () => {
 		expect(ownership.roleOf(observerA)).toBe("observer");
 	});
 
-	it("names nobody when a mere observer leaves — the lease never moved", () => {
+	it("names nobody when a mere observer or the last client leaves — the lease never moved", () => {
 		const ownership = new WriterOwnership<object>();
 		const writer = {};
 		const observer = {};
@@ -70,15 +70,14 @@ describe("native-session writer ownership", () => {
 
 		expect(ownership.detach(observer)).toEqual([]);
 		expect(ownership.canMutatePty(writer)).toBe(true);
-	});
+		{
+			const ownership = new WriterOwnership<object>();
+			const writer = {};
+			ownership.attach(writer);
 
-	it("names nobody when the last client leaves", () => {
-		const ownership = new WriterOwnership<object>();
-		const writer = {};
-		ownership.attach(writer);
-
-		expect(ownership.detach(writer)).toEqual([]);
-		expect(ownership.hasWriter()).toBe(false);
+			expect(ownership.detach(writer)).toEqual([]);
+			expect(ownership.hasWriter()).toBe(false);
+		}
 	});
 
 	it("leaves observers unpromoted after writer disconnect until one explicitly claims", () => {
@@ -230,7 +229,7 @@ describe("native-session writer ownership", () => {
 		expect(ownership.writerGeneration()).toBe(5);
 	});
 
-	it("does NOT count idempotent requests — they move nothing", () => {
+	it("does NOT count idempotent requests, refused requests, or an observer leaving", () => {
 		const ownership = new WriterOwnership<object>();
 		const writer = {};
 		ownership.attach(writer);
@@ -241,34 +240,32 @@ describe("native-session writer ownership", () => {
 		ownership.attach(writer);
 
 		expect(ownership.writerGeneration()).toBe(before);
-	});
+		{
+			const ownership = new WriterOwnership<object>();
+			const writer = {};
+			const observer = {};
+			ownership.attach(writer);
+			ownership.attach(observer);
+			const before = ownership.writerGeneration();
 
-	it("does NOT count a refused request", () => {
-		const ownership = new WriterOwnership<object>();
-		const writer = {};
-		const observer = {};
-		ownership.attach(writer);
-		ownership.attach(observer);
-		const before = ownership.writerGeneration();
+			ownership.request(observer, "claim"); // refused: writer-active
+			ownership.request(observer, "release"); // refused: not-writer
+			ownership.request({}, "takeover"); // refused: not-attached
 
-		ownership.request(observer, "claim"); // refused: writer-active
-		ownership.request(observer, "release"); // refused: not-writer
-		ownership.request({}, "takeover"); // refused: not-attached
+			expect(ownership.writerGeneration()).toBe(before);
+		}
+		{
+			const ownership = new WriterOwnership<object>();
+			const writer = {};
+			const observer = {};
+			ownership.attach(writer);
+			ownership.attach(observer);
+			const before = ownership.writerGeneration();
 
-		expect(ownership.writerGeneration()).toBe(before);
-	});
+			ownership.detach(observer);
 
-	it("does NOT count an observer leaving", () => {
-		const ownership = new WriterOwnership<object>();
-		const writer = {};
-		const observer = {};
-		ownership.attach(writer);
-		ownership.attach(observer);
-		const before = ownership.writerGeneration();
-
-		ownership.detach(observer);
-
-		expect(ownership.writerGeneration()).toBe(before);
+			expect(ownership.writerGeneration()).toBe(before);
+		}
 	});
 
 	it("starts a new host with no stale writer lease", () => {

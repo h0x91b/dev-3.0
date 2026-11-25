@@ -15,10 +15,9 @@ describe("normalizeToolCall", () => {
 
 		expect(claude).toMatchObject({ op: "shell.run", command: "ls -la", nativeName: "Bash" });
 		expect(codex).toMatchObject({ op: "shell.run", command: "ls -la", path: "/w", nativeName: "exec_command" });
-	});
-
-	it("reads Codex arguments out of their JSON string form", () => {
-		expect(normalizeToolCall("codex", "exec_command", '{"cmd":"pwd"}').command).toBe("pwd");
+		// Described the same way whichever agent made it.
+		expect(describeToolCall(claude)).toBe("ran: ls -la");
+		expect(describeToolCall(codex)).toBe("ran: ls -la");
 	});
 
 	it("maps file operations to the same ops from either side", () => {
@@ -31,6 +30,13 @@ describe("normalizeToolCall", () => {
 			path: "/w/a.ts",
 		});
 		expect(normalizeToolCall("codex", "apply_patch", "*** Begin Patch").op).toBe("file.patch");
+		// filesTouched collects writes and edits, ignoring reads.
+		const calls = [
+			normalizeToolCall("claude", "Read", { file_path: "/w/read.ts" }),
+			normalizeToolCall("claude", "Write", { file_path: "/w/new.ts", content: "x" }),
+			normalizeToolCall("claude", "Edit", { file_path: "/w/new.ts", new_string: "y" }),
+		];
+		expect(filesTouched(calls)).toEqual(["/w/new.ts"]);
 	});
 
 	it("recovers the paths Codex only names inside a patch body", () => {
@@ -52,40 +58,21 @@ describe("normalizeToolCall", () => {
 		expect(filesTouched([call])).toEqual(["src/a.ts", "src/b.ts"]);
 	});
 
-	it("recognizes an MCP tool by its namespace, without a lookup table", () => {
-		const call = normalizeToolCall("claude", "mcp__playwright__browser_navigate", { url: "http://x" });
-		expect(call.op).toBe("mcp.call");
-		expect(call.extra).toMatchObject({ server: "playwright", tool: "browser_navigate" });
+	it("classifies MCP by namespace, keeps code-mode as a body and unknown tools with their args", () => {
+		const mcp = normalizeToolCall("claude", "mcp__playwright__browser_navigate", { url: "http://x" });
+		expect(mcp.op).toBe("mcp.call");
+		expect(mcp.extra).toMatchObject({ server: "playwright", tool: "browser_navigate" });
+
+		const code = normalizeToolCall("codex", "exec", 'const r = await tools.exec_command({"cmd":"ls"});');
+		expect(code.op).toBe("code.exec");
+		expect(code.body).toContain("tools.exec_command");
+
+		const unknown = normalizeToolCall("codex", "brand_new_tool", '{"a":1}');
+		expect(unknown.op).toBe("unknown");
+		expect(unknown.nativeName).toBe("brand_new_tool");
+		expect(unknown.extra).toMatchObject({ args: { a: 1 } });
 	});
 
-	it("keeps an unknown tool's name and arguments instead of discarding them", () => {
-		const call = normalizeToolCall("codex", "brand_new_tool", '{"a":1}');
-		expect(call.op).toBe("unknown");
-		expect(call.nativeName).toBe("brand_new_tool");
-		expect(call.extra).toMatchObject({ args: { a: 1 } });
-	});
-
-	it("keeps a code-mode program as a body rather than pretending it is JSON", () => {
-		const call = normalizeToolCall("codex", "exec", 'const r = await tools.exec_command({"cmd":"ls"});');
-		expect(call.op).toBe("code.exec");
-		expect(call.body).toContain("tools.exec_command");
-	});
-
-	it("describes a call the same way whichever agent made it", () => {
-		const claude = describeToolCall(normalizeToolCall("claude", "Bash", { command: "ls" }));
-		const codex = describeToolCall(normalizeToolCall("codex", "exec_command", '{"cmd":"ls"}'));
-		expect(claude).toBe("ran: ls");
-		expect(codex).toBe("ran: ls");
-	});
-
-	it("collects written and edited files, ignoring reads", () => {
-		const calls = [
-			normalizeToolCall("claude", "Read", { file_path: "/w/read.ts" }),
-			normalizeToolCall("claude", "Write", { file_path: "/w/new.ts", content: "x" }),
-			normalizeToolCall("claude", "Edit", { file_path: "/w/new.ts", new_string: "y" }),
-		];
-		expect(filesTouched(calls)).toEqual(["/w/new.ts"]);
-	});
 });
 
 const userRecord = (text: string, uuid: string) => ({
@@ -142,6 +129,10 @@ describe("turn assembly", () => {
 		expect(parsed.turns[0]).toMatchObject({ trigger: "user", userText: "first ask", assistantText: "two files" });
 		expect(parsed.turns[1].userText).toBe("second ask");
 		expect(parsed.stats.turns).toBe(2);
+		expect(toolCallsOf(parsed)).toMatchObject([{ op: "shell.run", command: "ls" }]);
+
+		const withPreamble = parseClaudeTranscript(jsonl(assistantReply, userRecord("later", "u1")), "/t.jsonl");
+		expect(withPreamble.turns.map((t) => t.trigger)).toEqual(["preamble", "user"]);
 	});
 
 	it("keeps the agent's bookkeeping out of the conversation layer", () => {
@@ -154,40 +145,25 @@ describe("turn assembly", () => {
 		expect(parsed.stats.sessionEvents).toBe(1);
 	});
 
-	it("puts events preceding the first prompt into a preamble turn", () => {
-		const parsed = parseClaudeTranscript(jsonl(assistantReply, userRecord("later", "u1")), "/t.jsonl");
-		expect(parsed.turns[0].trigger).toBe("preamble");
-		expect(parsed.turns[1].trigger).toBe("user");
-	});
-
-	it("canonicalizes tool calls inside the turns", () => {
-		expect(toolCallsOf(conversation())).toMatchObject([{ op: "shell.run", command: "ls" }]);
-	});
 });
 
 describe("renderHandoff", () => {
-	it("frames the text as a takeover and names the source agent", () => {
+	it("frames a takeover and carries prompts, replies, canonical actions and their output", () => {
 		const text = renderHandoff(conversation(), { target: "codex" });
 		expect(text).toContain("taking over work that ran in Claude Code");
 		expect(text).toContain("You did not perform any of the");
+		for (const part of ["first ask", "second ask", "two files", "ran: ls", "a.ts\nb.ts"]) {
+			expect(text).toContain(part);
+		}
 	});
 
-	it("carries the user's prompts and the agent's replies verbatim", () => {
-		const text = renderHandoff(conversation());
-		expect(text).toContain("first ask");
-		expect(text).toContain("second ask");
-		expect(text).toContain("two files");
-	});
-
-	it("describes actions canonically and includes the paired output", () => {
-		const text = renderHandoff(conversation());
-		expect(text).toContain("ran: ls");
-		expect(text).toContain("a.ts\nb.ts");
-	});
-
-	it("omits reasoning by default and includes it on request", () => {
+	it("omits reasoning unless asked, and keeps only the last N turns saying how many it dropped", () => {
 		expect(renderHandoff(conversation())).not.toContain("secret plan");
 		expect(renderHandoff(conversation(), { includeThinking: true })).toContain("secret plan");
+		const text = renderHandoff(conversation(), { maxTurns: 1 });
+		expect(text).toContain("second ask");
+		expect(text).not.toContain("first ask");
+		expect(text).toContain("turns are omitted");
 	});
 
 	it("truncates tool output to the requested budget", () => {
@@ -199,19 +175,11 @@ describe("renderHandoff", () => {
 		const text = renderHandoff(parsed, { toolOutputLimit: 100 });
 		expect(text).toContain("more characters cut");
 		expect(text.includes("x".repeat(200))).toBe(false);
-	});
 
-	it("drops tool output entirely at a zero budget, keeping the action", () => {
-		const text = renderHandoff(conversation(), { toolOutputLimit: 0 });
-		expect(text).toContain("ran: ls");
-		expect(text).not.toContain("a.ts\nb.ts");
-	});
-
-	it("keeps only the last N turns and says how many it dropped", () => {
-		const text = renderHandoff(conversation(), { maxTurns: 1 });
-		expect(text).toContain("second ask");
-		expect(text).not.toContain("first ask");
-		expect(text).toContain("turns are omitted");
+		// A zero budget drops the output entirely but keeps the action.
+		const zero = renderHandoff(conversation(), { toolOutputLimit: 0 });
+		expect(zero).toContain("ran: ls");
+		expect(zero).not.toContain("a.ts\nb.ts");
 	});
 
 	it("lists the files the conversation changed", () => {
@@ -229,7 +197,7 @@ describe("renderHandoff", () => {
 		expect(renderHandoff(parsed)).toContain("/w/out.ts");
 	});
 
-	it("renders a Codex conversation with the same shape", () => {
+	it("renders a Codex conversation with the same shape, fidelity warnings included", () => {
 		const codex = parseCodexTranscript(
 			jsonl(
 				{ type: "session_meta", timestamp: "2026-08-17T09:00:00.000Z", payload: { id: "r1", cwd: "/w" } },
@@ -243,14 +211,13 @@ describe("renderHandoff", () => {
 		expect(text).toContain("taking over work that ran in Codex CLI");
 		expect(text).toContain("codex ask");
 		expect(text).toContain("ran: pwd");
-	});
 
-	it("passes the fidelity warnings through instead of hiding them", () => {
-		const codex = parseCodexTranscript(
+		// Fidelity warnings pass through instead of being hidden.
+		const reasoning = parseCodexTranscript(
 			jsonl({ type: "response_item", payload: { type: "reasoning", id: "r", summary: [{ type: "summary_text", text: "plan" }] } }),
 			"/r.jsonl",
 		);
-		expect(renderHandoff(codex)).toContain("encrypted");
+		expect(renderHandoff(reasoning)).toContain("encrypted");
 	});
 });
 
@@ -284,6 +251,10 @@ describe("renderImportedDescription", () => {
 		const text = renderImportedDescription(parsed);
 		expect(text).toContain("## The request that started this");
 		expect(text.indexOf("FIRST")).toBeLessThan(text.indexOf("## Context"));
+		// A short conversation stays whole.
+		expect(text).toContain("answer 0");
+		expect(text).toContain("answer 2");
+		expect(text).not.toMatch(/turns are omitted/);
 	});
 
 	it("stays under the cap and says how many turns it dropped", () => {
@@ -295,22 +266,13 @@ describe("renderImportedDescription", () => {
 		expect(text).toContain("FIRST");
 	});
 
-	it("marks the cut when even one turn does not fit", () => {
+	it("marks the cut, naming the source store, when even one turn does not fit", () => {
 		const parsed = parseClaudeTranscript(conversationWith(2, 5_000), "/t.jsonl");
 		const text = renderImportedDescription(parsed, { limit: 2_000 });
 		expect(text.length).toBeLessThanOrEqual(2_000);
 		expect(text).toContain("more characters cut");
-	});
 
-	it("keeps a short conversation whole", () => {
-		const parsed = parseClaudeTranscript(conversationWith(2), "/t.jsonl");
-		const text = renderImportedDescription(parsed);
-		expect(text).toContain("answer 0");
-		expect(text).toContain("answer 1");
-		expect(text).not.toMatch(/turns are omitted/);
-	});
-
-	it("names the source agent's own store in the cut marker", () => {
+		// The cut marker names the source agent's own store.
 		const codex = parseCodexTranscript(
 			jsonl(
 				{ type: "session_meta", payload: { id: "s", cwd: "/w" } },
@@ -328,11 +290,6 @@ describe("renderImportedDescription", () => {
 			expect(text).toContain("You are taking over work that ran in Claude Code");
 			expect(text).toContain("Retold from a claude transcript by dev3 (parser");
 			expect(text).toContain("Fidelity:");
-		});
-
-		it("leads with the request that started the work, like a description does", () => {
-			const parsed = parseClaudeTranscript(conversationWith(3), "/t.jsonl");
-			const text = renderHandoffFile(parsed);
 			expect(text.indexOf("FIRST")).toBeLessThan(text.indexOf("## Context"));
 		});
 

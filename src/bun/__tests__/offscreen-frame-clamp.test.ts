@@ -5,14 +5,10 @@ const laptop: DisplayLike = { id: 1, bounds: { x: 0, y: 0, width: 1728, height: 
 const external: DisplayLike = { id: 2, bounds: { x: 1728, y: 0, width: 2560, height: 1440 }, scaleFactor: 1 };
 
 describe("clampFrameToDisplay", () => {
-	it("shrinks a frame that outgrew the display and pulls it inside", () => {
-		const frame = { x: 200, y: 100, width: 3000, height: 2000 };
-		expect(clampFrameToDisplay(frame, laptop.bounds)).toEqual({ x: 0, y: 0, width: 1728, height: 1117 });
-	});
-
-	it("leaves a frame that already fits untouched", () => {
-		const frame = { x: 100, y: 50, width: 1200, height: 800 };
-		expect(clampFrameToDisplay(frame, laptop.bounds)).toEqual(frame);
+	it("shrinks a frame that outgrew the display and pulls it inside, leaving one that fits untouched", () => {
+		expect(clampFrameToDisplay({ x: 200, y: 100, width: 3000, height: 2000 }, laptop.bounds)).toEqual({ x: 0, y: 0, width: 1728, height: 1117 });
+		const fits = { x: 100, y: 50, width: 1200, height: 800 };
+		expect(clampFrameToDisplay(fits, laptop.bounds)).toEqual(fits);
 	});
 });
 
@@ -27,14 +23,15 @@ describe("offscreenFrameClamp", () => {
 		expect(result!.frame).toEqual({ x: 1728, y: 0, width: 1280, height: 720 });
 	});
 
-	it("leaves a window spanning two displays exactly where the user put it", () => {
-		const frame = { x: 1200, y: 100, width: 1400, height: 900 };
-		expect(offscreenFrameClamp(frame, [laptop, external])).toBeNull();
-	});
-
-	it("ignores a hairline sliver outside the display", () => {
-		const frame = { x: -1, y: 0, width: 1200, height: 800 };
-		expect(offscreenFrameClamp(frame, [laptop, external])).toBeNull();
+	it("leaves alone a window spanning two displays, a hairline sliver outside, and any window when no display is known", () => {
+		const cases: Array<[name: string, frame: { x: number; y: number; width: number; height: number }, displays: DisplayLike[]]> = [
+			["spans two displays exactly where the user put it", { x: 1200, y: 100, width: 1400, height: 900 }, [laptop, external]],
+			["a hairline sliver outside the display", { x: -1, y: 0, width: 1200, height: 800 }, [laptop, external]],
+			["no display is known", { x: 0, y: 0, width: 800, height: 600 }, []],
+		];
+		for (const [name, frame, displays] of cases) {
+			expect(offscreenFrameClamp(frame, displays), name).toBeNull();
+		}
 	});
 
 	it("rescues a window stranded on a display that was unplugged", () => {
@@ -43,9 +40,5 @@ describe("offscreenFrameClamp", () => {
 		expect(result).not.toBeNull();
 		expect(result!.display.id).toBe(1);
 		expect(result!.frame).toEqual({ x: 528, y: 200, width: 1200, height: 800 });
-	});
-
-	it("does nothing when no display is known", () => {
-		expect(offscreenFrameClamp({ x: 0, y: 0, width: 800, height: 600 }, [])).toBeNull();
 	});
 });

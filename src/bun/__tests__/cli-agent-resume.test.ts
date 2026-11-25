@@ -43,15 +43,12 @@ async function answer(approved: boolean, launch?: unknown) {
 }
 
 describe("dev3 agent resume", () => {
-	it("resumes directly through the managed path when a person runs it, refusing live terminals and unknown ids", async () => {
+	it("resumes directly through the managed path when a person runs it, letting the harness pick its latest only when asked", async () => {
 		await expect(resumeCliAgent({ project, task, requester: null, allowAgentLatest: false })).resolves.toEqual({ outcome: "resumed", resume: resumed });
 		expect(push).not.toHaveBeenCalled();
 		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, { refuseLive: true, refuseFresh: true, requireSessionIds: true });
-	});
-
-	it("lets the harness pick its latest only when asked to", async () => {
 		await resumeCliAgent({ project, task, requester: null, allowAgentLatest: true });
-		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, { refuseLive: true, refuseFresh: true, requireSessionIds: false });
+		expect(resumeTaskSession).toHaveBeenLastCalledWith(task.id, { refuseLive: true, refuseFresh: true, requireSessionIds: false });
 	});
 
 	it("touches nothing and asks nobody when the terminal is already running", async () => {
@@ -72,18 +69,18 @@ describe("dev3 agent resume", () => {
 		expect(resumeTaskSession).not.toHaveBeenCalled();
 	});
 
-	it("never falls back to a fresh session when nothing is saved", async () => {
+	it("never falls back to a fresh session or guesses: nothing saved, or a pane with no conversation id, is reported", async () => {
 		vi.mocked(sessionStateOrLostCodexPane).mockResolvedValue(null);
 		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false })).resolves.toMatchObject({ outcome: "unavailable", reason: "no-saved-session" });
 		expect(resumeTaskSession).not.toHaveBeenCalled();
-	});
-
-	it("reports a pane with no conversation id instead of guessing", async () => {
+		vi.mocked(sessionStateOrLostCodexPane).mockResolvedValue({ panes } as any);
+		{
 		const report = [{ index: 0, mode: "agent-latest" }];
 		vi.mocked(resumeTaskSession).mockRejectedValue(new (ResumeUnavailableError as any)("session-id-unknown", "No conversation id", report));
 		await expect(resumeCliAgent({ project, task, requester: null, allowAgentLatest: false })).resolves.toEqual({
 			outcome: "unavailable", taskId: task.id, seq: 7, reason: "session-id-unknown", message: "No conversation id", panes: report,
 		});
+		}
 	});
 
 	it("asks another task's agent's request through the launch dialog with the saved panes and no agent choice", async () => {
@@ -148,22 +145,23 @@ describe("dev3 agent resume", () => {
 		expect(resumeTaskSession).toHaveBeenCalledTimes(1);
 	});
 
-	it("rejects a differing concurrent request instead of joining it", async () => {
-		const first = resumeCliAgent({ project, task, requester, allowAgentLatest: false });
-		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: true })).rejects.toThrow("Another resume request is pending");
+	it("rejects a differing concurrent request (other latest flag or other account) instead of joining it", async () => {
+		const first = resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-2" });
+		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: true, accountId: "acct-2" })).rejects.toThrow("Another resume request is pending");
+		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-3" })).rejects.toThrow("Another resume request is pending");
 		await answer(false); await first;
 	});
 
-	it("does not hijack another pending launch approval for the task", async () => {
+	it("refuses to ask over another pending launch approval or without a connected app window", async () => {
 		createAgentRequest("launch", task.id, project.id);
 		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false })).rejects.toThrow("Another launch approval is pending");
-	});
-
-	it("cannot ask without a connected app window", async () => {
+		{
 		vi.mocked(getPushMessage).mockReturnValue(null as any);
 		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false })).rejects.toThrow("No app window is connected");
 		expect(resumeTaskSession).not.toHaveBeenCalled();
+		}
 	});
+
 });
 
 describe("dev3 agent resume --account", () => {
@@ -190,18 +188,18 @@ describe("dev3 agent resume --account", () => {
 		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, expect.objectContaining({ accountId: null }));
 	});
 
-	it("resumes on the account picked in the dialog over the requested one", async () => {
+	it("resumes on the account picked in the dialog over the requested one, and on the saved accounts when nobody asked", async () => {
 		const pending = resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-2" });
 		await answer(true, { variants: [], resumeAccountId: "acct-3" });
 		await pending;
 		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, expect.objectContaining({ accountId: "acct-3" }));
-	});
-
-	it("keeps the saved accounts when nobody asked for another", async () => {
+		push.mockClear(); vi.mocked(resumeTaskSession).mockClear();
+		{
 		const pending = resumeCliAgent({ project, task, requester, allowAgentLatest: false });
 		await answer(true, { variants: [] });
 		await pending;
 		expect(vi.mocked(resumeTaskSession).mock.calls[0][1]?.accountId).toBeUndefined();
+		}
 	});
 
 	it("replays the dialog's current account pick to a client that connects late", async () => {
@@ -231,11 +229,6 @@ describe("dev3 agent resume --account", () => {
 		expect(resumeTaskSession).not.toHaveBeenCalled();
 	});
 
-	it("does not join a retry that asks for a different account", async () => {
-		const first = resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-2" });
-		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-3" })).rejects.toThrow("Another resume request is pending");
-		await answer(false); await first;
-	});
 });
 
 describe("dev3 agent resume --as-sender", () => {

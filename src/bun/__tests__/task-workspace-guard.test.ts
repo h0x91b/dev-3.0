@@ -12,16 +12,13 @@ afterEach(() => {
 });
 
 describe("worktreeAccessState", () => {
-	it("present for a directory, with a .git link when git is required", () => {
+	it("present for a directory (with a .git link when git is required), missing for an absent path or a non-directory", () => {
 		const wt = join(root, "wt");
 		mkdirSync(wt);
 		expect(worktreeAccessState(wt)).toBe("present");
 		expect(worktreeAccessState(wt, { requireGit: true })).toBe("missing");
 		writeFileSync(join(wt, ".git"), "gitdir: /elsewhere\n");
 		expect(worktreeAccessState(wt, { requireGit: true })).toBe("present");
-	});
-
-	it("missing for a path that is not there, or not a directory", () => {
 		expect(worktreeAccessState(join(root, "nope"))).toBe("missing");
 		writeFileSync(join(root, "file"), "x");
 		expect(worktreeAccessState(join(root, "file"))).toBe("missing");
@@ -80,19 +77,21 @@ describe("every task-scoped launcher calls the guard", () => {
 		["rpc-handlers/scripts.ts", "async function runScriptHandler("],
 		["cli-socket/pane-commands.ts", "\"pane.run\": async (params) => {"],
 	];
-	it.each(LAUNCHERS)("%s — %s", (file, signature) => {
-		const source = readFileSync(join(SRC, file), "utf-8");
-		const start = source.indexOf(signature);
-		expect(start, `${signature} not found in ${file}`).toBeGreaterThanOrEqual(0);
-		const next = source.slice(start + signature.length).search(/\n(export )?(async )?function |\n\t"[a-z]+\.[a-zA-Z]+": /);
-		const body = source.slice(start, next < 0 ? undefined : start + signature.length + next);
-		// Read-only probes allowed before the guard: `which yazi` (is the file browser installed?).
-		const probed = body.slice(signature.length).replace('spawn(["which", "yazi"]', "");
-		const guardAt = probed.indexOf("assertTaskWorkspacePresent(");
-		expect(guardAt).toBeGreaterThanOrEqual(0);
-		for (const sideEffect of ["ensureAgentTrust(", "applyAgentHooksToCommand(", "launchTaskPty(", "tmux.", "spawn(", "createSession(", "openAuxPane(", "startPaneRun(", "runScriptInTmux(", "writeLaunchScript("]) {
-			const at = probed.indexOf(sideEffect);
-			if (at >= 0) expect(at, `${sideEffect} runs before the guard in ${signature}`).toBeGreaterThan(guardAt);
+	it("guards each known launcher before its first trust write or spawn", () => {
+		for (const [file, signature] of LAUNCHERS) {
+			const source = readFileSync(join(SRC, file), "utf-8");
+			const start = source.indexOf(signature);
+			expect(start, `${signature} not found in ${file}`).toBeGreaterThanOrEqual(0);
+			const next = source.slice(start + signature.length).search(/\n(export )?(async )?function |\n\t"[a-z]+\.[a-zA-Z]+": /);
+			const body = source.slice(start, next < 0 ? undefined : start + signature.length + next);
+			// Read-only probes allowed before the guard: `which yazi` (is the file browser installed?).
+			const probed = body.slice(signature.length).replace('spawn(["which", "yazi"]', "");
+			const guardAt = probed.indexOf("assertTaskWorkspacePresent(");
+			expect(guardAt, `${file} — ${signature} never calls the guard`).toBeGreaterThanOrEqual(0);
+			for (const sideEffect of ["ensureAgentTrust(", "applyAgentHooksToCommand(", "launchTaskPty(", "tmux.", "spawn(", "createSession(", "openAuxPane(", "startPaneRun(", "runScriptInTmux(", "writeLaunchScript("]) {
+				const at = probed.indexOf(sideEffect);
+				if (at >= 0) expect(at, `${sideEffect} runs before the guard in ${signature}`).toBeGreaterThan(guardAt);
+			}
 		}
 	});
 });

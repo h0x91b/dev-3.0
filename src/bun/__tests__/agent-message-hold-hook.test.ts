@@ -67,6 +67,8 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		// The release has taken the hold synchronously; a hook arriving mid-typing finds nothing.
 		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toBeNull();
 		expect(message.deliver).toHaveBeenCalledTimes(1);
+		// An idle agent's message goes to the typed path after the quiet window.
+		expect(message.submit).toHaveBeenCalledTimes(1);
 		expect(delivered).not.toHaveBeenCalled();
 	});
 
@@ -112,22 +114,14 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		expect(order[0]).toBeLessThan(order[1]!);
 	});
 
-	it("leaves an idle agent's message to the typed path after the quiet window", async () => {
-		const { message, delivered } = hookable("one");
-		holdAgentMessage(KEY, message, {});
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
-		expect(message.deliver).toHaveBeenCalledTimes(1);
-		expect(message.submit).toHaveBeenCalledTimes(1);
-		expect(delivered).not.toHaveBeenCalled();
-	});
-
-	it("joins a burst with the separator the pane uses, in arrival order", async () => {
-		holdAgentMessage(KEY, hookable("one").message, {});
+	it("joins a burst with the separator the pane uses, in arrival order, with one notice line per message that has one", async () => {
+		holdAgentMessage(KEY, hookable("one", { hook: { text: "inline:one", delivered: vi.fn(), notice: "dev3 message from #2: first" } }).message, {});
 		holdAgentMessage(KEY, hookable("two").message, {});
+		holdAgentMessage(KEY, hookable("three", { hook: { text: "inline:three", delivered: vi.fn(), notice: "dev3 message from #5: third" } }).message, {});
 		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toMatchObject({
-			text: `inline:one${AGENT_MESSAGE_BURST_SEPARATOR}inline:two`,
-			messages: 2,
-			notices: [],
+			text: `inline:one${AGENT_MESSAGE_BURST_SEPARATOR}inline:two${AGENT_MESSAGE_BURST_SEPARATOR}inline:three`,
+			messages: 3,
+			notices: ["dev3 message from #2: first", "dev3 message from #5: third"],
 		});
 	});
 
@@ -147,13 +141,14 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		expect(third.delivered).not.toHaveBeenCalled();
 	});
 
-	it("takes nothing when the first message alone is over the budget", async () => {
-		holdAgentMessage(KEY, hookable("x".repeat(50)).message, {});
-		await expect(claimHeldAgentMessagesForHook(KEY, 20)).resolves.toBeNull();
-		expect(pendingAgentMessageHoldCount()).toBe(1);
-	});
+	it("takes only what fits the budget and keeps the rest held, with its timer — nothing at all when the first alone is over", async () => {
+		await expect(claimHeldAgentMessagesForHook(agentMessageHoldKey("tmux", "task-1", "%9"), 9_000), "no hold").resolves.toBeNull();
 
-	it("takes only what fits the budget and keeps the rest held, with its timer", async () => {
+		holdAgentMessage(KEY, hookable("x".repeat(50)).message, {});
+		await expect(claimHeldAgentMessagesForHook(KEY, 20), "first over budget").resolves.toBeNull();
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+		resetAgentMessageHolds();
+
 		const first = hookable("aaaa");
 		const second = hookable("bbbb");
 		holdAgentMessage(KEY, first.message, {});
@@ -200,17 +195,5 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 
 		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toBeNull();
 		expect(later.delivered).not.toHaveBeenCalled();
-	});
-
-	it("returns one notice line per taken message that has one, for the user", async () => {
-		holdAgentMessage(KEY, hookable("one", { hook: { text: "inline:one", delivered: vi.fn(), notice: "dev3 message from #2: first" } }).message, {});
-		holdAgentMessage(KEY, hookable("two").message, {});
-		holdAgentMessage(KEY, hookable("three", { hook: { text: "inline:three", delivered: vi.fn(), notice: "dev3 message from #5: third" } }).message, {});
-		const claim = await claimHeldAgentMessagesForHook(KEY, 9_000);
-		expect(claim?.notices).toEqual(["dev3 message from #2: first", "dev3 message from #5: third"]);
-	});
-
-	it("finds nothing for a pane with no hold", async () => {
-		await expect(claimHeldAgentMessagesForHook(agentMessageHoldKey("tmux", "task-1", "%9"), 9_000)).resolves.toBeNull();
 	});
 });

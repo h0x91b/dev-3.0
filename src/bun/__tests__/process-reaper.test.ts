@@ -56,16 +56,12 @@ function makeFakeDeps(policies: Map<number, PidPolicy>): ReaperDeps & {
 }
 
 describe("isPidAlive", () => {
-	it("returns true for a live pid and false after it dies", async () => {
+	it("returns true for a live pid, false after it dies, and false for an unknown pid", async () => {
 		const deps = makeFakeDeps(new Map([[100, { dieAfterTermMs: 0 }]]));
 		expect(isPidAlive(100, deps)).toBe(true);
 		deps.kill(100, "SIGTERM");
 		expect(isPidAlive(100, deps)).toBe(false);
-	});
-
-	it("returns false for an unknown pid", () => {
-		const deps = makeFakeDeps(new Map());
-		expect(isPidAlive(424242, deps)).toBe(false);
+		expect(isPidAlive(424242, deps), "unknown pid").toBe(false);
 	});
 });
 

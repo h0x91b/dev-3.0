@@ -47,7 +47,7 @@ function builtCheckout(root: string, name: string, version = "1.18.1"): BinaryCa
 }
 
 describe("binaryCacheRoot", () => {
-	it("follows each platform's own cache convention", () => {
+	it("follows each platform's own cache convention unless DEV3_ELECTROBUN_CACHE_DIR overrides it", () => {
 		expect([
 			binaryCacheRoot({}, "darwin", "/home/u"),
 			binaryCacheRoot({}, "linux", "/home/u"),
@@ -59,50 +59,34 @@ describe("binaryCacheRoot", () => {
 			join("/xdg", "dev3-electrobun"),
 			join("/local", "dev3-electrobun"),
 		]);
-	});
-
-	it("lets DEV3_ELECTROBUN_CACHE_DIR override the platform default", () => {
+		// DEV3_ELECTROBUN_CACHE_DIR overrides the platform default.
 		expect(binaryCacheRoot({ DEV3_ELECTROBUN_CACHE_DIR: "/elsewhere" }, "darwin", "/home/u")).toBe("/elsewhere");
 	});
 });
 
 describe("electrobun binary cache", () => {
-	it("hands a fresh checkout what another checkout's build downloaded", () => {
+	it("hands a fresh checkout what another checkout's build downloaded, and reports both sides", () => {
 		const root = testScopedPath("round-trip");
-		storeElectrobunBinaries(builtCheckout(root, "built"));
+		const stored = storeElectrobunBinaries(builtCheckout(root, "built"));
 		const fresh = freshCheckout(root, "fresh");
 
-		restoreElectrobunBinaries(fresh, BUN);
-
-		expect([
-			read(join(packageDir(fresh), "bin", "electrobun")),
-			read(join(packageDir(fresh), "dist-macos-arm64", "launcher")),
-			read(join(bunOverride(fresh), "bun")),
-		]).toEqual(["cli 1.18.1", "launcher 1.18.1", `bun ${BUN}`]);
-	});
-
-	it("reports what it stored and what it restored", () => {
-		const root = testScopedPath("report");
-		const stored = storeElectrobunBinaries(builtCheckout(root, "built"));
-		const restored = restoreElectrobunBinaries(freshCheckout(root, "fresh"), BUN);
+		const restored = restoreElectrobunBinaries(fresh, BUN);
 
 		expect({ stored, restored }).toEqual({
 			stored: ["electrobun 1.18.1", `bun ${BUN} (macos-arm64)`],
 			restored: ["bin/electrobun", "dist-macos-arm64", `bun ${BUN} (macos-arm64)`],
 		});
+		expect([
+			read(join(packageDir(fresh), "bin", "electrobun")),
+			read(join(packageDir(fresh), "dist-macos-arm64", "launcher")),
+			read(join(bunOverride(fresh), "bun")),
+		]).toEqual(["cli 1.18.1", "launcher 1.18.1", `bun ${BUN}`]);
+		if (process.platform !== "win32") {
+			expect(statSync(join(packageDir(fresh), "bin", "electrobun")).mode & 0o111).toBe(0o111);
+		}
 	});
 
-	it.skipIf(process.platform === "win32")("keeps the restored CLI executable", () => {
-		const root = testScopedPath("exec-bit");
-		storeElectrobunBinaries(builtCheckout(root, "built"));
-		const fresh = freshCheckout(root, "fresh");
-
-		restoreElectrobunBinaries(fresh, BUN);
-
-		expect(statSync(join(packageDir(fresh), "bin", "electrobun")).mode & 0o111).toBe(0o111);
-	});
-
-	it("restores nothing for an electrobun version it has never stored", () => {
+	it("restores nothing for an electrobun version or a host it has never stored", () => {
 		const root = testScopedPath("new-version");
 		storeElectrobunBinaries(builtCheckout(root, "built", "1.18.1"));
 		const bumped = freshCheckout(root, "bumped", "1.19.0");
@@ -111,9 +95,11 @@ describe("electrobun binary cache", () => {
 
 		// The gap is what makes electrobun download the new version itself.
 		expect(existsSync(join(packageDir(bumped), "bin", "electrobun"))).toBe(false);
+		// Nor across hosts.
+		expect(restoreElectrobunBinaries({ ...freshCheckout(root, "fresh"), host: "linux-x64" }, undefined)).toEqual([]);
 	});
 
-	it("never overwrites a binary the checkout already has", () => {
+	it("never overwrites a binary the checkout already has, but fills the gaps beside it", () => {
 		const root = testScopedPath("no-overwrite");
 		storeElectrobunBinaries(builtCheckout(root, "built"));
 		const partial = freshCheckout(root, "partial");
@@ -122,25 +108,8 @@ describe("electrobun binary cache", () => {
 		restoreElectrobunBinaries(partial, BUN);
 
 		expect(read(join(packageDir(partial), "bin", "electrobun"))).toBe("downloaded here");
-	});
-
-	it("still fills the gaps next to a binary the checkout already has", () => {
-		const root = testScopedPath("fill-gaps");
-		storeElectrobunBinaries(builtCheckout(root, "built"));
-		const partial = freshCheckout(root, "partial");
-		write(join(packageDir(partial), "bin", "electrobun"), "downloaded here", 0o755);
-
-		restoreElectrobunBinaries(partial, BUN);
-
+		// ...while still filling the gaps next to it.
 		expect(read(join(packageDir(partial), "dist-macos-arm64", "launcher"))).toBe("launcher 1.18.1");
-	});
-
-	it("does not share binaries across hosts", () => {
-		const root = testScopedPath("hosts");
-		storeElectrobunBinaries(builtCheckout(root, "built"));
-		const otherHost = { ...freshCheckout(root, "fresh"), host: "linux-x64" };
-
-		expect(restoreElectrobunBinaries(otherHost, undefined)).toEqual([]);
 	});
 
 	it("leaves the npm-shipped dist/ out of the snapshot", () => {
@@ -152,8 +121,12 @@ describe("electrobun binary cache", () => {
 		expect(existsSync(join(built.cacheRoot, "electrobun", "1.18.1", "darwin-arm64", "dist"))).toBe(false);
 	});
 
-	it("does not snapshot a checkout that is missing half the downloads", () => {
+	it("does not snapshot a checkout missing half the downloads, or an unstamped bun download", () => {
 		const root = testScopedPath("incomplete");
+		const interrupted = freshCheckout(root, "interrupted");
+		write(join(bunOverride(interrupted), "bun"), "half a binary", 0o755);
+		expect(storeElectrobunBinaries(interrupted)).toEqual([]);
+
 		const cliOnly = freshCheckout(root, "cli-only");
 		write(join(packageDir(cliOnly), "bin", "electrobun"), "cli 1.18.1", 0o755);
 
@@ -182,7 +155,7 @@ describe("electrobun binary cache", () => {
 });
 
 describe("bun override cache", () => {
-	it("replaces an override of the wrong version with the wanted one", () => {
+	it("replaces a wrong-version override with the wanted one, and keeps one it cannot replace", () => {
 		const root = testScopedPath("bun-mismatch");
 		storeElectrobunBinaries(builtCheckout(root, "built"));
 		const stale = freshCheckout(root, "stale");
@@ -191,6 +164,12 @@ describe("bun override cache", () => {
 		restoreElectrobunBinaries(stale, BUN);
 
 		expect([read(join(bunOverride(stale), ".bun-version")), read(join(bunOverride(stale), "bun"))]).toEqual([BUN, `bun ${BUN}`]);
+
+		// One it cannot replace with the wanted version is kept.
+		const other = freshCheckout(root, "other");
+		addBunOverride(other, "1.2.0");
+		restoreElectrobunBinaries(other, "1.4.0");
+		expect(read(join(bunOverride(other), ".bun-version"))).toBe("1.2.0");
 	});
 
 	it("leaves an override of the wanted version alone", () => {
@@ -202,25 +181,6 @@ describe("bun override cache", () => {
 		restoreElectrobunBinaries(current, BUN);
 
 		expect(read(join(bunOverride(current), "bun"))).toBe("downloaded here");
-	});
-
-	it("keeps an override it cannot replace with the wanted version", () => {
-		const root = testScopedPath("bun-unknown");
-		storeElectrobunBinaries(builtCheckout(root, "built"));
-		const other = freshCheckout(root, "other");
-		addBunOverride(other, "1.2.0");
-
-		restoreElectrobunBinaries(other, "1.4.0");
-
-		expect(read(join(bunOverride(other), ".bun-version"))).toBe("1.2.0");
-	});
-
-	it("does not snapshot a download electrobun never finished stamping", () => {
-		const root = testScopedPath("bun-unstamped");
-		const interrupted = freshCheckout(root, "interrupted");
-		write(join(bunOverride(interrupted), "bun"), "half a binary", 0o755);
-
-		expect(storeElectrobunBinaries(interrupted)).toEqual([]);
 	});
 
 	it("ignores another process's half-written snapshot", () => {

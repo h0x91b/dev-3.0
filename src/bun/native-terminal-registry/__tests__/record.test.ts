@@ -51,17 +51,16 @@ function sample(overrides: Partial<NativeSessionRecord> = {}): NativeSessionReco
 }
 
 describe("native-session record — optional capture capability", () => {
-	it("round-trips the capability a parser-enabled host advertises", () => {
+	it("round-trips the capability a parser-enabled host advertises, and stays absent when none is published", () => {
 		const record = sample({ capabilities: { capture: [NATIVE_SESSION_CAPTURE_CAPABILITY] } });
 		expect(parseRecord(serializeRecord(record))?.capabilities).toEqual({
 			capture: [NATIVE_SESSION_CAPTURE_CAPABILITY],
 		});
-	});
-
-	it("stays absent for a host that publishes no screen — which IS the answer", () => {
-		// Absence is the load-bearing half: it is how a reader says "not enabled" as
-		// a fact rather than inferring it from silence.
-		expect(parseRecord(serializeRecord(sample()))).not.toHaveProperty("capabilities");
+		{
+			// Absence is the load-bearing half: it is how a reader says "not enabled" as
+			// a fact rather than inferring it from silence.
+			expect(parseRecord(serializeRecord(sample()))).not.toHaveProperty("capabilities");
+		}
 	});
 
 	it("is readable by a build that predates the field — no schema bump, no migration", () => {
@@ -95,13 +94,17 @@ describe("native-session record — optional capture capability", () => {
 });
 
 describe("native-session record — optional identity (seq 1383)", () => {
-	it("round-trips a task-owned identity", () => {
+	it("round-trips a task-owned identity, absent outside a task, keeping a half-known one", () => {
 		const record = sample({ identity: { seq: "1383", paneId: "pane-1" } });
 		expect(parseRecord(serializeRecord(record))).toEqual(record);
-	});
-
-	it("stays absent for a session started outside a task", () => {
-		expect(parseRecord(serializeRecord(sample()))).not.toHaveProperty("identity");
+		{
+			expect(parseRecord(serializeRecord(sample()))).not.toHaveProperty("identity");
+		}
+		{
+			const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
+			raw.identity = { seq: "1383", paneId: 7 };
+			expect(parseRecord(JSON.stringify(raw))?.identity).toEqual({ seq: "1383" });
+		}
 	});
 
 	it("is readable by a build that never wrote it — no schema bump", () => {
@@ -134,11 +137,6 @@ describe("native-session record — optional identity (seq 1383)", () => {
 		}
 	});
 
-	it("keeps a half-known identity rather than discarding the readable half", () => {
-		const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
-		raw.identity = { seq: "1383", paneId: 7 };
-		expect(parseRecord(JSON.stringify(raw))?.identity).toEqual({ seq: "1383" });
-	});
 });
 
 describe("native-session record (pure)", () => {
@@ -154,14 +152,14 @@ describe("native-session record (pure)", () => {
 		expect(parseRecord(JSON.stringify({ ...sample(), ownership: { evidenceKind: "guess" } }))).toBeNull();
 	});
 
-	it("refuses to surface a record that smuggled in a token field", () => {
+	it("refuses to surface a smuggled token field and never serialises one", () => {
 		const withToken = { ...sample(), token: "leaked-secret" };
 		expect(parseRecord(JSON.stringify(withToken))).toBeNull();
+		{
+			expect(serializeRecord(sample())).not.toContain("token");
+		}
 	});
 
-	it("never serialises a token into record.json", () => {
-		expect(serializeRecord(sample())).not.toContain("token");
-	});
 });
 
 describe("native-session record (on disk)", () => {

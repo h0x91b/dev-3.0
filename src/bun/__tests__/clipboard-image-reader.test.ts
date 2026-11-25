@@ -68,9 +68,8 @@ describe("readHostClipboardImage on Linux (worker)", () => {
 		expect(Array.from(result.image!)).toEqual([1, 2, 3]);
 		expect(maxGap, "cause: the GTK wait blocked the host event loop. fix: run the FFI read in the clipboard worker").toBeLessThan(150);
 		expect(inlineFormats).not.toHaveBeenCalled();
-	});
 
-	it("passes the library path Electrobun resolves against the cwd", async () => {
+		// The library path Electrobun resolves against the cwd reaches the worker.
 		const out = join(dir, "lib.txt");
 		configureClipboardImageWorker(worker("lib.cjs", `require("node:fs").writeFileSync(${JSON.stringify(out)}, workerData.libraryPath); parentPort.postMessage({ ok: true, formats: [], image: null });`));
 		await readHostClipboardImage();
@@ -98,18 +97,17 @@ describe("readHostClipboardImage on Linux (worker)", () => {
 		expect(await readHostClipboardImage(1000)).toEqual({ formats: [], image: null });
 	});
 
-	it("recovers after a genuine worker crash", async () => {
+	it("rejects a crash, an exit without a reply, and a reported error — and recovers after a crash", async () => {
 		configureClipboardImageWorker(worker("throws.cjs", `throw new Error("boom");`));
 		await expect(readHostClipboardImage(1000)).rejects.toThrow(/Clipboard worker failed/);
 		configureClipboardImageWorker(worker("ok.cjs", `parentPort.postMessage({ ok: true, formats: ["text"], image: null });`));
 		expect(await readHostClipboardImage(1000), "cause: a crashed worker kept the single-flight slot. fix: release it on the worker's exit").toEqual({ formats: ["text"], image: null });
-	});
-
-	it("rejects when the worker exits without replying, and when it reports an error", async () => {
+		{
 		configureClipboardImageWorker(worker("exit.cjs", `process.exit(3);`));
 		await expect(readHostClipboardImage(1000)).rejects.toThrow(/exited with code 3/);
 		configureClipboardImageWorker(worker("err.cjs", `parentPort.postMessage({ ok: false, error: "dlopen failed" });`));
 		await expect(readHostClipboardImage(1000)).rejects.toThrow(/dlopen failed/);
+		}
 	});
 
 	it("frees the slot as soon as the FFI call returns, so back-to-back pastes both work", async () => {
@@ -134,15 +132,14 @@ describe("readHostClipboardImage on Linux (worker)", () => {
 		await second;
 	});
 
-	it.each([
-		["missing", () => join(dir, "missing.js")],
-		["unconfigured", () => null],
-	])("fails closed when the bundle is %s, never calling the FFI on the host thread", async (_label, path) => {
-		configureClipboardImageWorker(path());
-		await expect(
-			readHostClipboardImage(),
-			"cause: a Linux build without the worker read the clipboard on the host thread, which a stalled owner froze for ~125 s. fix: reject instead of falling back to the direct call",
-		).rejects.toThrow(/missing from this build/);
+	it("fails closed when the bundle is missing or unconfigured, never calling the FFI on the host thread", async () => {
+		for (const path of [join(dir, "missing.js"), null]) {
+			configureClipboardImageWorker(path);
+			await expect(
+				readHostClipboardImage(),
+				"cause: a Linux build without the worker read the clipboard on the host thread, which a stalled owner froze for ~125 s. fix: reject instead of falling back to the direct call",
+			).rejects.toThrow(/missing from this build/);
+		}
 		expect(inlineFormats).not.toHaveBeenCalled();
 		expect(inlineImage).not.toHaveBeenCalled();
 	});
@@ -160,14 +157,16 @@ describe("readHostClipboardImage on Linux (worker)", () => {
 });
 
 describe("readHostClipboardImage on other platforms", () => {
-	it.each(["darwin", "win32"])("%s keeps the direct Electrobun call and never starts the worker", async (platform) => {
-		Object.defineProperty(process, "platform", { value: platform, writable: true });
-		const marker = join(dir, "started");
-		configureClipboardImageWorker(worker("marker.cjs", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "1"); parentPort.postMessage({ ok: true, formats: [], image: null });`));
-		const result = await readHostClipboardImage();
-		expect(result.formats).toEqual(["image"]);
-		await waitFor(() => existsSync(marker), 200);
-		expect(existsSync(marker), "cause: a non-Linux paste went through the Linux clipboard worker. fix: gate readInWorker on process.platform === \"linux\"").toBe(false);
+	it("darwin and win32 keep the direct Electrobun call and never start the worker", async () => {
+		for (const platform of ["darwin", "win32"]) {
+			Object.defineProperty(process, "platform", { value: platform, writable: true });
+			const marker = join(dir, `started-${platform}`);
+			configureClipboardImageWorker(worker(`marker-${platform}.cjs`, `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "1"); parentPort.postMessage({ ok: true, formats: [], image: null });`));
+			const result = await readHostClipboardImage();
+			expect(result.formats, platform).toEqual(["image"]);
+			await waitFor(() => existsSync(marker), 200);
+			expect(existsSync(marker), "cause: a non-Linux paste went through the Linux clipboard worker. fix: gate readInWorker on process.platform === \"linux\"").toBe(false);
+		}
 	});
 
 	it("skips reading image bytes when the clipboard has no image", async () => {

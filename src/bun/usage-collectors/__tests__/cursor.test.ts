@@ -23,18 +23,16 @@ describe("Cursor usage collection", () => {
 		});
 	});
 
-	it("does not fabricate usage from transcript text or hooks without token counts", () => {
+	it("does not fabricate usage without token counts, from malformed counts, or without a real identity", () => {
 		expect(parseCursorHookUsage({
 			...PAYLOAD, input_tokens: undefined, output_tokens: undefined, text: "a very long assistant response",
 		}, TIMESTAMP)).toBeNull();
-	});
-
-	it.each([NaN, Infinity, -1, "120", 1.5])("rejects malformed token counts (%s)", input_tokens => {
-		expect(parseCursorHookUsage({ ...PAYLOAD, input_tokens }, TIMESTAMP)).toBeNull();
-	});
-
-	it.each(["conversation_id", "generation_id", "model"])("requires a real %s", key => {
-		expect(parseCursorHookUsage({ ...PAYLOAD, [key]: "" }, TIMESTAMP)).toBeNull();
+		for (const input_tokens of [NaN, Infinity, -1, "120", 1.5]) {
+			expect(parseCursorHookUsage({ ...PAYLOAD, input_tokens }, TIMESTAMP), String(input_tokens)).toBeNull();
+		}
+		for (const key of ["conversation_id", "generation_id", "model"]) {
+			expect(parseCursorHookUsage({ ...PAYLOAD, [key]: "" }, TIMESTAMP), key).toBeNull();
+		}
 	});
 
 	it("retains aborted generation usage available only from the stop hook", () => {
@@ -87,18 +85,16 @@ describe("Cursor usage collection", () => {
 		expect([...state.records.values()].reduce((sum, record) => sum + record.counts.inputTokens, 0)).toBe(240);
 	});
 
-	it("retains the original billing day when an equal snapshot is redelivered after midnight", () => {
+	it("retains the earliest billing day when an equal snapshot is redelivered after midnight, in either order", () => {
 		const state = newUsageState();
 		foldCursorHookUsage(state, PAYLOAD, TIMESTAMP);
 		foldCursorHookUsage(state, PAYLOAD, TIMESTAMP + 86_400_000);
 		expect([...state.records.values()][0].timestamp).toBe(TIMESTAMP);
-	});
 
-	it("retains the earliest day when hook delivery order is reversed", () => {
-		const state = newUsageState();
-		foldCursorHookUsage(state, PAYLOAD, TIMESTAMP + 86_400_000);
-		foldCursorHookUsage(state, PAYLOAD, TIMESTAMP);
-		expect([...state.records.values()][0].timestamp).toBe(TIMESTAMP);
+		const reversed = newUsageState();
+		foldCursorHookUsage(reversed, PAYLOAD, TIMESTAMP + 86_400_000);
+		foldCursorHookUsage(reversed, PAYLOAD, TIMESTAMP);
+		expect([...reversed.records.values()][0].timestamp).toBe(TIMESTAMP);
 	});
 
 	it("accepts a fuller generation snapshot without summing repeated counts", () => {

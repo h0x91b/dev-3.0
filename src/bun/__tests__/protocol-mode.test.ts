@@ -46,32 +46,30 @@ describe("taskProtocolMode", () => {
 });
 
 describe("protocol variants", () => {
-	for (const family of FAMILIES) {
+	// One test per family: full and lean bodies, both modes, the verbatim lean subset and the branch-safety rules.
+	it.each(FAMILIES)("%s: shared-folder drops every worktree-only instruction and forbids moving the shared branch; worktree keeps them", (family) => {
 		const variants: Array<[string, (mode: ProtocolMode) => string]> = [
 			["full", (mode) => skillBodyFor(family, mode)],
 			["lean", (mode) => leanSkillBodyFor(family, mode)],
 		];
 		for (const [kind, body] of variants) {
-			it(`${family} ${kind}: shared-folder drops every worktree-only instruction`, () => {
-				const shared = body("shared-folder");
-				expect(WORKTREE_ONLY.filter((line) => shared.includes(line))).toEqual([]);
-				expect(shared).toContain("**Other tasks edit this tree at the same time.**");
-				expect(shared).toContain("**PRs are optional here.**");
-				expect(shared).toContain("**Preservation gate (mandatory):**");
-			});
-
-			it(`${family} ${kind}: worktree keeps them`, () => {
-				const worktree = body("worktree");
-				for (const line of WORKTREE_ONLY) expect(worktree, line).toContain(line);
-			});
+			const shared = body("shared-folder");
+			expect(WORKTREE_ONLY.filter((line) => shared.includes(line)), kind).toEqual([]);
+			expect(shared, kind).toContain("**Other tasks edit this tree at the same time.**");
+			expect(shared, kind).toContain("**PRs are optional here.**");
+			expect(shared, kind).toContain("**Preservation gate (mandatory):**");
+			const worktree = body("worktree");
+			for (const line of WORKTREE_ONLY) expect(worktree, `${kind}: ${line}`).toContain(line);
 		}
 
-		it(`${family}: the shared-folder lean body is taken verbatim from its full body`, () => {
-			const fullLines = new Set(skillBodyFor(family, "shared-folder").split("\n"));
-			const invented = leanSkillBodyFor(family, "shared-folder").split("\n").filter((line) => !fullLines.has(line));
-			expect(invented).toEqual([]);
-		});
-	}
+		// The shared-folder lean body is taken verbatim from its full body.
+		const full = skillBodyFor(family, "shared-folder");
+		const fullLines = new Set(full.split("\n"));
+		expect(leanSkillBodyFor(family, "shared-folder").split("\n").filter((line) => !fullLines.has(line))).toEqual([]);
+
+		for (const cmd of ["git switch", "git checkout <branch>", "git rebase", "git pull", "git commit --amend"]) expect(full).toContain(cmd);
+		expect(full).toContain("never a branch you create or switch to here");
+	});
 });
 
 // Pinned to macOS: the worktree PR section is worded per platform, and CI is not macOS.
@@ -137,34 +135,24 @@ describe("launching a shared-folder task", () => {
 		expect(lean).toContain(`\`${join(AGENT_PROMPTS_DIR, "claude-shared-folder.md")}\``);
 	});
 
-	it("Codex carries the shared-folder body inline", async () => {
+	it("Codex carries the shared-folder body inline, without a duplicate notice", async () => {
 		onPosix();
 		delete process.env.DEV3_LEAN_PROTOCOL;
 		const cmd = await resolveAgentCommand(agent("codex"), undefined, CTX, { protocolMode: "shared-folder" });
 		expect(cmd).toContain("**PRs are optional here.**");
 		expect(cmd).not.toContain("This worktree already IS your isolation.");
-	});
-
-	it.each(["gemini", "copilot"])("%s, which injects no protocol, gets the folder rules in its prompt", async (command) => {
-		onPosix();
-		const cmd = await resolveAgentCommand(agent(command), undefined, CTX, { protocolMode: "shared-folder" });
-		expect(cmd).toContain("dev3: this task shares its folder");
-		expect(cmd).toContain("never switch, rebase, pull or amend");
-		expect(await resolveAgentCommand(agent(command), undefined, CTX)).not.toContain("dev3: this task shares its folder");
-	});
-
-	it("an agent that injects the protocol gets no duplicate notice in its prompt", async () => {
-		onPosix();
-		delete process.env.DEV3_LEAN_PROTOCOL;
-		const cmd = await resolveAgentCommand(agent("codex"), undefined, CTX, { protocolMode: "shared-folder" });
+		// It injects the protocol, so it gets no duplicate notice in its prompt.
 		expect(cmd).not.toContain("dev3: this task shares its folder");
 	});
-});
 
-describe("shared-folder safety rules", () => {
-	it.each(FAMILIES)("%s: forbids moving the folder's shared branch", (family) => {
-		const body = skillBodyFor(family, "shared-folder");
-		for (const cmd of ["git switch", "git checkout <branch>", "git rebase", "git pull", "git commit --amend"]) expect(body).toContain(cmd);
-		expect(body).toContain("never a branch you create or switch to here");
+	it("an agent that injects no protocol (gemini, copilot) gets the folder rules in its prompt", async () => {
+		onPosix();
+		for (const command of ["gemini", "copilot"]) {
+			const cmd = await resolveAgentCommand(agent(command), undefined, CTX, { protocolMode: "shared-folder" });
+			expect(cmd, command).toContain("dev3: this task shares its folder");
+			expect(cmd, command).toContain("never switch, rebase, pull or amend");
+			expect(await resolveAgentCommand(agent(command), undefined, CTX), command).not.toContain("dev3: this task shares its folder");
+		}
 	});
+
 });

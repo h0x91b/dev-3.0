@@ -29,9 +29,14 @@ describe("version-skew hello boundary", () => {
 		}
 	});
 
-	it("accepts a hello whose version matches the host's own version", () => {
+	it("accepts a matching-version hello and stamps versioned welcome / error frames with the host's version", () => {
 		expect(evaluateHelloAtVersion(versionedHello(2, "alpha", 4), "alpha", 2)).toEqual({ ok: true, id: 4 });
 		expect(evaluateHelloAtVersion(versionedHello(7, "alpha", 4), "alpha", 7)).toEqual({ ok: true, id: 4 });
+		{
+			expect(versionedWelcome(2, 4, "alpha")).toEqual({ v: 2, type: "welcome", id: 4, sessionId: "alpha", protocolVersion: 2 });
+			expect(versionedError(5, "not-found", 7, "x")).toEqual({ v: 5, type: "error", code: "not-found", id: 7, message: "x" });
+			expect(versionedError(5, "internal-error")).toEqual({ v: 5, type: "error", code: "internal-error" });
+		}
 	});
 
 	it("rejects an incompatible client with one explicit version-mismatch stamped at the host version", () => {
@@ -57,12 +62,6 @@ describe("version-skew hello boundary", () => {
 			ok: false,
 			error: { code: "bad-request" },
 		});
-	});
-
-	it("stamps versioned welcome / error frames with the host's version", () => {
-		expect(versionedWelcome(2, 4, "alpha")).toEqual({ v: 2, type: "welcome", id: 4, sessionId: "alpha", protocolVersion: 2 });
-		expect(versionedError(5, "not-found", 7, "x")).toEqual({ v: 5, type: "error", code: "not-found", id: 7, message: "x" });
-		expect(versionedError(5, "internal-error")).toEqual({ v: 5, type: "error", code: "internal-error" });
 	});
 
 	it("versionedHello matches the frozen hello frame shape at the current version", () => {

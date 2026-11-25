@@ -155,24 +155,23 @@ async function makeHarness(overrides: Partial<LiveParserPipelineOptions> = {}): 
 }
 
 describe("LiveParserPipeline", () => {
-	it("never parses inside the callback — ingestion happens only on the scheduled drain", async () => {
+	it("ingests only on the scheduled drain, never in the callback, and keeps output/resize order", async () => {
 		const h = await makeHarness();
 		h.pipeline.onOutput(encoder.encode("hello"));
 		expect(h.core.applied).toEqual([]); // callback did only bounded enqueueing
 		h.runScheduled();
 		expect(h.core.applied).toEqual(["output:hello"]);
+		{
+			const h = await makeHarness();
+			h.pipeline.onOutput(encoder.encode("a"));
+			h.pipeline.onResize(120, 40);
+			h.pipeline.onOutput(encoder.encode("b"));
+			h.runScheduled();
+			expect(h.core.applied).toEqual(["output:a", "resize:120x40", "output:b"]);
+		}
 	});
 
-	it("applies output and resize events in their original order", async () => {
-		const h = await makeHarness();
-		h.pipeline.onOutput(encoder.encode("a"));
-		h.pipeline.onResize(120, 40);
-		h.pipeline.onOutput(encoder.encode("b"));
-		h.runScheduled();
-		expect(h.core.applied).toEqual(["output:a", "resize:120x40", "output:b"]);
-	});
-
-	it("writes exactly one reply per query back to the PTY, and a reply echo produces no loop", async () => {
+	it("writes one reply per query (capped per drain), and a reply echo produces no loop", async () => {
 		const h = await makeHarness();
 		h.pipeline.onOutput(encoder.encode("\x1b[6n"));
 		h.runScheduled();
@@ -182,16 +181,15 @@ describe("LiveParserPipeline", () => {
 		h.runScheduled();
 		expect(h.replies).toHaveLength(1);
 		expect(h.pipeline.snapshot().ingested.replies).toBe(1);
+		{
+			const h = await makeHarness({ maxRepliesPerDrain: 2 });
+			h.pipeline.onOutput(encoder.encode("\x1b[6n\x1b[6n\x1b[6n"));
+			h.runScheduled();
+			expect(h.replies).toHaveLength(2);
+		}
 	});
 
-	it("caps replies per drain", async () => {
-		const h = await makeHarness({ maxRepliesPerDrain: 2 });
-		h.pipeline.onOutput(encoder.encode("\x1b[6n\x1b[6n\x1b[6n"));
-		h.runScheduled();
-		expect(h.replies).toHaveLength(2);
-	});
-
-	it("contains a parser failure: failed verdict persisted, host-facing calls never throw", async () => {
+	it("contains a parser failure (real or injected): failed verdict persisted, host-facing calls never throw", async () => {
 		const h = await makeHarness();
 		h.core.ingestError = new Error("boom");
 		h.pipeline.onOutput(encoder.encode("x"));
@@ -203,14 +201,13 @@ describe("LiveParserPipeline", () => {
 		h.pipeline.onOutput(encoder.encode("y"));
 		h.runScheduled();
 		expect(h.core.applied).toEqual([]);
-	});
-
-	it("reports the injected fault exactly like a real parser failure", async () => {
-		const h = await makeHarness({ fault: "ingest" });
-		h.pipeline.onOutput(encoder.encode("x"));
-		h.runScheduled();
-		expect(h.pipeline.healthStatus).toBe("failed");
-		expect(last(h.snapshots)?.health.error).toContain("injected parser fault");
+		{
+			const h = await makeHarness({ fault: "ingest" });
+			h.pipeline.onOutput(encoder.encode("x"));
+			h.runScheduled();
+			expect(h.pipeline.healthStatus).toBe("failed");
+			expect(last(h.snapshots)?.health.error).toContain("injected parser fault");
+		}
 	});
 
 	it("flips to an explicit overflowed verdict when the queue cap is exceeded", async () => {

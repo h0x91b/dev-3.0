@@ -40,15 +40,12 @@ describe("buildClaudeManagedSettings", () => {
 		expect(s.statusLine).toEqual({ type: "command", command: '"/bin/dev3" statusline' });
 	});
 
-	it("asks the wrapper for the account prefix only when showAccount is on", () => {
+	it("asks the wrapper for the account prefix only with showAccount, and adds the AWS SSO refresh only when asked", () => {
 		expect(buildClaudeManagedSettings("/bin/dev3", true, false, true).statusLine).toEqual({
 			type: "command",
 			command: '"/bin/dev3" statusline --account',
 		});
 		expect(buildClaudeManagedSettings("/bin/dev3", false, false, true)).not.toHaveProperty("statusLine");
-	});
-
-	it("adds the AWS SSO refresh only when asked", () => {
 		expect(buildClaudeManagedSettings("/bin/dev3", true)).not.toHaveProperty("awsAuthRefresh");
 		expect(buildClaudeManagedSettings("/bin/dev3", true, true).awsAuthRefresh).toBe("aws sso login");
 	});
@@ -156,20 +153,22 @@ describe("findLatestCodexRollout", () => {
 		expect(findLatestCodexRollout(tmp)).toBe(live);
 	});
 
-	it("ignores non-rollout files and returns null on an empty root", () => {
+	it("returns null on a missing or empty root, ignoring non-rollout files", () => {
 		expect(findLatestCodexRollout(tmp)).toBeNull();
 		const dir = join(tmp, "2026", "07", "05");
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, "notes.txt"), "x");
 		expect(findLatestCodexRollout(tmp)).toBeNull();
-	});
-
-	it("returns null for a missing root", () => {
 		expect(findLatestCodexRollout(join(tmp, "missing"))).toBeNull();
 	});
 });
 
 describe("readCodexSnapshot", () => {
+
+	it("returns null when no rollouts exist", () => {
+		expect(readCodexSnapshot(tmp)).toBeNull();
+	});
+
 	it("extracts the last rate_limits event from the newest rollout tail", () => {
 		const dir = join(tmp, "2026", "07", "05");
 		mkdirSync(dir, { recursive: true });
@@ -184,10 +183,6 @@ describe("readCodexSnapshot", () => {
 		expect(snap!.windows[0].usedPercent).toBe(66);
 		expect(snap!.creditsBalance).toBe("7");
 		expect(readCodexSnapshot(tmp, "codex-account")?.accountId).toBe("codex-account");
-	});
-
-	it("returns null when no rollouts exist", () => {
-		expect(readCodexSnapshot(tmp)).toBeNull();
 	});
 });
 
@@ -205,15 +200,12 @@ describe("readClaudeSessionDumps", () => {
 		]);
 	});
 
-	it("skips stale, corrupt and non-session dumps", () => {
+	it("skips stale, corrupt and non-session dumps, and a missing directory", () => {
 		const now = Date.now();
 		writeFileSync(join(tmp, "old.json"), JSON.stringify({ capturedAt: now - 7 * 3_600_000, payload: payload(1) }));
 		writeFileSync(join(tmp, "torn.json"), "{not json");
 		writeFileSync(join(tmp, "empty.json"), JSON.stringify({ capturedAt: now, payload: { rate_limits: {} } }));
 		expect(readClaudeSessionDumps(tmp, now)).toEqual([]);
-	});
-
-	it("returns nothing when the directory does not exist", () => {
 		expect(readClaudeSessionDumps(join(tmp, "missing"))).toEqual([]);
 	});
 
@@ -313,12 +305,9 @@ describe("readAgySnapshot", () => {
 		expect(snapshot.windows).toEqual([{ id: "gemini-weekly", usedPercent: 60, resetsAt: Date.parse("2026-11-23T10:00:00Z"), windowMinutes: 10080 }]);
 	});
 
-	it("gives a stale dump the age the monitor's activity window judges it by", () => {
+	it("ages a stale dump for the activity window, and answers null for a torn, empty, bucket-less or missing dump", () => {
 		const old = write("old.json", { capturedAt: Date.now() - 8 * 24 * 3600_000, quota: { a: { remaining_fraction: 0.5 } } });
 		expect(isRateLimitSnapshotRecent(readAgySnapshot(old)!, Date.now())).toBe(false);
-	});
-
-	it("answers null for a torn, empty or bucket-less dump", () => {
 		expect(readAgySnapshot(write("torn.json", '{"capturedAt": 1, "quo'))).toBeNull();
 		expect(readAgySnapshot(write("empty.json", {}))).toBeNull();
 		expect(readAgySnapshot(join(tmp, "missing.json"))).toBeNull();

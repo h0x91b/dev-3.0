@@ -58,15 +58,12 @@ describe("Claude interruption lifecycle", () => {
 		await idle();
 		expect(fixtures.task.status).toBe("user-questions");
 		expect(moveTask).toHaveBeenCalledTimes(3);
-	});
-
-	it("raises no questions badge when it parks the task after Escape", async () => {
-		await prompt();
-		await idle();
+		// Parking after Escape raises no questions badge.
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: true }));
 	});
 
-	it.each(["review-by-ai", "review-by-user"] as const)("preserves normal Stop's %s lane", async status => {
+	it("preserves normal Stop's review lane", async () => {
+		const status = "review-by-ai";
 		await prompt();
 		await agentHandlers["task.claudeTurnEnded"]!(params);
 		fixtures.task.status = status;

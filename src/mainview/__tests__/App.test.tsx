@@ -452,22 +452,15 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
 		});
 
-		it("reports a failed restart and brings the offer back", async () => {
+		it("reports a failed restart and brings the offer back, then restarts once the user confirms again", async () => {
 			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
 			vi.mocked(api.request.restartTmuxServer).mockRejectedValueOnce(new Error("kill-server failed"));
-			vi.mocked(confirm).mockResolvedValueOnce(true);
+			vi.mocked(confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
 			await renderApp();
 			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
 			expect(await screen.findByText(/Couldn't restart terminals/)).toBeInTheDocument();
-			expect(await screen.findByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
-		});
-
-		it("restarts the tmux server once the user confirms", async () => {
-			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
-			vi.mocked(confirm).mockResolvedValueOnce(true);
-			await renderApp();
 			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
-			await waitFor(() => expect(api.request.restartTmuxServer).toHaveBeenCalledTimes(1));
+			await waitFor(() => expect(api.request.restartTmuxServer).toHaveBeenCalledTimes(2));
 		});
 
 		it("lists the agents a restart would cut off mid-turn before Restart now works", async () => {
@@ -536,10 +529,20 @@ describe("App keyboard shortcuts", () => {
 			});
 		}
 
-		it("opens the quit dialog when bun requests it", async () => {
+		it("opens the quit dialog when bun requests it; Escape closes it and stops the countdown", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
 			await renderApp();
 			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
+			await userEvent.keyboard("{Escape}");
+			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
+			vi.useFakeTimers();
+			try {
+				act(() => vi.advanceTimersByTime(15_000));
+				expect(api.request.quitApp).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it("shows the dialog on mount when a quit is pending (reopened window)", async () => {
@@ -554,34 +557,18 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
 		});
 
-		it("Cmd+Q forwards to bun via requestQuit (no native accelerator reliance)", async () => {
-			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
-			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
-			expect(api.request.requestQuit).toHaveBeenCalled();
-		});
-
-		it("Ctrl+Q forwards to bun via requestQuit off macOS", async () => {
-			fakePlatform("linux");
-			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
-			await renderApp();
-			await userEvent.keyboard("{Control>}q{/Control}");
-			expect(api.request.requestQuit).toHaveBeenCalled();
-		});
-
-		it("Ctrl+Q on macOS is XON for the terminal, not a quit", async () => {
+		// Cmd+Q is caught in the renderer (no native accelerator reliance); on macOS
+		// Ctrl+Q is XON for the terminal, off macOS it is the quit.
+		it("Cmd+Q forwards to bun via requestQuit, Ctrl+Q only off macOS", async () => {
 			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
 			await renderApp();
 			await userEvent.keyboard("{Control>}q{/Control}");
 			expect(api.request.requestQuit).not.toHaveBeenCalled();
-		});
-
-		it("Escape closes the quit dialog", async () => {
-			await renderApp();
-			requestQuitDialog();
-			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
-			await userEvent.keyboard("{Escape}");
-			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			expect(api.request.requestQuit).toHaveBeenCalledTimes(1);
+			fakePlatform("linux");
+			await userEvent.keyboard("{Control>}q{/Control}");
+			expect(api.request.requestQuit).toHaveBeenCalledTimes(2);
 		});
 
 		it("Quit button confirms via quitApp (dontShowAgain=false by default)", async () => {
@@ -590,15 +577,6 @@ describe("App keyboard shortcuts", () => {
 			requestQuitDialog();
 			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
 			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: false });
-		});
-
-		it("Quit with 'don't show again' checked passes dontShowAgain=true", async () => {
-			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
-			await renderApp();
-			requestQuitDialog();
-			await userEvent.click(screen.getByRole("checkbox"));
-			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
-			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: true });
 		});
 
 		it("counts down and quits on its own after 10 seconds", async () => {
@@ -618,7 +596,7 @@ describe("App keyboard shortcuts", () => {
 			}
 		});
 
-		it("the first click drops the countdown — only an abandoned dialog quits itself", async () => {
+		it("the first click drops the countdown — only an abandoned dialog quits itself; 'don't show again' reaches quitApp", async () => {
 			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
 			await renderApp();
 			requestQuitDialog();
@@ -631,6 +609,8 @@ describe("App keyboard shortcuts", () => {
 			} finally {
 				vi.useRealTimers();
 			}
+			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
+			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: true });
 		});
 
 		it("a keystroke drops the countdown too", async () => {
@@ -648,39 +628,18 @@ describe("App keyboard shortcuts", () => {
 			}
 		});
 
-		it("stops counting down once the dialog is dismissed", async () => {
-			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
-			await renderApp();
-			requestQuitDialog();
-			await userEvent.keyboard("{Escape}");
-			vi.useFakeTimers();
-			try {
-				act(() => vi.advanceTimersByTime(15_000));
-				expect(api.request.quitApp).not.toHaveBeenCalled();
-			} finally {
-				vi.useRealTimers();
-			}
-		});
 	});
 
 	describe("hide (Cmd+H / Ctrl+H)", () => {
-		it("Cmd+H calls hideApp", async () => {
-			await renderApp();
-			await userEvent.keyboard("{Meta>}h{/Meta}");
-			expect(api.request.hideApp).toHaveBeenCalled();
-		});
-
-		it("Ctrl+H calls hideApp off macOS", async () => {
-			fakePlatform("linux");
-			await renderApp();
-			await userEvent.keyboard("{Control>}h{/Control}");
-			expect(api.request.hideApp).toHaveBeenCalled();
-		});
-
-		it("Ctrl+H on macOS is backspace for the terminal, not a hide", async () => {
+		it("Cmd+H calls hideApp; Ctrl+H is backspace on macOS and a hide elsewhere", async () => {
 			await renderApp();
 			await userEvent.keyboard("{Control>}h{/Control}");
 			expect(api.request.hideApp).not.toHaveBeenCalled();
+			await userEvent.keyboard("{Meta>}h{/Meta}");
+			expect(api.request.hideApp).toHaveBeenCalledTimes(1);
+			fakePlatform("linux");
+			await userEvent.keyboard("{Control>}h{/Control}");
+			expect(api.request.hideApp).toHaveBeenCalledTimes(2);
 		});
 	});
 
@@ -699,21 +658,20 @@ describe("App keyboard shortcuts", () => {
 			{ combo: "Ctrl+O (open file)", init: { key: "o", code: "KeyO" } },
 		];
 
-		it.each(stolen)("leaves $combo alone", async ({ init }) => {
+		it("leaves every terminal Ctrl combo alone on macOS, and still claims them off macOS", async () => {
 			await renderApp();
-			const event = new KeyboardEvent("keydown", { ...init, ctrlKey: true, bubbles: true, cancelable: true });
-			act(() => window.dispatchEvent(event));
-			expect(event.defaultPrevented).toBe(false);
-			expect(api.request.requestQuit).not.toHaveBeenCalled();
-			expect(api.request.hideApp).not.toHaveBeenCalled();
-			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
-			expect(screen.queryByTestId("add-project-modal")).not.toBeInTheDocument();
-			expect(screen.queryByText("New Task")).not.toBeInTheDocument();
-		});
+			for (const { combo, init } of stolen) {
+				const event = new KeyboardEvent("keydown", { ...init, ctrlKey: true, bubbles: true, cancelable: true });
+				act(() => window.dispatchEvent(event));
+				expect(event.defaultPrevented, combo).toBe(false);
+				expect(api.request.requestQuit, combo).not.toHaveBeenCalled();
+				expect(api.request.hideApp, combo).not.toHaveBeenCalled();
+				expect(screen.getByTestId("dashboard-screen"), combo).toBeInTheDocument();
+				expect(screen.queryByTestId("add-project-modal"), combo).not.toBeInTheDocument();
+				expect(screen.queryByText("New Task"), combo).not.toBeInTheDocument();
+			}
 
-		it("still claims the same keys with Ctrl off macOS", async () => {
 			fakePlatform("linux");
-			await renderApp();
 			const event = new KeyboardEvent("keydown", { key: "p", code: "KeyP", ctrlKey: true, bubbles: true, cancelable: true });
 			act(() => window.dispatchEvent(event));
 			expect(event.defaultPrevented).toBe(true);
@@ -749,45 +707,24 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("settings (Cmd+, / Ctrl+,)", () => {
-		it("Cmd+, navigates to the settings screen", async () => {
-			await renderApp();
-			await userEvent.keyboard("{Meta>},{/Meta}");
-			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
-		});
-
-		it("Ctrl+, navigates to the settings screen", async () => {
-			// The app modifier is platform-exact: Ctrl combos are the LINUX keymap.
-			// On macOS ⌃, belongs to the terminal, so this must run as Linux.
-			fakePlatform("linux");
-			await renderApp();
-			await userEvent.keyboard("{Control>},{/Control}");
-			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
-		});
-
-		it("Escape from settings goes back to dashboard", async () => {
+		it("Cmd+, (Ctrl+, off macOS) navigates to the settings screen, and Escape goes back to dashboard", async () => {
 			await renderApp();
 			await userEvent.keyboard("{Meta>},{/Meta}");
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			// The app modifier is platform-exact: Ctrl combos are the LINUX keymap.
+			// On macOS ⌃, belongs to the terminal.
+			fakePlatform("linux");
+			await userEvent.keyboard("{Control>},{/Control}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 		});
 	});
 
 	describe("board view chord (v 1..9 / v v)", () => {
 		afterEach(() => resetBoardViewCommandsForTests());
 
-		it("v then a digit picks the Nth view, v then v the previous one", async () => {
-			await renderApp();
-			const handler = vi.fn(() => true);
-			registerBoardViewCommandHandler(handler);
-			await userEvent.keyboard("v2");
-			expect(handler).toHaveBeenLastCalledWith({ kind: "nth", n: 2 }, false);
-			await userEvent.keyboard("vv");
-			expect(handler).toHaveBeenLastCalledWith({ kind: "previous" }, false);
-			expect(handler).toHaveBeenCalledTimes(2);
-		});
-
-		it("is inert off a board, and while typing in a field", async () => {
+		it("is inert off a board and while typing in a field; v then a digit picks the Nth view, v then v the previous one", async () => {
 			await renderApp();
 			await userEvent.keyboard("v2");
 			const handler = vi.fn(() => true);
@@ -798,11 +735,17 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("v2");
 			input.remove();
 			expect(handler).not.toHaveBeenCalled();
+
+			await userEvent.keyboard("v2");
+			expect(handler).toHaveBeenLastCalledWith({ kind: "nth", n: 2 }, false);
+			await userEvent.keyboard("vv");
+			expect(handler).toHaveBeenLastCalledWith({ kind: "previous" }, false);
+			expect(handler).toHaveBeenCalledTimes(2);
 		});
 	});
 
 	describe("history navigation aliases", () => {
-		it("uses Ctrl+- for back and Ctrl+Shift+- for forward", async () => {
+		it("uses Ctrl+- / Ctrl+Shift+- and keeps the command-bracket aliases for back and forward", async () => {
 			await renderApp();
 			await userEvent.keyboard("{Meta>},{/Meta}");
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
@@ -812,12 +755,6 @@ describe("App keyboard shortcuts", () => {
 			expect(mockedAdjustZoom).not.toHaveBeenCalled();
 
 			await userEvent.keyboard("{Control>}{Shift>}-{/Shift}{/Control}");
-			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
-		});
-
-		it("keeps the existing command-bracket aliases", async () => {
-			await renderApp();
-			await userEvent.keyboard("{Meta>},{/Meta}");
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 
 			const back = new KeyboardEvent("keydown", {
@@ -969,41 +906,45 @@ describe("App keyboard shortcuts", () => {
 			} as never);
 		});
 
-		it("⌘2 opens the space board anchored on its first member", async () => {
+		it("⌘2 / g 2 open the space board on its first member, ⌘3 the standalone project, ⌘0 Operations, g 1 skips it, ⇧⌘2 opens the task view", async () => {
 			await renderWith(true);
 			press({ key: "2", code: "Digit2", metaKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p2");
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
-		});
 
-		it("⌘2 anchors on the member last used on that board while it is still a member", async () => {
-			localStorage.setItem("dev3-space-last-project-sp_a", "p3");
-			await renderWith(true);
-			press({ key: "2", code: "Digit2", metaKey: true });
-			expect(project()).toHaveAttribute("data-project-id", "p3");
-			expect(project()).toHaveAttribute("data-space-id", "sp_a");
-		});
-
-		it("⌘2 falls back to the first member when the remembered one left the space", async () => {
-			localStorage.setItem("dev3-space-last-project-sp_a", "p4");
-			await renderWith(true);
-			press({ key: "2", code: "Digit2", metaKey: true });
-			expect(project()).toHaveAttribute("data-project-id", "p2");
-		});
-
-		it("⌘3 opens the standalone project, with no space", async () => {
-			await renderWith(true);
 			press({ key: "3", code: "Digit3", metaKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p4");
 			expect(project()).toHaveAttribute("data-space-id", "");
-		});
 
-		it("⇧⌘2 opens the space board in the task view", async () => {
-			await renderWith(true);
+			press({ key: "0", code: "Digit0", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "ops");
+
+			press({ key: "g", code: "KeyG" });
+			press({ key: "2", code: "Digit2" });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+
+			press({ key: "g", code: "KeyG" });
+			press({ key: "1", code: "Digit1" });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+
 			press({ key: "@", code: "Digit2", metaKey: true, shiftKey: true });
 			expect(project()).toHaveAttribute("data-project-id", "p2");
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		it("⌘2 anchors on the member last used on that board while it is still a member, else on the first member", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p4");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+
+			press({ key: "3", code: "Digit3", metaKey: true });
+			localStorage.setItem("dev3-space-last-project-sp_a", "p3");
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p3");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 		});
 
 		it.each([true, false])("⌘1 from a space board's split view lands on the project alone (follow=%s)", async (follow) => {
@@ -1075,7 +1016,7 @@ describe("App keyboard shortcuts", () => {
 			}
 		});
 
-		it("⌘ + the digit of the board on screen keeps the selected task", async () => {
+		it("⌘ + the digit, or g then the digit, of the board on screen keeps the selected task", async () => {
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
 			});
@@ -1084,13 +1025,6 @@ describe("App keyboard shortcuts", () => {
 			await settleDigitJump();
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
-		});
-
-		it("g then the digit of the board on screen keeps the selected task", async () => {
-			vi.mocked(api.request.getLastRoute).mockResolvedValue({
-				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
-			});
-			await renderWith(false);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "3", code: "Digit3" });
 			await settleDigitJump();
@@ -1273,29 +1207,11 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 		});
 
-		it("⌘0 still opens Operations", async () => {
-			await renderWith(true);
-			press({ key: "0", code: "Digit0", metaKey: true });
-			expect(project()).toHaveAttribute("data-project-id", "ops");
-		});
-
-		it("g then 2 opens the space board too", async () => {
-			await renderWith(true);
-			press({ key: "g", code: "KeyG" });
-			press({ key: "2", code: "Digit2" });
-			expect(project()).toHaveAttribute("data-project-id", "p2");
-			expect(project()).toHaveAttribute("data-space-id", "sp_a");
-		});
-
-		it.each([true, false])("g then 1 skips Operations (follow=%s)", async (follow) => {
-			await renderWith(follow);
+		it("with the setting off, g then 1 skips Operations and ⌘N walks the dashboard's rows, the space's members first, never a space", async () => {
+			await renderWith(false);
 			press({ key: "g", code: "KeyG" });
 			press({ key: "1", code: "Digit1" });
-			expect(project()).toHaveAttribute("data-project-id", follow ? "p1" : "p2");
-		});
-
-		it("with the setting off, ⌘N walks the dashboard's rows, the space's members first, never a space", async () => {
-			await renderWith(false);
+			expect(project()).toHaveAttribute("data-project-id", "p2");
 			const opened = ["1", "2", "3", "4"].map((digit) => {
 				press({ key: digit, code: `Digit${digit}`, metaKey: true });
 				return [project().getAttribute("data-project-id"), project().getAttribute("data-space-id")];
@@ -2415,19 +2331,6 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			});
 		}
 
-		it("names both sides and the card opens the sending task with the beta off", async () => {
-			await renderWithBoard();
-			disableTrafficBeta();
-			dispatchAgentMessage();
-
-			expect(screen.getByRole("button", { name: "Open sender task #7 Coordinator" })).toBeInTheDocument();
-			expect(screen.getByRole("button", { name: "Open recipient task #42 Receiver" })).toBeInTheDocument();
-			await userEvent.click(await toastButton());
-			await waitFor(() => {
-				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
-			});
-		});
-
 		it("stacks a burst behind the newest message and names each covered pair", async () => {
 			await renderWithBoard();
 			dispatchAgentMessage({ preview: "first" });
@@ -2487,32 +2390,9 @@ it("digits follow the order just chosen, before the host has stored it", async (
 		// board opened the screen scoped to the board in view, so the message that
 		// raised the toast was filtered out of its own destination. A notification
 		// click always lands on all active projects (no seeded project id).
-		it("opens at all active projects when the traffic belongs to another board", async () => {
-			await renderWithBoard();
-			enableTrafficBeta();
-			dispatchAgentMessage({ projectId: "p2", fromProjectId: "p2" });
-
-			await userEvent.click(await trafficAction());
-
-			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
-		});
-
-		// Same rule when both ends sit on the board in view: the destination does not
-		// depend on where the message came from, only on how the screen was opened.
-		it("opens at all active projects for same-board traffic too", async () => {
-			await renderWithBoard();
-			enableTrafficBeta();
-			dispatchAgentMessage();
-
-			await userEvent.click(await trafficAction());
-
-			expect(await screen.findByTestId("agent-traffic-screen")).toHaveAttribute("data-scope-project-id", "");
-		});
-
-		// Opening the screen was only half of it: the click is about ONE task, so the
-		// receiver arrives as the screen's subject and opens selected. Without it the
-		// user landed on the whole scene and had to hunt for the card the toast named.
-		it("hands the receiving task to the screen as its subject", async () => {
+		// And the click is about ONE task, so the receiver arrives as the screen's
+		// subject and opens selected — no hunting for the card the toast named.
+		it("opens at all active projects when the traffic belongs to another board, with the receiver as subject", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage({ projectId: "p2", fromProjectId: "p2", taskId: "t-receiver" });
@@ -2520,6 +2400,7 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			await userEvent.click(await trafficAction());
 
 			const view = await screen.findByTestId("agent-traffic-screen");
+			expect(view).toHaveAttribute("data-scope-project-id", "");
 			expect(view).toHaveAttribute("data-focus-task-id", "t-receiver");
 			expect(view).toHaveAttribute("data-focus-project-id", "p2");
 		});
@@ -2537,10 +2418,12 @@ it("digits follow the order just chosen, before the host has stored it", async (
 
 		// The row is fixed when the toast is raised: a beta switched on later adds no
 		// traffic action, and the card still opens the sender its label names.
-		it("keeps the sender as the card's destination when the beta is switched on mid-toast", async () => {
+		it("names both sides, and keeps the sender as the card's destination when the beta is switched on mid-toast", async () => {
 			await renderWithBoard();
 			disableTrafficBeta();
 			dispatchAgentMessage();
+			expect(screen.getByRole("button", { name: "Open sender task #7 Coordinator" })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Open recipient task #42 Receiver" })).toBeInTheDocument();
 			enableTrafficBeta();
 
 			await userEvent.click(await toastButton());
@@ -2569,52 +2452,37 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
 		});
 
-		it("offers three labelled destinations: sender, agent traffic, recipient", async () => {
-			await renderWithBoard();
-			enableTrafficBeta();
-			dispatchAgentMessage();
-			await toastButton();
-
-			const actions = document.querySelector("[data-toast-actions]") as HTMLElement;
-			// Compact labels on one row; the spoken names keep the roles.
-			expect(Array.from(actions.querySelectorAll("button")).map((b) => b.textContent)).toEqual([
-				"#7",
-				"Agent traffic",
-				"#42",
-			]);
-			expect(Array.from(actions.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"))).toEqual([
-				"Sender #7",
-				null,
-				"Recipient #42",
-			]);
-		});
-
-		it.each([
-			["the sender action", "Sender #7", "t-sender"],
-			["the recipient action", "Recipient #42", "t-receiver"],
-			["the sender header link", "Open sender task #7 Coordinator", "t-sender"],
-			["the recipient header link", "Open recipient task #42 Receiver", "t-receiver"],
-		])("%s opens that task, never the traffic screen", async (_what, name, expected) => {
+		it("each sender/recipient action and header link opens that task, never the traffic screen", async () => {
 			mockBoards({ p1: [{ id: "t-sender", status: "in-progress" }, { id: "t-receiver", status: "in-progress" }] });
 			await renderWithBoard();
 			enableTrafficBeta();
-			dispatchAgentMessage();
-			await toastButton();
 			const trafficOpens = vi.fn();
 			window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+			try {
+				for (const [name, expected] of [
+					["Sender #7", "t-sender"],
+					["Recipient #42", "t-receiver"],
+					["Open sender task #7 Coordinator", "t-sender"],
+					["Open recipient task #42 Receiver", "t-receiver"],
+				] as const) {
+					dispatchAgentMessage();
+					await toastButton();
 
-			await userEvent.click(screen.getByRole("button", { name }));
+					await userEvent.click(screen.getByRole("button", { name }));
 
-			await waitFor(() => {
-				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", expected);
-			});
-			window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
-			// The click did not also fall through to the card's own destination — not
-			// even on the way: a traffic hop followed by the task would end up here too.
-			expect(trafficOpens).not.toHaveBeenCalled();
-			expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
-			// Acting is answering: the toast goes.
-			expect(screen.queryByRole("button", { name: `Open sender task #7 Coordinator: ${CARD}` })).toBeNull();
+					await waitFor(() => {
+						expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", expected);
+					});
+					// The click did not also fall through to the card's own destination — not
+					// even on the way: a traffic hop followed by the task would end up here too.
+					expect(trafficOpens, name).not.toHaveBeenCalled();
+					expect(screen.queryByTestId("agent-traffic-screen")).toBeNull();
+					// Acting is answering: the toast goes.
+					expect(screen.queryByRole("button", { name: `Open sender task #7 Coordinator: ${CARD}` })).toBeNull();
+				}
+			} finally {
+				window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, trafficOpens);
+			}
 		});
 
 		it("draws both task names in the header as underlined links that keep the number", async () => {
@@ -2633,7 +2501,9 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(links[0]!.children[1]!.className).toContain("truncate");
 		});
 
-		it("the traffic action opens the traffic screen with the receiver as subject", async () => {
+		// Same rule when both ends sit on the board in view: the destination does not
+		// depend on where the message came from, only on how the screen was opened.
+		it("the traffic action opens the traffic screen at all active projects with the receiver as subject for same-board traffic too", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			dispatchAgentMessage();
@@ -2642,6 +2512,7 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			await userEvent.click(screen.getByRole("button", { name: "Agent traffic" }));
 
 			const view = await screen.findByTestId("agent-traffic-screen");
+			expect(view).toHaveAttribute("data-scope-project-id", "");
 			expect(view).toHaveAttribute("data-focus-task-id", "t-receiver");
 		});
 
@@ -2866,8 +2737,9 @@ it("digits follow the order just chosen, before the host has stored it", async (
 		});
 
 		// The traffic screen already shows the message in full; a toast on top of it
-		// previews what is right there and covers its own destination.
-		it("raises no toast while this window is on the traffic screen", async () => {
+		// previews what is right there and covers its own destination. Suppression is
+		// about THIS message on ITS screen: an ordinary `dev3 notify` still gets through.
+		it("raises no toast for the message while this window is on the traffic screen, but leaves an unrelated CLI toast visible", async () => {
 			await renderWithBoard();
 			enableTrafficBeta();
 			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
@@ -2876,25 +2748,6 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			dispatchAgentMessage();
 
 			expect(screen.queryByRole("button", { name: /check the payload/ })).not.toBeInTheDocument();
-		});
-
-		// Off the screen the toast is the only signal there is — the beta being on
-		// must not silence it board-wide.
-		it("still raises the toast on another route with the beta on", async () => {
-			await renderWithBoard();
-			enableTrafficBeta();
-			dispatchAgentMessage();
-
-			expect(await toastButton()).toBeInTheDocument();
-		});
-
-		// Suppression is about THIS message on ITS screen, not about muting the
-		// traffic screen: an ordinary `dev3 notify` still gets through there.
-		it("leaves an unrelated CLI toast visible on the traffic screen", async () => {
-			await renderWithBoard();
-			enableTrafficBeta();
-			await userEvent.keyboard("{Shift>}{Meta>}m{/Meta}{/Shift}");
-			expect(await screen.findByTestId("agent-traffic-screen")).toBeInTheDocument();
 
 			act(() => {
 				window.dispatchEvent(new CustomEvent("rpc:cliToast", {
@@ -3085,14 +2938,20 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
 
 			await renderApp();
-			await userEvent.keyboard("{Meta>},{/Meta}");
-			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
-
-			await waitFor(() =>
-				expect(api.request.saveLastRoute).toHaveBeenCalledWith({
-					route: JSON.stringify({ screen: "settings" }),
-				}),
-			);
+			// The save is debounced; drive its timer instead of waiting it out.
+			vi.useFakeTimers();
+			try {
+				act(() => {
+					window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", code: "Comma", metaKey: true, bubbles: true, cancelable: true }));
+				});
+				expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(400));
+			} finally {
+				vi.useRealTimers();
+			}
+			expect(api.request.saveLastRoute).toHaveBeenCalledWith({
+				route: JSON.stringify({ screen: "settings" }),
+			});
 		});
 	});
 
@@ -3177,14 +3036,9 @@ it("digits follow the order just chosen, before the host has stored it", async (
 	});
 
 	describe("Add Project modal", () => {
-		it("initializes task sound playback on mount", async () => {
-			await renderApp();
-			expect(initTaskSoundPlayback).toHaveBeenCalled();
-		});
-
 		// #1337: without a settings load at boot the mirror kept its default and
 		// the chime played on every UI-driven completion despite the setting.
-		it("mirrors the stored completion-sound setting on mount", async () => {
+		it("initializes task sound playback, mirrors the stored completion-sound setting on mount, and plays pushed sounds", async () => {
 			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
@@ -3195,16 +3049,23 @@ it("digits follow the order just chosen, before the host has stored it", async (
 
 			await renderApp();
 
+			expect(initTaskSoundPlayback).toHaveBeenCalled();
 			await waitFor(() => expect(setTaskCompletionSoundEnabled).toHaveBeenCalledWith(false));
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed", taskId: "task-9" } }));
+			});
+			expect(playTaskSoundFromPush).toHaveBeenCalledWith("completed");
 		});
 
-		it("opens when rpc:openAddProjectModal fires", async () => {
+		it("opens when rpc:openAddProjectModal fires, and closes when the modal requests close", async () => {
 			await renderApp();
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal"));
 			});
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
 			expect(await screen.findByTestId("add-project-modal")).toBeInTheDocument();
+			await userEvent.click(await screen.findByText("Close Add Project"));
+			expect(screen.queryByTestId("add-project-modal")).not.toBeInTheDocument();
 		});
 
 		it("Cmd+P returns to dashboard and opens Add Project from the full task screen", async () => {
@@ -3243,47 +3104,19 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(await screen.findByTestId("add-project-modal")).toBeInTheDocument();
 		});
 
-		it("closes when the modal requests close", async () => {
-			await renderApp();
-			await act(async () => {
-				window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal"));
-			});
-			await userEvent.click(await screen.findByText("Close Add Project"));
-			expect(screen.queryByTestId("add-project-modal")).not.toBeInTheDocument();
-		});
-
-		it("plays task sounds when rpc:taskSound fires", async () => {
-			await renderApp();
-			await act(async () => {
-				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed", taskId: "task-9" } }));
-			});
-			expect(playTaskSoundFromPush).toHaveBeenCalledWith("completed");
-		});
 	});
 
 	describe("New Window (Cmd+Shift+N)", () => {
-		it("Cmd+Shift+N opens a new window via openNewWindow", async () => {
+		it("Cmd+Shift+N (Ctrl+Shift+N off macOS) opens a new window, never the New Task modal", async () => {
 			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
 			await renderApp();
 			await userEvent.keyboard("{Meta>}{Shift>}n{/Shift}{/Meta}");
-			expect(api.request.openNewWindow).toHaveBeenCalled();
-		});
-
-		it("Cmd+Shift+N does not open the New Task modal", async () => {
-			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
-			await renderApp();
-			await userEvent.keyboard("{Meta>}{Shift>}n{/Shift}{/Meta}");
+			expect(api.request.openNewWindow).toHaveBeenCalledTimes(1);
 			expect(screen.queryByText("New Task")).not.toBeInTheDocument();
-		});
-
-		it("Ctrl+Shift+N opens a new window", async () => {
 			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
 			fakePlatform("linux");
-
-			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
-			await renderApp();
 			await userEvent.keyboard("{Control>}{Shift>}n{/Shift}{/Control}");
-			expect(api.request.openNewWindow).toHaveBeenCalled();
+			expect(api.request.openNewWindow).toHaveBeenCalledTimes(2);
 		});
 	});
 
@@ -3626,34 +3459,19 @@ it("digits follow the order just chosen, before the host has stored it", async (
 	});
 
 	describe("project switching (Cmd+1..9)", () => {
-		it("Cmd+1 navigates to the first project", async () => {
+		it("Cmd+1 and Cmd+2 open those projects, Cmd+9 past the end does nothing", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 				{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-			]);
-			await renderApp();
-			await userEvent.keyboard("{Meta>}1{/Meta}");
-			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
-		});
-
-		it("Cmd+2 navigates to the second project", async () => {
-			vi.mocked(api.request.getProjects).mockResolvedValue([
-				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-				{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-			]);
-			await renderApp();
-			await userEvent.keyboard("{Meta>}2{/Meta}");
-			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
-		});
-
-		it("Cmd+9 does nothing when fewer than 9 projects", async () => {
-			vi.mocked(api.request.getProjects).mockResolvedValue([
-				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
 			await renderApp();
 			await userEvent.keyboard("{Meta>}9{/Meta}");
-			// Should stay on dashboard
+			// Fewer than 9 projects: stays on the dashboard.
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
 		});
 
 		it("skips deleted projects in the index", async () => {
@@ -3674,10 +3492,10 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			]);
 			await renderApp();
 			await userEvent.keyboard("{Meta>}0{/Meta}");
-			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "ops");
 		});
 
-		it("Cmd+0 does nothing when there is no built-in Operations board", async () => {
+		it("Cmd+0 and Cmd+` do nothing on a dashboard with no built-in Operations board", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
@@ -3685,94 +3503,49 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			await userEvent.keyboard("{Meta>}0{/Meta}");
 			// No built-in board → stays on the dashboard (zoom-reset relocated to ⇧⌘0).
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
-		});
-	});
-
-	describe("project terminal toggle (Cmd+`)", () => {
-		it("Cmd+` from project screen opens project terminal", async () => {
-			vi.mocked(api.request.getProjects).mockResolvedValue([
-				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-			]);
-			await renderApp();
-			// Navigate to project first
-			await userEvent.keyboard("{Meta>}1{/Meta}");
-			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
-			// Toggle terminal
-			await userEvent.keyboard("{Meta>}`{/Meta}");
-			expect(screen.getByTestId("project-terminal-screen")).toBeInTheDocument();
-		});
-
-		it("Cmd+` from project terminal goes back to project", async () => {
-			vi.mocked(api.request.getProjects).mockResolvedValue([
-				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-			]);
-			await renderApp();
-			await userEvent.keyboard("{Meta>}1{/Meta}");
-			await userEvent.keyboard("{Meta>}`{/Meta}");
-			expect(screen.getByTestId("project-terminal-screen")).toBeInTheDocument();
-			// Toggle back
-			await userEvent.keyboard("{Meta>}`{/Meta}");
-			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
-		});
-
-		it("Cmd+` on dashboard does nothing", async () => {
-			await renderApp();
 			await userEvent.keyboard("{Meta>}`{/Meta}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
 		});
 	});
 
+	describe("project terminal toggle (Cmd+`)", () => {
+		it("Cmd+` from project screen opens project terminal, and toggles back", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			await userEvent.keyboard("{Meta>}`{/Meta}");
+			expect(screen.getByTestId("project-terminal-screen")).toBeInTheDocument();
+			await userEvent.keyboard("{Meta>}`{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+	});
+
 	describe("zoom (Cmd/Ctrl + = - 0)", () => {
-		it("Cmd+= calls adjustZoom with +ZOOM_STEP", async () => {
+		it("zooms with Cmd on macOS and Ctrl elsewhere, and resets only with Shift+0", async () => {
 			await renderApp();
 			await userEvent.keyboard("{Meta>}={/Meta}");
-			expect(mockedAdjustZoom).toHaveBeenCalledWith(ZOOM_STEP);
-		});
-
-		it("Ctrl+= calls adjustZoom with +ZOOM_STEP", async () => {
-			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
-			fakePlatform("linux");
-
-			await renderApp();
-			await userEvent.keyboard("{Control>}={/Control}");
-			expect(mockedAdjustZoom).toHaveBeenCalledWith(ZOOM_STEP);
-		});
-
-		it("Cmd+- calls adjustZoom with -ZOOM_STEP", async () => {
-			await renderApp();
+			expect(mockedAdjustZoom).toHaveBeenLastCalledWith(ZOOM_STEP);
 			await userEvent.keyboard("{Meta>}-{/Meta}");
-			expect(mockedAdjustZoom).toHaveBeenCalledWith(-ZOOM_STEP);
-		});
-
-		it("Ctrl+Alt+- calls adjustZoom with -ZOOM_STEP", async () => {
-			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
-			fakePlatform("linux");
-
-			await renderApp();
-			await userEvent.keyboard("{Control>}{Alt>}-{/Alt}{/Control}");
-			expect(mockedAdjustZoom).toHaveBeenCalledWith(-ZOOM_STEP);
-		});
-
-		it("Cmd+Shift+0 calls applyZoom with DEFAULT_ZOOM", async () => {
+			expect(mockedAdjustZoom).toHaveBeenLastCalledWith(-ZOOM_STEP);
 			// Reset-zoom relocated from ⌘0 (now Jump to Operations) to ⇧⌘0.
-			await renderApp();
-			await userEvent.keyboard("{Meta>}{Shift>}0{/Shift}{/Meta}");
-			expect(mockedApplyZoom).toHaveBeenCalledWith(DEFAULT_ZOOM);
-		});
-
-		it("Ctrl+Shift+0 calls applyZoom with DEFAULT_ZOOM", async () => {
-			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
-			fakePlatform("linux");
-
-			await renderApp();
-			await userEvent.keyboard("{Control>}{Shift>}0{/Shift}{/Control}");
-			expect(mockedApplyZoom).toHaveBeenCalledWith(DEFAULT_ZOOM);
-		});
-
-		it("Cmd+0 (no shift) does NOT reset zoom (it jumps to Operations instead)", async () => {
-			await renderApp();
 			await userEvent.keyboard("{Meta>}0{/Meta}");
 			expect(mockedApplyZoom).not.toHaveBeenCalled();
+			await userEvent.keyboard("{Meta>}{Shift>}0{/Shift}{/Meta}");
+			expect(mockedApplyZoom).toHaveBeenLastCalledWith(DEFAULT_ZOOM);
+
+			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
+			fakePlatform("linux");
+			mockedAdjustZoom.mockClear();
+			mockedApplyZoom.mockClear();
+			await userEvent.keyboard("{Control>}={/Control}");
+			expect(mockedAdjustZoom).toHaveBeenLastCalledWith(ZOOM_STEP);
+			await userEvent.keyboard("{Control>}{Alt>}-{/Alt}{/Control}");
+			expect(mockedAdjustZoom).toHaveBeenLastCalledWith(-ZOOM_STEP);
+			await userEvent.keyboard("{Control>}{Shift>}0{/Shift}{/Control}");
+			expect(mockedApplyZoom).toHaveBeenLastCalledWith(DEFAULT_ZOOM);
 		});
 	});
 
@@ -3803,7 +3576,7 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(writeText).toHaveBeenCalledWith(qrData.accessUrl);
 		});
 
-		it("keeps the active tunnel indicator after the QR modal closes", async () => {
+		it("keeps the active tunnel indicator after the QR modal closes, and hides the interface picker while connected", async () => {
 			await renderApp();
 			const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
 			const qrData = {
@@ -3813,6 +3586,14 @@ it("digits follow the order just chosen, before the host has stored it", async (
 				tunnelBinaryInstalled: true,
 				tunnelProvider: "cloudflare" as const,
 				tunnelFailureReason: null,
+				interfaces: [
+					{ name: "en0", address: "192.168.0.1", internal: false },
+					{ name: "loopback", address: "127.0.0.1", internal: true },
+				],
+				selectedHost: "192.168.0.1",
+				staticCodeActive: false,
+				signInLink: null,
+				serverStatus: { running: true, port: 51473, failure: null },
 			};
 
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
@@ -3820,6 +3601,8 @@ it("digits follow the order just chosen, before the host has stored it", async (
 				expect(remoteButton.className).toContain("remote-access-active");
 				expect(remoteButton.className).toContain("text-accent");
 			});
+			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
+			expect(screen.queryByText("Reachable at")).not.toBeInTheDocument();
 
 			await userEvent.click(screen.getByText("Close"));
 			await waitFor(() => expect(screen.queryByText("Copy URL")).not.toBeInTheDocument());
@@ -3873,36 +3656,6 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			await waitFor(() => expect(remoteButton.className).not.toContain("remote-access-active"));
 		});
 
-		it("shows 'Connected' overlay and disables Copy when qrTokenConsumed fires", async () => {
-			await renderApp();
-
-			// Open QR modal via push event
-			const qrData = {
-				qrDataUrl: "data:image/png;base64,test",
-				accessUrl: "http://192.168.0.1:1234/?token=test",
-				tunnelState: "idle",
-				tunnelBinaryInstalled: false,
-				tunnelProvider: "cloudflare" as const,
-				tunnelFailureReason: null,
-			};
-			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
-
-			// QR modal should be open with active Copy button
-			await waitFor(() => {
-				expect(screen.getByText("Copy URL")).toBeInTheDocument();
-			});
-			expect(screen.getByText("Copy URL")).not.toBeDisabled();
-
-			// Simulate a client connecting
-			window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed"));
-
-			// Copy URL should be disabled, "Connected" label should appear
-			await waitFor(() => {
-				expect(screen.getByText("Copy URL")).toBeDisabled();
-			});
-			expect(screen.getByText("Connected")).toBeInTheDocument();
-		});
-
 		it("is a real dialog: labelled, focus pulled in, Escape closes it", async () => {
 			await renderApp();
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
@@ -3926,31 +3679,10 @@ it("digits follow the order just chosen, before the host has stored it", async (
 		});
 
 		// A permanent access code is a second, always-open door into the box. Before
-		// this it was visible only from `dev3 remote status` on the host.
-		it("names an active access code, and warns while the public tunnel is up", async () => {
-			await renderApp();
-
-			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
-				detail: {
-					qrDataUrl: "data:image/png;base64,tunnel",
-					accessUrl: "https://foo.trycloudflare.com/?token=t",
-					tunnelState: "connected",
-					tunnelBinaryInstalled: true,
-					tunnelProvider: "cloudflare" as const,
-					tunnelFailureReason: null,
-					staticCodeActive: true,
-				},
-			}));
-
-			expect(await screen.findByTestId("remote-static-code-active")).toBeInTheDocument();
-			expect(screen.getByTestId("remote-static-code-tunnel-warning")).toBeInTheDocument();
-			// The code itself never reaches the renderer — only the fact that one is set.
-			expect(document.body.textContent).not.toContain("sesame");
-		});
-
-		// The link is copied, never rendered: this modal is the one people
-		// screenshot to share the QR, and the link holds the permanent code.
-		it("copies the sign-in link without ever putting it on screen", async () => {
+		// this it was visible only from `dev3 remote status` on the host. The link is
+		// copied, never rendered: this modal is the one people screenshot to share the
+		// QR, and the link holds the permanent code.
+		it("names an active access code, warns while the public tunnel is up, and copies the sign-in link without ever putting it on screen", async () => {
 			await renderApp();
 			const link = "https://foo.trycloudflare.com/?token=one-time#code=sesame-open-up";
 			const writeText = vi.fn().mockResolvedValue(undefined);
@@ -3969,15 +3701,18 @@ it("digits follow the order just chosen, before the host has stored it", async (
 				},
 			}));
 
-			const button = await screen.findByTestId("remote-copy-sign-in-link");
-			expect(document.body.textContent).not.toContain("sesame-open-up");
+			expect(await screen.findByTestId("remote-static-code-active")).toBeInTheDocument();
+			expect(screen.getByTestId("remote-static-code-tunnel-warning")).toBeInTheDocument();
+			// The code itself never reaches the renderer — only the fact that one is set.
+			const button = screen.getByTestId("remote-copy-sign-in-link");
+			expect(document.body.textContent).not.toContain("sesame");
 
 			await userEvent.click(button);
 			expect(writeText).toHaveBeenCalledWith(link);
 			expect(await screen.findByText("Sign-in link copied")).toBeInTheDocument();
 		});
 
-		it("offers no sign-in link when the host has no access code", async () => {
+		it("offers no sign-in link and says nothing about an access code when none is configured", async () => {
 			await renderApp();
 
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
@@ -3996,26 +3731,6 @@ it("digits follow the order just chosen, before the host has stored it", async (
 
 			await screen.findByRole("dialog");
 			expect(screen.queryByTestId("remote-copy-sign-in-link")).not.toBeInTheDocument();
-		});
-
-		it("says nothing about an access code when none is configured", async () => {
-			await renderApp();
-
-			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
-				detail: {
-					qrDataUrl: "data:image/png;base64,local",
-					accessUrl: "http://192.168.0.1:1234/?token=t",
-					tunnelState: "idle",
-					tunnelBinaryInstalled: true,
-					tunnelProvider: "cloudflare" as const,
-					tunnelFailureReason: null,
-					staticCodeActive: false,
-					signInLink: null,
-					serverStatus: { running: true, port: 51473, failure: null },
-				},
-			}));
-
-			await screen.findByRole("dialog");
 			expect(screen.queryByTestId("remote-static-code-active")).not.toBeInTheDocument();
 		});
 
@@ -4134,7 +3849,7 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(toggle).not.toBeChecked();
 		});
 
-		it("resets consumed state when modal is reopened", async () => {
+		it("shows 'Connected' and disables Copy when qrTokenConsumed fires, and resets that when the modal is reopened", async () => {
 			await renderApp();
 
 			const qrData = {
@@ -4146,11 +3861,13 @@ it("digits follow the order just chosen, before the host has stored it", async (
 				tunnelFailureReason: null,
 			};
 
-			// Open → consume → should be disabled
+			// Open → consume → "Connected" overlay, Copy disabled
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
 			await waitFor(() => { expect(screen.getByText("Copy URL")).toBeInTheDocument(); });
+			expect(screen.getByText("Copy URL")).not.toBeDisabled();
 			window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed"));
 			await waitFor(() => { expect(screen.getByText("Copy URL")).toBeDisabled(); });
+			expect(screen.getByText("Connected")).toBeInTheDocument();
 
 			// Close modal
 			await userEvent.click(screen.getByText("Close"));
@@ -4457,29 +4174,6 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			expect(await screen.findByText("Copied!")).toBeInTheDocument();
 		});
 
-		it("hides the interface picker when the tunnel is connected", async () => {
-			await renderApp();
-			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
-				detail: {
-					qrDataUrl: "data:image/png;base64,test",
-					accessUrl: "https://abc.trycloudflare.com/?token=test",
-					tunnelState: "connected",
-					tunnelBinaryInstalled: true,
-					tunnelProvider: "cloudflare" as const,
-					tunnelFailureReason: null,
-					interfaces: [
-						{ name: "en0", address: "192.168.0.1", internal: false },
-						{ name: "loopback", address: "127.0.0.1", internal: true },
-					],
-					selectedHost: "192.168.0.1",
-					staticCodeActive: false,
-					signInLink: null,
-					serverStatus: { running: true, port: 51473, failure: null },
-				},
-			}));
-			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
-			expect(screen.queryByText("Reachable at")).not.toBeInTheDocument();
-		});
 	});
 
 	/** Runs `body` with the given completion offer style in the settings App loads on mount. */
@@ -5390,7 +5084,7 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			document.title = "dev-3.0";
 		});
 
-		it("reports the project name on a board route", async () => {
+		it("reports the project name on a board route, and no context on the dashboard", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
@@ -5401,14 +5095,12 @@ it("digits follow the order just chosen, before the host has stored it", async (
 			await renderApp();
 
 			expect(document.title).toBe("Alpha · dev-3.0");
-			expect(api.request.setWindowTitleContext).toHaveBeenCalledWith({ context: "Alpha" });
-		});
+			expect(api.request.setWindowTitleContext).toHaveBeenLastCalledWith({ context: "Alpha" });
 
-		it("reports no context on the dashboard", async () => {
-			await renderApp();
-
-			expect(document.title).toBe("dev-3.0");
-			expect(api.request.setWindowTitleContext).toHaveBeenCalledWith({ context: null });
+			await userEvent.keyboard("{Escape}");
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			await waitFor(() => expect(document.title).toBe("dev-3.0"));
+			expect(api.request.setWindowTitleContext).toHaveBeenLastCalledWith({ context: null });
 		});
 	});
 });

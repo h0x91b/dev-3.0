@@ -84,28 +84,25 @@ describe("immutable staging", () => {
 });
 
 describe("honest read diagnostics", () => {
-	it("reports a missing image", () => {
+	it("reports a missing image, and partial staging for an absent or corrupt manifest or entrypoint", () => {
 		expect(readStagedImage(root, "ghost")).toMatchObject({ status: "missing", tag: "ghost" });
-	});
-
-	it("reports partial staging when the manifest is absent", () => {
-		mkdirSync(imageDir(root, "half"), { recursive: true });
-		writeFileSync(join(imageDir(root, "half"), "entrypoint.mjs"), "// nothing");
-		const result = readStagedImage(root, "half");
-		expect(result).toMatchObject({ status: "partial", missing: ["image.json"] });
-	});
-
-	it("reports partial staging when the entrypoint is absent", () => {
-		stageHostImage(root, { tag: "host-v1", protocolVersion: 1, stagedAt: STAGED_AT });
-		rmSync(join(imageDir(root, "host-v1"), "entrypoint.mjs"));
-		const result = readStagedImage(root, "host-v1");
-		expect(result).toMatchObject({ status: "partial", missing: ["entrypoint.mjs"] });
-	});
-
-	it("reports partial staging when the manifest is corrupt", () => {
-		mkdirSync(imageDir(root, "bad"), { recursive: true });
-		writeFileSync(manifestPath(root, "bad"), "{not json");
-		expect(readStagedImage(root, "bad")).toMatchObject({ status: "partial" });
+		{
+			mkdirSync(imageDir(root, "half"), { recursive: true });
+			writeFileSync(join(imageDir(root, "half"), "entrypoint.mjs"), "// nothing");
+			const result = readStagedImage(root, "half");
+			expect(result).toMatchObject({ status: "partial", missing: ["image.json"] });
+		}
+		{
+			stageHostImage(root, { tag: "host-v1", protocolVersion: 1, stagedAt: STAGED_AT });
+			rmSync(join(imageDir(root, "host-v1"), "entrypoint.mjs"));
+			const result = readStagedImage(root, "host-v1");
+			expect(result).toMatchObject({ status: "partial", missing: ["entrypoint.mjs"] });
+		}
+		{
+			mkdirSync(imageDir(root, "bad"), { recursive: true });
+			writeFileSync(manifestPath(root, "bad"), "{not json");
+			expect(readStagedImage(root, "bad")).toMatchObject({ status: "partial" });
+		}
 	});
 
 	it("lists ok and incomplete images without throwing", () => {

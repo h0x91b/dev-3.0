@@ -45,62 +45,42 @@ async function harness(
 }
 
 describe("displaySignature", () => {
-	it("changes when a display's resolution changes", () => {
+	it("changes with resolution or scale factor, and is order-independent so enumeration order cannot fake a change", () => {
 		expect(displaySignature([laptop])).not.toBe(displaySignature([laptopLowRes]));
-	});
-
-	it("changes when only the scale factor changes", () => {
 		expect(displaySignature([laptop])).not.toBe(displaySignature([laptopScaled]));
-	});
-
-	it("is order-independent, so display enumeration order cannot fake a change", () => {
 		const second: DisplayLike = { id: 2, bounds: { x: 1728, y: 0, width: 2560, height: 1440 }, scaleFactor: 1 };
 		expect(displaySignature([laptop, second])).toBe(displaySignature([second, laptop]));
 	});
 });
 
 describe("startDisplayWatch", () => {
-	it("reports a resolution change once, not on every tick after it", async () => {
+	it("stays silent while stable and reports a resolution change once, not on every tick after it", async () => {
+		expect((await harness([[laptop], [laptop], [laptop]])).events).toEqual([]);
 		const { events } = await harness([[laptop], [laptopLowRes], [laptopLowRes]]);
 		expect(events).toHaveLength(1);
 		expect(events[0]!.reason).toBe("displays");
 	});
 
-	it("stays silent while the layout is stable", async () => {
-		const { events } = await harness([[laptop], [laptop], [laptop]]);
-		expect(events).toEqual([]);
-	});
-
-	it("reports a wake even when the layout came back identical", async () => {
-		const { events } = await harness([[laptop], [laptop]], [0, DISPLAY_WATCH_INTERVAL_MS * 60]);
-		expect(events).toHaveLength(1);
-		expect(events[0]!.reason).toBe("wake");
-	});
-
-	it("does not call a host starved while awake a wake", async () => {
-		const { events } = await harness([[laptop], [laptop]], [0, DISPLAY_WATCH_INTERVAL_MS * 60], "starved");
-		expect(events).toEqual([]);
-	});
-
-	it("still reports the wake when no sleep signal exists, as before", async () => {
-		const { events } = await harness([[laptop], [laptop]], [0, DISPLAY_WATCH_INTERVAL_MS * 60], "unknown");
-		expect(events.map((e) => e.reason)).toEqual(["wake"]);
-	});
-
-	it("reports a real layout change even from a starved host", async () => {
-		const { events } = await harness([[laptop], [laptopLowRes]], [0, DISPLAY_WATCH_INTERVAL_MS * 60], "starved");
-		expect(events.map((e) => e.reason)).toEqual(["displays"]);
-	});
-
-	it("does not call a stalled event loop a wake", async () => {
+	it("reports a long gap as a wake when the host slept or cannot tell, but not a starved host or a stalled event loop", async () => {
+		const long = [0, DISPLAY_WATCH_INTERVAL_MS * 60];
+		for (const [cause, expected] of [["slept", ["wake"]], ["unknown", ["wake"]], ["starved", []]] as const) {
+			const { events } = await harness([[laptop], [laptop]], long, cause);
+			expect(events.map((e) => e.reason), cause).toEqual(expected);
+		}
+		{
 		const { events } = await harness([[laptop], [laptop]], [0, DISPLAY_WATCH_INTERVAL_MS * 2]);
 		expect(events).toEqual([]);
+		}
 	});
 
-	it("prefers the layout change over the wake when both land on one tick", async () => {
+	it("reports a real layout change over a wake on the same tick, even from a starved host", async () => {
+		const { events } = await harness([[laptop], [laptopLowRes]], [0, DISPLAY_WATCH_INTERVAL_MS * 60], "starved");
+		expect(events.map((e) => e.reason)).toEqual(["displays"]);
+		{
 		const { events } = await harness([[laptop], [laptopLowRes]], [0, DISPLAY_WATCH_INTERVAL_MS * 60]);
 		expect(events).toHaveLength(1);
 		expect(events[0]!.reason).toBe("displays");
+		}
 	});
 
 	it("stops polling when stopped", async () => {

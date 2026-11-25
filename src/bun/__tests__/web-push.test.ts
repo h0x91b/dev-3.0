@@ -89,16 +89,13 @@ describe("aes128gcm payload encryption", () => {
 		expect(round).toBe(payload);
 	});
 
-	it("lays the header out as RFC 8291 specifies", async () => {
+	it("lays the header out as RFC 8291 specifies and never repeats a salt for identical payloads", async () => {
 		const device = await fakeDevice();
 		const body = await encryptPayload(device.sub, "x");
 		expect(body[20]).toBe(65); // uncompressed P-256 point length
 		expect(body[21]).toBe(0x04); // and it is uncompressed
 		expect(new DataView(body.buffer, body.byteOffset).getUint32(16, false)).toBe(4096);
-	});
 
-	it("never repeats a salt, so two identical payloads differ on the wire", async () => {
-		const device = await fakeDevice();
 		const a = await encryptPayload(device.sub, "same");
 		const b = await encryptPayload(device.sub, "same");
 		expect(bytesToB64url(a.subarray(0, 16))).not.toBe(bytesToB64url(b.subarray(0, 16)));
@@ -112,7 +109,7 @@ describe("aes128gcm payload encryption", () => {
 });
 
 describe("VAPID header", () => {
-	it("signs an ES256 JWT scoped to the push service, not the endpoint path", async () => {
+	it("signs an ES256 JWT scoped to the push service, carrying the public key and a raw r||s signature", async () => {
 		const keys = await generateVapidKeys();
 		const header = await vapidAuthHeader("https://web.push.apple.com/some/long/path", keys, "https://example.test", 1_800_000_000);
 		const [, token] = header.match(/t=([^,]+)/) ?? [];
@@ -122,17 +119,8 @@ describe("VAPID header", () => {
 		expect(parsed.aud).toBe("https://web.push.apple.com");
 		expect(parsed.sub).toBe("https://example.test");
 		expect(parsed.exp).toBe(1_800_000_000 + 12 * 60 * 60);
-	});
-
-	it("carries the public key so the service can verify the signature", async () => {
-		const keys = await generateVapidKeys();
-		const header = await vapidAuthHeader("https://fcm.googleapis.com/x", keys, "https://example.test", 1_800_000_000);
+		// Carries the public key so the service can verify the signature.
 		expect(header).toContain(`k=${keys.publicKey}`);
-	});
-
-	it("emits a raw r||s signature, not DER", async () => {
-		const keys = await generateVapidKeys();
-		const header = await vapidAuthHeader("https://fcm.googleapis.com/x", keys, "https://example.test", 1_800_000_000);
 		const sig = (header.match(/t=([^,]+)/)?.[1] ?? "").split(".")[2];
 		// Apple rejects a DER-wrapped signature; 64 bytes is the JWS form.
 		expect(b64urlToBytes(sig).length).toBe(64);
@@ -162,11 +150,12 @@ describe("the install keypair", () => {
 	const dir = mkdtempSync(join(tmpdir(), "dev3-vapid-"));
 	afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-	it("hands every concurrent caller the key that reached disk", async () => {
+	it("hands every concurrent caller the key that reached disk, and keeps it afterwards", async () => {
 		const path = join(dir, "single-flight.json");
 		const keys = await Promise.all(Array.from({ length: 8 }, () => loadOrCreateVapidKeys(path)));
 		const onDisk = JSON.parse(readFileSync(path, "utf-8")) as { publicKey: string };
 		expect(new Set(keys.map((k) => k.publicKey))).toEqual(new Set([onDisk.publicKey]));
+		expect((await loadOrCreateVapidKeys(path)).publicKey).toBe(onDisk.publicKey);
 	});
 
 	it("adopts the winner's key when another writer got there first", async () => {
@@ -178,11 +167,6 @@ describe("the install keypair", () => {
 		const onDisk = JSON.parse(readFileSync(path, "utf-8")) as { publicKey: string };
 		expect(a.publicKey).toBe(onDisk.publicKey);
 		expect(b.publicKey).toBe(onDisk.publicKey);
-	});
-
-	it("keeps the keypair it already has", async () => {
-		const path = join(dir, "stable.json");
-		expect((await loadOrCreateVapidKeys(path)).publicKey).toBe((await loadOrCreateVapidKeys(path)).publicKey);
 	});
 
 	it("refuses to hand out a keypair that could not be persisted", async () => {

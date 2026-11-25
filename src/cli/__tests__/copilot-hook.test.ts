@@ -86,40 +86,19 @@ describe("handleCopilotHook", () => {
 
 	// `ask_user` is Copilot's AskUserQuestion: it blocks until the human answers,
 	// so its preToolUse is the only moment the task is genuinely waiting on them.
-	it("parks the task in Has Questions when the tool about to run is ask_user", async () => {
+	it("parks the task in Has Questions only on ask_user's preToolUse (either payload shape), naming the tool", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 
 		await handleCopilotHook("preToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
-
-		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PermissionRequest" });
-	});
-
-	it("reads the tool name from the snake_case payload shape too", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
 		await handleCopilotHook("preToolUse", payload({ tool_name: "ask_user" }), SOCKET, CONTEXT);
-
-		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PermissionRequest" });
-	});
-
-	it("leaves every other tool on the working path", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
+		await handleCopilotHook("postToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
 		await handleCopilotHook("preToolUse", payload({ toolName: "bash" }), SOCKET, CONTEXT);
-		await handleCopilotHook("postToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
 
-		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PreToolUse" });
-		expect(mockSend.mock.calls[1]?.[2]).toMatchObject({ event: "PostToolUse" });
-	});
-
-	it("names the tool, so only ask_user's own postToolUse ends the question's hold", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
-		await handleCopilotHook("preToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
-		await handleCopilotHook("postToolUse", payload({ toolName: "ask_user" }), SOCKET, CONTEXT);
-
-		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ event: "PermissionRequest", toolName: "ask_user" });
-		expect(mockSend.mock.calls[1]?.[2]).toMatchObject({ event: "PostToolUse", toolName: "ask_user" });
+		const events = mockSend.mock.calls.map((call) => call[2]);
+		expect(events[0]).toMatchObject({ event: "PermissionRequest", toolName: "ask_user" });
+		expect(events[1]).toMatchObject({ event: "PermissionRequest" });
+		expect(events[2]).toMatchObject({ event: "PostToolUse", toolName: "ask_user" });
+		expect(events[3]).toMatchObject({ event: "PreToolUse" });
 	});
 
 	it("ignores permissionRequest — Copilot fires it even when nothing asks the user", async () => {
@@ -129,17 +108,14 @@ describe("handleCopilotHook", () => {
 		expect(stdout).toBe("{}");
 	});
 
-	it("answers sessionStart with the dev3 protocol as additionalContext", async () => {
+	it("answers sessionStart with the dev3 protocol as additionalContext, even when dev3 is offline", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
 		await handleCopilotHook("sessionStart", payload({ source: "resume" }), SOCKET, CONTEXT);
-
 		expect(JSON.parse(stdout)).toEqual({ additionalContext: GENERIC_SKILL_BODY });
-	});
 
-	it("still delivers the protocol when dev3 is offline", async () => {
+		stdout = "";
+		mockSend.mockClear();
 		await handleCopilotHook("sessionStart", payload(), null, null);
-
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(JSON.parse(stdout).additionalContext).toBe(GENERIC_SKILL_BODY);
 	});

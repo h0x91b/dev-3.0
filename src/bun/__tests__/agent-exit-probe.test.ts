@@ -55,25 +55,14 @@ beforeEach(() => {
 afterEach(() => stopAgentExitProbe());
 
 describe("agentExitDecision", () => {
-	it("marks a candidate whose agent exited", () => {
-		expect(agentExitDecision(task(), "exited")).toBe("mark");
-	});
-
-	it("keeps an existing mark while the agent stays exited", () => {
-		expect(agentExitDecision(task({ agentExitedAt: FLAG }), "exited")).toBe("keep");
-	});
-
-	it("clears the mark once the agent runs again", () => {
-		expect(agentExitDecision(task({ agentExitedAt: FLAG }), "alive")).toBe("clear");
-	});
-
-	it("leaves a running task unmarked", () => {
-		expect(agentExitDecision(task(), "alive")).toBe("keep");
-	});
-
-	it("never changes anything on unknown", () => {
-		expect(agentExitDecision(task(), "unknown")).toBe("keep");
-		expect(agentExitDecision(task({ agentExitedAt: FLAG }), "unknown")).toBe("keep");
+	it("marks, keeps, clears or leaves a task alone according to the probed liveness", () => {
+		expect(agentExitDecision(task(), "exited"), "marks a candidate whose agent exited").toBe("mark");
+		expect(agentExitDecision(task({ agentExitedAt: FLAG }), "exited"), "keeps an existing mark while the agent stays exited").toBe("keep");
+		expect(agentExitDecision(task({ agentExitedAt: FLAG }), "alive"), "clears the mark once the agent runs again").toBe("clear");
+		expect(agentExitDecision(task(), "alive"), "leaves a running task unmarked").toBe("keep");
+		expect(agentExitDecision(task(), "unknown"), "never changes anything on unknown").toBe("keep");
+		expect(agentExitDecision(task({ agentExitedAt: FLAG }), "unknown"), "never changes anything on unknown").toBe("keep");
+		expect(agentExitDecision(task({ hibernated: true }), null), "does nothing for a non-candidate without a mark").toBe("keep");
 	});
 
 	it.each([
@@ -90,10 +79,6 @@ describe("agentExitDecision", () => {
 		expect(isAgentExitCandidate(t)).toBe(false);
 		expect(agentExitDecision(t, "exited")).toBe("clear");
 		expect(agentExitDecision(t, null)).toBe("clear");
-	});
-
-	it("does nothing for a non-candidate without a mark", () => {
-		expect(agentExitDecision(task({ hibernated: true }), null)).toBe("keep");
 	});
 });
 

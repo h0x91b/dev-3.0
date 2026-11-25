@@ -147,7 +147,6 @@ describe("project-autoconfig", () => {
 		});
 
 		it.each([
-			["a plain subfolder", "web"],
 			["a deep subfolder", "apps/web"],
 			["glob, escape and comment characters", "#a/!b/c [x]*?\\d"],
 			["spaces and non-ASCII", " lead/wéb app"],

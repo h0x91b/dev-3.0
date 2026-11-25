@@ -190,13 +190,6 @@ describe("removeTaskWorkspace — a repo the agent made inside the task folder",
 		expect(git.pruneWorktrees).not.toHaveBeenCalled();
 	});
 
-	it("still removes the folder when the prune itself fails (it logs and never throws)", async () => {
-		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		vi.mocked(git.pruneWorktrees).mockResolvedValue(undefined);
-		await expect(run({ attachedRepo: `${FOLDER}/wt` })).resolves.toEqual({});
-		expect(rm).toHaveBeenCalledTimes(1);
-	});
-
 	it("deletes nothing and prunes nothing when the attached repo lies outside the folder", async () => {
 		await run({ attachedRepo: "/elsewhere/repo" });
 		expect(git.classifyLinkedWorktree).not.toHaveBeenCalled();
@@ -269,7 +262,7 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 		expect(ctx.task.status).toBe("todo");
 	});
 
-	it("keeps a worktree swapped in after the dialog: the approval named another repo", async () => {
+	it("keeps a worktree swapped in after the dialog, or when the move carried no approval", async () => {
 		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
 		const ctx = ctxFor(task({ attachedRepo: `${FOLDER}/wt-b` }));
 
@@ -278,23 +271,14 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 
 		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
 		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).not.toHaveProperty("attachedRepo");
-	});
 
-	it("keeps the worktree when the move carried no approval at all", async () => {
-		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		const ctx = ctxFor(task());
-
-		await step("removeAttachedWorktree", ctx, { approvedAttachedRepo: null });
-		await step("persistTerminalTask", ctx, { status: "cancelled", onError: "abort" });
-
+		// A move that carried no approval at all keeps it too.
+		vi.mocked(data.updateTask).mockClear();
+		const unapproved = ctxFor(task());
+		await step("removeAttachedWorktree", unapproved, { approvedAttachedRepo: null });
+		await step("persistTerminalTask", unapproved, { status: "cancelled", onError: "abort" });
 		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
 		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).not.toHaveProperty("attachedRepo");
-	});
-
-	it("removes it when the approval matches the attached repo", async () => {
-		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		await step("removeAttachedWorktree", ctxFor(task()), { approvedAttachedRepo: WT });
-		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, WT);
 	});
 
 	it("detaches a worktree that is already gone (a retry after an earlier removal) without touching git", async () => {

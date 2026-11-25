@@ -130,16 +130,15 @@ describe("spaces create", () => {
 		});
 	});
 
-	it("needs a name", async () => {
-		await expect(run(["create"])).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("exits 34 for a name already taken", async () => {
+	it("exits 34 for a name already taken, or a space the app cannot resolve", async () => {
 		mockSend.mockResolvedValue({ id: "x", ok: false, error: `${SPACE_REF_INVALID_PREFIX}A space named "Side" already exists (sp_33333333).` });
 
 		await expect(run(["create", "app"])).rejects.toThrow("EXIT_34");
 		expect(stderr).toContain("already exists");
+
+		mockSend.mockResolvedValue({ id: "x", ok: false, error: `${SPACE_REF_INVALID_PREFIX}No space matches "Nope".` });
+		await expect(run(["remove", "Nope"])).rejects.toThrow("EXIT_34");
+		expect(stderr).toContain("dev3 spaces list");
 	});
 });
 
@@ -163,21 +162,18 @@ describe("spaces set / add / remove", () => {
 		expect(stdout).toContain("is now in no space");
 	});
 
-	it("set without spaces or --no-space is a usage error that warns it replaces", async () => {
+	it("is a usage error, before sending, for a nameless create, an empty set, add/remove without a space, no project, or an unknown subcommand", async () => {
+		await expect(run(["create"])).rejects.toThrow("EXIT_3");
+		// set without spaces or --no-space warns that it replaces.
 		await expect(run(["set"])).rejects.toThrow("EXIT_3");
 		expect(stderr).toContain("REPLACES");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("add and remove need a space and reject --no-space", async () => {
 		await expect(run(["add"])).rejects.toThrow("EXIT_3");
 		await expect(run(["remove", "--no-space"])).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("needs a project outside any worktree or checkout", async () => {
 		await expect(run(["add", "X"], null)).rejects.toThrow("EXIT_3");
 		expect(stderr).toContain("--project <id> is required");
+		await expect(run(["rename", "x"])).rejects.toThrow("EXIT_3");
+		expect(stderr, "lists what exists").toContain("spaces set");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("add passes several spaces", async () => {
@@ -187,19 +183,5 @@ describe("spaces set / add / remove", () => {
 
 		expect(mockSend.mock.calls[0][2]).toEqual({ projectId: PROJECT_ID, mode: "add", spaces: ["A", "sp_22222222"] });
 		expect(JSON.parse(stdout).project.spaces).toHaveLength(2);
-	});
-
-	it("exits 34 for a space the app cannot resolve", async () => {
-		mockSend.mockResolvedValue({ id: "x", ok: false, error: `${SPACE_REF_INVALID_PREFIX}No space matches "Nope".` });
-
-		await expect(run(["remove", "Nope"])).rejects.toThrow("EXIT_34");
-		expect(stderr).toContain("dev3 spaces list");
-	});
-});
-
-describe("unknown subcommand", () => {
-	it("lists what exists", async () => {
-		await expect(run(["rename", "x"])).rejects.toThrow("EXIT_3");
-		expect(stderr).toContain("spaces set");
 	});
 });

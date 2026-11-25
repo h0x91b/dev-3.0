@@ -34,15 +34,13 @@ function fakeWin32(options: { iconBearing?: string[]; liveWindows?: number[] } =
 }
 
 describe("resolveIconSources", () => {
-	it("tries the running executable first, then the bundle's two executables", () => {
+	it("tries the running executable first, then the bundle's two executables, without duplicates", () => {
 		expect(resolveIconSources(EXEC_PATH, BUNDLE_ROOT, join)).toEqual([
 			EXEC_PATH,
 			join(BUNDLE_ROOT, "bin", "bun.exe"),
 			join(BUNDLE_ROOT, "bin", "launcher.exe"),
 		].filter((path, index, all) => all.indexOf(path) === index));
-	});
-
-	it("keeps no duplicate when the running executable IS the bundle's bun.exe", () => {
+		// No duplicate when the running executable IS the bundle's bun.exe.
 		const sources = resolveIconSources(EXEC_PATH, BUNDLE_ROOT, join);
 		expect(new Set(sources).size).toBe(sources.length);
 		expect(sources).toContain(join(BUNDLE_ROOT, "bin", "launcher.exe"));
@@ -54,17 +52,15 @@ describe("resolveIconSources", () => {
 });
 
 describe("loadAppIcon", () => {
-	it("returns the icon from the first executable that carries one", () => {
+	it("returns the icon from the first executable that carries one, falling through those that carry none", () => {
 		const win32 = fakeWin32({ iconBearing: [EXEC_PATH] });
 		expect(loadAppIcon([EXEC_PATH, "other.exe"], win32.surface)).toEqual(ICONS);
 		expect(win32.inspected).toEqual([EXEC_PATH]);
-	});
 
-	it("falls through to a later executable when the first carries no icon", () => {
 		const launcher = join(BUNDLE_ROOT, "bin", "launcher.exe");
-		const win32 = fakeWin32({ iconBearing: [launcher] });
-		expect(loadAppIcon([EXEC_PATH, launcher], win32.surface)).toEqual(ICONS);
-		expect(win32.inspected).toEqual([EXEC_PATH, launcher]);
+		const fallthrough = fakeWin32({ iconBearing: [launcher] });
+		expect(loadAppIcon([EXEC_PATH, launcher], fallthrough.surface)).toEqual(ICONS);
+		expect(fallthrough.inspected).toEqual([EXEC_PATH, launcher]);
 	});
 
 	it("fails naming the build step when no executable carries an icon", () => {
@@ -72,20 +68,18 @@ describe("loadAppIcon", () => {
 		expect(() => loadAppIcon([EXEC_PATH], win32.surface)).toThrowError(/embed-windows-icons\.ts/);
 	});
 
-	it("rejects a null icon handle instead of handing WM_SETICON a value that REMOVES the icon", () => {
+	it("rejects a null (or half-null) icon handle instead of handing WM_SETICON a value that REMOVES the icon", () => {
 		const surface: Win32IconSurface = {
 			extractIcons: () => ({ big: 0n, small: 0n }),
 			applyToWindow: () => true,
 		};
 		expect(() => loadAppIcon([EXEC_PATH], surface)).toThrowError(/null icon handle/);
-	});
-
-	it("rejects a pair where only the small icon is null", () => {
-		const surface: Win32IconSurface = {
+		// Also when only the small icon is null.
+		const smallNull: Win32IconSurface = {
 			extractIcons: () => ({ big: 4242n, small: 0n }),
 			applyToWindow: () => true,
 		};
-		expect(() => loadAppIcon([EXEC_PATH], surface)).toThrowError(/REMOVES the window's icon/);
+		expect(() => loadAppIcon([EXEC_PATH], smallNull)).toThrowError(/REMOVES the window's icon/);
 	});
 
 	it("fails on an empty list rather than looping zero times and reporting success", () => {
@@ -117,15 +111,14 @@ describe("applyIconToWindows", () => {
 });
 
 describe("setWindowIcon", () => {
-	it("resolves the icon and applies it to the window", () => {
+	it("resolves the icon and applies it to the window, and leaves the window alone without one", () => {
 		const win32 = fakeWin32({ iconBearing: [EXEC_PATH], liveWindows: [7] });
 		setWindowIcon(7, { execPath: EXEC_PATH, bundleRoot: BUNDLE_ROOT, joinPath: join }, win32.surface);
 		expect(win32.applied).toEqual([{ hwnd: 7, icons: ICONS }]);
-	});
 
-	it("does not touch the window when no executable carries an icon", () => {
-		const win32 = fakeWin32({ liveWindows: [7] });
-		expect(() => setWindowIcon(7, { execPath: EXEC_PATH, bundleRoot: BUNDLE_ROOT, joinPath: join }, win32.surface)).toThrow();
-		expect(win32.applied).toEqual([]);
+		// No executable carries an icon: the window is not touched.
+		const iconless = fakeWin32({ liveWindows: [7] });
+		expect(() => setWindowIcon(7, { execPath: EXEC_PATH, bundleRoot: BUNDLE_ROOT, joinPath: join }, iconless.surface)).toThrow();
+		expect(iconless.applied).toEqual([]);
 	});
 });

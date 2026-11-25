@@ -23,11 +23,8 @@ beforeEach(() => {
 });
 
 describe("board view state on disk", () => {
-	it("keeps a project's file in its existing data dir, next to tasks.json", async () => {
+	it("keeps a project's file in its existing data dir next to tasks.json, and a space's in a directory of its own", async () => {
 		expect(await boardViewStatePath({ kind: "project", id: "p1" })).toBe(`${DEV3_HOME}/data/Users-me-src-app/board-views.json`);
-	});
-
-	it("keeps a space's file in a new directory of its own", async () => {
 		expect(await boardViewStatePath({ kind: "space", id: "sp_1" })).toBe(`${DEV3_HOME}/space-board-views/sp_1.json`);
 	});
 

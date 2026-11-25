@@ -66,6 +66,12 @@ function freeze(over: Partial<{ at: number; quietForMs: number; artifactOpen: bo
 	});
 }
 
+/** A fresh install state between cases of one test: no record, default settings. */
+function resetState() {
+	rmSync(RECORD, { force: true });
+	writeSettings();
+}
+
 beforeEach(() => {
 	rmSync(TEST_HOME, { recursive: true, force: true });
 	mkdirSync(TEST_HOME, { recursive: true });
@@ -115,18 +121,15 @@ describe("artifact freeze recovery", () => {
 		expect(settingsOnDisk().openArtifactsInPopup).toBeUndefined();
 	});
 
-	it("ignores a freeze the window recovered from on its own", async () => {
+	it("ignores a freeze the window recovered from on its own, but acts when it came back only long after", async () => {
 		freeze();
 		markArtifactFreezeRecovered(SELF_RECOVERY_MS - 1);
-
 		expect(await applyArtifactFreezeRecovery(NOW)).toEqual({ enabled: false, reason: "self-recovered" });
 		expect(settingsOnDisk().openArtifactsInPopup).toBeUndefined();
-	});
 
-	it("still acts when the window came back only long after the freeze", async () => {
+		resetState();
 		freeze();
 		markArtifactFreezeRecovered(SELF_RECOVERY_MS + 1);
-
 		expect(await applyArtifactFreezeRecovery(NOW)).toMatchObject({ enabled: true });
 	});
 
@@ -146,29 +149,27 @@ describe("artifact freeze recovery", () => {
 		expect(consumeArtifactFreezeNotice()).toBeNull();
 	});
 
-	it("stands down for good once the user turns the popup back off", async () => {
-		freeze();
-		await applyArtifactFreezeRecovery(NOW);
+	it("stands down for good once the user turns the popup back off, with or without the settings handler", async () => {
+		for (const viaHandler of [true, false]) {
+			resetState();
+			freeze();
+			await applyArtifactFreezeRecovery(NOW);
 
-		// The user opens Settings and chooses the panel again.
+			// The user opens Settings and chooses the panel again.
+			if (viaHandler) noteArtifactPopupPreference(false);
+			writeSettings({ openArtifactsInPopup: false });
+
+			freeze({ at: NOW + 10_000 });
+			const label = viaHandler ? "via the settings handler" : "settings file edited directly";
+			expect(await applyArtifactFreezeRecovery(NOW + 20_000), label).toEqual({ enabled: false, reason: "user-declined" });
+			expect(settingsOnDisk().openArtifactsInPopup, label).toBe(false);
+		}
+	});
+
+	it("records nothing for a switch with no recovery behind it, and recovers again once the user turns the popup back on", async () => {
 		noteArtifactPopupPreference(false);
-		writeSettings({ openArtifactsInPopup: false });
+		expect(() => record()).toThrow(); // no record file written at all
 
-		freeze({ at: NOW + 10_000 });
-		expect(await applyArtifactFreezeRecovery(NOW + 20_000)).toEqual({ enabled: false, reason: "user-declined" });
-		expect(settingsOnDisk().openArtifactsInPopup).toBe(false);
-	});
-
-	it("stands down even if the setting was turned off without passing through the settings handler", async () => {
-		freeze();
-		await applyArtifactFreezeRecovery(NOW);
-		writeSettings({ openArtifactsInPopup: false });
-
-		freeze({ at: NOW + 10_000 });
-		expect(await applyArtifactFreezeRecovery(NOW + 20_000)).toEqual({ enabled: false, reason: "user-declined" });
-	});
-
-	it("starts recovering again if the user turns the popup on by hand after declining", async () => {
 		freeze();
 		await applyArtifactFreezeRecovery(NOW);
 		noteArtifactPopupPreference(false);
@@ -178,38 +179,28 @@ describe("artifact freeze recovery", () => {
 		expect(record().declinedAt).toBeUndefined();
 	});
 
-	it("says nothing about a popup switch the user flipped with no recovery behind it", () => {
-		noteArtifactPopupPreference(false);
-		expect(() => record()).toThrow(); // no record file written at all
-	});
-
-	it("hands the notice over exactly once", async () => {
+	it("hands the notice over exactly once, and drops it when the user turns the popup off before seeing it", async () => {
 		freeze();
 		await applyArtifactFreezeRecovery(NOW);
-
 		expect(consumeArtifactFreezeNotice()).toEqual({ freezeAt: NOW - 60_000 });
 		expect(consumeArtifactFreezeNotice()).toBeNull();
-	});
 
-	it("drops the pending notice when the user turns the popup off before seeing it", async () => {
+		resetState();
 		freeze();
 		await applyArtifactFreezeRecovery(NOW);
 		noteArtifactPopupPreference(false);
-
-		expect(consumeArtifactFreezeNotice()).toBeNull();
+		expect(consumeArtifactFreezeNotice(), "turned off before seeing it").toBeNull();
 	});
 
-	it("survives a corrupt record instead of taking the launch down with it", async () => {
-		writeFileSync(RECORD, "{ not json at all", "utf-8");
-
-		expect(await applyArtifactFreezeRecovery(NOW)).toEqual({ enabled: false, reason: "no-evidence" });
-		expect(settingsOnDisk().openArtifactsInPopup).toBeUndefined();
-	});
-
-	it("ignores a record whose evidence is the wrong shape", async () => {
-		writeFileSync(RECORD, JSON.stringify({ version: 1, pending: { at: "yesterday" } }), "utf-8");
-
-		expect(await applyArtifactFreezeRecovery(NOW)).toEqual({ enabled: false, reason: "no-evidence" });
+	it("survives a corrupt or wrong-shaped record instead of taking the launch down with it", async () => {
+		for (const [name, content] of [
+			["corrupt", "{ not json at all"],
+			["wrong shape", JSON.stringify({ version: 1, pending: { at: "yesterday" } })],
+		]) {
+			writeFileSync(RECORD, content, "utf-8");
+			expect(await applyArtifactFreezeRecovery(NOW), name).toEqual({ enabled: false, reason: "no-evidence" });
+			expect(settingsOnDisk().openArtifactsInPopup, name).toBeUndefined();
+		}
 	});
 
 	/**

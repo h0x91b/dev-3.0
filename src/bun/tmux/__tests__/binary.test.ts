@@ -70,17 +70,13 @@ beforeEach(() => {
 });
 
 describe("probeTmuxVersion", () => {
-	it("returns the version string for a real tmux", async () => {
+	it("returns the version for a real tmux, undefined for a non-tmux binary or a failed spawn", async () => {
 		mockSpawn.mockReturnValue({ exited: Promise.resolve(0), stdout: "tmux 3.6a\n", stderr: "" } as any);
 		expect(await probeTmuxVersion("/opt/homebrew/bin/tmux")).toBe("tmux 3.6a");
-	});
 
-	it("returns undefined for a binary that is not tmux", async () => {
 		mockSpawn.mockReturnValue({ exited: Promise.resolve(0), stdout: "true (GNU coreutils)\n", stderr: "" } as any);
 		expect(await probeTmuxVersion("/usr/bin/true")).toBeUndefined();
-	});
 
-	it("returns undefined when the probe cannot even spawn", async () => {
 		mockSpawn.mockImplementation(() => { throw new Error("ENOENT"); });
 		expect(await probeTmuxVersion("/missing/tmux")).toBeUndefined();
 	});
@@ -105,7 +101,7 @@ describe("selectTmuxBinary", () => {
 		setTmuxBinary("tmux");
 	});
 
-	it("keeps the preferred binary when no server is running", async () => {
+	it("keeps the preferred binary when no server is running or the server accepts it", async () => {
 		mockVersionAndServer(1, "no server running on /tmp/tmux-501/dev3");
 		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
 		expect(chosen).toBe(PREFERRED);
@@ -113,12 +109,11 @@ describe("selectTmuxBinary", () => {
 		// One probe only — no fallback scanning when there is no server at all.
 		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("display-message"));
 		expect(probes).toHaveLength(1);
-	});
 
-	it("keeps the preferred binary when the running server accepts it", async () => {
+		// ...and when the running server accepts it.
+		mockSpawn.mockReset();
 		mockSpawn.mockReturnValue(probeResult(0, ""));
-		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
-		expect(chosen).toBe(PREFERRED);
+		expect(await selectTmuxBinary(PREFERRED, [PATH_TMUX])).toBe(PREFERRED);
 		expect(getTmuxBinary()).toBe(PREFERRED);
 	});
 
@@ -205,33 +200,22 @@ describe("selectTmuxBinary", () => {
 			}
 		}
 
-		it("does not hang probeTmuxVersion — it gives up and reports the binary unusable", async () => {
-			mockSpawn.mockReturnValue(wedgedProc());
-			expect(await underFakeTimers(() => probeTmuxVersion(PREFERRED))).toBeUndefined();
-		});
-
-		it("kills the abandoned probe instead of leaking it", async () => {
+		it("does not hang probeTmuxVersion — it reports the binary unusable and kills the abandoned probe", async () => {
 			const proc = wedgedProc();
 			mockSpawn.mockReturnValue(proc);
-			await underFakeTimers(() => probeTmuxVersion(PREFERRED));
+			expect(await underFakeTimers(() => probeTmuxVersion(PREFERRED))).toBeUndefined();
 			expect(proc.kill).toHaveBeenCalled();
 		});
 
-		it("does not hang selectTmuxBinary when the server never answers", async () => {
-			mockSpawn.mockImplementation(((args: string[]) =>
-				args[1] === "-V" ? probeResult(0) : wedgedProc()) as any);
-			const chosen = await underFakeTimers(() => selectTmuxBinary(PREFERRED, [PATH_TMUX]));
-			expect(chosen).toBe(PREFERRED);
-			expect(getTmuxBinary()).toBe(PREFERRED);
-		});
-
-		it("does not mistake an unreachable server for a version mismatch", async () => {
+		it("does not hang selectTmuxBinary, nor mistake an unreachable server for a version mismatch", async () => {
 			// "No answer" is not evidence of skew: reporting a mismatch would send
 			// the caller hunting for a fallback binary and tell the user to
 			// kill-server over a version nobody ever read.
 			mockSpawn.mockImplementation(((args: string[]) =>
 				args[1] === "-V" ? probeResult(0) : wedgedProc()) as any);
-			await underFakeTimers(() => selectTmuxBinary(PREFERRED, [PATH_TMUX, "/usr/local/bin/tmux"]));
+			const chosen = await underFakeTimers(() => selectTmuxBinary(PREFERRED, [PATH_TMUX, "/usr/local/bin/tmux"]));
+			expect(chosen).toBe(PREFERRED);
+			expect(getTmuxBinary()).toBe(PREFERRED);
 			expect(getTmuxServerVersionMismatch()).toBeNull();
 			const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("display-message"));
 			expect(probes).toHaveLength(1); // preferred only — no fallback scan
@@ -313,11 +297,8 @@ describe("selectTmuxBinary", () => {
 describe("dereferenceTmuxShim", () => {
 	const PATH_TMUX = "/opt/homebrew/bin/tmux";
 
-	it("passes through non-shim paths untouched", () => {
+	it("passes non-shim paths through and resolves the shim to its symlink target", () => {
 		expect(dereferenceTmuxShim(PATH_TMUX)).toBe(PATH_TMUX);
-	});
-
-	it("resolves the shim to its symlink target", () => {
 		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
 		vi.mocked(realpathSync).mockReturnValue(PATH_TMUX);
 		vi.mocked(readlinkSync).mockReturnValue(PATH_TMUX);
@@ -356,14 +337,10 @@ describe("sanitizeTmuxShim", () => {
 		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
 	});
 
-	it("keeps a healthy shim", () => {
+	it("keeps a healthy shim and ignores a non-symlink file", () => {
 		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
 		vi.mocked(realpathSync).mockReturnValue("/opt/homebrew/bin/tmux");
 		sanitizeTmuxShim();
-		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
-	});
-
-	it("ignores a non-symlink file", () => {
 		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
 		sanitizeTmuxShim();
 		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
@@ -384,10 +361,22 @@ describe("updateTmuxShim", () => {
 		vi.mocked(accessSync).mockImplementation(() => undefined);
 	});
 
-	it("does nothing for a bare binary name", () => {
+	it("touches nothing for a bare name, a directory, a user's regular file, or a shim already on target", () => {
 		updateTmuxShim("tmux");
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
+
+		vi.mocked(statSync).mockReturnValueOnce({ isFile: () => false } as any);
+		updateTmuxShim("/Users/tester");
+
+		// A regular file at the shim path is the user's own binary.
+		mockLstatSync.mockReturnValueOnce({ isSymbolicLink: () => false } as any);
+		updateTmuxShim(TARGET);
+
+		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
+		mockReadlinkSync.mockReturnValue(TARGET);
+		updateTmuxShim(TARGET);
+
 		expect(mockUnlinkSync).not.toHaveBeenCalled();
+		expect(mockSymlinkSync).not.toHaveBeenCalled();
 	});
 
 	it("creates the symlink when missing", () => {
@@ -397,25 +386,6 @@ describe("updateTmuxShim", () => {
 		expect(mockSymlinkSync).toHaveBeenCalledWith(TARGET, SHIM);
 	});
 
-	it("refuses to create a shim for a directory", () => {
-		const directory = "/Users/tester";
-		mockExistsSync.mockReturnValue(true);
-		vi.mocked(statSync).mockReturnValue({ isFile: () => false } as any);
-
-		updateTmuxShim(directory);
-
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
-	});
-
-	it("leaves a pre-existing non-symlink file alone", () => {
-		mockExistsSync.mockReturnValue(true);
-		mockLstatSync.mockReturnValue({ isSymbolicLink: () => false } as any);
-		updateTmuxShim(TARGET);
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
-	});
-
 	it("repoints the symlink when it targets a different binary", () => {
 		mockExistsSync.mockReturnValue(true);
 		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
@@ -423,15 +393,6 @@ describe("updateTmuxShim", () => {
 		updateTmuxShim(TARGET);
 		expect(mockUnlinkSync).toHaveBeenCalledWith(SHIM);
 		expect(mockSymlinkSync).toHaveBeenCalledWith(TARGET, SHIM);
-	});
-
-	it("is a no-op when the symlink already points at the binary", () => {
-		mockExistsSync.mockReturnValue(true);
-		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
-		mockReadlinkSync.mockReturnValue(TARGET);
-		updateTmuxShim(TARGET);
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
 	});
 
 	it("refuses to point the shim at itself (ELOOP regression)", () => {

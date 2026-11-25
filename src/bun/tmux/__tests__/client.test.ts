@@ -51,37 +51,37 @@ beforeEach(() => {
 });
 
 describe("argv construction", () => {
-	it("always targets the socket: <binary> -L <socket> …", async () => {
+	it("targets the per-call socket, else the constructor socket (default dev3), and pipes stdio", async () => {
 		const { client, spawnFn } = makeClient();
 		await client.hasSession("dev3-abc12345", { socket: "my-sock" });
 		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "my-sock", "has-session", "-t", "dev3-abc12345"]);
-	});
-
-	it("falls back to the constructor socket (default dev3)", async () => {
-		const { client, spawnFn } = makeClient();
+		expect(spawnFn.mock.calls[0][1]).toEqual({ stdout: "pipe", stderr: "pipe" });
 		await client.hasSession("dev3-abc12345");
-		expect(argvOf(spawnFn).slice(0, 3)).toEqual(["tmux", "-L", "dev3"]);
+		expect(argvOf(spawnFn, 1).slice(0, 3)).toEqual(["tmux", "-L", "dev3"]);
+
+		const customSpawn = vi.fn().mockReturnValue(makeProc());
+		const custom = new TmuxClient({ cwdExists: () => true, spawn: customSpawn as never, socket: "custom" });
+		await custom.killSession("s");
+		expect(argvOf(customSpawn).slice(0, 3)).toEqual(["tmux", "-L", "custom"]);
 	});
 
-	it("honors a custom default socket", async () => {
-		const spawnFn = vi.fn().mockReturnValue(makeProc());
-		const client = new TmuxClient({ cwdExists: () => true, spawn: spawnFn as never, socket: "custom" });
-		await client.killSession("s");
-		expect(argvOf(spawnFn).slice(0, 3)).toEqual(["tmux", "-L", "custom"]);
-	});
-
-	it("killServer kills the server AND unlinks the socket file tmux leaves behind", async () => {
+	it("killServer kills the server AND unlinks the socket file, even when there is no server to kill", async () => {
 		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
 		const previous = process.env.TMUX_TMPDIR;
 		process.env.TMUX_TMPDIR = root;
 		try {
-			const socketPath = tmuxSocketPath("dev3-live-test-42");
-			mkdirSync(dirname(socketPath), { recursive: true });
-			writeFileSync(socketPath, "");
-			const { client, spawnFn } = makeClient();
-			await client.killServer({ socket: "dev3-live-test-42" });
-			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3-live-test-42", "kill-server"]);
-			expect(existsSync(socketPath)).toBe(false);
+			for (const [socket, result] of [
+				["dev3-live-test-42", {}],
+				["dev3-live-test-43", { exited: Promise.resolve(1), stderr: "no server running" }],
+			] as const) {
+				const socketPath = tmuxSocketPath(socket);
+				mkdirSync(dirname(socketPath), { recursive: true });
+				writeFileSync(socketPath, "");
+				const { client, spawnFn } = makeClient(result);
+				await expect(client.killServer({ socket }), socket).resolves.toBeUndefined();
+				expect(argvOf(spawnFn), socket).toEqual(["tmux", "-L", socket, "kill-server"]);
+				expect(existsSync(socketPath), socket).toBe(false);
+			}
 		} finally {
 			if (previous === undefined) delete process.env.TMUX_TMPDIR;
 			else process.env.TMUX_TMPDIR = previous;
@@ -89,65 +89,29 @@ describe("argv construction", () => {
 		}
 	});
 
-	it("killServer still unlinks the socket file when there is no server to kill", async () => {
+	it("stopServer throws on a refused kill-server (keeping the socket file) but counts no server as stopped", async () => {
 		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
 		const previous = process.env.TMUX_TMPDIR;
 		process.env.TMUX_TMPDIR = root;
 		try {
-			const socketPath = tmuxSocketPath("dev3-live-test-43");
-			mkdirSync(dirname(socketPath), { recursive: true });
-			writeFileSync(socketPath, "");
-			const { client } = makeClient({ exited: Promise.resolve(1), stderr: "no server running" });
-			await expect(client.killServer({ socket: "dev3-live-test-43" })).resolves.toBeUndefined();
-			expect(existsSync(socketPath)).toBe(false);
-		} finally {
-			if (previous === undefined) delete process.env.TMUX_TMPDIR;
-			else process.env.TMUX_TMPDIR = previous;
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
+			const refusedPath = tmuxSocketPath("dev3-live-test-44");
+			mkdirSync(dirname(refusedPath), { recursive: true });
+			writeFileSync(refusedPath, "");
+			const { client: refused } = makeClient({ exited: Promise.resolve(1), stderr: "server exited unexpectedly" });
+			await expect(refused.stopServer({ socket: "dev3-live-test-44" })).rejects.toThrow(/kill-server failed/);
+			expect(existsSync(refusedPath)).toBe(true);
 
-	it("stopServer throws when kill-server is refused, and keeps the socket file a surviving server may own", async () => {
-		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
-		const previous = process.env.TMUX_TMPDIR;
-		process.env.TMUX_TMPDIR = root;
-		try {
-			const socketPath = tmuxSocketPath("dev3-live-test-44");
-			mkdirSync(dirname(socketPath), { recursive: true });
-			writeFileSync(socketPath, "");
-			const { client } = makeClient({ exited: Promise.resolve(1), stderr: "server exited unexpectedly" });
-			await expect(client.stopServer({ socket: "dev3-live-test-44" })).rejects.toThrow(/kill-server failed/);
-			expect(existsSync(socketPath)).toBe(true);
-		} finally {
-			if (previous === undefined) delete process.env.TMUX_TMPDIR;
-			else process.env.TMUX_TMPDIR = previous;
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("stopServer counts no running server as stopped and unlinks the socket file", async () => {
-		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
-		const previous = process.env.TMUX_TMPDIR;
-		process.env.TMUX_TMPDIR = root;
-		try {
-			const socketPath = tmuxSocketPath("dev3-live-test-45");
-			mkdirSync(dirname(socketPath), { recursive: true });
-			writeFileSync(socketPath, "");
+			const gonePath = tmuxSocketPath("dev3-live-test-45");
+			writeFileSync(gonePath, "");
 			const { client, spawnFn } = makeClient({ exited: Promise.resolve(1), stderr: "no server running on /tmp/x" });
 			await expect(client.stopServer({ socket: "dev3-live-test-45" })).resolves.toBeUndefined();
 			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3-live-test-45", "kill-server"]);
-			expect(existsSync(socketPath)).toBe(false);
+			expect(existsSync(gonePath)).toBe(false);
 		} finally {
 			if (previous === undefined) delete process.env.TMUX_TMPDIR;
 			else process.env.TMUX_TMPDIR = previous;
 			rmSync(root, { recursive: true, force: true });
 		}
-	});
-
-	it("pipes stdout and stderr for every run", async () => {
-		const { client, spawnFn } = makeClient();
-		await client.sourceFile("/tmp/conf");
-		expect(spawnFn.mock.calls[0][1]).toEqual({ stdout: "pipe", stderr: "pipe" });
 	});
 });
 
@@ -159,10 +123,13 @@ describe("hasSession", () => {
 		expect(await gone.hasSession("s")).toBe(false);
 	});
 
-	it("propagates a launch failure as TmuxSpawnError", async () => {
-		const spawnFn = vi.fn(() => { throw new Error("posix_spawn ENOENT"); });
+	it("propagates a launch failure as TmuxSpawnError that keeps its cause", async () => {
+		const cause = new Error("posix_spawn ENOENT");
+		const spawnFn = vi.fn(() => { throw cause; });
 		const client = new TmuxClient({ cwdExists: () => true, spawn: spawnFn as never });
-		await expect(client.hasSession("s")).rejects.toSatisfy((err: unknown) => isTmuxSpawnError(err));
+		const err = await client.hasSession("s").catch((e: unknown) => e);
+		expect(isTmuxSpawnError(err)).toBe(true);
+		expect((err as TmuxSpawnError).cause).toBe(cause);
 	});
 });
 
@@ -191,28 +158,25 @@ describe("error model", () => {
 		await expect(broken.killSession("x", { bestEffort: true })).rejects.toBeInstanceOf(TmuxSpawnError);
 	});
 
-	it("TmuxSpawnError keeps the cause of a launch failure", async () => {
-		const cause = new Error("posix_spawn '/opt/tmux'");
-		const spawnFn = vi.fn(() => { throw cause; });
-		const client = new TmuxClient({ cwdExists: () => true, spawn: spawnFn as never });
-		const err = await client.sourceFile("/tmp/x").catch((e: unknown) => e);
-		expect(err).toBeInstanceOf(TmuxSpawnError);
-		expect((err as TmuxSpawnError).cause).toBe(cause);
-	});
+	it("tailors the launch-failure hint per platform", () => {
+		const mac = new TmuxSpawnError("/opt/homebrew/bin/tmux", new Error("ENOENT"), "darwin", () => true);
+		expect(mac.message).toContain("Full Disk Access");
 
-	it("points a macOS user at Full Disk Access", () => {
-		const err = new TmuxSpawnError("/opt/homebrew/bin/tmux", new Error("ENOENT"), "darwin", () => true);
-		expect(err.message).toContain("Full Disk Access");
-	});
-
-	it("says a deleted Linux binary is gone instead of sending the user to Full Disk Access", () => {
+		// A deleted Linux binary is gone; do not send the user to Full Disk Access.
 		const binary = "/home/linuxbrew/.linuxbrew/opt/tmux@3.6/bin/tmux";
-		const err = new TmuxSpawnError(binary, new Error("ENOENT"), "linux", () => false);
-		expect(err.message).not.toContain("Full Disk Access");
-		expect(err.message).not.toContain("path resolves");
-		expect(err.message).toContain("No tmux binary exists at that path");
-		expect(err.message).toContain("brew install h0x91b/dev3/tmux@3.6");
-		expect(err.message).toContain("reload dev3");
+		const linux = new TmuxSpawnError(binary, new Error("ENOENT"), "linux", () => false);
+		expect(linux.message).not.toContain("Full Disk Access");
+		expect(linux.message).not.toContain("path resolves");
+		expect(linux.message).toContain("No tmux binary exists at that path");
+		expect(linux.message).toContain("brew install h0x91b/dev3/tmux@3.6");
+		expect(linux.message).toContain("reload dev3");
+
+		const bare = new TmuxSpawnError("tmux", new Error("ENOENT"), "linux", () => true);
+		expect(bare.message).toContain("No tmux binary exists on PATH");
+
+		const win = new TmuxSpawnError("tmux", new Error("not found"), "win32");
+		expect(win.message).not.toContain("Full Disk Access");
+		expect(win.message).toContain("POSIX-only");
 	});
 
 	it("checks the real file system for a Linux binary by default", () => {
@@ -226,17 +190,6 @@ describe("error model", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
-
-	it("treats a failed bare-name lookup on Linux as tmux missing from PATH", () => {
-		const err = new TmuxSpawnError("tmux", new Error("ENOENT"), "linux", () => true);
-		expect(err.message).toContain("No tmux binary exists on PATH");
-	});
-
-	it("does not send a Windows user to a macOS settings pane that has no equivalent", () => {
-		const err = new TmuxSpawnError("tmux", new Error("not found"), "win32");
-		expect(err.message).not.toContain("Full Disk Access");
-		expect(err.message).toContain("POSIX-only");
-	});
 });
 
 describe("list/parse methods", () => {
@@ -245,21 +198,16 @@ describe("list/parse methods", () => {
 		const rows = await client.listPanes(PANE_ID_FORMAT, { target: "dev3-abc" });
 		expect(rows).toEqual([{ paneId: "%1" }, { paneId: "%2" }]);
 		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", "list-panes", "-t", "dev3-abc", "-F", "#{pane_id}"]);
-	});
 
-	it("listPanes scope session adds -s, scope server uses -a without target", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "%1\t1\n" });
-		await client.listPanes(PANE_IN_MODE_FORMAT, { target: "dev3-abc", scope: "session" });
-		expect(argvOf(spawnFn)).toContain("-s");
+		const { client: session, spawnFn: sessionSpawn } = makeClient({ stdout: "%1\t1\n" });
+		await session.listPanes(PANE_IN_MODE_FORMAT, { target: "dev3-abc", scope: "session" });
+		expect(argvOf(sessionSpawn)).toContain("-s");
 
 		const { client: server, spawnFn: serverSpawn } = makeClient({ stdout: "" });
 		await server.listPanes(PANE_ID_FORMAT, { scope: "server" });
 		expect(argvOf(serverSpawn)).toContain("-a");
 		expect(argvOf(serverSpawn)).not.toContain("-t");
-	});
 
-	it("listPanes requires a target unless scope is server", async () => {
-		const { client } = makeClient();
 		await expect(client.listPanes(PANE_ID_FORMAT, {})).rejects.toThrow(/target is required/);
 	});
 
@@ -286,13 +234,11 @@ describe("list/parse methods", () => {
 
 		const { client: empty } = makeClient({ stdout: "" });
 		expect(await empty.displayMessage(STATUS_GEOMETRY_FORMAT, { target: "x" })).toBeNull();
-	});
 
-	it("activePaneId trims to the pane id or null", async () => {
-		const { client } = makeClient({ stdout: "%7\n" });
-		expect(await client.activePaneId("dev3-abc")).toBe("%7");
-		const { client: empty } = makeClient({ stdout: "\n" });
-		expect(await empty.activePaneId("dev3-abc")).toBeNull();
+		const { client: active } = makeClient({ stdout: "%7\n" });
+		expect(await active.activePaneId("dev3-abc")).toBe("%7");
+		const { client: blank } = makeClient({ stdout: "\n" });
+		expect(await blank.activePaneId("dev3-abc")).toBeNull();
 	});
 });
 
@@ -327,11 +273,9 @@ describe("splitWindow / newWindow", () => {
 		expect(argv).toContain("-v");
 		expect(argv).toContain("-b");
 		expect(argv).not.toContain("-P");
-	});
 
-	it("throws TmuxError on a failed split", async () => {
-		const { client } = makeClient({ exited: Promise.resolve(1), stderr: "pane too small" });
-		await expect(client.splitWindow({ target: "t", orientation: "vertical" })).rejects.toBeInstanceOf(TmuxError);
+		const { client: failing } = makeClient({ exited: Promise.resolve(1), stderr: "pane too small" });
+		await expect(failing.splitWindow({ target: "t", orientation: "vertical" })).rejects.toBeInstanceOf(TmuxError);
 	});
 
 	it("newWindow passes -n name and returns the pane id", async () => {
@@ -342,12 +286,9 @@ describe("splitWindow / newWindow", () => {
 			"tmux", "-L", "dev3", "new-window", "-n", "make:test",
 			"-P", "-F", "#{pane_id}", "-t", "dev3-abc:", "-c", "/wt", "cmd",
 		]);
-	});
 
-	it("newWindow opens detached with env entries when asked", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "%4\n" });
 		await client.newWindow({ target: "dev3-abc:", name: "Runs", detached: true, printPaneId: true, env: { DEV3_TASK_SEQ: "7" }, command: "cmd" });
-		expect(argvOf(spawnFn)).toEqual([
+		expect(argvOf(spawnFn, 1)).toEqual([
 			"tmux", "-L", "dev3", "new-window", "-d", "-n", "Runs",
 			"-P", "-F", "#{pane_id}", "-e", "DEV3_TASK_SEQ=7", "-t", "dev3-abc:", "cmd",
 		]);
@@ -355,14 +296,12 @@ describe("splitWindow / newWindow", () => {
 });
 
 describe("splitWindow focus", () => {
-	it("always splits in the background and selects nothing without focus", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "" });
-		await client.splitWindow({ target: "dev3-abc", orientation: "vertical" });
-		expect(spawnFn).toHaveBeenCalledTimes(1);
-		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-v", "-t", "dev3-abc"]);
-	});
+	it("splits in the background; only an explicit user action selects exactly the pane it created", async () => {
+		const { client: quiet, spawnFn: quietSpawn } = makeClient({ stdout: "" });
+		await quiet.splitWindow({ target: "dev3-abc", orientation: "vertical" });
+		expect(quietSpawn).toHaveBeenCalledTimes(1);
+		expect(argvOf(quietSpawn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-v", "-t", "dev3-abc"]);
 
-	it("an explicit user action selects exactly the pane it created", async () => {
 		const { client, spawnFn } = makeClient({ stdout: "%14\n" });
 		const result = await client.splitWindow({ target: "dev3-abc", orientation: "horizontal", focus: true });
 		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-h", "-P", "-F", "#{pane_id}", "-t", "dev3-abc"]);
@@ -379,12 +318,11 @@ describe("newWindow focus", () => {
 		expect(argvOf(spawnFn, 1)).toEqual(["tmux", "-L", "dev3", "select-window", "-t", "%12"]);
 		// The caller did not ask for the pane id, so the contract stays "null".
 		expect(result.paneId).toBeNull();
-	});
 
-	it("without focus nothing is selected — the window stays in the background", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "" });
-		await client.newWindow({ target: "dev3-abc:" });
-		expect(spawnFn).toHaveBeenCalledTimes(1);
+		// Without focus nothing is selected — the window stays in the background.
+		const { client: quiet, spawnFn: quietSpawn } = makeClient({ stdout: "" });
+		await quiet.newWindow({ target: "dev3-abc:" });
+		expect(quietSpawn).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -406,6 +344,12 @@ describe("newSessionDetached", () => {
 		// Decision 103: a tmux server started by this client must never inherit
 		// a mortal worktree cwd.
 		expect(spawnFn.mock.calls[0][1]).toMatchObject({ cwd: DEV3_HOME });
+
+		const { client: dup } = makeClient({ exited: Promise.resolve(1), stderr: "duplicate session" });
+		await expect(dup.newSessionDetached({ sessionName: "s", cwd: "/wt" })).rejects.toMatchObject({
+			name: "TmuxError",
+			stderr: "duplicate session",
+		});
 	});
 
 	it("chains pipe-pane onto the SAME invocation, after the command", async () => {
@@ -427,19 +371,6 @@ describe("newSessionDetached", () => {
 		]);
 	});
 
-	it("stays a plain new-session when nothing asked for a pipe", async () => {
-		const { client, spawnFn } = makeClient({ stderr: "" });
-		await client.newSessionDetached({ sessionName: "s", cwd: "/wt", command: "bash dev.sh" });
-		expect(argvOf(spawnFn)).not.toContain("pipe-pane");
-	});
-
-	it("throws TmuxError with captured stderr on failure", async () => {
-		const { client } = makeClient({ exited: Promise.resolve(1), stderr: "duplicate session" });
-		await expect(client.newSessionDetached({ sessionName: "s", cwd: "/wt" })).rejects.toMatchObject({
-			name: "TmuxError",
-			stderr: "duplicate session",
-		});
-	});
 });
 
 describe("spawnAttachedSession", () => {
@@ -466,6 +397,22 @@ describe("spawnAttachedSession", () => {
 			env: { TERM: "xterm-256color" },
 			cwd: DEV3_HOME,
 		});
+
+		// Without attachIfExists there is no -A, and a launch failure is wrapped.
+		client.spawnAttachedSession({
+			sessionName: "dev3-cl-abc",
+			configFile: "/tmp/conf",
+			cwd: "/wt",
+			terminal: { cols: 1, rows: 1, data: vi.fn() },
+		});
+		expect(argvOf(spawnFn, 1)).not.toContain("-A");
+
+		const throwing = vi.fn(() => { throw new Error("ENOENT"); });
+		const broken = new TmuxClient({ cwdExists: () => true, spawn: throwing as never });
+		expect(() => broken.spawnAttachedSession({
+			sessionName: "s", configFile: "/c", cwd: "/w",
+			terminal: { cols: 1, rows: 1, data: vi.fn() },
+		})).toThrow(TmuxSpawnError);
 	});
 
 	it("gives the client TERM, LANG and HOME even when the app env has none of them", () => {
@@ -490,24 +437,6 @@ describe("spawnAttachedSession", () => {
 				else process.env[key] = value;
 			}
 		}
-	});
-
-	it("omits -A without attachIfExists and wraps launch failures", () => {
-		const { client, spawnFn } = makeClient();
-		client.spawnAttachedSession({
-			sessionName: "dev3-cl-abc",
-			configFile: "/tmp/conf",
-			cwd: "/wt",
-			terminal: { cols: 1, rows: 1, data: vi.fn() },
-		});
-		expect(argvOf(spawnFn)).not.toContain("-A");
-
-		const throwing = vi.fn(() => { throw new Error("ENOENT"); });
-		const broken = new TmuxClient({ cwdExists: () => true, spawn: throwing as never });
-		expect(() => broken.spawnAttachedSession({
-			sessionName: "s", configFile: "/c", cwd: "/w",
-			terminal: { cols: 1, rows: 1, data: vi.fn() },
-		})).toThrow(TmuxSpawnError);
 	});
 });
 
@@ -545,13 +474,13 @@ describe("command methods build the documented argv", () => {
 		["sourceFile", (c) => c.sourceFile("/tmp/conf"), ["source-file", "/tmp/conf"]],
 	];
 
-	for (const [name, run, expected] of CASES) {
-		it(name, async () => {
+	it("every command method", async () => {
+		for (const [name, run, expected] of CASES) {
 			const { client, spawnFn } = makeClient();
 			await run(client);
-			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", ...expected]);
-		});
-	}
+			expect(argvOf(spawnFn), name).toEqual(["tmux", "-L", "dev3", ...expected]);
+		}
+	});
 });
 
 describe("showOption", () => {
@@ -561,11 +490,9 @@ describe("showOption", () => {
 		expect(argvOf(spawnFn)).toEqual([
 			"tmux", "-L", "dev3", "show-options", "-v", "-q", "-t", "dev3-a", "@dev3_last_agent_pane",
 		]);
-	});
 
-	it("returns an empty string when the option is unset", async () => {
-		const { client } = makeClient({ stdout: "" });
-		expect(await client.showOption("dev3-a", "@dev3_last_agent_pane")).toBe("");
+		const { client: unset } = makeClient({ stdout: "" });
+		expect(await unset.showOption("dev3-a", "@dev3_last_agent_pane")).toBe("");
 	});
 });
 
@@ -577,18 +504,11 @@ describe("capturePane", () => {
 		expect(argvOf(spawnFn)).toEqual([
 			"tmux", "-L", "dev3", "capture-pane", "-p", "-e", "-t", "%1", "-S", "5", "-E", "5",
 		]);
-	});
 
-	it("supports a plain capture without escapes or bounds", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "" });
 		await client.capturePane({ target: "dev3-abc" });
-		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-t", "dev3-abc"]);
-	});
-
-	it("joins wrapped lines with -J", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "" });
+		expect(argvOf(spawnFn, 1)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-t", "dev3-abc"]);
 		await client.capturePane({ target: "%1", joinWrapped: true });
-		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-J", "-t", "%1"]);
+		expect(argvOf(spawnFn, 2)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-J", "-t", "%1"]);
 	});
 });
 
@@ -633,13 +553,6 @@ describe("the default command bound", () => {
 		} finally {
 			vi.useRealTimers();
 		}
-	});
-
-	it("still lets a caller ask for a tighter bound", async () => {
-		const proc = wedgedProc();
-		const client = new TmuxClient({ cwdExists: () => true, spawn: vi.fn().mockReturnValue(proc) as never });
-		const failure = await client.ensureServerToken({ candidate: "srv-token-1", timeoutMs: 5 }).catch((err: unknown) => err);
-		expect(failure).toSatisfy(isTmuxTimeoutError);
 	});
 });
 
@@ -723,12 +636,10 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		// `--` ends the options, so a body starting with a dash is data rather than a flag.
 		const load = spawnFn.mock.calls.map((c) => c[0] as string[]).find((argv) => argv[3] === "set-buffer")!;
 		expect(load.slice(3)).toEqual(["set-buffer", "-b", expect.stringMatching(/^dev3-paste-/), "--", hostile]);
-	});
 
-	it("keeps multibyte text byte-exact", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		// Multibyte text stays byte-exact.
 		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "日本語" }] });
-		expect(loadedBuffers(spawnFn)[0][1]).toBe("日本語");
+		expect(loadedBuffers(spawnFn)[1][1]).toBe("日本語");
 	});
 
 	it("sends key names as names, in one send-keys per run", async () => {
@@ -748,11 +659,14 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		const buffers = loadedBuffers(spawnFn);
 		expect(buffers.map(([, text]) => text)).toEqual(["one", "two"]);
 		expect(buffers[0][0]).not.toBe(buffers[1][0]);
+		// One byte of argv per byte of text: the size budget in shared/pane-input.ts is
+		// computed from this shape, so it is measured against the REAL encoder.
+		for (const [, loaded] of buffers) expect(loaded.length).toBe(3);
 	});
 
 	// A refused guard never runs `paste-buffer -d`, so the body would otherwise sit in the
 	// server's buffer stack for anyone to `show-buffer`.
-	it("deletes a buffer the guard refused to paste", async () => {
+	it("reports sent:false when the marker does not come back, and deletes the refused buffer", async () => {
 		const { client, spawnFn } = makeClient({ stdout: "" });
 		await expect(client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "secret" }] })).resolves.toEqual({
 			sent: false,
@@ -766,23 +680,6 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 				name,
 			]),
 		);
-	});
-
-	// The size budget in shared/pane-input.ts is computed from this shape, so it has to be
-	// measured against the REAL encoder rather than re-derived in a test.
-	it("spends one byte of argv per byte of text", async () => {
-		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
-		const text = "abcdefghij";
-		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: text }, { literal: text }] });
-		for (const [, loaded] of loadedBuffers(spawnFn)) expect(loaded.length).toBe(text.length);
-	});
-
-	it("reports sent:false when the marker does not come back", async () => {
-		const { client } = makeClient({ stdout: "" });
-		await expect(client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }] })).resolves.toEqual({
-			sent: false,
-			inMode: false,
-		});
 	});
 
 	it("reports inMode only when the else branch says copy mode alone refused", async () => {
@@ -837,20 +734,7 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		expect(stdout.locked).toBe(false);
 	});
 
-	it("gives up when the child's exit never settles at all", async () => {
-		const proc = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
-		const client = new TmuxClient({ cwdExists: () => true, spawn: vi.fn().mockReturnValue(proc) as never });
-
-		const failure = await client
-			.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }], timeoutMs: 5 })
-			.catch((err: unknown) => err);
-		// Reported as unconfirmed, which is what makes the caller treat the pane as unsafe
-		// rather than merely uncertain.
-		expect((failure as { stopConfirmed?: boolean }).stopConfirmed).toBe(false);
-		expect(proc.kill).toHaveBeenCalled();
-	});
-
-	it("kills and reaps a command that overruns its budget", async () => {
+	it("kills and reaps a command that overruns its budget; reports an exit that never settles as unconfirmed", async () => {
 		let settle: (code: number) => void = () => undefined;
 		const exited = new Promise<number>((resolve) => {
 			settle = resolve;
@@ -864,6 +748,15 @@ describe("sendKeysGuarded — one server command list, no check/send window", ()
 		// Killed AND awaited, so nothing is left as a zombie.
 		expect(proc.kill).toHaveBeenCalled();
 		await expect(exited).resolves.toBe(143);
+
+		const stuck = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
+		const stuckClient = new TmuxClient({ cwdExists: () => true, spawn: vi.fn().mockReturnValue(stuck) as never });
+		const failure = await stuckClient
+			.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }], timeoutMs: 5 })
+			.catch((err: unknown) => err);
+		// Unconfirmed is what makes the caller treat the pane as unsafe rather than merely uncertain.
+		expect((failure as { stopConfirmed?: boolean }).stopConfirmed).toBe(false);
+		expect(stuck.kill).toHaveBeenCalled();
 	});
 });
 
@@ -886,18 +779,16 @@ describe("observePane — proves presence or absence, never writes", () => {
 	});
 
 	// `remain-on-exit` keeps a dead pane listed and addressable, so it is its own state.
-	it("reports a listed but dead pane as dead, not present", async () => {
+	it("reports a listed but dead pane as dead, and an unlisted one as absent", async () => {
 		const { client } = makeClient({ stdout: "%3\t1\tsrv-token-1\tdev3-task-abc12345\n" });
 		await expect(client.observePane({ pane: "%3" })).resolves.toEqual({
 			kind: "dead",
 			sessionName: "dev3-task-abc12345",
 			serverToken: "srv-token-1",
 		});
-	});
 
-	it("reports absence when the server does not list it", async () => {
-		const { client } = makeClient({ stdout: "%9\t0\tsrv-token-1\tdev3-task-other\n" });
-		await expect(client.observePane({ pane: "%3" })).resolves.toEqual({ kind: "absent" });
+		const { client: other } = makeClient({ stdout: "%9\t0\tsrv-token-1\tdev3-task-other\n" });
+		await expect(other.observePane({ pane: "%3" })).resolves.toEqual({ kind: "absent" });
 	});
 
 	// A server nothing minted a token on is not a server this app set up, so there is no
@@ -907,18 +798,14 @@ describe("observePane — proves presence or absence, never writes", () => {
 		const seen = await client.observePane({ pane: "%3" });
 		expect(seen).toMatchObject({ kind: "unusable" });
 		expect(seen.kind === "unusable" && seen.detail).toContain("generation token");
-	});
 
-	// tmux failing to answer says nothing about the pane, so it is neither present nor gone.
-	it("reports unusable when tmux itself cannot answer", async () => {
-		const { client } = makeClient({ stdout: "", stderr: "no server running", exited: Promise.resolve(1) });
-		const seen = await client.observePane({ pane: "%3" });
-		expect(seen.kind).toBe("unusable");
-	});
+		// tmux failing to answer says nothing about the pane, so it is neither present nor gone.
+		const { client: down } = makeClient({ stdout: "", stderr: "no server running", exited: Promise.resolve(1) });
+		expect((await down.observePane({ pane: "%3" })).kind).toBe("unusable");
 
-	it("refuses a pane id it cannot safely ask about", async () => {
-		const { client, spawnFn } = makeClient();
-		await expect(client.observePane({ pane: "not-a-pane" })).resolves.toMatchObject({ kind: "unusable" });
+		// A pane id it cannot safely ask about is refused without a spawn.
+		const { client: unsafe, spawnFn } = makeClient();
+		await expect(unsafe.observePane({ pane: "not-a-pane" })).resolves.toMatchObject({ kind: "unusable" });
 		expect(spawnFn).not.toHaveBeenCalled();
 	});
 });
@@ -947,11 +834,16 @@ describe("ensureServerToken mints once", () => {
 			"-p",
 			"#{@dev3_server_token}",
 		]);
+
+		// The value already in the server wins over the candidate.
+		const { client: raced } = makeClient({ stdout: "srv-token-earlier" });
+		await expect(raced.ensureServerToken({ candidate: "srv-token-mine" })).resolves.toBe("srv-token-earlier");
 	});
 
 	// The DEFAULT bound is the one production uses; only asserting an injected 5ms would let
-	// the default be multiplied by a thousand with nothing red.
-	it("bounds the token command by 3s when no caller says otherwise", async () => {
+	// the default be multiplied by a thousand with nothing red. The token step was the one
+	// previously unbounded call: a wedged server left it pending inside a session's setup.
+	it("kills and reaps a wedged token command after the 3s default bound", async () => {
 		const proc = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
 		const client = new TmuxClient({ cwdExists: () => true, spawn: vi.fn().mockReturnValue(proc) as never });
 		vi.useFakeTimers();
@@ -967,22 +859,6 @@ describe("ensureServerToken mints once", () => {
 		} finally {
 			vi.useRealTimers();
 		}
-	});
-
-	// The one previously unbounded call in this client: a wedged server left the token step
-	// pending forever inside a session's setup.
-	it("kills and reaps a wedged token command instead of hanging the caller", async () => {
-		const proc = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
-		const client = new TmuxClient({ cwdExists: () => true, spawn: vi.fn().mockReturnValue(proc) as never });
-
-		const failure = await client.ensureServerToken({ candidate: "srv-token-1", timeoutMs: 5 }).catch((err: unknown) => err);
-		expect(failure).toSatisfy(isTmuxTimeoutError);
-		expect(proc.kill).toHaveBeenCalled();
-	});
-
-	it("returns the value already in the server, not the candidate", async () => {
-		const { client } = makeClient({ stdout: "srv-token-earlier" });
-		await expect(client.ensureServerToken({ candidate: "srv-token-mine" })).resolves.toBe("srv-token-earlier");
 	});
 
 	it("refuses an unusable candidate or an empty answer", async () => {
@@ -1002,7 +878,7 @@ describe("missing pane cwd backstop", () => {
 		return { client, spawnFn };
 	}
 
-	it("refuses new-session, split-window, new-window and an attached session in a missing dir — without spawning", async () => {
+	it("refuses a missing dir for every pane launcher without spawning, but lets existing dirs, format strings and no cwd through", async () => {
 		const { client, spawnFn } = refusingClient();
 		await expect(client.newSessionDetached({ sessionName: "dev3-x", cwd: "/gone" })).rejects.toThrow(TmuxMissingCwdError);
 		await expect(client.splitWindow({ target: "dev3-x:", orientation: "vertical", cwd: "/gone" })).rejects.toThrow(TmuxMissingCwdError);
@@ -1011,10 +887,8 @@ describe("missing pane cwd backstop", () => {
 			sessionName: "dev3-x", configFile: "/c", cwd: "/gone", terminal: { cols: 80, rows: 24, data: () => {} },
 		})).toThrow(TmuxMissingCwdError);
 		expect(spawnFn).not.toHaveBeenCalled();
-	});
 
-	it("lets an existing dir, a tmux format string and no cwd through", async () => {
-		const { client, spawnFn } = refusingClient();
+		// An existing dir, a tmux format string and no cwd all pass.
 		await client.splitWindow({ target: "dev3-x:", orientation: "vertical", cwd: "#{pane_current_path}" });
 		await client.splitWindow({ target: "dev3-x:", orientation: "vertical" });
 		await client.newWindow({ target: "dev3-x:", cwd: "/here" });
@@ -1037,7 +911,7 @@ describe("server pre-start hook", () => {
 		return { client, ensureServer, order };
 	}
 
-	it("runs before an attached session with the env a self-started server would inherit", () => {
+	it("runs before an attached session (with a self-started server's env) and a detached one (on its socket)", async () => {
 		const { client, ensureServer, order } = hookedClient();
 		client.spawnAttachedSession({
 			sessionName: "s",
@@ -1051,6 +925,14 @@ describe("server pre-start hook", () => {
 			configFile: "/tmp/conf",
 			cwd: DEV3_HOME,
 			env: expect.objectContaining({ TERM: "xterm-256color", HOME: process.env.HOME }),
+		}));
+
+		const detached = hookedClient();
+		await detached.client.newSessionDetached({ socket: "s9", sessionName: "s", cwd: "/wt" });
+		expect(detached.order).toEqual(["ensure", "spawn"]);
+		expect(detached.ensureServer).toHaveBeenCalledWith(expect.objectContaining({
+			socket: "s9",
+			configFile: activeTmuxConfigPath(),
 		}));
 	});
 
@@ -1073,15 +955,5 @@ describe("server pre-start hook", () => {
 			delete process.env.DEV3_TEST_PATH_MARK;
 			if (prevTerm !== undefined) process.env.TERM = prevTerm;
 		}
-	});
-
-	it("runs before a detached session on its socket with the active config", async () => {
-		const { client, ensureServer, order } = hookedClient();
-		await client.newSessionDetached({ socket: "s9", sessionName: "s", cwd: "/wt" });
-		expect(order).toEqual(["ensure", "spawn"]);
-		expect(ensureServer).toHaveBeenCalledWith(expect.objectContaining({
-			socket: "s9",
-			configFile: activeTmuxConfigPath(),
-		}));
 	});
 });

@@ -50,22 +50,20 @@ describe("parser-state snapshot", () => {
 		expect(readFileSync(parserStateFile("alpha"), "utf8")).toContain(PARSER_STATE_SCHEMA);
 	});
 
-	it("rejects a foreign schema fail-closed", () => {
+	it("rejects a foreign schema, version or parser identity fail-closed", () => {
 		expect(() => parseParserStateSnapshot(JSON.stringify({ ...snapshot(), schema: "other" }))).toThrow(
 			/Unsupported parser-state snapshot/,
 		);
-	});
-
-	it("rejects a foreign version fail-closed", () => {
-		expect(() => parseParserStateSnapshot(JSON.stringify({ ...snapshot(), version: 2 }))).toThrow(
-			/Unsupported parser-state snapshot/,
-		);
-	});
-
-	it("rejects a foreign parser identity fail-closed", () => {
-		expect(() => parseParserStateSnapshot(JSON.stringify({ ...snapshot(), parser: "xterm@1.0.0" }))).toThrow(
-			/Unsupported parser-state snapshot/,
-		);
+		{
+			expect(() => parseParserStateSnapshot(JSON.stringify({ ...snapshot(), version: 2 }))).toThrow(
+				/Unsupported parser-state snapshot/,
+			);
+		}
+		{
+			expect(() => parseParserStateSnapshot(JSON.stringify({ ...snapshot(), parser: "xterm@1.0.0" }))).toThrow(
+				/Unsupported parser-state snapshot/,
+			);
+		}
 	});
 
 	it("rejects invalid JSON and unknown health states", () => {

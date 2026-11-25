@@ -113,7 +113,7 @@ function harness(overrides: Partial<NativeAdapterDeps> = {}): Harness {
 }
 
 describe("NativeSingleViewAdapter — lifecycle mapping", () => {
-	it("creates a session with a live parser and returns the stable first view id", async () => {
+	it("creates a session with a live parser, reporting presence and the stable first (active) view id", async () => {
 		const h = harness();
 		const handle = await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
 		expect(handle).toEqual({ id: "alpha", firstViewId: "alpha:0" });
@@ -124,14 +124,13 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		);
 		const [, opts] = h.start.mock.calls[0];
 		expect(opts.launch).toEqual({ executable: "sh", argv: [], cwd: "/tmp", env: {} });
-	});
-
-	it("reports presence, a single active view, and a stable active id", async () => {
-		const h = harness();
-		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
-		expect(await h.adapter.isSessionPresent("alpha")).toBe(true);
-		expect(await h.adapter.listViews("alpha")).toEqual([{ id: "alpha:0", active: true }]);
-		expect(await h.adapter.activeViewId("alpha")).toBe("alpha:0");
+		{
+			const h = harness();
+			await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+			expect(await h.adapter.isSessionPresent("alpha")).toBe(true);
+			expect(await h.adapter.listViews("alpha")).toEqual([{ id: "alpha:0", active: true }]);
+			expect(await h.adapter.activeViewId("alpha")).toBe("alpha:0");
+		}
 	});
 
 	it("treats a missing / not-owned session as absent with an empty view list", async () => {
@@ -146,13 +145,6 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		expect(await h.adapter.listViews("alpha")).toEqual([]);
 	});
 
-	it("writes input as a PTY submit through an attached client", async () => {
-		const h = harness();
-		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
-		await h.adapter.sendInput("alpha", "alpha:0", "echo hi");
-		expect(h.client.input).toHaveBeenCalledWith("echo hi\r");
-	});
-
 	it("captures the bounded snapshot text, or empty before any output", async () => {
 		const h = harness();
 		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
@@ -161,20 +153,19 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		expect(await h.adapter.capture("alpha", "alpha:0", { includeHistory: true })).toBe("PARITY-L1\nPARITY-L2");
 	});
 
-	it("writes raw input verbatim while sendInput appends the submit key", async () => {
+	it("writes raw input verbatim, sendInput appends the submit key, and resizes through the attached client", async () => {
 		const h = harness();
 		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
 		await h.adapter.writeInput("alpha", "alpha:0", "abc");
 		await h.adapter.sendInput("alpha", "alpha:0", "abc");
 		expect(h.client.input).toHaveBeenNthCalledWith(1, "abc");
 		expect(h.client.input).toHaveBeenNthCalledWith(2, "abc\r");
-	});
-
-	it("resizes the view through the attached client", async () => {
-		const h = harness();
-		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
-		await h.adapter.resizeView("alpha", "alpha:0", 120, 40);
-		expect(h.client.resize).toHaveBeenCalledWith(120, 40);
+		{
+			const h = harness();
+			await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+			await h.adapter.resizeView("alpha", "alpha:0", 120, 40);
+			expect(h.client.resize).toHaveBeenCalledWith(120, 40);
+		}
 	});
 
 	it("detachSession closes the client but keeps the session running", async () => {
@@ -187,7 +178,7 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		expect(await h.adapter.isSessionPresent("alpha")).toBe(true);
 	});
 
-	it("rejects raw input and resize for a missing session or dead view", async () => {
+	it("raises typed errors for missing sessions and gone views on every view operation", async () => {
 		const h = harness();
 		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
 		await expect(h.adapter.writeInput("ghost", "ghost:0", "x")).rejects.toBeInstanceOf(
@@ -196,48 +187,46 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		await expect(h.adapter.resizeView("alpha", "alpha:1", 80, 24)).rejects.toBeInstanceOf(
 			NativeViewGoneError,
 		);
+		{
+			const h = harness();
+			await expect(h.adapter.sendInput("ghost", "ghost:0", "x")).rejects.toBeInstanceOf(NativeSessionNotFoundError);
+			await expect(h.adapter.capture("ghost", "ghost:0")).rejects.toBeInstanceOf(NativeSessionNotFoundError);
+			await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+			await expect(h.adapter.capture("alpha", "alpha:9")).rejects.toBeInstanceOf(NativeViewGoneError);
+		}
 	});
 });
 
 describe("NativeSingleViewAdapter — negative + deferred handling", () => {
-	it("defers splitView to the multi-view roadmap with a typed error", async () => {
-		const h = harness();
-		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
-		await expect(h.adapter.splitView("alpha", "alpha:0", { cwd: "/tmp" })).rejects.toBeInstanceOf(
-			MultiViewUnsupportedError,
-		);
-	});
 
-	it("focuses the sole view but rejects a second-view focus", async () => {
+	it("focuses the sole view but defers a split or a second-view focus to the multi-view roadmap", async () => {
 		const h = harness();
 		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
 		await expect(h.adapter.focusView("alpha", "alpha:0")).resolves.toBeUndefined();
 		await expect(h.adapter.focusView("alpha", "alpha:1")).rejects.toBeInstanceOf(MultiViewUnsupportedError);
+		{
+			const h = harness();
+			await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+			await expect(h.adapter.splitView("alpha", "alpha:0", { cwd: "/tmp" })).rejects.toBeInstanceOf(
+				MultiViewUnsupportedError,
+			);
+		}
 	});
 
-	it("raises typed errors for missing sessions and gone views", async () => {
-		const h = harness();
-		await expect(h.adapter.sendInput("ghost", "ghost:0", "x")).rejects.toBeInstanceOf(NativeSessionNotFoundError);
-		await expect(h.adapter.capture("ghost", "ghost:0")).rejects.toBeInstanceOf(NativeSessionNotFoundError);
-		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
-		await expect(h.adapter.capture("alpha", "alpha:9")).rejects.toBeInstanceOf(NativeViewGoneError);
-	});
-
-	it("cleans up an owned session and reaps only its own tree", async () => {
+	it("cleans up an owned session, reaping only its own tree; idempotent best-effort, strict once gone", async () => {
 		const h = harness();
 		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
 		await h.adapter.cleanupSession("alpha");
 		expect(h.stop).toHaveBeenCalledWith("alpha", {}, undefined);
 		expect(await h.adapter.isSessionPresent("alpha")).toBe(false);
 		expect(h.client.close).toHaveBeenCalledTimes(0); // no client was attached (no input)
-	});
-
-	it("is idempotent best-effort but strict on an already-gone session", async () => {
-		const h = harness();
-		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
-		await h.adapter.cleanupSession("alpha"); // strict removal succeeds
-		await expect(h.adapter.cleanupSession("alpha", { bestEffort: true })).resolves.toBeUndefined();
-		await expect(h.adapter.cleanupSession("alpha")).rejects.toBeInstanceOf(NativeSessionNotFoundError);
+		{
+			const h = harness();
+			await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+			await h.adapter.cleanupSession("alpha"); // strict removal succeeds
+			await expect(h.adapter.cleanupSession("alpha", { bestEffort: true })).resolves.toBeUndefined();
+			await expect(h.adapter.cleanupSession("alpha")).rejects.toBeInstanceOf(NativeSessionNotFoundError);
+		}
 	});
 
 	it("closes the attached client on cleanup and killView tears the session down", async () => {

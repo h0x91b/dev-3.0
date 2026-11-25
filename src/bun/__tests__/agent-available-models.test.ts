@@ -73,47 +73,46 @@ beforeEach(() => {
 describe("codex modelListProbe.parse", () => {
 	const parse = codexAdapter.modelListProbe!.parse;
 
-	it("keeps only visibility=list AND supported_in_api slugs", () => {
-		expect(parse(CODEX_DUMP)).toEqual(["gpt-6-astra", "gpt-5.6-sol"]);
+	it("keeps only listed, API-supported slugs, null on a broken dump, with no normalize", () => {
+		// keeps only visibility=list AND supported_in_api slugs
+		expect(parse(CODEX_DUMP), "keeps only visibility=list AND supported_in_api slugs").toEqual(["gpt-6-astra", "gpt-5.6-sol"]);
+
+		// returns null on non-JSON so a broken dump filters nothing
+		expect(parse("not json"), "returns null on non-JSON so a broken dump filters nothing").toBeNull();
+
+		// returns null when there is no models array
+		expect(parse(JSON.stringify({ foo: 1 })), "returns null when there is no models array").toBeNull();
+
+		// has no normalize — Codex compares on the exact base slug
+		expect(codexAdapter.modelListProbe!.normalize, "has no normalize — Codex compares on the exact base slug").toBeUndefined();
 	});
 
-	it("returns null on non-JSON so a broken dump filters nothing", () => {
-		expect(parse("not json")).toBeNull();
-	});
-
-	it("returns null when there is no models array", () => {
-		expect(parse(JSON.stringify({ foo: 1 }))).toBeNull();
-	});
-
-	it("has no normalize — Codex compares on the exact base slug", () => {
-		expect(codexAdapter.modelListProbe!.normalize).toBeUndefined();
-	});
 });
 
 describe("cursor modelListProbe", () => {
 	const probe = cursorAdapter.modelListProbe!;
 
-	it("parses `slug - Display Name` rows and skips the header", () => {
+	it("parses `slug - Display Name` rows past the header and ANSI escapes, normalizing to the base family", () => {
+		// parses `slug - Display Name` rows and skips the header
 		const out = "Available models\n\nauto - Auto (default)\ngpt-5.6-sol-high - GPT-5.6 Sol 1M High\n";
-		expect(probe.parse(out)).toEqual(["auto", "gpt-5.6-sol-high"]);
-	});
+		expect(probe.parse(out), "parses `slug - Display Name` rows and skips the header").toEqual(["auto", "gpt-5.6-sol-high"]);
 
-	it("normalize folds effort/speed suffixes to the base family", () => {
+		// normalize folds effort/speed suffixes to the base family
 		const n = probe.normalize!;
-		expect(n("gpt-5.6-sol-xhigh")).toBe("gpt-5.6-sol");
-		expect(n("gpt-5.6-sol-high")).toBe("gpt-5.6-sol");
-		expect(n("cursor-grok-4.6-high-fast")).toBe("cursor-grok-4.6");
-		expect(n("claude-opus-5-thinking-high")).toBe("claude-opus-5");
+		expect(n("gpt-5.6-sol-xhigh"), "normalize folds effort/speed suffixes to the base family").toBe("gpt-5.6-sol");
+		expect(n("gpt-5.6-sol-high"), "normalize folds effort/speed suffixes to the base family").toBe("gpt-5.6-sol");
+		expect(n("cursor-grok-4.6-high-fast"), "normalize folds effort/speed suffixes to the base family").toBe("cursor-grok-4.6");
+		expect(n("claude-opus-5-thinking-high"), "normalize folds effort/speed suffixes to the base family").toBe("claude-opus-5");
 		// A slug with no effort suffix is left whole.
-		expect(n("composer-2.5")).toBe("composer-2.5");
-	});
+		expect(n("composer-2.5"), "normalize folds effort/speed suffixes to the base family").toBe("composer-2.5");
 
-	it("strips ANSI escapes the real CLI emits on stdout", () => {
+		// strips ANSI escapes the real CLI emits on stdout
 		// cursor-agent clears the line / moves the cursor and colours rows even when
 		// piped; the slug must survive that.
-		const out = "\u001B[2K\u001B[GAvailable models\n\n\u001B[1mauto\u001B[0m - Auto\n\u001B[32mgpt-5.6-sol-high\u001B[0m - GPT-5.6 Sol\n";
-		expect(probe.parse(out)).toEqual(["auto", "gpt-5.6-sol-high"]);
+		const out2 = "\u001B[2K\u001B[GAvailable models\n\n\u001B[1mauto\u001B[0m - Auto\n\u001B[32mgpt-5.6-sol-high\u001B[0m - GPT-5.6 Sol\n";
+		expect(probe.parse(out2), "strips ANSI escapes the real CLI emits on stdout").toEqual(["auto", "gpt-5.6-sol-high"]);
 	});
+
 });
 
 describe("resolveModelAvailability", () => {
@@ -150,28 +149,28 @@ describe("resolveModelAvailability", () => {
 		expect(result).toEqual({ status: "resolved", unavailable: ["cursor-grok-4.6-high-fast"] });
 	});
 
-	it("returns unknown for an empty catalog rather than flagging everything", async () => {
+	it("returns unknown for an empty catalog, a non-zero exit, or a CLI with no model-list command", async () => {
+		// returns unknown for an empty catalog rather than flagging everything
 		mockSpawn.mockReturnValue(fakeProc(JSON.stringify({ models: [] })));
 		const result = await resolveModelAvailability(codexAgent(["gpt-6-sol"]));
-		expect(result).toEqual({ status: "unknown" });
-	});
+		expect(result, "returns unknown for an empty catalog rather than flagging everything").toEqual({ status: "unknown" });
 
-	it("returns unknown on a non-zero exit", async () => {
+		// returns unknown on a non-zero exit
 		mockSpawn.mockReturnValue(fakeProc("", 1));
-		const result = await resolveModelAvailability(codexAgent(["gpt-6-sol"]));
-		expect(result).toEqual({ status: "unknown" });
-	});
+		const result2 = await resolveModelAvailability(codexAgent(["gpt-6-sol"]));
+		expect(result2, "returns unknown on a non-zero exit").toEqual({ status: "unknown" });
 
-	it("returns unknown for an agent whose CLI has no model-list command", async () => {
+		// returns unknown for an agent whose CLI has no model-list command
+		mockSpawn.mockClear();
 		const agent: CodingAgent = {
 			id: "builtin-gemini",
 			name: "Gemini",
 			baseCommand: "gemini",
 			configurations: [{ id: "g", name: "pro", model: "gemini-3.1-pro-preview" }],
 		};
-		const result = await resolveModelAvailability(agent);
-		expect(result).toEqual({ status: "unknown" });
-		expect(mockSpawn).not.toHaveBeenCalled();
+		const result3 = await resolveModelAvailability(agent);
+		expect(result3, "returns unknown for an agent whose CLI has no model-list command").toEqual({ status: "unknown" });
+		expect(mockSpawn, "returns unknown for an agent whose CLI has no model-list command").not.toHaveBeenCalled();
 	});
 
 	it("exempts routed presets (model roles) from the filter", async () => {

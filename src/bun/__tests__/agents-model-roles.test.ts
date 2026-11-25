@@ -55,36 +55,37 @@ describe("a preset without roles", () => {
 describe("a wrapper binary declared as an agent family", () => {
 	const config = preset({ modelRoles: { opus: "m-main" } });
 
-	it("routes through the slots of the CLI it says it is, not of its file name", async () => {
+	it("routes through the slots of the CLI it says it is; a wrapper that claims no family stays unrouted", async () => {
 		const env: Record<string, string> = {};
 		const result = await applyModelRoleLaunch("my-claude-wrapper", config, env, {}, "claude");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openai/my-main");
 		expect(result.pinnedModel).toBe(true);
-	});
 
-	it("leaves a wrapper that claims no family unrouted rather than guessing", async () => {
-		const env: Record<string, string> = {};
-		const result = await applyModelRoleLaunch("my-claude-wrapper", config, env, {}, "none");
-		expect(env).toEqual({});
-		expect(result.pinnedModel).toBe(false);
+		// Rather than guessing from the file name.
+		const noFamilyEnv: Record<string, string> = {};
+		const noFamily = await applyModelRoleLaunch("my-claude-wrapper", config, noFamilyEnv, {}, "none");
+		expect(noFamilyEnv, "no family").toEqual({});
+		expect(noFamily.pinnedModel, "no family").toBe(false);
 	});
 });
 
 describe("a Claude preset with roles", () => {
 	const config = preset({ modelRoles: { opus: "m-main", sonnet: "m-fast" } });
 
-	it("pins the launch model at a catalog model, never at a Claude id the proxy cannot serve", async () => {
-		const result = await applyModelRoleLaunch("claude", preset({ modelRoles: { sonnet: "m-fast" } }), {}, {});
-		expect(result.config?.model).toBe("openrouter/fast");
-	});
+	it("routes the session at the proxy with a per-run key, pinning the launch model at a catalog model", async () => {
+		// Never at a Claude id the proxy cannot serve.
+		const sonnetOnly = await applyModelRoleLaunch("claude", preset({ modelRoles: { sonnet: "m-fast" } }), {}, {});
+		expect(sonnetOnly.config?.model, "pinned model").toBe("openrouter/fast");
 
-	it("routes the session at the proxy with a per-run key", async () => {
 		const env: Record<string, string> = {};
 		await applyModelRoleLaunch("claude", config, env, {});
 		expect(env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:41234/anthropic");
 		expect(env.ANTHROPIC_AUTH_TOKEN).toBe("sk-bf-x");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openai/my-main");
+		// Claude reads no Codex model catalog.
+		expect(h.writeCodexCatalog, "no catalog metadata for Claude").not.toHaveBeenCalled();
 	});
+
 
 	it("lets the preset's own env vars win, as everywhere else", async () => {
 		const env: Record<string, string> = {};
@@ -101,33 +102,31 @@ describe("a Claude preset with roles", () => {
 		expect(h.ensure).not.toHaveBeenCalled();
 	});
 
-	it("refuses to launch when the proxy cannot serve a role, naming it", async () => {
-		h.preflight.mockResolvedValue({
+	it("refuses to launch when the proxy cannot serve a role (naming it) or will not start", async () => {
+		h.preflight.mockResolvedValueOnce({
 			ok: false,
 			problems: [{ roleId: "sonnet", code: "model-unreachable", detail: "openrouter/fast" }],
 		});
-		await expect(applyModelRoleLaunch("claude", config, {}, {})).rejects.toThrow(/sonnet: model-unreachable/);
-	});
-
-	it("refuses to launch when the proxy will not start", async () => {
+		await expect(applyModelRoleLaunch("claude", config, {}, {}), "unreachable role").rejects.toThrow(/sonnet: model-unreachable/);
 		h.ensure.mockRejectedValue(new Error("The bundled model proxy is missing from this build."));
-		await expect(applyModelRoleLaunch("claude", config, {}, {})).rejects.toThrow(/missing from this build/);
+		await expect(applyModelRoleLaunch("claude", config, {}, {}), "proxy will not start").rejects.toThrow(/missing from this build/);
 	});
 });
 
 describe("a Codex preset with roles", () => {
 	const config = preset({ model: "gpt-5.6-sol", modelRoles: { main: "m-main", subagent: "m-fast" } });
 
-	it("pins the launch model to the main role, since the flag beats the config", async () => {
-		const result = await applyModelRoleLaunch("codex", config, {}, {});
-		expect(result.config?.model).toBe("openai/my-main");
-	});
-
-	it("configures Codex only through launch flags, leaving ~/.codex alone", async () => {
-		const result = await applyModelRoleLaunch("codex", config, {}, {});
+	it("pins the main role, configures Codex only through launch flags, and hands it the session key and model metadata", async () => {
+		const env: Record<string, string> = {};
+		const result = await applyModelRoleLaunch("codex", config, env, {});
+		// The flag beats the config.
+		expect(result.config?.model, "main role pinned").toBe("openai/my-main");
+		// Leaving ~/.codex alone.
 		const args = result.options.modelRoleArgs?.join(" ") ?? "";
 		expect(args).toContain('wire_api="responses"');
 		expect(args).toContain('agents.default_subagent_model="openrouter/fast"');
+		expect(args, "generated metadata").toContain('model_catalog_json="/tmp/dev3-probe-runtime/codex-models.json"');
+		expect(env.OPENAI_API_KEY, "session key, not an upstream key").toBe("sk-bf-x");
 	});
 
 	it("refuses to launch when the main role is missing, instead of using Codex's own model", async () => {
@@ -136,16 +135,6 @@ describe("a Codex preset with roles", () => {
 		).rejects.toThrow(/not the model the agent actually launches with/);
 	});
 
-	it("hands Codex the session key instead of any upstream key", async () => {
-		const env: Record<string, string> = {};
-		await applyModelRoleLaunch("codex", config, env, {});
-		expect(env.OPENAI_API_KEY).toBe("sk-bf-x");
-	});
-
-	it("hands Codex generated metadata for the routed model", async () => {
-		const result = await applyModelRoleLaunch("codex", config, {}, {});
-		expect(result.options.modelRoleArgs?.join(" ")).toContain('model_catalog_json="/tmp/dev3-probe-runtime/codex-models.json"');
-	});
 
 	it("still launches when the metadata could not be generated", async () => {
 		h.writeCodexCatalog.mockResolvedValue(undefined);
@@ -155,10 +144,6 @@ describe("a Codex preset with roles", () => {
 		expect(args).toContain('model="openai/my-main"');
 	});
 
-	it("asks for no metadata for an agent that reads no catalog", async () => {
-		await applyModelRoleLaunch("claude", preset({ modelRoles: { opus: "m-main" } }), {}, {});
-		expect(h.writeCodexCatalog).not.toHaveBeenCalled();
-	});
 });
 
 describe("a routed launch is not second-guessed", () => {

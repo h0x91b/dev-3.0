@@ -195,11 +195,8 @@ describe("loadAutomations backfill", () => {
 });
 
 describe("computeNextRunAt", () => {
-	it("returns null when disabled", () => {
-		expect(computeNextRunAt({ rrule: "FREQ=DAILY", timezone: "UTC", enabled: false, createdAt: "2026-01-01T00:00:00Z" })).toBeNull();
-	});
-
-	it("returns null for an unparseable rule instead of throwing", () => {
-		expect(computeNextRunAt({ rrule: "garbage", timezone: "UTC", enabled: true, createdAt: "2026-01-01T00:00:00Z" })).toBeNull();
+	it("computeNextRunAt returns null when disabled or for an unparseable rule", () => {
+		expect(computeNextRunAt({ rrule: "FREQ=DAILY", timezone: "UTC", enabled: false, createdAt: "2026-01-01T00:00:00Z" }), "returns null when disabled").toBeNull();
+		expect(computeNextRunAt({ rrule: "garbage", timezone: "UTC", enabled: true, createdAt: "2026-01-01T00:00:00Z" }), "returns null for an unparseable rule instead of throwing").toBeNull();
 	});
 });

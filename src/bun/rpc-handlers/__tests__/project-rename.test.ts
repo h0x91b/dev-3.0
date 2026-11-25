@@ -101,14 +101,13 @@ describe("updateProjectSettings — rename", () => {
 		expect(updates).not.toHaveProperty("path");
 	});
 
-	it("rejects a blank name instead of leaving the board with no label", async () => {
+	it("rejects a blank name or one past the length cap", async () => {
 		await expect(updateProjectSettings({ projectId: "p1", name: "   " })).rejects.toThrow(/Invalid project name/);
 		expect(mocks.updateProject).not.toHaveBeenCalled();
-	});
-
-	it("rejects a name past the length cap", async () => {
-		await expect(updateProjectSettings({ projectId: "p1", name: "x".repeat(121) })).rejects.toThrow(/Invalid project name/);
-		expect(mocks.updateProject).not.toHaveBeenCalled();
+		{
+			await expect(updateProjectSettings({ projectId: "p1", name: "x".repeat(121) })).rejects.toThrow(/Invalid project name/);
+			expect(mocks.updateProject).not.toHaveBeenCalled();
+		}
 	});
 
 	it("leaves the name alone when the caller only changes something else", async () => {

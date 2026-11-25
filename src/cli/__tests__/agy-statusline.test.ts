@@ -71,10 +71,6 @@ describe("agy statusline: the quota dump", () => {
 		expect(file).not.toContain("example.com");
 		expect(JSON.parse(readFileSync(file, "utf-8"))).toEqual({ capturedAt: NOW, email: "me@example.com", planTier: "Pro", quota: QUOTA });
 		expect(agyAccountKey("me@example.com")).not.toBe(agyAccountKey("other@example.com"));
-	});
-
-	it("keeps accounts apart", async () => {
-		await run(payload());
 		await run(payload({ email: "other@example.com" }));
 		expect(readdirSync(join(home, "data", "rate-limits", "agy"))).toHaveLength(2);
 	});
@@ -179,6 +175,10 @@ describe("agy statusline: the task's state", () => {
 
 		expect(mockSend.mock.calls.map((call) => (call[2] as Record<string, unknown>).sessionId)).toEqual(["conv-1", "conv-2"]);
 		for (const call of mockSend.mock.calls) expect(call[2]).toMatchObject({ event: "SessionStart", captureOnly: true });
+
+		mockSend.mockClear();
+		await run(payload({ conversation_id: "a b; rm -rf /" }));
+		expect(mockSend, "a conversation id that is not a plain token is rejected").not.toHaveBeenCalled();
 	});
 
 	it("keeps each task's state apart", async () => {
@@ -276,11 +276,6 @@ describe("agy statusline: panes of one task", () => {
 		await run(payload({ tool_confirmation_pending: false }), { noLimits: true }, CONTEXT, NOW + 120_000);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
-
-	it("rejects a conversation id that is not a plain token", async () => {
-		await run(payload({ conversation_id: "a b; rm -rf /" }));
-		expect(mockSend).not.toHaveBeenCalled();
-	});
 });
 
 describe("agy statusline: where it writes", () => {
@@ -291,8 +286,10 @@ describe("agy statusline: where it writes", () => {
 });
 
 describe("agy statusline: never loud", () => {
-	it.each(["", "not json", "null", "[]", "42"])("prints nothing and throws nothing for %j", async (raw) => {
-		await expect(run(raw)).resolves.toBeUndefined();
+	it("prints nothing and throws nothing for an empty or non-object payload", async () => {
+		for (const raw of ["", "not json", "null", "[]", "42"]) {
+			await expect(run(raw), JSON.stringify(raw)).resolves.toBeUndefined();
+		}
 		expect(stdout).toBe("");
 		expect(mockSend).not.toHaveBeenCalled();
 	});

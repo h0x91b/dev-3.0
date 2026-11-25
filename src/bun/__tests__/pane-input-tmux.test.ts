@@ -98,7 +98,7 @@ describe("the tmux key table covers the neutral set", () => {
 		return calls[calls.length - 1]?.[0].chunks;
 	}
 
-	it("names every neutral key, with no duplicate name", async () => {
+	it("names every neutral key uniquely, in tmux's own spelling", async () => {
 		const names: string[] = [];
 		for (const key of PANE_INPUT_KEYS) {
 			const chunks = (await chunksOf({ steps: [{ kind: "key", key }] })) as { keys: string[] }[];
@@ -106,9 +106,7 @@ describe("the tmux key table covers the neutral set", () => {
 		}
 		expect(names.every(Boolean)).toBe(true);
 		expect(new Set(names).size).toBe(names.length);
-	});
-
-	it("keeps tmux's own spelling, which the neutral set deliberately does not use", async () => {
+		// tmux's spelling, which the neutral set deliberately does not use.
 		await expect(chunksOf({ steps: [{ kind: "key", key: "left" }] })).resolves.toEqual([{ keys: ["Left"] }]);
 		await expect(chunksOf({ steps: [{ kind: "key", key: "backspace" }] })).resolves.toEqual([{ keys: ["BSpace"] }]);
 		await expect(chunksOf({ steps: [{ kind: "key", key: "ctrl-c" }] })).resolves.toEqual([{ keys: ["C-c"] }]);
@@ -119,7 +117,7 @@ describe("the tmux key table covers the neutral set", () => {
 		expect(tmuxStepPayload({ kind: "key", key: "left", count: 2 })).toBe("LeftLeft");
 	});
 
-	it("keeps literal text and key names apart, in order", async () => {
+	it("keeps literal text and key names apart in order, merging adjacent runs into one command", async () => {
 		await expect(
 			chunksOf({
 				steps: [
@@ -129,9 +127,6 @@ describe("the tmux key table covers the neutral set", () => {
 				],
 			}),
 		).resolves.toEqual([{ literal: "ab" }, { keys: ["Left", "Left"] }, { literal: "cd" }]);
-	});
-
-	it("merges adjacent text and adjacent keys so one command carries the stage", async () => {
 		await expect(
 			chunksOf({
 				steps: [
@@ -146,17 +141,22 @@ describe("the tmux key table covers the neutral set", () => {
 });
 
 describe("one stage is one guarded command", () => {
-	it("passes the pinned incarnation to the guard and reports delivered", async () => {
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
+	it("passes the pinned incarnation, the remaining budget and the abort signal to the guard", async () => {
+		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution(1_500));
 
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(tmux.sendKeysGuarded).mock.calls[0]?.[0]).toMatchObject({
+		const call = vi.mocked(tmux.sendKeysGuarded).mock.calls[0]?.[0];
+		expect(call).toMatchObject({
 			pane: PANE,
 			serverToken: SERVER_TOKEN,
 			session: SESSION,
 			socket: SOCKET,
 			chunks: [{ literal: "hello" }],
 		});
+		// Bounded by the remaining budget and abortable, so a hung tmux is killed.
+		expect(call?.timeoutMs ?? 0).toBeGreaterThan(0);
+		expect(call?.timeoutMs ?? 0).toBeLessThanOrEqual(1_500);
+		expect(call?.signal).toBeInstanceOf(AbortSignal);
 		expect(outcome).toMatchObject({ status: "delivered", acceptedThrough: 1, backend: "tmux" });
 	});
 
@@ -171,13 +171,6 @@ describe("one stage is one guarded command", () => {
 		expect(vi.mocked(tmux.sendKeysGuarded).mock.calls[1]?.[0].chunks).toEqual([{ keys: ["Enter"] }]);
 		expect(seen).toEqual([1, 2]);
 		expect(outcome).toMatchObject({ status: "delivered", acceptedThrough: 2 });
-	});
-
-	it("bounds each command by the remaining budget, so a hung tmux is killed", async () => {
-		await executeTmuxPaneInput(program(TEXT), SOCKET, execution(1_500));
-		const passed = vi.mocked(tmux.sendKeysGuarded).mock.calls[0]?.[0].timeoutMs ?? 0;
-		expect(passed).toBeGreaterThan(0);
-		expect(passed).toBeLessThanOrEqual(1_500);
 	});
 
 	it("refuses a program pinned to the wrong backend", async () => {
@@ -198,26 +191,16 @@ describe("one stage is one guarded command", () => {
 });
 
 describe("a false guard means nothing was sent", () => {
-	// The pane moved to another session, or this is a different tmux server that minted
-	// the same %id. Either way the keys never left, inside the same server turn.
-	it("reports incarnation-changed and stops, with nothing accepted", async () => {
-		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: false });
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(outcome).toMatchObject({
-			status: "not-started",
-			reason: "incarnation-changed",
-			retryableAsNewDelivery: false,
-		});
-	});
-
-	it("reports pane-in-mode, retryable, when copy mode alone refused the keys", async () => {
+	it("reports pane-in-mode, retryable, when copy mode alone refused; keeps the accepted prefix on a later false guard", async () => {
 		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false, inMode: true });
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(outcome).toMatchObject({ status: "not-started", reason: "pane-in-mode", retryableAsNewDelivery: true });
-	});
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, execution())).toMatchObject({
+			status: "not-started",
+			reason: "pane-in-mode",
+			retryableAsNewDelivery: true,
+		});
 
-	it("keeps the accepted prefix when a later stage's guard fails", async () => {
 		vi.mocked(tmux.sendKeysGuarded)
+			.mockReset()
 			.mockResolvedValueOnce({ sent: true, inMode: false })
 			.mockResolvedValueOnce({ sent: false, inMode: false });
 		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution());
@@ -231,13 +214,14 @@ describe("a false guard means nothing was sent", () => {
 });
 
 describe("a failure's verdict follows its dispatch phase", () => {
-	it("treats a spawn failure as nothing having happened", async () => {
+	it("treats a spawn failure as nothing having happened, mid-program as a clean partial", async () => {
 		vi.mocked(tmux.sendKeysGuarded).mockRejectedValue(spawnFailure());
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(outcome).toMatchObject({ status: "not-started", reason: "backend-failure" });
-	});
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, execution())).toMatchObject({
+			status: "not-started",
+			reason: "backend-failure",
+		});
 
-	it("treats a spawn failure mid-program as a clean partial", async () => {
+		vi.mocked(tmux.sendKeysGuarded).mockReset();
 		vi.mocked(tmux.sendKeysGuarded).mockResolvedValueOnce({ sent: true, inMode: false }).mockRejectedValueOnce(spawnFailure());
 		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution());
 		expect(outcome).toMatchObject({ status: "partial", acceptedThrough: 1, uncertainStep: null });
@@ -248,18 +232,14 @@ describe("a failure's verdict follows its dispatch phase", () => {
 	 * spawned may already have applied a prefix. Only an explicit false guard proves
 	 * nothing was sent.
 	 */
-	it("treats any post-spawn non-zero exit as indeterminate, never as a clean stop", async () => {
+	it("treats any post-spawn non-zero exit as indeterminate, bounded by the whole current stage", async () => {
 		vi.mocked(tmux.sendKeysGuarded).mockRejectedValue(exitFailure());
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(outcome).toMatchObject({
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, execution())).toMatchObject({
 			status: "indeterminate",
 			possiblyAcceptedThrough: 1,
 			reason: "backend-failure",
 		});
-	});
 
-	it("bounds it by the whole current stage when a multi-chunk stage fails", async () => {
-		vi.mocked(tmux.sendKeysGuarded).mockRejectedValue(exitFailure());
 		const multi = program([
 			{
 				steps: [
@@ -269,14 +249,15 @@ describe("a failure's verdict follows its dispatch phase", () => {
 				],
 			},
 		]);
-		const outcome = await executeTmuxPaneInput(multi, SOCKET, execution());
-		expect(outcome).toMatchObject({ status: "indeterminate", possiblyAcceptedThrough: 3 });
-	});
+		expect(await executeTmuxPaneInput(multi, SOCKET, execution())).toMatchObject({
+			status: "indeterminate",
+			possiblyAcceptedThrough: 3,
+		});
 
-	it("counts the accepted prefix into a mid-program non-zero exit", async () => {
+		// Mid-program: the accepted prefix counts into the bound.
+		vi.mocked(tmux.sendKeysGuarded).mockReset();
 		vi.mocked(tmux.sendKeysGuarded).mockResolvedValueOnce({ sent: true, inMode: false }).mockRejectedValueOnce(exitFailure());
-		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution());
-		expect(outcome).toMatchObject({
+		expect(await executeTmuxPaneInput(program(submitStages("hi", 1)), SOCKET, execution())).toMatchObject({
 			status: "indeterminate",
 			possiblyAcceptedThrough: 2,
 			reason: "backend-failure",
@@ -284,24 +265,21 @@ describe("a failure's verdict follows its dispatch phase", () => {
 	});
 
 	// The command was killed to free the caller, so whether tmux applied it first is
-	// unknowable — the one case that must never read as a clean stop.
-	it("treats a killed command as indeterminate, never as a clean stop", async () => {
+	// unknowable — the one case that must never read as a clean stop. An unconfirmed stop
+	// is reported as such: ordering safety on tmux comes from the server serializing
+	// commands across clients, not from a ledger quarantine (native-only).
+	it("treats a killed command as indeterminate, and an unconfirmed stop as backend-failure", async () => {
 		vi.mocked(tmux.sendKeysGuarded).mockRejectedValue(timeoutFailure());
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(outcome).toMatchObject({
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, execution())).toMatchObject({
 			status: "indeterminate",
 			possiblyAcceptedThrough: 1,
 			reason: "deadline-exceeded",
 		});
-	});
-
-	// An unconfirmed stop is reported as such. Ordering safety on tmux comes from the
-	// server serializing commands across clients, not from a ledger quarantine — that
-	// mechanism only ever fires on the native path.
-	it("reports backend-failure when the stop itself was not confirmed", async () => {
 		vi.mocked(tmux.sendKeysGuarded).mockRejectedValue(timeoutFailure(false));
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(outcome).toMatchObject({ status: "indeterminate", reason: "backend-failure" });
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, execution())).toMatchObject({
+			status: "indeterminate",
+			reason: "backend-failure",
+		});
 	});
 });
 
@@ -379,26 +357,20 @@ describe("a pane that vanished between pin and send", () => {
 });
 
 describe("the deadline is a real budget, and it comes from admission", () => {
-	it("stops before a delay it cannot afford, keeping the accepted prefix", async () => {
+	it("sends nothing once aborted or with a spent budget, and stops before a delay it cannot afford", async () => {
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, abortedExecution())).toMatchObject({
+			status: "not-started",
+			reason: "deadline-exceeded",
+		});
+		expect(await executeTmuxPaneInput(program(TEXT), SOCKET, execution(-1))).toMatchObject({
+			status: "not-started",
+			reason: "deadline-exceeded",
+		});
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
+
+		// A delay the budget cannot cover ends the run, keeping the accepted prefix.
 		const outcome = await executeTmuxPaneInput(program(submitStages("hi", 5_000)), SOCKET, execution(20));
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
 		expect(outcome).toMatchObject({ status: "partial", acceptedThrough: 1, reason: "deadline-exceeded" });
-	});
-
-	it("stops before a stage once the ledger aborted it", async () => {
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, abortedExecution());
-		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
-		expect(outcome).toMatchObject({ status: "not-started", reason: "deadline-exceeded" });
-	});
-
-	it("passes the abort signal down so a hung command is killed", async () => {
-		await executeTmuxPaneInput(program(TEXT), SOCKET, execution());
-		expect(vi.mocked(tmux.sendKeysGuarded).mock.calls[0]?.[0].signal).toBeInstanceOf(AbortSignal);
-	});
-
-	it("honours a budget already spent before it was handed the program", async () => {
-		const outcome = await executeTmuxPaneInput(program(TEXT), SOCKET, execution(-1));
-		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
-		expect(outcome).toMatchObject({ status: "not-started", reason: "deadline-exceeded" });
 	});
 });

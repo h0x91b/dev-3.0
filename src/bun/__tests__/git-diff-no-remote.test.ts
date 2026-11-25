@@ -47,18 +47,14 @@ describe("git in a repo with no remote", () => {
 		cleanup(repo);
 	});
 
-	it("hasOriginRemote is false once the remote is gone, true while it is there", async () => {
+	it("hasOriginRemote turns false once the remote is gone, and the default compare ref is the local base branch", async () => {
 		expect(await hasOriginRemote(repo.local)).toBe(true);
 		detachRemote(repo.local);
 		expect(await hasOriginRemote(repo.local)).toBe(false);
-	});
-
-	it("detectDefaultCompareRef resolves to the local base branch", async () => {
-		detachRemote(repo.local);
 		expect(await detectDefaultCompareRef(repo.local, "main")).toBe("main");
 	});
 
-	it("branch diff against the local base branch reports the real changes", async () => {
+	it("diffs against the local base branch, and says a missing compare ref is missing instead of looking empty", async () => {
 		detachRemote(repo.local);
 		g("git checkout -q -b feature", repo.local);
 		writeFileSync(join(repo.local, "added.ts"), "export const added = 1;\n");
@@ -67,40 +63,22 @@ describe("git in a repo with no remote", () => {
 
 		// The compare ref the handler resolves for a remoteless repo — see
 		// `resolveCompareRef` in rpc-handlers/git-operations.ts.
-		const result = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "main" });
+		const local = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "main" });
+		expect(local.fallbackReason).toBeNull();
+		expect(local.summary.files).toBe(1);
+		expect(local.files.map((f) => f.displayPath)).toEqual(["added.ts"]);
 
-		expect(result.fallbackReason).toBeNull();
-		expect(result.summary.files).toBe(1);
-		expect(result.files.map((f) => f.displayPath)).toEqual(["added.ts"]);
-	});
+		// The regression itself: an `origin/main` that is not in the repo must never
+		// answer "this diff is empty for the selected mode".
+		const missing = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "origin/main" });
+		expect(missing.fallbackReason).toBe("missing-compare-ref");
+		expect(missing.compareRef).toBe("origin/main");
+		expect(missing.summary).toEqual({ files: 0, insertions: 0, deletions: 0 });
+		expect(missing.files).toEqual([]);
 
-	// The regression itself: an `origin/main` that is not in the repo must never
-	// answer "this diff is empty for the selected mode".
-	it("branch diff against a missing compare ref says so instead of looking empty", async () => {
-		detachRemote(repo.local);
-		g("git checkout -q -b feature", repo.local);
-		writeFileSync(join(repo.local, "added.ts"), "export const added = 1;\n");
-		g("git add added.ts", repo.local);
-		g('git commit -m "add a file"', repo.local);
-
-		const result = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "origin/main" });
-
-		expect(result.fallbackReason).toBe("missing-compare-ref");
-		expect(result.compareRef).toBe("origin/main");
-		expect(result.summary).toEqual({ files: 0, insertions: 0, deletions: 0 });
-		expect(result.files).toEqual([]);
-	});
-
-	it("unpushed diff against a missing compare ref reports the missing ref, not no-upstream", async () => {
-		detachRemote(repo.local);
-		g("git checkout -q -b feature", repo.local);
-		writeFileSync(join(repo.local, "added.ts"), "export const added = 1;\n");
-		g("git add added.ts", repo.local);
-		g('git commit -m "add a file"', repo.local);
-
-		const result = await getTaskDiff(repo.local, "unpushed", { baseBranch: "main", compareRef: "origin/main" });
-
-		expect(result.fallbackReason).toBe("missing-compare-ref");
+		// The unpushed mode reports the missing ref too, not no-upstream.
+		const unpushed = await getTaskDiff(repo.local, "unpushed", { baseBranch: "main", compareRef: "origin/main" });
+		expect(unpushed.fallbackReason).toBe("missing-compare-ref");
 	});
 });
 
@@ -117,11 +95,8 @@ describe("resolveConfiguredCompareRef", () => {
 		cleanup(repo);
 	});
 
-	it("keeps a configured ref the repo has", async () => {
+	it("keeps a configured ref the repo has, and falls back to the detected default when it is missing", async () => {
 		expect(await resolveConfiguredCompareRef(repo.local, "main", "origin/main")).toBe("origin/main");
-	});
-
-	it("falls back to the detected default when the configured ref is missing", async () => {
 		expect(await resolveConfiguredCompareRef(repo.local, "main", "origin/master")).toBe("origin/main");
 	});
 

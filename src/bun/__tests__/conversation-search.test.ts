@@ -91,6 +91,8 @@ describe("searchConversations", () => {
 		expect(results[0].taskId).toBe("aaaaaaaa-1");
 		expect(results[0].snippets[0]).toContain("websocket");
 		expect(results[0].transcriptPaths).toHaveLength(1);
+		// An empty query returns nothing.
+		expect(searchConversations({ query: "   ", tasks, project: PROJECT, currentTaskId: null, currentGroupId: null, home, dev3Home })).toEqual([]);
 	});
 
 	it("finds a transcript of a task whose dir lives inside the project", () => {
@@ -116,7 +118,7 @@ describe("searchConversations", () => {
 		expect(results.map((r) => r.taskId)).toEqual([id]);
 	});
 
-	it("excludes the current task and all same-group siblings", () => {
+	it("excludes the current task and all same-group siblings, and respects the limit", () => {
 		const tasks = [
 			task("self0000-x", { groupId: "grp" }),
 			task("sibl0000-y", { groupId: "grp" }),
@@ -138,6 +140,20 @@ describe("searchConversations", () => {
 		});
 
 		expect(results.map((r) => r.taskId)).toEqual(["othr0000-z"]);
+
+		// The limit is respected (highest score first).
+		const limited = searchConversations({
+			query: "websocket",
+			tasks,
+			project: PROJECT,
+			currentTaskId: null,
+			currentGroupId: null,
+			limit: 2,
+			home,
+			dev3Home,
+		});
+		expect(limited.map((r) => r.taskId)).toHaveLength(2);
+		expect(limited[0].taskId).not.toBe("othr0000-z");
 	});
 
 	it("searches only terminal statuses by default, but --all-statuses widens it", () => {
@@ -168,26 +184,6 @@ describe("searchConversations", () => {
 		expect(all.map((r) => r.taskId)).toEqual(["live0000-a"]);
 	});
 
-	it("respects the limit", () => {
-		const tasks = [task("t1111111-a"), task("t2222222-b"), task("t3333333-c")];
-		seedTranscript("t1111111-a", ["alpha alpha alpha"]);
-		seedTranscript("t2222222-b", ["alpha alpha"]);
-		seedTranscript("t3333333-c", ["alpha"]);
-
-		const results = searchConversations({
-			query: "alpha",
-			tasks,
-			project: PROJECT,
-			currentTaskId: null,
-			currentGroupId: null,
-			limit: 2,
-			home,
-			dev3Home,
-		});
-		expect(results).toHaveLength(2);
-		expect(results[0].taskId).toBe("t1111111-a");
-	});
-
 	it("matches a task by its notes/overview even with no transcript on disk", () => {
 		const tasks = [
 			task("notes000-a", { notes: ["Root cause was a websocket heartbeat timeout in the proxy."] }),
@@ -208,9 +204,22 @@ describe("searchConversations", () => {
 		// The leading snippet comes from the curated meta text.
 		expect(results.find((r) => r.taskId === "notes000-a")?.snippets[0]).toContain("websocket");
 		expect(results.every((r) => r.transcriptPaths.length === 0)).toBe(true);
+
+		// A historical (renamed-away) title or overview matches too.
+		const history = searchConversations({
+			query: "kafka rebalance",
+			tasks: [task("hist0000-a", { title: "Current unrelated title", historyTexts: ["Investigate kafka rebalance storm", "old overview about consumer lag"] })],
+			project: PROJECT,
+			currentTaskId: null,
+			currentGroupId: null,
+			home,
+			dev3Home,
+		});
+		expect(history.map((r) => r.taskId)).toEqual(["hist0000-a"]);
+		expect(history[0].snippets[0].toLowerCase()).toContain("kafka");
 	});
 
-	it("finds a match in a codex rollout (cwd from the session header)", () => {
+	it("finds a match in a codex rollout (cwd from the session header) and a gemini chat (cwd from .project_root)", () => {
 		const tasks = [task("codex000-a", { agentId: "builtin-codex" })];
 		seedCodexRollout("codex000-a", [
 			{ role: "user", text: "please debug the kafka consumer lag" },
@@ -230,28 +239,24 @@ describe("searchConversations", () => {
 		expect(results.map((r) => r.taskId)).toEqual(["codex000-a"]);
 		expect(results[0].snippets.join(" ")).toContain("kafka");
 		expect(results[0].transcriptPaths[0]).toContain(".codex/sessions");
-	});
 
-	it("finds a match in a gemini chat (cwd from .project_root)", () => {
-		const tasks = [task("gem00000-a", { agentId: "builtin-gemini" })];
+		// ...and in a gemini chat (cwd from .project_root).
 		seedGeminiChat("gem00000-a", "worktree-7", [
 			{ type: "user", text: "how do we throttle the webhook retries" },
 			{ type: "gemini", text: "Add exponential backoff to the webhook retry queue." },
 		]);
-
-		const results = searchConversations({
+		const gemini = searchConversations({
 			query: "webhook retries backoff",
-			tasks,
+			tasks: [task("gem00000-a", { agentId: "builtin-gemini" })],
 			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
 			dev3Home,
 		});
-
-		expect(results.map((r) => r.taskId)).toEqual(["gem00000-a"]);
-		expect(results[0].snippets.join(" ").toLowerCase()).toContain("webhook");
-		expect(results[0].transcriptPaths[0]).toContain(".gemini/tmp");
+		expect(gemini.map((r) => r.taskId)).toEqual(["gem00000-a"]);
+		expect(gemini[0].snippets.join(" ").toLowerCase()).toContain("webhook");
+		expect(gemini[0].transcriptPaths[0]).toContain(".gemini/tmp");
 	});
 
 	describe("cursor agent transcripts", () => {
@@ -278,26 +283,6 @@ describe("searchConversations", () => {
 
 			expect(search("zebra", [task("cur00000-b", { agentId: "builtin-cursor" })])).toEqual([]);
 		});
-	});
-
-	it("matches a task by a historical (renamed-away) title or overview", () => {
-		const tasks = [
-			task("hist0000-a", {
-				title: "Current unrelated title",
-				historyTexts: ["Investigate kafka rebalance storm", "old overview about consumer lag"],
-			}),
-		];
-		const results = searchConversations({
-			query: "kafka rebalance",
-			tasks,
-			project: PROJECT,
-			currentTaskId: null,
-			currentGroupId: null,
-			home,
-			dev3Home,
-		});
-		expect(results.map((r) => r.taskId)).toEqual(["hist0000-a"]);
-		expect(results[0].snippets[0].toLowerCase()).toContain("kafka");
 	});
 
 	it("finds a transcript written under a dev3 Claude agent account", () => {
@@ -348,17 +333,4 @@ describe("searchConversations", () => {
 		expect(results[0].transcriptPaths[0]).toContain("/conversations/claude-sess.json");
 	});
 
-	it("returns nothing for an empty query", () => {
-		expect(
-			searchConversations({
-				query: "   ",
-				tasks: [task("aaaaaaaa-1")],
-				project: PROJECT,
-				currentTaskId: null,
-				currentGroupId: null,
-				home,
-				dev3Home,
-			}),
-		).toEqual([]);
-	});
 });

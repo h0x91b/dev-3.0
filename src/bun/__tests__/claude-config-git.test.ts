@@ -76,27 +76,24 @@ describe("excludeTaskClaudeSettings", () => {
 
 		expect(sh("git status --porcelain", worktree)).toBe("");
 		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/.claude/settings.local.json");
-	});
-
-	it("leaves other untracked work under .claude visible", () => {
-		const worktree = join(root, "wt2");
-		sh(`git worktree add -q -b task2 "${worktree}"`, repo);
-		writeTaskSettings(worktree);
+		// Other untracked work under .claude stays visible.
 		writeFileSync(join(worktree, ".claude", "agents.md"), "mine\n");
-
-		excludeTaskClaudeSettings(worktree);
-
 		expect(sh("git status --porcelain -uall", worktree).trim()).toBe("?? .claude/agents.md");
 	});
 
-	it("anchors the rule at the task folder inside the repo", () => {
+	it("anchors the Claude and Codex rules at the task folder inside the repo", () => {
 		const sub = join(repo, "packages", "app");
 		mkdirSync(sub, { recursive: true });
 		writeTaskSettings(sub);
 
 		excludeTaskClaudeSettings(sub);
 
-		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/packages/app/.claude/settings.local.json");
+		writeTaskCodexHooks(sub);
+		excludeTaskCodexHooks(sub);
+
+		const exclude = readFileSync(join(repo, ".git", "info", "exclude"), "utf-8");
+		expect(exclude).toContain("/packages/app/.claude/settings.local.json");
+		expect(exclude).toContain("/packages/app/.codex/hooks.json");
 		expect(sh("git status --porcelain -uall", repo)).toBe("");
 	});
 
@@ -112,10 +109,13 @@ describe("excludeTaskClaudeSettings", () => {
 		expect(readFileSync(join(tracked, ".git", "info", "exclude"), "utf-8")).not.toContain("settings.local.json");
 	});
 
-	it("does nothing outside a git repo", () => {
+	it("does nothing outside a git repo, for every exclude helper", () => {
 		const plain = join(root, "plain");
 		writeTaskSettings(plain);
+		writeTaskCodexHooks(plain);
 		expect(() => excludeTaskClaudeSettings(plain)).not.toThrow();
+		expect(() => excludeTaskCodexHooks(plain)).not.toThrow();
+		expect(() => excludeTaskAgyConfig(plain)).not.toThrow();
 	});
 });
 
@@ -130,44 +130,19 @@ describe("excludeTaskCodexHooks", () => {
 
 		expect(sh("git status --porcelain", worktree)).toBe("");
 		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/.codex/hooks.json");
-	});
+		// The user's other .codex files stay visible.
+		writeFileSync(join(worktree, ".codex", "config.toml"), "model = \"x\"\n");
+		expect(sh("git status --porcelain -uall", worktree).trim()).toBe("?? .codex/config.toml");
 
-	it("adds the rule once for several worktrees of one repo", () => {
-		const first = join(root, "wt-a");
+		// A second worktree of the same repo adds no duplicate rule.
 		const second = join(root, "wt-b");
-		sh(`git worktree add -q -b task-a "${first}"`, repo);
 		sh(`git worktree add -q -b task-b "${second}"`, repo);
-		writeTaskCodexHooks(first);
 		writeTaskCodexHooks(second);
-
-		excludeTaskCodexHooks(first);
 		excludeTaskCodexHooks(second);
 
 		const rules = readFileSync(join(repo, ".git", "info", "exclude"), "utf-8").split("\n").filter((line) => line === "/.codex/hooks.json");
 		expect(rules).toHaveLength(1);
 		expect(sh("git status --porcelain", second)).toBe("");
-	});
-
-	it("leaves the user's other .codex files visible", () => {
-		const worktree = join(root, "wt2");
-		sh(`git worktree add -q -b task2 "${worktree}"`, repo);
-		writeTaskCodexHooks(worktree);
-		writeFileSync(join(worktree, ".codex", "config.toml"), "model = \"x\"\n");
-
-		excludeTaskCodexHooks(worktree);
-
-		expect(sh("git status --porcelain -uall", worktree).trim()).toBe("?? .codex/config.toml");
-	});
-
-	it("anchors the rule at the task folder inside the repo", () => {
-		const sub = join(repo, "packages", "app");
-		mkdirSync(sub, { recursive: true });
-		writeTaskCodexHooks(sub);
-
-		excludeTaskCodexHooks(sub);
-
-		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/packages/app/.codex/hooks.json");
-		expect(sh("git status --porcelain -uall", repo)).toBe("");
 	});
 
 	it("adds nothing when the repo tracks the file, which stays visible once modified", () => {
@@ -182,12 +157,6 @@ describe("excludeTaskCodexHooks", () => {
 
 		expect(readFileSync(join(tracked, ".git", "info", "exclude"), "utf-8")).not.toContain("hooks.json");
 		expect(sh("git status --porcelain", tracked).trim()).toBe("M .codex/hooks.json");
-	});
-
-	it("does nothing outside a git repo", () => {
-		const plain = join(root, "plain");
-		writeTaskCodexHooks(plain);
-		expect(() => excludeTaskCodexHooks(plain)).not.toThrow();
 	});
 });
 
@@ -223,21 +192,14 @@ describe("excludeTaskAgyConfig", () => {
 		const exclude = readFileSync(join(repo, ".git", "info", "exclude"), "utf-8");
 		expect(exclude).toContain("/.agents/hooks.json");
 		expect(exclude).toContain("/.agents/skills/dev3/");
-	});
 
-	it("leaves the user's other .agents files visible", () => {
-		const worktree = join(root, "wt-agy2");
-		sh(`git worktree add -q -b task-agy2 "${worktree}"`, repo);
-		writeAgyConfig(worktree);
+		// The user's other .agents files stay visible.
 		mkdirSync(join(worktree, ".agents", "rules"), { recursive: true });
 		writeFileSync(join(worktree, ".agents", "rules", "mine.md"), "rule\n");
-
-		excludeTaskAgyConfig(worktree);
-
 		expect(sh("git status --porcelain -uall", worktree).trim()).toBe("?? .agents/rules/mine.md");
 	});
 
-	it("adds no rule for a hooks file the repo tracks", () => {
+	it("adds no rule for a tracked hooks file, and excludes only what the launch wrote", () => {
 		const tracked = join(root, "tracked-agy");
 		mkdirSync(tracked);
 		sh("git init -q -b main", tracked);
@@ -249,9 +211,8 @@ describe("excludeTaskAgyConfig", () => {
 		const exclude = readFileSync(join(tracked, ".git", "info", "exclude"), "utf-8");
 		expect(exclude).not.toContain("hooks.json");
 		expect(exclude).toContain("/.agents/skills/dev3/");
-	});
 
-	it("excludes only what the launch wrote", () => {
+		// Only what the launch wrote is excluded.
 		const only = join(root, "only-skill");
 		mkdirSync(only);
 		sh("git init -q -b main", only);
@@ -259,15 +220,9 @@ describe("excludeTaskAgyConfig", () => {
 
 		excludeTaskAgyConfig(only, { hooks: false, skill: true });
 
-		const exclude = readFileSync(join(only, ".git", "info", "exclude"), "utf-8");
-		expect(exclude).not.toContain("hooks.json");
-		expect(exclude).toContain("/.agents/skills/dev3/");
-	});
-
-	it("does nothing outside a git repo", () => {
-		const plain = join(root, "plain-agy");
-		writeAgyConfig(plain);
-		expect(() => excludeTaskAgyConfig(plain)).not.toThrow();
+		const onlyExclude = readFileSync(join(only, ".git", "info", "exclude"), "utf-8");
+		expect(onlyExclude).not.toContain("hooks.json");
+		expect(onlyExclude).toContain("/.agents/skills/dev3/");
 	});
 });
 

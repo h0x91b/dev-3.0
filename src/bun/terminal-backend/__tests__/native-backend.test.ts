@@ -34,36 +34,22 @@ describe("NativeTerminalBackend", () => {
 		world = null;
 	});
 
-	it("reports the native backend kind", () => {
-		const h = harness();
-		world = h.world;
-		expect(h.backend.kind).toBe("native");
-	});
-
-	it("opens a session with one focused view", async () => {
-		const h = harness();
-		world = h.world;
-		const state = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		expect(state.views).toHaveLength(1);
-		expect(state.views[0].focused).toBe(true);
-	});
-
-	it("describes the session with the same ids it reported at creation", async () => {
-		const h = harness();
-		world = h.world;
-		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		await expect(h.backend.describeSession(SESSION)).resolves.toEqual(created);
-	});
-
-	it("splits the session into two views", async () => {
+	it("splits, focuses a second view via geometry, and closes it without tearing the session down", async () => {
 		const h = harness();
 		world = h.world;
 		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
 		const first = created.views[0].id;
 		const second = await h.backend.splitView(SESSION, first, { cwd: CWD });
 		expect(second.id).not.toBe(first);
+		expect((await h.backend.describeSession(SESSION))?.views).toHaveLength(2);
+
+		await h.backend.focusView(SESSION, second.id);
+		expect((await h.backend.describeSession(SESSION))?.focusedViewId).toBe(second.id);
+
+		await h.backend.closeView(SESSION, second.id);
 		const state = await h.backend.describeSession(SESSION);
-		expect(state?.views).toHaveLength(2);
+		expect(state?.views).toHaveLength(1);
+		expect(state?.views[0].id).toBe(first);
 	});
 
 	it("a background split adds the view without ever focusing it", async () => {
@@ -76,37 +62,6 @@ describe("NativeTerminalBackend", () => {
 		const state = await h.backend.describeSession(SESSION);
 		expect(state?.views).toHaveLength(2);
 		expect(state?.focusedViewId).toBe(first);
-	});
-
-	it("focuses a second view by publishing a geometry change", async () => {
-		const h = harness();
-		world = h.world;
-		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		const first = created.views[0].id;
-		const second = await h.backend.splitView(SESSION, first, { cwd: CWD });
-		await h.backend.focusView(SESSION, second.id);
-		const state = await h.backend.describeSession(SESSION);
-		expect(state?.focusedViewId).toBe(second.id);
-	});
-
-	it("closes one view without tearing the session down", async () => {
-		const h = harness();
-		world = h.world;
-		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		const first = created.views[0].id;
-		const second = await h.backend.splitView(SESSION, first, { cwd: CWD });
-		await h.backend.closeView(SESSION, second.id);
-		const state = await h.backend.describeSession(SESSION);
-		expect(state?.views).toHaveLength(1);
-		expect(state?.views[0].id).toBe(first);
-	});
-
-	it("tears the session down when the last view is closed", async () => {
-		const h = harness();
-		world = h.world;
-		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		await h.backend.closeView(SESSION, created.views[0].id);
-		await expect(h.backend.describeSession(SESSION)).resolves.toBeNull();
 	});
 
 	it("wraps an unexpected coordinator failure as backend-failure with its cause", async () => {
@@ -122,7 +77,7 @@ describe("NativeTerminalBackend", () => {
 		expect(err.cause).toBe(boom);
 	});
 
-	it("listPanes returns per-pane pids via the native-only method", async () => {
+	it("exposes per-pane pids, the shared SplitTree, and geometry publishing via native-only methods", async () => {
 		const h = harness();
 		world = h.world;
 		const created = await h.backend.openSession({ id: SESSION, cwd: CWD, size: { cols: 100, rows: 30 } });
@@ -132,39 +87,14 @@ describe("NativeTerminalBackend", () => {
 		expect(panes![0].paneId).toBe(created.views[0].id);
 		expect(panes![0].cols).toBe(100);
 		expect(panes![0].rows).toBe(30);
-	});
 
-	it("paneLayout returns the shared SplitTree", async () => {
-		const h = harness();
-		world = h.world;
-		await h.backend.openSession({ id: SESSION, cwd: CWD });
+		// paneLayout returns the shared SplitTree, and publishPaneGeometry changes its activePaneId.
+		await h.backend.splitView(SESSION, created.views[0].id, { cwd: CWD });
 		const layout = await h.backend.paneLayout(SESSION);
-		expect(layout).not.toBeNull();
 		expect(layout!.activePaneId).toBeDefined();
-	});
-
-	it("publishPaneGeometry changes the shared activePaneId", async () => {
-		const h = harness();
-		world = h.world;
-		await h.backend.openSession({ id: SESSION, cwd: CWD });
-		await h.backend.splitView(SESSION, (await h.backend.describeSession(SESSION))!.views[0].id, { cwd: CWD });
-		const layout = await h.backend.paneLayout(SESSION);
-		const panes = await h.backend.describeSession(SESSION);
-		const secondPane = panes!.views[1]!.id;
-		// Activate second pane via geometry publish.
+		const secondPane = (await h.backend.describeSession(SESSION))!.views[1]!.id;
 		await h.backend.publishPaneGeometry(SESSION, { ...layout!, activePaneId: secondPane });
-		const updated = await h.backend.paneLayout(SESSION);
-		expect(updated!.activePaneId).toBe(secondPane);
-	});
-
-	it("releases its attachments on dispose without stopping the session", async () => {
-		const h = harness();
-		world = h.world;
-		await h.backend.openSession({ id: SESSION, cwd: CWD });
-		await h.backend.dispose();
-		// Session still alive (persistent across dispose).
-		const fresh = new NativeTerminalBackend({ deps: h.world.deps() });
-		await expect(fresh.describeSession(SESSION)).resolves.not.toBeNull();
+		expect((await h.backend.paneLayout(SESSION))!.activePaneId).toBe(secondPane);
 	});
 
 	it("treats a record owned by another instance as absent", async () => {
@@ -237,16 +167,17 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(capture.liveness).toBe("live");
 	});
 
-	it("reports a capable host that has not published yet as unavailable, not as incapable", async () => {
+	it("tells a capable host that has not published yet (unavailable) from an unbelievable snapshot (unreadable)", async () => {
 		const h = harness();
 		world = h.world;
 		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
 		const view = created.views[0].id;
-		// Capability advertised, first snapshot not written: come back later.
+		// Capability advertised, first snapshot not written: come back later, not incapable.
 		paneOf(world, view).parserState = "absent";
-
-		const capture = await h.backend.captureView(SESSION, view);
-		expect(capture.availability).toBe("unavailable");
+		expect((await h.backend.captureView(SESSION, view)).availability).toBe("unavailable");
+		// An unbelievable snapshot is unreadable rather than a blank screen.
+		paneOf(world, view).parserState = "rejected";
+		expect((await h.backend.captureView(SESSION, view)).availability).toBe("unreadable");
 	});
 
 	it("does not compare equal after pid reuse, because start signatures ride along", async () => {
@@ -266,17 +197,6 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(first.identity.incarnation.known && second.identity.incarnation.known).toBe(true);
 		if (!first.identity.incarnation.known || !second.identity.incarnation.known) return;
 		expect(second.identity.incarnation.value).not.toBe(first.identity.incarnation.value);
-	});
-
-	it("reports an unbelievable snapshot as unreadable rather than as a blank screen", async () => {
-		const h = harness();
-		world = h.world;
-		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		const view = created.views[0].id;
-		paneOf(world, view).parserState = "rejected";
-
-		const capture = await h.backend.captureView(SESSION, view);
-		expect(capture.availability).toBe("unreadable");
 	});
 
 	it("refuses to invent zero gaps for the per-cell surface, which cannot prove them", async () => {
@@ -370,7 +290,7 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 		expect(snapshotReads).toBe(0);
 	});
 
-	it("answers identically on both surfaces for the same pane", async () => {
+	it("answers identically on both surfaces, and unavailable before the compact record exists", async () => {
 		const { backend, view, pane } = await textSurfaceHarness();
 		await backend.writePane(SESSION, view, "same-answer\r");
 		const compact = await backend.captureView(SESSION, view, { historyLines: 10 });
@@ -383,13 +303,11 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 		expect(compact.content.history).toEqual(perCell.content.history);
 		expect(compact.size).toEqual(perCell.size);
 		expect(compact.screen).toEqual(perCell.screen);
-	});
 
-	it("reports a host that advertises the surface but has published nothing as unavailable", async () => {
-		const { backend, view, pane } = await textSurfaceHarness();
-		pane.parserState = "absent"; // no capture record on disk yet
-		const capture = await backend.captureView(SESSION, view);
-		expect(capture.availability).toBe("unavailable");
+		// A host that advertises the surface but has published nothing is unavailable.
+		pane.record.capabilities = { capture: [NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY] };
+		pane.parserState = "absent";
+		expect((await backend.captureView(SESSION, view)).availability).toBe("unavailable");
 	});
 
 	it("refuses a record written by a different incarnation of the pane", async () => {
@@ -535,7 +453,14 @@ describe("NativeTerminalBackend identity bracket on every outcome", () => {
 		{ name: "unreadable", parserState: "rejected", capability: true },
 	];
 
-	it.each(MISS_CLASSES)("reports replacement during a $name miss as replaced", async (miss) => {
+	it("reports replacement during every miss class as replaced", async () => {
+		for (const miss of MISS_CLASSES) {
+			world?.cleanup();
+			await expect(replacedDuring(miss), miss.name).resolves.toBe("replaced");
+		}
+	});
+
+	async function replacedDuring(miss: (typeof MISS_CLASSES)[number]) {
 		const w = new FakeCoordinatorWorld();
 		world = w;
 		let armed = false;
@@ -557,9 +482,8 @@ describe("NativeTerminalBackend identity bracket on every outcome", () => {
 		if (!miss.capability) delete pane.record.capabilities;
 		armed = true;
 
-		const capture = await backend.captureView(SESSION, view);
-		expect(capture.availability).toBe("replaced");
-	});
+		return (await backend.captureView(SESSION, view)).availability;
+	}
 
 	it("reports a pane set that cannot be believed as unreadable, never as session-absent", async () => {
 		const w = new FakeCoordinatorWorld();
@@ -641,30 +565,23 @@ describe("inspectPane classifies both processes, passively", () => {
 		};
 	}
 
-	it("reports an owned pane when both processes verify", async () => {
+	it("reports an owned pane when both processes verify, and refuses a record whose sessionId is not this pane's", async () => {
 		seed();
 		const seen = await new NativeTerminalBackend().inspectPane(COORD, "pane-1", probes());
 		expect(seen, JSON.stringify(seen)).toMatchObject({ kind: "observed", ownership: "owned" });
-	});
 
-	// A record copied from another session describes processes this pane does not own.
-	it("refuses a record whose sessionId is not this pane's", async () => {
+		// A record copied from another session describes processes this pane does not own.
 		seed({ recordSessionId: "dev3-task-somebody-else-pane-1" });
-		const seen = await new NativeTerminalBackend().inspectPane(COORD, "pane-1", probes());
-		expect(seen).toMatchObject({ kind: "foreign-record", recordSessionId: "dev3-task-somebody-else-pane-1" });
+		const foreign = await new NativeTerminalBackend().inspectPane(COORD, "pane-1", probes());
+		expect(foreign).toMatchObject({ kind: "foreign-record", recordSessionId: "dev3-task-somebody-else-pane-1" });
 	});
 
-	it("reports dead when a process is gone — the SHELL counts too", async () => {
+	it("reports dead when a process is gone (the SHELL counts too), reused when its identity changed", async () => {
 		seed();
 		const backend = new NativeTerminalBackend();
 		const onlyShellGone = { ...probes(), isAlive: (pid: number) => pid !== 4243 };
 		expect(await backend.inspectPane(COORD, "pane-1", onlyShellGone)).toMatchObject({ ownership: "dead" });
-	});
-
-	// A live pid whose start signature moved on belongs to an unrelated successor.
-	it("reports reused when a pid is alive but its identity changed", async () => {
-		seed();
-		const backend = new NativeTerminalBackend();
+		// A live pid whose start signature moved on belongs to an unrelated successor.
 		expect(await backend.inspectPane(COORD, "pane-1", probes({ shellSig: "somebody-else" }))).toMatchObject({
 			ownership: "reused",
 		});

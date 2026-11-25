@@ -193,16 +193,12 @@ describe("single backend ownership", () => {
 			expect(sessionId.startsWith(`${coordId}-`)).toBe(true);
 		}
 		expect(startedPanes).toHaveLength(2);
-	});
-
-	it("never calls spawn (no tmux)", async () => {
-		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
-		expect(spawn).not.toHaveBeenCalled();
+		expect(spawn).not.toHaveBeenCalled(); // no tmux
 	});
 });
 
 describe("split cwd/env inheritance (fix #2)", () => {
-	it("split uses the caller-supplied task cwd and env", async () => {
+	it("split uses the caller-supplied task cwd and env, plus the dev3 prompt env the caller's values override", async () => {
 		await startNativeTaskPanes({
 			taskId: TASK_ID,
 			cwd: "/task-work",
@@ -212,17 +208,21 @@ describe("split cwd/env inheritance (fix #2)", () => {
 			rows: 24,
 		});
 
-		const firstPaneId = `dev3-task-${TASK_ID}-pane-1`;
 		await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal", {
 			cwd: "/task-work",
-			env: { PATH: "/custom", MY_ENV: "value" },
+			env: { PATH: "/custom", MY_ENV: "value", ENV: "/mine/.shrc" },
 		});
 
 		// The second startPane call should have the task's cwd and env.
 		const splitOpts = startedPanes[1]!.opts as { launch: { cwd: string; env: Record<string, string> } };
 		expect(splitOpts.launch.cwd).toBe("/task-work");
-		expect(splitOpts.launch.env).toMatchObject({ PATH: "/custom", MY_ENV: "value" });
-		void firstPaneId;
+		expect(splitOpts.launch.env).toMatchObject({
+			PATH: "/custom",
+			MY_ENV: "value",
+			ZDOTDIR: "/tmp/dev3-shell",
+			ENV: "/mine/.shrc",
+			DEV3_WORKTREE_ROOT: "/task-work",
+		});
 	});
 
 	it("a background split leaves the previous pane active in the state it returns", async () => {
@@ -233,14 +233,6 @@ describe("split cwd/env inheritance (fix #2)", () => {
 
 		expect(state.panes.map((p) => p.paneId)).toContain(paneId);
 		expect(state.activePaneId).toBe(first);
-	});
-
-	it("split carries the dev3 prompt env; the caller's own values win", async () => {
-		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
-		await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal", { cwd: "/work", env: { ENV: "/mine/.shrc" } });
-
-		const splitOpts = startedPanes[1]!.opts as { launch: { env: Record<string, string> } };
-		expect(splitOpts.launch.env).toMatchObject({ ZDOTDIR: "/tmp/dev3-shell", ENV: "/mine/.shrc", DEV3_WORKTREE_ROOT: "/work" });
 	});
 
 	it("splits a pane set recovered by a fresh process — no in-process context needed", async () => {
@@ -268,34 +260,20 @@ describe("split cwd/env inheritance (fix #2)", () => {
 });
 
 describe("stopNativeTaskPanes always verifies (fix #3)", () => {
-	it("resolves when the pane set is confirmed gone", async () => {
+	it("resolves when the pane set is confirmed gone, and for a task that never started", async () => {
 		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
 		await expect(stopNativeTaskPanes(TASK_ID)).resolves.toBeUndefined();
-	});
-
-	it("throws when the session persists after cleanup — even without a cached coordinator", async () => {
-		// Never call start so there is no cached coordinator.
-		// Also make the mock's cleanupSession leave the coordinator record intact
-		// by injecting a backend whose cleanupSession is a no-op.
-		// Since we can't easily do that here, we verify the conditional-free path
-		// by checking that stop ALWAYS calls the backend's cleanup.
-		// The stop function deletes the context regardless.
-		expect(() => stopNativeTaskPanes("fresh-task-no-start")).not.toThrow();
-		// (The promise resolves because describeSession returns null for a missing session.)
-		await stopNativeTaskPanes("fresh-task-no-start");
+		// No cached coordinator: stop still runs the backend cleanup and resolves,
+		// because describeSession returns null for a missing session.
+		await expect(stopNativeTaskPanes("fresh-task-no-start")).resolves.toBeUndefined();
 	});
 });
 
 describe("nativeTaskPanesAlive is read-only (fix #4)", () => {
-	it("returns false when no session exists without registering anything", async () => {
-		const alive = await nativeTaskPanesAlive("never-started-task");
-		expect(alive).toBe(false);
-	});
-
-	it("returns true when the session is live", async () => {
+	it("is false for a session that never existed (registering nothing) and true for a live one", async () => {
+		expect(await nativeTaskPanesAlive("never-started-task")).toBe(false);
 		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
-		const alive = await nativeTaskPanesAlive(TASK_ID);
-		expect(alive).toBe(true);
+		expect(await nativeTaskPanesAlive(TASK_ID)).toBe(true);
 	});
 });
 

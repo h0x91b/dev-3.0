@@ -25,16 +25,13 @@ const POSIX = { cli: "~/.dev3.0/bin/dev3", posixShell: true } as const;
 const WINDOWS = { cli: "C:/Users/me/.dev3.0/bin/dev3.exe", posixShell: false } as const;
 
 describe("Copilot hook event mapping", () => {
-	it("every Copilot event stands for a real generic status event", () => {
-		for (const generic of Object.values(COPILOT_STATUS_HOOK_EVENTS)) {
-			expect(AGENT_STATUS_HOOK_EVENTS).toContain(generic);
-		}
-	});
-
 	// Copilot 1.0.83 fires permissionRequest on every permission evaluation,
 	// including ones --allow-all-tools approves without showing the user anything.
 	// Subscribing would park a working task in Has Questions on its first tool call.
-	it("does not subscribe to permissionRequest", () => {
+	it("maps every event to a real generic status event and does not subscribe to permissionRequest", () => {
+		for (const generic of Object.values(COPILOT_STATUS_HOOK_EVENTS)) {
+			expect(AGENT_STATUS_HOOK_EVENTS).toContain(generic);
+		}
 		expect(Object.keys(COPILOT_STATUS_HOOK_EVENTS)).not.toContain("permissionRequest");
 	});
 
@@ -50,13 +47,13 @@ describe("Copilot hook event mapping", () => {
 });
 
 describe("copilotHookCommand", () => {
-	it("POSIX skips without spawning anything outside a dev3 task", () => {
+	it("POSIX skips outside a dev3 task; Windows gets a PowerShell form that always exits 0; each machine only its own dialect", () => {
 		expect(copilotHookCommand("preToolUse", POSIX)).toEqual({
 			bash: `[ -z "$DEV3_TASK_ID" ] || exec ~/.dev3.0/bin/dev3 hook copilot preToolUse`,
 		});
-	});
-
-	it("Windows gets a PowerShell form that always exits 0", () => {
+		// Only this machine's dialect — the file is machine-local.
+		expect(copilotHookCommand("sessionStart", POSIX)).not.toHaveProperty("powershell");
+		{
 		const command = copilotHookCommand("agentStop", WINDOWS);
 		expect(command).toEqual({
 			powershell: `if ($env:DEV3_TASK_ID) { & C:/Users/me/.dev3.0/bin/dev3.exe hook copilot agentStop }; exit 0`,
@@ -64,12 +61,10 @@ describe("copilotHookCommand", () => {
 		// Fail-closed on preToolUse: any non-zero exit blocks the tool call, so the
 		// guard must never be the thing that fails.
 		expect((command as { powershell: string }).powershell).toContain("exit 0");
+		expect(copilotHookCommand("sessionStart", WINDOWS)).not.toHaveProperty("bash");
+		}
 	});
 
-	it("emits only this machine's dialect — the file is machine-local", () => {
-		expect(copilotHookCommand("sessionStart", POSIX)).not.toHaveProperty("powershell");
-		expect(copilotHookCommand("sessionStart", WINDOWS)).not.toHaveProperty("bash");
-	});
 });
 
 describe("buildCopilotHooks", () => {
@@ -84,20 +79,16 @@ describe("buildCopilotHooks", () => {
 });
 
 describe("mergeCopilotHooks", () => {
-	it("keeps a foreign hook on the same event and replaces only dev3's", () => {
+	it("keeps a foreign hook on the same event and unrelated settings, replacing only dev3's", () => {
 		const foreign = { type: "command", bash: "/opt/corp/enforcer --editor github_copilot" };
-		const first = mergeCopilotHooks({ hooks: { preToolUse: [foreign] } }, POSIX);
+		const first = mergeCopilotHooks({ theme: "dark", banner: "never", hooks: { preToolUse: [foreign] } }, POSIX);
 		const second = mergeCopilotHooks(first, POSIX);
 
+		expect(second).toMatchObject({ theme: "dark", banner: "never" });
 		const entries = (second.hooks as Record<string, unknown[]>).preToolUse;
 		expect(entries[0]).toEqual(foreign);
 		// Re-merging must not stack a second dev3 copy beside the first.
 		expect(entries).toHaveLength(2);
-	});
-
-	it("leaves unrelated settings alone", () => {
-		const merged = mergeCopilotHooks({ theme: "dark", banner: "never" }, POSIX);
-		expect(merged).toMatchObject({ theme: "dark", banner: "never" });
 	});
 });
 
@@ -106,9 +97,7 @@ describe("ensureCopilotTrustedFolder", () => {
 		const first = ensureCopilotTrustedFolder({ trustedFolders: ["/home/mine"] }, "/w/t");
 		expect(first.trustedFolders).toEqual(["/home/mine", "/w/t"]);
 		expect(ensureCopilotTrustedFolder(first, "/w/t")).toEqual(first);
-	});
-
-	it("survives a settings file with no trustedFolders key", () => {
+		// A settings file with no trustedFolders key.
 		expect(ensureCopilotTrustedFolder({}, "/w/t").trustedFolders).toEqual(["/w/t"]);
 	});
 });
@@ -117,16 +106,7 @@ describe("writeCopilotHooks", () => {
 	// `~/.copilot/hooks/` can be root-owned on a managed machine (an MDM drops its
 	// policy hook there), so dev3 writes nothing inside it — settings.json is the
 	// file Copilot itself maintains as the user.
-	it("writes settings.json in the Copilot home and touches no hooks/ dir", () => {
-		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
-		expect(writeCopilotHooks(home)).toBe(true);
-
-		const written = JSON.parse(readFileSync(join(home, COPILOT_SETTINGS_FILE), "utf-8"));
-		expect(Object.keys(written.hooks)).toContain("sessionStart");
-		expect(existsSync(join(home, "hooks"))).toBe(false);
-	});
-
-	it("preserves the user's own settings and is idempotent", () => {
+	it("writes settings.json in the Copilot home, touches no hooks/ dir, keeps the user's settings and is idempotent", () => {
 		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
 		const path = join(home, COPILOT_SETTINGS_FILE);
 		writeFileSync(path, JSON.stringify({ theme: "dark", trustedFolders: ["/mine"] }), "utf-8");
@@ -135,8 +115,10 @@ describe("writeCopilotHooks", () => {
 		expect(writeCopilotHooks(home)).toBe(false);
 
 		const written = JSON.parse(readFileSync(path, "utf-8"));
+		expect(Object.keys(written.hooks)).toContain("sessionStart");
 		expect(written.theme).toBe("dark");
 		expect(written.trustedFolders).toEqual(["/mine"]);
+		expect(existsSync(join(home, "hooks"))).toBe(false);
 	});
 });
 
@@ -158,6 +140,11 @@ describe("updateCopilotConfig", () => {
 		const written = JSON.parse(raw.slice(HEADER.length));
 		expect(written.trustedFolders).toEqual(["/w/t"]);
 		expect(written.loggedInUsers).toEqual([{ login: "me" }]);
+
+		// Copilot never ran on this machine: the config is created.
+		const fresh = mkdtempSync(join(tmpdir(), "copilot-home-"));
+		expect(updateCopilotConfig(fresh, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(true);
+		expect(JSON.parse(readFileSync(join(fresh, COPILOT_CONFIG_FILE), "utf-8")).trustedFolders).toEqual(["/w/t"]);
 	});
 
 	// A config dev3 cannot parse is Copilot's credential state: losing the trust
@@ -170,19 +157,12 @@ describe("updateCopilotConfig", () => {
 		expect(updateCopilotConfig(home, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(false);
 		expect(readFileSync(path, "utf-8")).toBe("{ not json at all");
 	});
-
-	it("creates the config when Copilot has never run on this machine", () => {
-		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
-		expect(updateCopilotConfig(home, (c) => ensureCopilotTrustedFolder(c, "/w/t"))).toBe(true);
-		const written = JSON.parse(readFileSync(join(home, COPILOT_CONFIG_FILE), "utf-8"));
-		expect(written.trustedFolders).toEqual(["/w/t"]);
-	});
 });
 
 describe("ensureCopilotCommandApproval", () => {
 	const REPO = "/Users/me/src/dev-3.0";
 
-	it("pre-approves the dev3 CLI for the repo and is idempotent", () => {
+	it("pre-approves the dev3 CLI for the repo idempotently, keeping the user's own approvals and other repos", () => {
 		const home = mkdtempSync(join(tmpdir(), "copilot-home-"));
 		const add = () => updateCopilotPermissions(home, (p) => ensureCopilotCommandApproval(p, REPO));
 
@@ -193,9 +173,7 @@ describe("ensureCopilotCommandApproval", () => {
 		expect(written.locations[REPO].tool_approvals).toEqual([
 			{ kind: "commands", commandIdentifiers: [DEV3_CLI] },
 		]);
-	});
-
-	it("keeps the commands the user approved themselves, and other repos", () => {
+		{
 		const existing = {
 			locations: {
 				"/other/repo": { tool_approvals: [{ kind: "commands", commandIdentifiers: ["make"] }] },
@@ -207,7 +185,9 @@ describe("ensureCopilotCommandApproval", () => {
 
 		expect(updated.locations[REPO].tool_approvals[0].commandIdentifiers).toEqual(["git", DEV3_CLI]);
 		expect(updated.locations["/other/repo"].tool_approvals[0].commandIdentifiers).toEqual(["make"]);
+		}
 	});
+
 });
 
 describe("resolveCopilotHome", () => {

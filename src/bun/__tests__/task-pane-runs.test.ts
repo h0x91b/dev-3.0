@@ -104,7 +104,7 @@ function splitSpec(): Record<string, unknown> {
 }
 
 describe("startPaneRun", () => {
-	it("writes the run spec before the pane exists, so nothing is quoted into an argv", async () => {
+	it("writes the run spec before the pane exists and puts the run id in the launch command on BOTH backends", async () => {
 		let specOnDisk: string | null = null;
 		mocks.splitTaskPane.mockImplementation(async (spec: Record<string, unknown>) => {
 			// Read the spec at the moment the split happens — proving the ORDER, not
@@ -129,28 +129,25 @@ describe("startPaneRun", () => {
 		expect(parsed.cwd).toBe("/wt");
 		expect(parsed.label).toBe("Build");
 		expect(parsed.runId).toBe(started.runId);
-	});
 
-	it("puts the run id in the launch command on BOTH backends", async () => {
-		const started = await startPaneRun({
-			task: NATIVE_TASK,
-			command: "bun run build",
-			placement: "auto",
-			cwd: "/wt",
-			env: {},
-		});
 		const spec = splitSpec();
 		expect((spec.nativeLaunch as { argv: string[] }).argv).toEqual([PANE_RUN_VERB, dir, started.runId]);
 		expect(String(spec.tmuxCommand)).toContain(started.runId);
 		expect(String(spec.tmuxCommand)).toContain(PANE_RUN_VERB);
 	});
 
-	it("splits below when asked, and keeps the agent's focus either way", async () => {
+	it("splits below when asked, keeps the legacy split when the layout could not be read, and keeps the agent's focus either way", async () => {
 		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "below", cwd: "/wt", env: {} });
 		expect(mocks.decidePaneRunSplit).toHaveBeenCalledWith(expect.objectContaining({ below: true }));
 		expect(splitSpec().placement).toBe("below");
 		// Nothing asks for focus on the new pane, so both backends open it in the background.
 		expect(splitSpec().focus).toBeUndefined();
+
+		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", cwd: "/wt", env: {} });
+		const legacy = mocks.splitTaskPane.mock.calls[1][0] as Record<string, unknown>;
+		expect(legacy.placement).toBe("right");
+		expect(legacy.nativeAnchor).toBeUndefined();
+		expect(legacy.tmuxTarget).toBeUndefined();
 	});
 
 	it("splits the pane the placement chose, 50/50, on both backends' anchors", async () => {
@@ -161,13 +158,6 @@ describe("startPaneRun", () => {
 		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", selfPaneId: "pane-1", cwd: "/wt", env: {} });
 		expect(mocks.decidePaneRunSplit).toHaveBeenCalledWith(expect.objectContaining({ selfPaneId: "pane-1", below: false }));
 		expect(splitSpec()).toMatchObject({ placement: "below", size: "50%", nativeAnchor: "pane-3", tmuxTarget: "pane-3" });
-	});
-
-	it("keeps the legacy split when the layout could not be read", async () => {
-		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", cwd: "/wt", env: {} });
-		expect(splitSpec().placement).toBe("right");
-		expect(splitSpec().nativeAnchor).toBeUndefined();
-		expect(splitSpec().tmuxTarget).toBeUndefined();
 	});
 
 	it("opens a new window when no window has room, and never splits for it", async () => {
@@ -181,36 +171,33 @@ describe("startPaneRun", () => {
 		expect(String(spec.tmuxCommand)).toContain(started.runId);
 	});
 
-	it("refuses a run with no room, opens nothing and leaves no spec behind", async () => {
+	it("leaves no spec behind when there is no room (opening nothing) or the pane could not be opened", async () => {
 		mocks.decidePaneRunSplit.mockResolvedValue({ kind: "no-room", plan: { kind: "no-room", closest: null } });
 		const refused = startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", cwd: "/wt", env: {} });
 		await expect(refused).rejects.toThrow(PaneRunNoRoomError);
 		await expect(refused).rejects.toThrow(/^DEV3_PANE_NO_ROOM: /);
 		expect(mocks.splitTaskPane).not.toHaveBeenCalled();
 		expect(readdirSync(dir).filter((name) => name.endsWith(".run.json"))).toEqual([]);
-	});
 
-	it("refuses a command that would smuggle a second command into the pane", async () => {
-		await expect(
-			startPaneRun({ task: NATIVE_TASK, command: "build\nrm -rf /", placement: "auto", cwd: "/wt", env: {} }),
-		).rejects.toThrow(PaneRunError);
-		expect(mocks.splitTaskPane).not.toHaveBeenCalled();
-	});
-
-	it("drops a label that is not plain human text instead of passing it on", async () => {
-		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", label: "$(boom)", cwd: "/wt", env: {} });
-		expect(splitSpec().title).toBe("Run");
-		const runId = (splitSpec().nativeLaunch as { argv: string[] }).argv[2];
-		expect(JSON.parse(readFileSync(paneRunSpecPath(dir, runId), "utf8")).label).toBe("");
-	});
-
-	it("leaves no spec behind when the pane could not be opened", async () => {
+		mocks.decidePaneRunSplit.mockResolvedValue({ kind: "unplanned", reason: "test" });
 		mocks.splitTaskPane.mockRejectedValue(new Error("the task terminal is not running"));
 		await expect(
 			startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", cwd: "/wt", env: {} }),
 		).rejects.toThrow(/terminal is not running/);
 		// A spec with no pane would be a phantom run in every later listing.
 		expect(readdirSync(dir).filter((name) => name.endsWith(".run.json"))).toEqual([]);
+	});
+
+	it("refuses a command that would smuggle a second command into the pane, and drops a label that is not plain human text", async () => {
+		await expect(
+			startPaneRun({ task: NATIVE_TASK, command: "build\nrm -rf /", placement: "auto", cwd: "/wt", env: {} }),
+		).rejects.toThrow(PaneRunError);
+		expect(mocks.splitTaskPane).not.toHaveBeenCalled();
+
+		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "auto", label: "$(boom)", cwd: "/wt", env: {} });
+		expect(splitSpec().title).toBe("Run");
+		const runId = (splitSpec().nativeLaunch as { argv: string[] }).argv[2];
+		expect(JSON.parse(readFileSync(paneRunSpecPath(dir, runId), "utf8")).label).toBe("");
 	});
 
 	it("launches an absolute binary, never a tilde a direct spawn cannot expand", async () => {
@@ -228,7 +215,7 @@ describe("readPaneRun", () => {
 		return started.runId;
 	}
 
-	it("reports a finished run with its exit code and the pane it ran in", async () => {
+	it("reports a finished run with its exit code and pane without reaching tmux, and still reads it once the pane is gone", async () => {
 		const runId = await seedRun(NATIVE_TASK, { state: "exited", exitCode: 7, pid: 9 }, "boom\n");
 		mocks.nativeTaskPaneCommands.mockResolvedValue([{ paneId: "pane-2", command: ["dev3", PANE_RUN_VERB, dir, runId] }]);
 
@@ -237,6 +224,14 @@ describe("readPaneRun", () => {
 		expect(view.paneId).toBe("pane-2");
 		expect(view.lines).toEqual(["boom"]);
 		expect(view.truncated).toBe(false);
+		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
+
+		// The log outlives the pane.
+		mocks.nativeTaskPaneCommands.mockResolvedValue([]);
+		const gone = await readPaneRun(NATIVE_TASK, runId);
+		expect(gone.paneId).toBe("");
+		expect(gone.status?.exitCode).toBe(7);
+		expect(gone.lines).toEqual(["boom"]);
 	});
 
 	it("bounds the tail and says so, rather than handing over a whole dev-server log", async () => {
@@ -250,6 +245,7 @@ describe("readPaneRun", () => {
 		expect(view.lines[9]).toBe("line 499");
 		expect(view.truncated).toBe(true);
 		expect(view.totalLines).toBe(500);
+		expect(view.logWindowed).toBe(false);
 	});
 
 	it("never pulls a whole runaway log into memory, and says the count is a floor", async () => {
@@ -266,14 +262,6 @@ describe("readPaneRun", () => {
 		expect(view.totalLines).toBeLessThan(63_000);
 	});
 
-	it("reads a log that fits in the window whole, and says so", async () => {
-		const runId = await seedRun(NATIVE_TASK, { state: "exited", exitCode: 0 }, "one\ntwo\n");
-		const view = await readPaneRun(NATIVE_TASK, runId, 10);
-		expect(view.lines).toEqual(["one", "two"]);
-		expect(view.logWindowed).toBe(false);
-		expect(view.truncated).toBe(false);
-	});
-
 	it("says the status is unknown when the status file cannot be believed", async () => {
 		const runId = await seedRun(NATIVE_TASK, undefined, "");
 		writeFileSync(paneRunStatusPath(dir, runId), "{not json");
@@ -287,12 +275,6 @@ describe("readPaneRun", () => {
 		await expect(readPaneRun(NATIVE_TASK, "run-000000000000")).rejects.toThrow(/has no run/);
 	});
 
-	it("never reaches tmux for a native task", async () => {
-		const runId = await seedRun(NATIVE_TASK, { state: "exited", exitCode: 0 }, "ok\n");
-		await readPaneRun(NATIVE_TASK, runId);
-		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
-	});
-
 	it("finds a tmux run's pane through pane_start_command", async () => {
 		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%9" });
 		const runId = await seedRun(TMUX_TASK, { state: "exited", exitCode: 0 }, "ok\n");
@@ -300,15 +282,6 @@ describe("readPaneRun", () => {
 		const view = await readPaneRun(TMUX_TASK, runId);
 		expect(view.paneId).toBe("%9");
 		expect(view.backend).toBe("tmux");
-	});
-
-	it("reads a run whose pane is already gone — the log outlives the pane", async () => {
-		const runId = await seedRun(NATIVE_TASK, { state: "exited", exitCode: 1 }, "failed\n");
-		mocks.nativeTaskPaneCommands.mockResolvedValue([]);
-		const view = await readPaneRun(NATIVE_TASK, runId);
-		expect(view.paneId).toBe("");
-		expect(view.status?.exitCode).toBe(1);
-		expect(view.lines).toEqual(["failed"]);
 	});
 });
 
@@ -331,12 +304,17 @@ describe("paneRunListing", () => {
 		expect(tmuxListing.screenReadable).toBe(true);
 	});
 
-	it("asks the backend for its panes ONCE, however many runs the task has", async () => {
+	it("asks the backend for its panes ONCE, however many runs, and points a listed run at the pane still executing it", async () => {
 		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%9" });
+		const runIds: string[] = [];
 		for (let i = 0; i < 4; i++) {
-			await startPaneRun({ task: TMUX_TASK, command: `sleep ${i}`, placement: "auto", cwd: "/wt", env: {} });
+			runIds.push((await startPaneRun({ task: TMUX_TASK, command: `sleep ${i}`, placement: "auto", cwd: "/wt", env: {} })).runId);
 		}
 		mocks.tmuxListPanes.mockClear();
+		mocks.tmuxListPanes.mockResolvedValue([
+			{ paneId: "%1", startCommand: "zsh" },
+			{ paneId: "%9", startCommand: `dev3 ${PANE_RUN_VERB} ${dir} ${runIds[0]}` },
+		]);
 
 		const listing = await paneRunListing(TMUX_TASK, "%1");
 		expect(listing.runs).toHaveLength(4);
@@ -344,19 +322,8 @@ describe("paneRunListing", () => {
 		expect(mocks.tmuxListPanes).toHaveBeenCalledTimes(1);
 		// And no log is read for a listing that prints none.
 		expect(listing.runs.every((run) => run.lines.length === 0)).toBe(true);
-	});
-
-	it("points a listed run at the pane still executing it", async () => {
-		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%9" });
-		const started = await startPaneRun({ task: TMUX_TASK, command: "sleep 60", placement: "auto", cwd: "/wt", env: {} });
-		mocks.tmuxListPanes.mockResolvedValue([
-			{ paneId: "%1", startCommand: "zsh" },
-			{ paneId: "%9", startCommand: `dev3 ${PANE_RUN_VERB} ${dir} ${started.runId}` },
-		]);
-
-		const listing = await paneRunListing(TMUX_TASK, "%1");
-		expect(listing.panes[1].runId).toBe(started.runId);
-		expect(listing.runs[0].paneId).toBe("%9");
+		expect(listing.panes[1].runId).toBe(runIds[0]);
+		expect(listing.runs.find((run) => run.runId === runIds[0])?.paneId).toBe("%9");
 	});
 
 	it("survives a tmux session that is simply gone", async () => {
@@ -367,18 +334,15 @@ describe("paneRunListing", () => {
 });
 
 describe("closePaneRun", () => {
-	it("closes the pane the run is in", async () => {
+	it("reports honestly when no live pane runs it, and closes the pane the run is in", async () => {
 		const started = await startPaneRun({ task: NATIVE_TASK, command: "sleep 60", placement: "auto", cwd: "/wt", env: {} });
+		expect(await closePaneRun(NATIVE_TASK, started.runId)).toEqual({ closed: false });
+		expect(mocks.closeTaskPane).not.toHaveBeenCalled();
+
 		mocks.nativeTaskPaneCommands.mockResolvedValue([
 			{ paneId: "pane-2", command: [PANE_RUN_VERB, dir, started.runId] },
 		]);
 		expect(await closePaneRun(NATIVE_TASK, started.runId)).toEqual({ closed: true });
 		expect(mocks.closeTaskPane).toHaveBeenCalledWith(NATIVE_TASK, { backend: "native", paneId: "pane-2" }, "dev3");
-	});
-
-	it("reports honestly when no live pane is running it", async () => {
-		const started = await startPaneRun({ task: NATIVE_TASK, command: "sleep 60", placement: "auto", cwd: "/wt", env: {} });
-		expect(await closePaneRun(NATIVE_TASK, started.runId)).toEqual({ closed: false });
-		expect(mocks.closeTaskPane).not.toHaveBeenCalled();
 	});
 });

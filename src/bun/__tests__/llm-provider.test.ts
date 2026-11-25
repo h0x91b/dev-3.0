@@ -14,17 +14,17 @@ import {
 	thirdPartyProvidersForAgent,
 	wantsLongContext,
 } from "../../shared/llm-provider";
-import { type BedrockGeo, LLM_PROVIDER } from "../../shared/types";
+import { type BedrockGeo, LLM_PROVIDER, type LlmProvider } from "../../shared/types";
 
 describe("normalizeAlias", () => {
-	it("strips the [1m] marker", () => {
-		expect(normalizeAlias("claude-opus-4-8[1m]")).toBe("claude-opus-4-8");
-	});
-	it("strips an @-dated snapshot suffix", () => {
-		expect(normalizeAlias("claude-haiku-4-5@20251001")).toBe("claude-haiku-4-5");
-	});
-	it("leaves a bare id untouched", () => {
-		expect(normalizeAlias("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
+	it("strips the [1m] marker and an @-dated snapshot suffix, leaving a bare id untouched", () => {
+		for (const [input, expected] of [
+			["claude-opus-4-8[1m]", "claude-opus-4-8"],
+			["claude-haiku-4-5@20251001", "claude-haiku-4-5"],
+			["claude-sonnet-4-6", "claude-sonnet-4-6"],
+		]) {
+			expect(normalizeAlias(input), input).toBe(expected);
+		}
 	});
 });
 
@@ -36,44 +36,41 @@ describe("wantsLongContext", () => {
 });
 
 describe("getProviderDefinition", () => {
-	it("returns the Bedrock definition for the bedrock id", () => {
-		const def = getProviderDefinition(LLM_PROVIDER.BedrockClaude);
-		expect(def?.id).toBe(LLM_PROVIDER.BedrockClaude);
-		expect(def?.enableEnv).toBe("CLAUDE_CODE_USE_BEDROCK");
-		expect(def?.usesGeo).toBe(true);
-	});
-	it("returns the Codex Bedrock definition for the bedrock-codex id", () => {
-		const def = getProviderDefinition(LLM_PROVIDER.BedrockCodex);
-		expect(def?.id).toBe(LLM_PROVIDER.BedrockCodex);
-		expect(def?.agentCommand).toBe("codex");
+	it("returns the Bedrock definitions for Claude and Codex, and undefined for the Anthropic default and unknown ids", () => {
+		const claude = getProviderDefinition(LLM_PROVIDER.BedrockClaude);
+		expect(claude?.id).toBe(LLM_PROVIDER.BedrockClaude);
+		expect(claude?.enableEnv).toBe("CLAUDE_CODE_USE_BEDROCK");
+		expect(claude?.usesGeo).toBe(true);
+
+		const codex = getProviderDefinition(LLM_PROVIDER.BedrockCodex);
+		expect(codex?.id).toBe(LLM_PROVIDER.BedrockCodex);
+		expect(codex?.agentCommand).toBe("codex");
 		// The Bedrock Runtime provider: the OpenAI-compatible `amazon-bedrock`
 		// endpoint does not serve gpt-6-astra (verified 2026-09-09, 404).
-		expect(def?.enableArgs).toEqual(["-c", 'model_provider="amazon-bedrock-runtime"']);
-		expect(def?.modelEnv).toBeUndefined();
-		expect(def?.usesGeo).toBe(true);
-	});
-	it("returns undefined for the Anthropic default and unknown ids", () => {
+		expect(codex?.enableArgs).toEqual(["-c", 'model_provider="amazon-bedrock-runtime"']);
+		expect(codex?.modelEnv).toBeUndefined();
+		expect(codex?.usesGeo).toBe(true);
+
 		expect(getProviderDefinition(LLM_PROVIDER.Native)).toBeUndefined();
 		expect(getProviderDefinition(undefined)).toBeUndefined();
 	});
 });
 
 describe("mapModelForProvider", () => {
-	it("maps a known [1m] alias to a global Bedrock profile, preserving [1m]", () => {
-		expect(mapModelForProvider("claude-opus-4-8[1m]", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-opus-4-8[1m]",
-		);
-	});
-	it("applies the selected Bedrock geo prefix", () => {
-		expect(mapModelForProvider("claude-opus-4-8[1m]", LLM_PROVIDER.BedrockClaude, "us")).toBe(
-			"us.anthropic.claude-opus-4-8[1m]",
-		);
-		expect(mapModelForProvider("sonnet", LLM_PROVIDER.BedrockClaude, "eu")).toBe(
-			"eu.anthropic.claude-sonnet-4-6",
-		);
-		expect(mapModelForProvider("claude-opus-4-8", LLM_PROVIDER.BedrockClaude, "jp")).toBe(
-			"jp.anthropic.claude-opus-4-8",
-		);
+	it("maps aliases and shorthands to a Bedrock profile, global by default, geo-prefixed, preserving [1m]", () => {
+		const cases: Array<[model: string, geo: BedrockGeo | undefined, expected: string]> = [
+			["claude-opus-4-8[1m]", undefined, "global.anthropic.claude-opus-4-8[1m]"],
+			["claude-opus-4-8[1m]", "us", "us.anthropic.claude-opus-4-8[1m]"],
+			["sonnet", "eu", "eu.anthropic.claude-sonnet-4-6"],
+			["claude-opus-4-8", "jp", "jp.anthropic.claude-opus-4-8"],
+			["sonnet", undefined, "global.anthropic.claude-sonnet-4-6"],
+			["claude-opus-5[1m]", undefined, "global.anthropic.claude-opus-5[1m]"],
+			["claude-opus-5", undefined, "global.anthropic.claude-opus-5"],
+			["opus", undefined, "global.anthropic.claude-opus-5"],
+		];
+		for (const [model, geo, expected] of cases) {
+			expect(mapModelForProvider(model, LLM_PROVIDER.BedrockClaude, geo), `${model} @ ${geo ?? "default"}`).toBe(expected);
+		}
 	});
 	it("offers jp, not apac: no current-generation model has an apac. profile", () => {
 		expect(BEDROCK_GEOS).toEqual(["global", "us", "eu", "jp"]);
@@ -90,31 +87,9 @@ describe("mapModelForProvider", () => {
 			"global.anthropic.claude-opus-4-6-v1",
 		);
 	});
-	it("resolves the 'sonnet' shorthand to its family", () => {
-		expect(mapModelForProvider("sonnet", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-sonnet-4-6",
-		);
-	});
-	it("maps Opus 5 and resolves the 'opus' shorthand to it", () => {
-		expect(mapModelForProvider("claude-opus-5[1m]", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-opus-5[1m]",
-		);
-		expect(mapModelForProvider("claude-opus-5", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-opus-5",
-		);
-		expect(mapModelForProvider("opus", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-opus-5",
-		);
-	});
-	it("derives an id for an unknown/new model (always pins the model)", () => {
-		expect(mapModelForProvider("claude-fable-5", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-fable-5",
-		);
-	});
-	it("preserves the [1m] marker when deriving an unknown model", () => {
-		expect(mapModelForProvider("claude-fable-5[1m]", LLM_PROVIDER.BedrockClaude)).toBe(
-			"global.anthropic.claude-fable-5[1m]",
-		);
+	it("derives an id for an unknown/new model (always pins the model), preserving [1m]", () => {
+		expect(mapModelForProvider("claude-fable-5", LLM_PROVIDER.BedrockClaude)).toBe("global.anthropic.claude-fable-5");
+		expect(mapModelForProvider("claude-fable-5[1m]", LLM_PROVIDER.BedrockClaude)).toBe("global.anthropic.claude-fable-5[1m]");
 	});
 	it("returns undefined for the Anthropic default or when no model is given", () => {
 		expect(mapModelForProvider("claude-opus-4-8[1m]", LLM_PROVIDER.Native)).toBeUndefined();
@@ -123,38 +98,28 @@ describe("mapModelForProvider", () => {
 	});
 });
 
-describe("thirdPartyProvidersForAgent", () => {
-	it("returns Bedrock for the claude command (incl. an absolute path)", () => {
-		expect(thirdPartyProvidersForAgent("claude").map((d) => d.id)).toEqual([LLM_PROVIDER.BedrockClaude]);
-		expect(thirdPartyProvidersForAgent("/opt/homebrew/bin/claude").map((d) => d.id)).toEqual([
-			LLM_PROVIDER.BedrockClaude,
-		]);
-	});
-	it("returns Bedrock (codex flavor) for the codex command", () => {
-		expect(thirdPartyProvidersForAgent("codex").map((d) => d.id)).toEqual([
-			LLM_PROVIDER.BedrockCodex,
-		]);
-	});
-	it("returns nothing for agents with no registered backend", () => {
-		expect(thirdPartyProvidersForAgent("gemini")).toEqual([]);
-	});
-});
-
-describe("providersForAgent", () => {
-	it("lists the native option first, then registered backends, for claude", () => {
-		expect(providersForAgent("claude")).toEqual([
-			{ id: LLM_PROVIDER.Native, labelKey: "settings.providerAnthropic" },
-			{ id: LLM_PROVIDER.BedrockClaude, labelKey: "settings.providerBedrock" },
-		]);
-	});
-	it("lists OpenAI (native) first, then Bedrock, for codex", () => {
-		expect(providersForAgent("codex")).toEqual([
-			{ id: LLM_PROVIDER.Native, labelKey: "settings.providerOpenAI" },
-			{ id: LLM_PROVIDER.BedrockCodex, labelKey: "settings.providerBedrock" },
-		]);
-	});
-	it("is empty for an agent with no backend (no toggle shown)", () => {
-		expect(providersForAgent("gemini")).toEqual([]);
+describe("thirdPartyProvidersForAgent / providersForAgent", () => {
+	it("offers Bedrock to claude (incl. an absolute path) and codex, native first, and nothing to other agents", () => {
+		const cases: Array<[agent: string, thirdParty: string[], all: Array<{ id: string; labelKey: string }>]> = [
+			["claude", [LLM_PROVIDER.BedrockClaude], [
+				{ id: LLM_PROVIDER.Native, labelKey: "settings.providerAnthropic" },
+				{ id: LLM_PROVIDER.BedrockClaude, labelKey: "settings.providerBedrock" },
+			]],
+			["/opt/homebrew/bin/claude", [LLM_PROVIDER.BedrockClaude], [
+				{ id: LLM_PROVIDER.Native, labelKey: "settings.providerAnthropic" },
+				{ id: LLM_PROVIDER.BedrockClaude, labelKey: "settings.providerBedrock" },
+			]],
+			["codex", [LLM_PROVIDER.BedrockCodex], [
+				{ id: LLM_PROVIDER.Native, labelKey: "settings.providerOpenAI" },
+				{ id: LLM_PROVIDER.BedrockCodex, labelKey: "settings.providerBedrock" },
+			]],
+			// No backend means no toggle shown.
+			["gemini", [], []],
+		];
+		for (const [agent, thirdParty, all] of cases) {
+			expect(thirdPartyProvidersForAgent(agent).map((d) => d.id), agent).toEqual(thirdParty);
+			expect(providersForAgent(agent), agent).toEqual(all);
+		}
 	});
 });
 
@@ -172,17 +137,9 @@ describe("providerPinnedModel (bedrock-codex)", () => {
 	it("maps a codex alias to a <geo>.openai.<family> inference profile, global by default", () => {
 		// Bedrock Runtime rejects the bare `openai.<family>` id ("on-demand
 		// throughput isn't supported"); the profile form was verified live 2026-09-09.
-		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-6-astra")).toBe(
-			"global.openai.gpt-6-astra",
-		);
-		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.6-sol")).toBe(
-			"global.openai.gpt-5.6-sol",
-		);
-	});
-	it("applies the selected geo to the codex id", () => {
-		expect(
-			providerPinnedModel(LLM_PROVIDER.BedrockCodex, { "bedrock-codex": { geo: "us" } }, "gpt-5.6-sol"),
-		).toBe("us.openai.gpt-5.6-sol");
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-6-astra")).toBe("global.openai.gpt-6-astra");
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.6-sol")).toBe("global.openai.gpt-5.6-sol");
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, { "bedrock-codex": { geo: "us" } }, "gpt-5.6-sol")).toBe("us.openai.gpt-5.6-sol");
 	});
 	it("treats a stored geo it no longer offers (apac) as the default", () => {
 		const stale = { bedrock: { geo: "apac" as unknown as BedrockGeo } };
@@ -208,45 +165,16 @@ describe("providerPinnedModel (bedrock-codex)", () => {
 });
 
 describe("buildProviderEnv", () => {
-	it("returns {} for bedrock-codex — Codex is routed via CLI args, not env", () => {
+	it("injects nothing for bedrock-codex (routed via CLI args) or the Anthropic default", () => {
 		expect(buildProviderEnv(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.6-sol")).toEqual({});
-	});
-	it("returns {} for anthropic (default) — nothing injected", () => {
 		expect(buildProviderEnv(LLM_PROVIDER.Native, undefined, "claude-opus-4-8[1m]")).toEqual({});
 		expect(buildProviderEnv(undefined, undefined, "claude-opus-4-8[1m]")).toEqual({});
 	});
 
-	it("bedrock: enables the flag and maps the model from the launching config", () => {
+	it("bedrock: enables the flag and maps the model, without injecting region/profile (customer's global Claude config owns those)", () => {
 		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-opus-4-8[1m]");
 		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe("1");
 		expect(env.ANTHROPIC_MODEL).toBe("global.anthropic.claude-opus-4-8[1m]");
-	});
-
-	it("bedrock: per-model override (keyed by alias) wins over the map", () => {
-		const env = buildProviderEnv(
-			LLM_PROVIDER.BedrockClaude,
-			{ bedrock: { modelOverrides: { "claude-opus-4-8[1m]": "us.anthropic.claude-opus-4-8" } } },
-			"claude-opus-4-8[1m]",
-		);
-		expect(env.ANTHROPIC_MODEL).toBe("us.anthropic.claude-opus-4-8");
-	});
-
-	it("bedrock: geo prefixes the mapped model id", () => {
-		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, { bedrock: { geo: "eu" } }, "claude-opus-4-8[1m]");
-		expect(env.ANTHROPIC_MODEL).toBe("eu.anthropic.claude-opus-4-8[1m]");
-	});
-
-	it("bedrock: a manual override still wins over the geo", () => {
-		const env = buildProviderEnv(
-			LLM_PROVIDER.BedrockClaude,
-			{ bedrock: { geo: "eu", modelOverrides: { "claude-opus-4-8[1m]": "arn:aws:bedrock:custom" } } },
-			"claude-opus-4-8[1m]",
-		);
-		expect(env.ANTHROPIC_MODEL).toBe("arn:aws:bedrock:custom");
-	});
-
-	it("does not inject region/profile (customer's global Claude config owns those)", () => {
-		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-opus-4-8[1m]");
 		expect(env.AWS_REGION).toBeUndefined();
 		expect(env.AWS_PROFILE).toBeUndefined();
 		// Only the flag, the main model and the alias-slot models are injected.
@@ -258,6 +186,19 @@ describe("buildProviderEnv", () => {
 			"ANTHROPIC_MODEL",
 			"CLAUDE_CODE_USE_BEDROCK",
 		]);
+	});
+
+	it("bedrock: the geo prefixes the mapped model and an alias-keyed override wins over both", () => {
+		const cases: Array<[name: string, config: Parameters<typeof buildProviderEnv>[1], expected: string]> = [
+			["geo prefix", { bedrock: { geo: "eu" } }, "eu.anthropic.claude-opus-4-8[1m]"],
+			["override wins over the map", { bedrock: { modelOverrides: { "claude-opus-4-8[1m]": "us.anthropic.claude-opus-4-8" } } }, "us.anthropic.claude-opus-4-8"],
+			["override wins over the geo", { bedrock: { geo: "eu", modelOverrides: { "claude-opus-4-8[1m]": "arn:aws:bedrock:custom" } } }, "arn:aws:bedrock:custom"],
+			["override for a DIFFERENT alias does not apply", { bedrock: { modelOverrides: { sonnet: "us.anthropic.claude-sonnet-4-6" } } }, "global.anthropic.claude-opus-4-8[1m]"],
+			["blank override falls back to the map", { bedrock: { modelOverrides: { "claude-opus-4-8[1m]": "  " } } }, "global.anthropic.claude-opus-4-8[1m]"],
+		];
+		for (const [name, config, expected] of cases) {
+			expect(buildProviderEnv(LLM_PROVIDER.BedrockClaude, config, "claude-opus-4-8[1m]").ANTHROPIC_MODEL, name).toBe(expected);
+		}
 	});
 
 	it("bedrock: pins every alias slot to the newest built-in model, so /model haiku never hits a built-in id", () => {
@@ -289,51 +230,28 @@ describe("buildProviderEnv", () => {
 		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("eu.anthropic.claude-opus-5-5[1m]");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("eu.anthropic.claude-haiku-5-5");
 	});
-
-	it("bedrock: an override for a DIFFERENT alias doesn't apply; this model uses the map", () => {
-		const env = buildProviderEnv(
-			LLM_PROVIDER.BedrockClaude,
-			{ bedrock: { modelOverrides: { sonnet: "us.anthropic.claude-sonnet-4-6" } } },
-			"claude-opus-4-8[1m]",
-		);
-		expect(env.ANTHROPIC_MODEL).toBe("global.anthropic.claude-opus-4-8[1m]");
-	});
-
-	it("bedrock: a blank override falls back to the map", () => {
-		const env = buildProviderEnv(
-			LLM_PROVIDER.BedrockClaude,
-			{ bedrock: { modelOverrides: { "claude-opus-4-8[1m]": "  " } } },
-			"claude-opus-4-8[1m]",
-		);
-		expect(env.ANTHROPIC_MODEL).toBe("global.anthropic.claude-opus-4-8[1m]");
-	});
-
-	it("bedrock: always pins the model, deriving an id for an unknown model", () => {
-		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-fable-5");
-		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe("1");
-		expect(env.ANTHROPIC_MODEL).toBe("global.anthropic.claude-fable-5");
-	});
 });
 
 describe("bedrockModelServedInGeo", () => {
 	// Snapshot of `aws bedrock list-inference-profiles` per region, 2026-09-09.
-	it("knows Fable is global/us only and jp carries only the 4.x generation", () => {
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-1[1m]", "eu")).toBe(false);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "eu")).toBe(false);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "jp")).toBe(false);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "global")).toBe(true);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5", "us")).toBe(true);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "eu")).toBe(true);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "jp")).toBe(false);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-4-8[1m]", "jp")).toBe(true);
-	});
-	it("knows OpenAI models only have global and us profiles", () => {
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockCodex, "gpt-6-astra", "global")).toBe(true);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockCodex, "gpt-6-astra", "eu")).toBe(false);
-	});
-	it("never flags a model it has no data for", () => {
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-future-9", "eu")).toBe(true);
-		expect(bedrockModelServedInGeo(LLM_PROVIDER.Native, "claude-fable-5", "eu")).toBe(true);
+	it("knows Fable is global/us only, jp carries only the 4.x generation, OpenAI is global/us, and never flags a model it has no data for", () => {
+		const cases: Array<[provider: LlmProvider, model: string, geo: BedrockGeo, served: boolean]> = [
+			[LLM_PROVIDER.BedrockClaude, "claude-fable-5-1[1m]", "eu", false],
+			[LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "eu", false],
+			[LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "jp", false],
+			[LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "global", true],
+			[LLM_PROVIDER.BedrockClaude, "claude-fable-5", "us", true],
+			[LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "eu", true],
+			[LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "jp", false],
+			[LLM_PROVIDER.BedrockClaude, "claude-opus-4-8[1m]", "jp", true],
+			[LLM_PROVIDER.BedrockCodex, "gpt-6-astra", "global", true],
+			[LLM_PROVIDER.BedrockCodex, "gpt-6-astra", "eu", false],
+			[LLM_PROVIDER.BedrockClaude, "claude-future-9", "eu", true],
+			[LLM_PROVIDER.Native, "claude-fable-5", "eu", true],
+		];
+		for (const [provider, model, geo, served] of cases) {
+			expect(bedrockModelServedInGeo(provider, model, geo), `${provider} ${model} @ ${geo}`).toBe(served);
+		}
 	});
 });
 
@@ -346,12 +264,6 @@ describe("defaultModelMap", () => {
 		expect(rows).toEqual([
 			{ model: "claude-opus-4-8[1m]", defaultId: "global.anthropic.claude-opus-4-8[1m]" },
 			{ model: "sonnet", defaultId: "global.anthropic.claude-sonnet-4-6" },
-		]);
-	});
-	it("derives ids for unknown models too (always pinned)", () => {
-		const rows = defaultModelMap(["claude-fable-5"], LLM_PROVIDER.BedrockClaude);
-		expect(rows).toEqual([
-			{ model: "claude-fable-5", defaultId: "global.anthropic.claude-fable-5" },
 		]);
 	});
 });

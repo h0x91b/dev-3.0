@@ -27,28 +27,30 @@ const bedrockAgent = (providerConfig: ProviderConfig = PROFILES, overrides?: Par
 const config = (envVars?: Record<string, string>): AgentConfiguration => ({ id: "c1", name: "Auto", envVars });
 
 describe("resolveBedrockProfile", () => {
-	it("undefined picks the default profile", () => {
-		expect(resolveBedrockProfile("bedrock", PROFILES, undefined).profile?.name).toBe("sandbox");
+	it("resolves no pick to the default, null to none, a name to its entry, and a removed name to a flagged none", () => {
+		// undefined picks the default profile
+		expect(resolveBedrockProfile("bedrock", PROFILES, undefined).profile?.name, "undefined picks the default profile").toBe("sandbox");
+
+		// null picks none
+		expect(resolveBedrockProfile("bedrock", PROFILES, null), "null picks none").toEqual({ profile: null });
+
+		// a name picks that entry
+		expect(resolveBedrockProfile("bedrock", PROFILES, "og").profile?.awsProfile, "a name picks that entry").toBe("og-aws-claude-code");
+
+		// a removed name resolves to none and is flagged
+		expect(resolveBedrockProfile("bedrock", PROFILES, "gone"), "a removed name resolves to none and is flagged").toEqual({ profile: null, missing: "gone" });
 	});
-	it("null picks none", () => {
-		expect(resolveBedrockProfile("bedrock", PROFILES, null)).toEqual({ profile: null });
-	});
-	it("a name picks that entry", () => {
-		expect(resolveBedrockProfile("bedrock", PROFILES, "og").profile?.awsProfile).toBe("og-aws-claude-code");
-	});
-	it("a removed name resolves to none and is flagged", () => {
-		expect(resolveBedrockProfile("bedrock", PROFILES, "gone")).toEqual({ profile: null, missing: "gone" });
-	});
-	it("the native provider takes no profile even with a list stored", () => {
-		expect(bedrockProfilesFor("anthropic", { anthropic: PROFILES.bedrock })).toEqual([]);
-	});
-	it("drops entries with no AWS profile value", () => {
-		expect(bedrockProfilesFor("bedrock", { bedrock: { profiles: [{ name: "x", awsProfile: " " }] } })).toEqual([]);
-	});
-	it("offers only the first entry per name, so a pick never resolves to another account", () => {
+	it("offers only usable Bedrock entries, the first per name, so a pick never resolves to another account", () => {
+		// the native provider takes no profile even with a list stored
+		expect(bedrockProfilesFor("anthropic", { anthropic: PROFILES.bedrock }), "the native provider takes no profile even with a list stored").toEqual([]);
+
+		// drops entries with no AWS profile value
+		expect(bedrockProfilesFor("bedrock", { bedrock: { profiles: [{ name: "x", awsProfile: " " }] } }), "drops entries with no AWS profile value").toEqual([]);
+
+		// offers only the first entry per name, so a pick never resolves to another account
 		const dup: ProviderConfig = { bedrock: { profiles: [{ name: "prod", awsProfile: "a" }, { name: "prod", awsProfile: "b" }] } };
-		expect(bedrockProfilesFor("bedrock", dup).map((p) => p.awsProfile)).toEqual(["a"]);
-		expect(resolveBedrockProfile("bedrock", dup, "prod").profile?.awsProfile).toBe("a");
+		expect(bedrockProfilesFor("bedrock", dup).map((p) => p.awsProfile), "offers only the first entry per name, so a pick never resolves to another account").toEqual(["a"]);
+		expect(resolveBedrockProfile("bedrock", dup, "prod").profile?.awsProfile, "offers only the first entry per name, so a pick never resolves to another account").toBe("a");
 	});
 });
 
@@ -103,16 +105,17 @@ describe("applyBedrockProfileEnv — launch env precedence", () => {
 		expect(extraEnv.AWS_PROFILE).toBe("sandbox-aws-claude-code");
 	});
 
-	it("does nothing for an agent on the native backend", () => {
+	it("does nothing for an agent on the native backend or a Bedrock agent with no profiles", () => {
+		// does nothing for an agent on the native backend
 		const extraEnv: Record<string, string> = {};
 		const agent = bedrockAgent(PROFILES, { llmProvider: "anthropic" });
-		expect(applyBedrockProfileEnv(agent, config(), extraEnv, { bedrockProfile: "og" })).toEqual({});
-		expect(extraEnv).toEqual({});
+		expect(applyBedrockProfileEnv(agent, config(), extraEnv, { bedrockProfile: "og" }), "does nothing for an agent on the native backend").toEqual({});
+		expect(extraEnv, "does nothing for an agent on the native backend").toEqual({});
+
+		// does nothing for a Bedrock agent with no profiles configured
+		const extraEnv2: Record<string, string> = {};
+		expect(applyBedrockProfileEnv(bedrockAgent({ bedrock: {} }), config(), extraEnv2, { bedrockProfile: "og" }), "does nothing for a Bedrock agent with no profiles configured").toEqual({});
+		expect(extraEnv2, "does nothing for a Bedrock agent with no profiles configured").toEqual({});
 	});
 
-	it("does nothing for a Bedrock agent with no profiles configured", () => {
-		const extraEnv: Record<string, string> = {};
-		expect(applyBedrockProfileEnv(bedrockAgent({ bedrock: {} }), config(), extraEnv, { bedrockProfile: "og" })).toEqual({});
-		expect(extraEnv).toEqual({});
-	});
 });

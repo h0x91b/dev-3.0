@@ -72,41 +72,36 @@ beforeEach(() => {
 afterEach(() => rmSync(container, { recursive: true, force: true }));
 
 describe("previewTaskHandoff", () => {
-	it("describes the conversation a handoff would retell", async () => {
+	it("describes the conversation a handoff would retell, via the off-thread handoff runner", async () => {
 		expect(await previewTaskHandoff(task, { home })).toMatchObject({ source: "claude", sessionId: "sess-1", turns: 1 });
-	});
-
-	it("answers null when the task has no worktree, without touching the parser", async () => {
-		expect(await previewTaskHandoff({ ...task, worktreePath: null } as Task, { home })).toBeNull();
-		expect(runHandoffJob).not.toHaveBeenCalled();
-	});
-
-	it("answers null when nothing parseable ran in the worktree", async () => {
-		expect(await previewTaskHandoff(task, { home: join(container, "empty-home") })).toBeNull();
-	});
-
-	it("goes through the handoff runner, which keeps the parse off the host thread", async () => {
-		await previewTaskHandoff(task, { home });
 		expect(runHandoffJob).toHaveBeenCalledWith(expect.objectContaining({ kind: "preview", worktreePath: task.worktreePath }), expect.anything());
 	});
 
-	it("parses only the newest transcript, not every session the task had", async () => {
+	it("answers null with no worktree (without touching the parser) or nothing parseable", async () => {
+		expect(await previewTaskHandoff({ ...task, worktreePath: null } as Task, { home })).toBeNull();
+		expect(runHandoffJob).not.toHaveBeenCalled();
+		// Nothing parseable in the worktree is null too.
+		expect(await previewTaskHandoff(task, { home: join(container, "empty-home") })).toBeNull();
+	});
+
+	it("parses only the newest readable transcript, not every session the task had", async () => {
 		seed("sess-2.jsonl", transcript("OLDER", "sess-2"), 500);
 		seed("sess-3.jsonl", transcript("NEWEST", "sess-3"), 2_000);
 
 		expect(await previewTaskHandoff(task, { home })).toMatchObject({ sessionId: "sess-3" });
 		expect(parseConversation).toHaveBeenCalledTimes(1);
-	});
 
-	it("falls back to the next newest when the newest cannot be read", async () => {
-		const unreadable = seed("sess-3.jsonl", transcript("NEWEST", "sess-3"), 2_000);
-		chmodSync(unreadable, 0o000);
-
+		// An unreadable newest falls back to the next newest.
+		_resetHandoffPreviewCacheForTests();
+		chmodSync(seed("sess-3.jsonl", transcript("NEWEST", "sess-3"), 2_000), 0o000);
+		seed("sess-2.jsonl", transcript("OLDER", "sess-2"), 500);
 		expect(await previewTaskHandoff(task, { home })).toMatchObject({ sessionId: "sess-1" });
 	});
 
-	it("reopening the dialog reuses the preview until the transcript changes", async () => {
-		await previewTaskHandoff(task, { home });
+	it("shares one scan between overlapping opens and reuses it until the transcript changes", async () => {
+		const [a, b] = await Promise.all([previewTaskHandoff(task, { home }), previewTaskHandoff(task, { home })]);
+		expect(a).toEqual(b);
+		expect(runHandoffJob).toHaveBeenCalledTimes(1);
 		await previewTaskHandoff(task, { home });
 		expect(parseConversation).toHaveBeenCalledTimes(1);
 
@@ -115,11 +110,6 @@ describe("previewTaskHandoff", () => {
 		expect(parseConversation).toHaveBeenCalledTimes(2);
 	});
 
-	it("shares one scan between opens that overlap", async () => {
-		const [a, b] = await Promise.all([previewTaskHandoff(task, { home }), previewTaskHandoff(task, { home })]);
-		expect(a).toEqual(b);
-		expect(runHandoffJob).toHaveBeenCalledTimes(1);
-	});
 });
 
 describe("a task whose agent is Cursor Agent", () => {
@@ -137,13 +127,9 @@ describe("a task whose agent is Cursor Agent", () => {
 		utimesSync(path, mtime, mtime);
 	}
 
-	it("offers the Cursor conversation for handoff", async () => {
+	it("offers the Cursor conversation for handoff and retells it under Cursor's name", async () => {
 		seedCursor(2_000);
 		expect(await previewTaskHandoff(task, { home })).toMatchObject({ source: "cursor", sessionId: "cur-1", turns: 1 });
-	});
-
-	it("retells it under Cursor's name", async () => {
-		seedCursor(2_000);
 		const prepared = await prepareTaskHandoff(task, { home });
 		expect(readFileSync(prepared!.path, "utf-8")).toContain("CURSOR WORK");
 		expect(handoffPrompt(prepared!)).toContain("ran in Cursor Agent");
@@ -159,25 +145,19 @@ describe("handoff in a folder other tasks share", () => {
 		seed(`${THEIRS}.jsonl`, transcript("NEIGHBOUR WORK", THEIRS), 3_000);
 	});
 
-	it("previews this task's own newest session, not a neighbour's newer one", async () => {
-		expect(await previewTaskHandoff(task, { home, sessionIds: [MINE] })).toMatchObject({ sessionId: MINE });
-	});
-
-	it("never serves one task's cached preview to another task in the same folder", async () => {
+	it("previews only the task's own sessions and never serves one task's cached preview to another", async () => {
 		const other = { ...task, id: "t2" } as Task;
 		expect(await previewTaskHandoff(task, { home, sessionIds: [MINE] })).toMatchObject({ sessionId: MINE });
 		expect(await previewTaskHandoff(other, { home, sessionIds: [THEIRS] })).toMatchObject({ sessionId: THEIRS });
-	});
+		// None of the folder's sessions belongs to the task: nothing is offered.
+		expect(await previewTaskHandoff({ ...task, id: "t3" } as Task, { home, sessionIds: [] })).toBeNull();
 
-	it("retells only this task's session", async () => {
+		// The retelling carries only this task's session.
 		const prepared = await prepareTaskHandoff(task, { home, sessionIds: [MINE] });
 		expect(prepared?.sessionId).toBe(MINE);
 		expect(readFileSync(prepared!.path, "utf-8")).not.toContain("NEIGHBOUR WORK");
 	});
 
-	it("offers nothing when none of the folder's sessions is this task's", async () => {
-		expect(await previewTaskHandoff(task, { home, sessionIds: [] })).toBeNull();
-	});
 });
 
 describe("prepareTaskHandoff", () => {
@@ -186,10 +166,6 @@ describe("prepareTaskHandoff", () => {
 		expect(prepared?.path).toBe(join(container, "conversations", "handoff-claude-sess-1.md"));
 		// The container outlives the worktree, so a completed task keeps its handoff.
 		expect(prepared?.path.startsWith(join(container, "worktree"))).toBe(false);
-	});
-
-	it("writes a body that names itself a retelling and carries the request", async () => {
-		const prepared = await prepareTaskHandoff(task, { home });
 		const body = readFileSync(prepared!.path, "utf-8");
 		expect(body).toContain("You are taking over work that ran in Claude Code");
 		expect(body).toContain("BUILD THE THING");
@@ -197,14 +173,12 @@ describe("prepareTaskHandoff", () => {
 		expect(prepared?.chars).toBe(body.length);
 	});
 
-	it("takes the newest session and renders it through the handoff runner", async () => {
+	it("takes the newest session through the handoff runner, and returns null when nothing parsed", async () => {
 		seed("sess-2.jsonl", transcript("NEWEST", "sess-2"), 9_000);
 		const prepared = await prepareTaskHandoff(task, { home });
 		expect(readFileSync(prepared!.path, "utf-8")).toContain("NEWEST");
 		expect(runHandoffJob).toHaveBeenCalledWith(expect.objectContaining({ kind: "render" }), expect.anything());
-	});
-
-	it("returns null rather than writing an empty file when nothing parsed", async () => {
+		// Nothing parsed: null rather than an empty file.
 		expect(await prepareTaskHandoff(task, { home: join(container, "empty-home") })).toBeNull();
 	});
 });
@@ -220,13 +194,10 @@ describe("handoffPrompt", () => {
 		// It is typed into a pane, so it has to stay one short line's worth of text.
 		expect(prompt.length).toBeLessThan(1_000);
 		expect(prompt).not.toContain("\n");
+		expect(handoffPrompt({ ...prepared!, source: "codex" })).toContain("ran in Codex");
 	});
 
-	it("names the agent the work actually ran in", async () => {
-		expect(handoffPrompt({ ...(await prepareTaskHandoff(task, { home }))!, source: "codex" })).toContain("ran in Codex");
-	});
-
-	it("is unchanged by an absent or blank instruction", async () => {
+	it("is unchanged by a blank instruction and otherwise makes it the next message, verbatim", async () => {
 		const prepared = (await prepareTaskHandoff(task, { home }))!;
 		const plain = handoffPrompt(prepared);
 
@@ -234,10 +205,7 @@ describe("handoffPrompt", () => {
 		expect(handoffPrompt(prepared, undefined)).toBe(plain);
 		expect(handoffPrompt(prepared, "")).toBe(plain);
 		expect(handoffPrompt(prepared, "  \n\t ")).toBe(plain);
-	});
 
-	it("keeps the retelling and makes the instruction the next message, verbatim", async () => {
-		const prepared = (await prepareTaskHandoff(task, { home }))!;
 		const instruction = `Now review the security of the solution.\nDon't edit files — only "propose" a plan for $HOME and \`whoami\`.`;
 		const prompt = handoffPrompt(prepared, `\n  ${instruction}  \n`);
 

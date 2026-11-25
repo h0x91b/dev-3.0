@@ -114,33 +114,21 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		return { ...harness, backend: harness.create() };
 	}
 
-	it("opens a session with exactly one focused view", async () => {
+	it("opens one focused view, describes it with the same ids, and reports an absent session as null", async () => {
 		const { backend } = world();
 		const state = await backend.openSession({ id: SESSION, cwd: CWD, command: "sh" });
 		expect(state.views).toHaveLength(1);
 		expect(state.views[0].focused).toBe(true);
 		expect(state.focusedViewId).toBe(state.views[0].id);
-	});
-
-	it("describes the session with the same ids it reported at creation", async () => {
-		const { backend } = world();
-		const created = await backend.openSession({ id: SESSION, cwd: CWD });
-		await expect(backend.describeSession(SESSION)).resolves.toEqual(created);
-	});
-
-	it("reports an absent session as null instead of failing", async () => {
-		const { backend } = world();
+		await expect(backend.describeSession(SESSION)).resolves.toEqual(state);
 		await expect(backend.describeSession("ghost")).resolves.toBeNull();
 	});
 
-	it("rejects a second open of the same id (no adoption, no double spawn)", async () => {
+	it("rejects a second open of the same id and a non-portable session id", async () => {
 		const { backend } = world();
 		await backend.openSession({ id: SESSION, cwd: CWD });
+		// No adoption, no double spawn.
 		expect(await codeOf(() => backend.openSession({ id: SESSION, cwd: CWD }))).toBe("session-exists");
-	});
-
-	it("rejects a session id that is not portable across backends", async () => {
-		const { backend } = world();
 		expect(await codeOf(() => backend.openSession({ id: "bad:id", cwd: CWD }))).toBe(
 			"invalid-session-id",
 		);
@@ -161,9 +149,17 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		expect(capture.bounds.historyLinesRequested).toBe(0);
 		expect(capture.liveness).toBe("live");
 		expect(capture.identity.incarnation.known).toBe(true);
+
+		// A colour run plus an OSC title — neither may reach a caller.
+		await attachment.write("\u001B[31mred\u001B[0m\u001B]0;secret-title\u0007\r");
+		const colored = await captured(backend, created.views[0].id, { historyLines: 50 });
+		const text = [...colored.content.history, ...colored.content.viewport].join("\n");
+		expect(text).toContain("red");
+		expect(text).not.toContain("\u001B");
+		expect(text).not.toContain("secret-title");
 	});
 
-	it("returns history only when asked, oldest first, ending above the viewport", async () => {
+	it("returns history only when asked, oldest first, and cuts history before the viewport under a byte budget", async () => {
 		const { backend } = world();
 		const created = await backend.openSession({ id: SESSION, cwd: CWD });
 		const view = created.views[0].id;
@@ -185,15 +181,8 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 			if (line.trim() !== "") expect(history).not.toContain(line);
 		}
 		expect(withHistory.bounds.historyLinesReturned).toBe(history.length);
-	});
 
-	it("keeps the newest rows and reports what a tight byte budget cut", async () => {
-		const { backend } = world();
-		const created = await backend.openSession({ id: SESSION, cwd: CWD });
-		const view = created.views[0].id;
-		const attachment = await backend.attachView(SESSION);
-		for (let i = 0; i < 40; i++) await attachment.write(`line-${i}\r`);
-
+		// A tight byte budget keeps the newest rows and reports what it cut.
 		const tight = await captured(backend, view, { historyLines: 100, maxBytes: 40 });
 		expect(tight.bounds.bytesReturned).toBeLessThanOrEqual(40);
 		// History is discarded before the viewport, so the newest output survives.
@@ -222,59 +211,41 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		expect(badId.availability).toBe("session-absent");
 	});
 
-	it("never focuses, writes, or resizes the pane it captures", async () => {
+	it("honours the initial size and never focuses, writes, or resizes the pane it captures", async () => {
 		const { backend, geometry } = world();
 		const created = await backend.openSession({ id: SESSION, cwd: CWD, size: { cols: 100, rows: 30 } });
+		expect(geometry()).toEqual({ cols: 100, rows: 30 });
 		const before = await backend.describeSession(SESSION);
 		await captured(backend, created.views[0].id, { historyLines: 10 });
 		expect(await backend.describeSession(SESSION)).toEqual(before);
 		expect(geometry()).toEqual({ cols: 100, rows: 30 });
 	});
 
-	it("strips escape sequences out of captured text", async () => {
-		const { backend } = world();
-		const created = await backend.openSession({ id: SESSION, cwd: CWD });
-		const attachment = await backend.attachView(SESSION);
-		// A colour run plus an OSC title — neither may reach a caller.
-		await attachment.write("\u001B[31mred\u001B[0m\u001B]0;secret-title\u0007\r");
-		const capture = await captured(backend, created.views[0].id, { historyLines: 50 });
-		const text = [...capture.content.history, ...capture.content.viewport].join("\n");
-		expect(text).toContain("red");
-		expect(text).not.toContain("\u001B");
-		expect(text).not.toContain("secret-title");
-	});
-
-	it("applies a resize and rejects non-positive geometry", async () => {
+	it("applies a resize, rejects non-positive geometry, and refuses a released attachment (detach is idempotent)", async () => {
 		const { backend, geometry } = world();
 		await backend.openSession({ id: SESSION, cwd: CWD });
 		const attachment = await backend.attachView(SESSION);
 		await attachment.resize({ cols: 120, rows: 40 });
 		expect(geometry()).toEqual({ cols: 120, rows: 40 });
 		expect(await codeOf(() => attachment.resize({ cols: 0, rows: 40 }))).toBe("invalid-size");
+
+		await attachment.detach();
+		await attachment.detach();
+		expect(await codeOf(() => attachment.write("x"))).toBe("detached");
+		expect(await codeOf(() => attachment.resize({ cols: 80, rows: 24 }))).toBe("detached");
 	});
 
-	it("honours the initial size from the session spec", async () => {
-		const { backend, geometry } = world();
-		await backend.openSession({ id: SESSION, cwd: CWD, size: { cols: 100, rows: 30 } });
-		expect(geometry()).toEqual({ cols: 100, rows: 30 });
-	});
-
-	it("focuses the sole view without changing the reported state", async () => {
+	it("focuses the sole view without changing state, and fails typed on an unknown view or session", async () => {
 		const { backend } = world();
 		const created = await backend.openSession({ id: SESSION, cwd: CWD });
 		await backend.focusView(SESSION, created.views[0].id);
 		await expect(backend.describeSession(SESSION)).resolves.toEqual(created);
-	});
-
-	it("fails typed on an unknown view and an unknown session", async () => {
-		const { backend } = world();
-		await backend.openSession({ id: SESSION, cwd: CWD });
 		expect(await codeOf(() => backend.attachView(SESSION, "%does-not-exist"))).toBe("view-not-found");
 		expect(await codeOf(() => backend.attachView("ghost"))).toBe("session-not-found");
 		expect(await codeOf(() => backend.focusView("ghost", "%0"))).toBe("session-not-found");
 	});
 
-	it("keeps view ids stable for a fresh controller and lets it capture (reconnect)", async () => {
+	it("survives dispose and keeps view ids stable for a fresh controller that can capture (reconnect)", async () => {
 		const harness = harnessOf();
 		const owner = harness.create();
 		const created = await owner.openSession({ id: SESSION, cwd: CWD });
@@ -289,35 +260,18 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		expect((await captured(fresh, created.views[0].id)).content.viewport.join("\n")).toContain(
 			"before-reconnect",
 		);
-	});
 
-	it("rejects use of a released attachment and detaches idempotently", async () => {
-		const { backend } = world();
-		await backend.openSession({ id: SESSION, cwd: CWD });
-		const attachment = await backend.attachView(SESSION);
-		await attachment.detach();
-		await attachment.detach();
-		expect(await codeOf(() => attachment.write("x"))).toBe("detached");
-		expect(await codeOf(() => attachment.resize({ cols: 80, rows: 24 }))).toBe("detached");
-	});
-
-	it("keeps the session alive across dispose (sessions are persistent)", async () => {
-		const harness = harnessOf();
-		const backend = harness.create();
-		const created = await backend.openSession({ id: SESSION, cwd: CWD });
-		await backend.dispose();
+		// Sessions are persistent: disposing a controller does not stop them.
+		await owner.dispose();
 		await expect(harness.create().describeSession(SESSION)).resolves.toEqual(created);
 	});
 
-	it("tears the session down when its last view is closed", async () => {
+	it("tears down on last-view close; cleanup is idempotent with ignoreMissing and strict without it", async () => {
 		const { backend } = world();
 		const created = await backend.openSession({ id: SESSION, cwd: CWD });
 		await backend.closeView(SESSION, created.views[0].id);
 		await expect(backend.describeSession(SESSION)).resolves.toBeNull();
-	});
 
-	it("makes cleanup idempotent with ignoreMissing and strict without it", async () => {
-		const { backend } = world();
 		await backend.openSession({ id: SESSION, cwd: CWD });
 		await backend.cleanupSession(SESSION);
 		await expect(backend.describeSession(SESSION)).resolves.toBeNull();
@@ -325,22 +279,16 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		expect(await codeOf(() => backend.cleanupSession(SESSION))).toBe("session-not-found");
 	});
 
-	it("reports a session whose process died as gone, not as a crash", async () => {
-		const { backend, killViewProcess } = world();
-		const created = await backend.openSession({ id: SESSION, cwd: CWD });
-		killViewProcess(created.views[0].id);
-		await expect(backend.describeSession(SESSION)).resolves.toBeNull();
-		expect(await codeOf(() => backend.attachView(SESSION))).toBe("session-not-found");
-		await expect(backend.cleanupSession(SESSION, { ignoreMissing: true })).resolves.toBeUndefined();
-	});
-
-	it("surfaces a dead view on a live attachment as a typed failure", async () => {
+	it("reports a session whose process died as gone, and fails its live attachment typed", async () => {
 		const { backend, killViewProcess } = world();
 		const created = await backend.openSession({ id: SESSION, cwd: CWD });
 		const attachment = await backend.attachView(SESSION);
 		killViewProcess(created.views[0].id);
 		const code = await codeOf(() => attachment.write("after-death\r"));
 		expect(["view-not-found", "session-not-found"]).toContain(code);
+		await expect(backend.describeSession(SESSION)).resolves.toBeNull();
+		expect(await codeOf(() => backend.attachView(SESSION))).toBe("session-not-found");
+		await expect(backend.cleanupSession(SESSION, { ignoreMissing: true })).resolves.toBeUndefined();
 	});
 
 	it(

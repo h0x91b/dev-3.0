@@ -38,13 +38,19 @@ describe("collectGeminiUsage", () => {
 		}]);
 	});
 
-	it("deduplicates legacy JSON and migrated JSONL copies by session and message identity", () => {
+	it("deduplicates legacy JSON and migrated JSONL copies by session and message identity, but not across sessions", () => {
 		write(path(), { sessionId: "session", messages: [message()] });
 		write(path("session-one.jsonl"), [{ sessionId: "session" }, message()], true);
 		const state = newUsageState();
 		collectGeminiUsage(state, home);
 		collectGeminiUsage(state, home);
 		expect(state.records.size).toBe(1);
+
+		// Repeated message ids in a distinct session count independently.
+		write(path("session-two.json"), { sessionId: "session-two", messages: [message()] });
+		const twoSessions = newUsageState();
+		collectGeminiUsage(twoSessions, home);
+		expect(twoSessions.records.size).toBe(2);
 	});
 
 	it("replaces resumed response snapshots and keeps new responses from the same day", () => {
@@ -54,14 +60,6 @@ describe("collectGeminiUsage", () => {
 		write(path(), { sessionId: "session", messages: [message("one", { input: 100, output: 50 }), message("two", { input: 200, output: 60 })] });
 		collectGeminiUsage(state, home);
 		expect([...state.records.values()].map((record) => record.counts.outputTokens).sort((a, b) => a - b)).toEqual([50, 60]);
-	});
-
-	it("counts repeated message ids in distinct sessions independently", () => {
-		write(path(), { sessionId: "session-one", messages: [message()] });
-		write(path("session-two.json"), { sessionId: "session-two", messages: [message()] });
-		const state = newUsageState();
-		collectGeminiUsage(state, home);
-		expect(state.records.size).toBe(2);
 	});
 
 	it("collects nested subagent sessions from the current JSONL store", () => {
@@ -114,7 +112,7 @@ describe("collectGeminiUsage", () => {
 		expect([...state.records.values()][0].model).toBe("unknown");
 	});
 
-	it("ignores malformed records, non-model messages and unusable usage snapshots", () => {
+	it("ignores malformed records, non-model messages, unusable usage snapshots and sessions without identity", () => {
 		write(path(), { sessionId: "session", messages: [
 			{ ...message("user"), type: "user" }, { ...message("bad-date"), timestamp: "bad" },
 			message("negative", { input: -1, output: 10 }), message("string", { input: "100", output: 10 }),
@@ -124,11 +122,9 @@ describe("collectGeminiUsage", () => {
 		const state = newUsageState();
 		collectGeminiUsage(state, home);
 		expect(state.records.size).toBe(0);
-	});
 
-	it("skips sessions without stable session identity", () => {
+		// A session without stable session identity is skipped too.
 		write(path(), { messages: [message()] });
-		const state = newUsageState();
 		collectGeminiUsage(state, home);
 		expect(state.records.size).toBe(0);
 	});

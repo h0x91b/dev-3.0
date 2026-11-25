@@ -22,22 +22,11 @@ it("keeps the event loop responsive and kills a version probe that never exits",
 	expect(kill).toHaveBeenCalledWith(9);
 });
 
-it("drains both output streams while waiting for exit", async () => {
-	vi.spyOn(Bun, "spawn").mockReturnValue({
-		pid: 0,
-		kill: vi.fn(),
-		exited: Promise.resolve(0),
-		stdout: new Response("codex-cli 0.154.0\n").body,
-		stderr: new Response("diagnostic\n").body,
-	} as never);
-	expect(await detectCodexVersion()).toBe("codex-cli 0.154.0");
-});
-
-it("shares one pending probe across concurrent callers", async () => {
+it("drains both output streams and shares one pending probe across concurrent callers", async () => {
 	const probe = vi.spyOn(Bun, "spawn").mockReturnValue({
 		pid: 0, kill: vi.fn(), exited: Promise.resolve(0),
-		stdout: new Response("codex-cli 0.154.0").body,
-		stderr: new Response("").body,
+		stdout: new Response("codex-cli 0.154.0\n").body,
+		stderr: new Response("diagnostic\n").body,
 	} as never);
 	const first = detectCodexVersion();
 	expect(detectCodexVersion()).toBe(first);
@@ -46,12 +35,10 @@ it("shares one pending probe across concurrent callers", async () => {
 	expect(probe).toHaveBeenCalledTimes(1);
 });
 
-it("returns unknown when the binary is missing", async () => {
+it("returns unknown when the binary is missing or the process fails", async () => {
 	vi.spyOn(Bun, "spawn").mockImplementation(() => { throw new Error("ENOENT"); });
 	expect(await detectCodexVersion()).toBeNull();
-});
-
-it("ignores version output from an unsuccessful process", async () => {
+	resetCodexVersionProbe();
 	vi.spyOn(Bun, "spawn").mockReturnValue({
 		pid: 0, kill: vi.fn(), exited: Promise.resolve(1),
 		stdout: new Response("codex-cli 0.154.0").body,

@@ -32,21 +32,17 @@ afterAll(() => {
 // ================================================================
 
 describe("initSecret", () => {
-	it("can be called multiple times (subsequent calls are no-ops)", async () => {
-		// Already called in beforeEach; calling again should not throw
-		await initSecret(testSecretFile);
-		await initSecret(testSecretFile);
-		// Tokens should still work after multiple init calls
-		const token = await createQrToken();
-		expect(token.split(".")).toHaveLength(3);
-	});
-
-	it("persists the secret to disk as 64 hex chars with 0600 permissions", () => {
+	it("persists the secret as 64 hex chars with 0600 permissions; repeated calls are no-ops", async () => {
 		expect(existsSync(testSecretFile)).toBe(true);
 		const content = readFileSync(testSecretFile, "utf-8").trim();
 		expect(content).toMatch(/^[0-9a-f]{64}$/);
-		const mode = statSync(testSecretFile).mode & 0o777;
-		expect(mode).toBe(0o600);
+		expect(statSync(testSecretFile).mode & 0o777).toBe(0o600);
+
+		// Already called in beforeEach; calling again must not throw or rotate the secret.
+		await initSecret(testSecretFile);
+		await initSecret(testSecretFile);
+		expect(readFileSync(testSecretFile, "utf-8").trim()).toBe(content);
+		expect((await createQrToken()).split(".")).toHaveLength(3);
 	});
 
 	it("session tokens survive a restart (secret reloaded from disk)", async () => {
@@ -81,30 +77,18 @@ describe("initSecret", () => {
 // ================================================================
 
 describe("createQrToken", () => {
-	it("returns a valid JWT string with 3 parts", async () => {
+	it("returns a unique 3-part JWT of type 'qr' with a ~65s expiry", async () => {
 		const token = await createQrToken();
 		const parts = token.split(".");
 		expect(parts).toHaveLength(3);
-		// Each part should be non-empty base64url
 		for (const part of parts) {
 			expect(part.length).toBeGreaterThan(0);
 		}
-	});
-
-	it("creates tokens with type 'qr' and ~65s expiry", async () => {
-		const token = await createQrToken();
-		// Decode the payload (middle part) to inspect
-		const payloadB64 = token.split(".")[1];
-		const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
+		const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
 		expect(payload.type).toBe("qr");
 		expect(payload.exp - payload.iat).toBe(65);
 		expect(payload.jti).toBeTruthy();
-	});
-
-	it("creates unique tokens each time", async () => {
-		const t1 = await createQrToken();
-		const t2 = await createQrToken();
-		expect(t1).not.toBe(t2);
+		expect(await createQrToken()).not.toBe(token);
 	});
 });
 
@@ -127,15 +111,6 @@ describe("createSessionToken", () => {
 // ================================================================
 
 describe("exchangeQrForSession", () => {
-	it("exchanges valid QR token for session token", async () => {
-		const qrToken = await createQrToken();
-		const sessionToken = await exchangeQrForSession(qrToken);
-		expect(sessionToken).toBeTruthy();
-		// Verify the returned token is a session token
-		const valid = await verifySessionToken(sessionToken!);
-		expect(valid).toBe(true);
-	});
-
 	it("rejects expired QR token", async () => {
 		// Create a token, then simulate expiration by advancing time
 		const qrToken = await createQrToken();
@@ -147,40 +122,27 @@ describe("exchangeQrForSession", () => {
 		expect(result).toBeNull();
 	});
 
-	it("prevents replay (same token used twice)", async () => {
-		const qrToken = await createQrToken();
-		const first = await exchangeQrForSession(qrToken);
-		expect(first).toBeTruthy();
-		const second = await exchangeQrForSession(qrToken);
-		expect(second).toBeNull();
-	});
-
-	it("each QR token is independently single-use", async () => {
+	it("exchanges each QR token for a valid session exactly once (no replay)", async () => {
 		const qr1 = await createQrToken();
 		const qr2 = await createQrToken();
 		const qr3 = await createQrToken();
 
-		// Exchange qr1 — should succeed
-		expect(await exchangeQrForSession(qr1)).toBeTruthy();
+		const session = await exchangeQrForSession(qr1);
+		expect(session).toBeTruthy();
+		expect(await verifySessionToken(session!)).toBe(true);
 		// Replay qr1 — should fail
 		expect(await exchangeQrForSession(qr1)).toBeNull();
 
 		// qr2 is still valid (different token)
 		expect(await exchangeQrForSession(qr2)).toBeTruthy();
-		// Replay qr2 — should fail
 		expect(await exchangeQrForSession(qr2)).toBeNull();
 
 		// qr3 still valid
 		expect(await exchangeQrForSession(qr3)).toBeTruthy();
 	});
 
-	it("rejects session token (wrong type)", async () => {
-		const sessionToken = await createSessionToken();
-		const result = await exchangeQrForSession(sessionToken);
-		expect(result).toBeNull();
-	});
-
-	it("rejects garbage input", async () => {
+	it("rejects a session token (wrong type) and garbage input", async () => {
+		expect(await exchangeQrForSession(await createSessionToken())).toBeNull();
 		expect(await exchangeQrForSession("not.a.jwt")).toBeNull();
 		expect(await exchangeQrForSession("")).toBeNull();
 		expect(await exchangeQrForSession("abc")).toBeNull();
@@ -201,19 +163,15 @@ describe("refreshSession", () => {
 		expect(valid).toBe(true);
 	});
 
-	it("rejects expired session token", async () => {
+	it("rejects an expired session token and a QR token (wrong type)", async () => {
 		const session = await createSessionToken();
+		const qrToken = await createQrToken();
 		const originalNow = Date.now;
 		Date.now = () => originalNow() + (24 * 60 + 1) * 60 * 1000; // just past the 24h TTL
 		const result = await refreshSession(session);
 		Date.now = originalNow;
 		expect(result).toBeNull();
-	});
-
-	it("rejects QR token (wrong type)", async () => {
-		const qrToken = await createQrToken();
-		const result = await refreshSession(qrToken);
-		expect(result).toBeNull();
+		expect(await refreshSession(qrToken)).toBeNull();
 	});
 });
 
@@ -222,14 +180,10 @@ describe("refreshSession", () => {
 // ================================================================
 
 describe("verifySessionToken", () => {
-	it("returns true for valid session token", async () => {
-		const token = await createSessionToken();
-		expect(await verifySessionToken(token)).toBe(true);
-	});
-
-	it("returns false for QR token", async () => {
-		const token = await createQrToken();
-		expect(await verifySessionToken(token)).toBe(false);
+	it("returns false for a QR token and for garbage", async () => {
+		expect(await verifySessionToken(await createQrToken())).toBe(false);
+		expect(await verifySessionToken("garbage")).toBe(false);
+		expect(await verifySessionToken("")).toBe(false);
 	});
 
 	it("returns false for expired session token", async () => {
@@ -238,11 +192,6 @@ describe("verifySessionToken", () => {
 		Date.now = () => originalNow() + (24 * 60 + 1) * 60 * 1000; // just past the 24h TTL
 		expect(await verifySessionToken(token)).toBe(false);
 		Date.now = originalNow;
-	});
-
-	it("returns false for garbage", async () => {
-		expect(await verifySessionToken("garbage")).toBe(false);
-		expect(await verifySessionToken("")).toBe(false);
 	});
 
 	it("returns false for tampered token", async () => {

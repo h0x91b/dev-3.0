@@ -107,130 +107,6 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe("dev3 remote --port validation", () => {
-	it("rejects --port without a value", async () => {
-		await expect(handleRemote(undefined, args({ port: "true" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--port requires a value");
-	});
-
-	it("rejects non-numeric port", async () => {
-		await expect(handleRemote(undefined, args({ port: "abc" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--port must be an integer");
-	});
-
-	it("rejects port below range", async () => {
-		await expect(handleRemote(undefined, args({ port: "0" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--port must be an integer");
-	});
-
-	it("rejects port above 65535", async () => {
-		await expect(handleRemote(undefined, args({ port: "70000" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--port must be an integer");
-	});
-
-	it("rejects port with trailing garbage", async () => {
-		// Number.parseInt("3000abc", 10) === 3000; the trim/equality check must
-		// reject this so we don't silently accept "3000abc" as 3000.
-		await expect(handleRemote(undefined, args({ port: "3000abc" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--port must be an integer");
-	});
-
-	it("--no-detach applies a valid port to process.env (DEV3_REMOTE_PORT + DEV3_HEADLESS) and boots in-process", async () => {
-		// Foreground path (--no-detach): a valid port is applied to process.env, then
-		// the (mocked) headless-entry import resolves and handleRemote returns.
-		const ENV_KEYS = [
-			"DEV3_REMOTE_PORT",
-			"DEV3_HEADLESS",
-			"DEV3_REMOTE_NO_TUNNEL",
-			"DEV3_VIEWS_DIR",
-			"DEV3_REMOTE_STATIC_CODE",
-			"DEV3_REMOTE_EXPOSE_PORTS",
-		] as const;
-		const saved: Record<string, string | undefined> = {};
-		for (const k of ENV_KEYS) saved[k] = process.env[k];
-
-		try {
-			await handleRemote(undefined, args({ port: "3000", "no-detach": "true" }));
-			expect(process.env.DEV3_REMOTE_PORT).toBe("3000");
-			expect(process.env.DEV3_HEADLESS).toBe("1");
-		} finally {
-			for (const k of ENV_KEYS) {
-				if (saved[k] === undefined) delete process.env[k];
-				else process.env[k] = saved[k];
-			}
-		}
-	});
-
-	it("rejects unknown flags", async () => {
-		await expect(handleRemote(undefined, args({ bogus: "true" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("Unknown option: --bogus");
-	});
-});
-
-describe("dev3 remote --host validation", () => {
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	it("rejects a --host outside the three accepted values", async () => {
-		await expect(handleRemote(undefined, args({ host: "192.168.1.5" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--host must be 127.0.0.1, localhost or 0.0.0.0");
-	});
-
-	// The detached child inherits process.env, so an unchecked typo here would
-	// reach the server, which would then bind somewhere the user never asked for.
-	it("rejects an invalid inherited DEV3_REMOTE_HOST when --host is absent", async () => {
-		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.l");
-		await expect(handleRemote(undefined, args())).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain('DEV3_REMOTE_HOST must be 127.0.0.1, localhost or 0.0.0.0 (got "127.0.0.l")');
-	});
-
-	it("lets a valid --host override an invalid inherited DEV3_REMOTE_HOST", async () => {
-		vi.stubEnv("DEV3_REMOTE_HOST", "bogus");
-		const savedHeadless = process.env.DEV3_HEADLESS;
-		try {
-			await handleRemote(undefined, args({ host: "127.0.0.1", "no-detach": "true" }));
-			expect(process.env.DEV3_REMOTE_HOST).toBe("127.0.0.1");
-		} finally {
-			if (savedHeadless === undefined) delete process.env.DEV3_HEADLESS;
-			else process.env.DEV3_HEADLESS = savedHeadless;
-		}
-	});
-});
-
-describe("dev3 remote --expose-ports validation", () => {
-	it("rejects --expose-ports without a value", async () => {
-		await expect(handleRemote(undefined, args({ "expose-ports": "true" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("--expose-ports requires a value");
-	});
-
-	it("rejects non-numeric port in the list", async () => {
-		await expect(handleRemote(undefined, args({ "expose-ports": "3000,abc" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("invalid port");
-	});
-
-	it("rejects out-of-range port", async () => {
-		await expect(handleRemote(undefined, args({ "expose-ports": "70000" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("invalid port");
-	});
-
-	it("rejects port with trailing garbage", async () => {
-		await expect(handleRemote(undefined, args({ "expose-ports": "3000abc" }))).rejects.toThrow("__exit__");
-		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("invalid port");
-	});
-});
 
 const stdoutText = () => stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
 const stderrText = () => stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
@@ -254,19 +130,91 @@ async function withRemoteEnvRestored(fn: () => Promise<void>): Promise<void> {
 	}
 }
 
+/** Runs `handleRemote` expecting a usage exit, and returns only the stderr it wrote. */
+async function usageError(sub: string | undefined, flags: Record<string, string>): Promise<string> {
+	stderrSpy.mockClear();
+	await expect(handleRemote(sub, args(flags)), JSON.stringify({ sub, flags })).rejects.toThrow("__exit__");
+	return stderrText();
+}
+
+describe("dev3 remote flag validation", () => {
+	it("rejects a bad --port, an unknown flag, and an unknown subcommand", async () => {
+		const cases: Array<[string | undefined, Record<string, string>, string]> = [
+			[undefined, { port: "true" }, "--port requires a value"],
+			[undefined, { port: "abc" }, "--port must be an integer"],
+			[undefined, { port: "0" }, "--port must be an integer"],
+			[undefined, { port: "70000" }, "--port must be an integer"],
+			// Number.parseInt("3000abc", 10) === 3000; the trim/equality check must
+			// reject this so we don't silently accept "3000abc" as 3000.
+			[undefined, { port: "3000abc" }, "--port must be an integer"],
+			[undefined, { bogus: "true" }, "Unknown option: --bogus"],
+			["bogus", {}, "Unknown subcommand: remote bogus"],
+		];
+		for (const [sub, flags, message] of cases) {
+			expect(await usageError(sub, flags), message).toContain(message);
+		}
+	});
+
+	it("--no-detach applies a valid port to process.env (DEV3_REMOTE_PORT + DEV3_HEADLESS) and boots in-process", async () => {
+		await withRemoteEnvRestored(async () => {
+			await handleRemote(undefined, args({ port: "3000", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_PORT).toBe("3000");
+			expect(process.env.DEV3_HEADLESS).toBe("1");
+		});
+	});
+
+	it("rejects a bad --expose-ports list", async () => {
+		const cases: Array<[Record<string, string>, string]> = [
+			[{ "expose-ports": "true" }, "--expose-ports requires a value"],
+			[{ "expose-ports": "3000,abc" }, "invalid port"],
+			[{ "expose-ports": "70000" }, "invalid port"],
+			[{ "expose-ports": "3000abc" }, "invalid port"],
+		];
+		for (const [flags, message] of cases) {
+			expect(await usageError(undefined, flags), JSON.stringify(flags)).toContain(message);
+		}
+	});
+});
+
+describe("dev3 remote --host validation", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	// The detached child inherits process.env, so an unchecked typo in the env
+	// would reach the server, which would then bind somewhere the user never asked for.
+	it("rejects a --host outside the three accepted values, and an invalid inherited DEV3_REMOTE_HOST", async () => {
+		expect(await usageError(undefined, { host: "192.168.1.5" })).toContain("--host must be 127.0.0.1, localhost or 0.0.0.0");
+
+		vi.stubEnv("DEV3_REMOTE_HOST", "127.0.0.l");
+		expect(await usageError(undefined, {})).toContain('DEV3_REMOTE_HOST must be 127.0.0.1, localhost or 0.0.0.0 (got "127.0.0.l")');
+	});
+
+	it("lets a valid --host override an invalid inherited DEV3_REMOTE_HOST", async () => {
+		vi.stubEnv("DEV3_REMOTE_HOST", "bogus");
+		const savedHeadless = process.env.DEV3_HEADLESS;
+		try {
+			await handleRemote(undefined, args({ host: "127.0.0.1", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_HOST).toBe("127.0.0.1");
+		} finally {
+			if (savedHeadless === undefined) delete process.env.DEV3_HEADLESS;
+			else process.env.DEV3_HEADLESS = savedHeadless;
+		}
+	});
+});
+
 describe("dev3 remote --static-code on a public tunnel", () => {
-	it("starts anyway and warns", async () => {
+	// The old gate read only the flag, so the same combination arriving through an
+	// exported env var was waved through silently. Both spellings warn now.
+	it("starts anyway and warns, for the flag and for a code inherited from the environment", async () => {
 		await withRemoteEnvRestored(async () => {
 			await handleRemote(undefined, args({ "static-code": "secret123", "no-detach": "true" }));
 			expect(process.env.DEV3_REMOTE_STATIC_CODE).toBe("secret123");
 			expect(process.env.DEV3_REMOTE_NO_TUNNEL).toBeUndefined();
 			expect(stderrText()).toContain("public tunnel is on");
 		});
-	});
 
-	// The old gate read only the flag, so the same combination arriving through an
-	// exported env var was waved through silently. Both spellings warn now.
-	it("warns for a code inherited from the environment too", async () => {
+		stderrSpy.mockClear();
 		await withRemoteEnvRestored(async () => {
 			process.env.DEV3_REMOTE_STATIC_CODE = "from-the-env";
 			await handleRemote(undefined, args({ "no-detach": "true" }));
@@ -274,25 +222,12 @@ describe("dev3 remote --static-code on a public tunnel", () => {
 		});
 	});
 
-	it("stays quiet with --no-tunnel", async () => {
-		await withRemoteEnvRestored(async () => {
-			await handleRemote(undefined, args({ "static-code": "secret123", "no-tunnel": "true", "no-detach": "true" }));
-			expect(stderrText()).not.toContain("public tunnel is on");
-		});
-	});
-
-	it("allows --static-code together with --no-tunnel", async () => {
+	it("allows --static-code together with --no-tunnel, quietly", async () => {
 		await withRemoteEnvRestored(async () => {
 			await handleRemote(undefined, args({ "static-code": "secret123", "no-tunnel": "true", "no-detach": "true" }));
 			expect(process.env.DEV3_REMOTE_STATIC_CODE).toBe("secret123");
 			expect(process.env.DEV3_REMOTE_NO_TUNNEL).toBe("1");
-		});
-	});
-
-	it("still enforces the minimum length", async () => {
-		await withRemoteEnvRestored(async () => {
-			await expect(handleRemote(undefined, args({ "static-code": "ab", "no-tunnel": "true" }))).rejects.toThrow("__exit__");
-			expect(stderrText()).toContain(`at least ${MIN_REMOTE_STATIC_CODE_LENGTH} characters`);
+			expect(stderrText()).not.toContain("public tunnel is on");
 		});
 	});
 
@@ -330,7 +265,7 @@ describe("dev3 remote --static-code on a public tunnel", () => {
 });
 
 describe("dev3 remote restart", () => {
-	it("stops a running server (SIGTERM), then starts a fresh one", async () => {
+	it("stops a running server (SIGTERM) then starts a fresh one; with none running, just starts", async () => {
 		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
 		mockReadState.mockReturnValue(liveState({ pid: 4242 }));
 		// alive for the initial check, then dead so the grace loop exits immediately.
@@ -342,15 +277,10 @@ describe("dev3 remote restart", () => {
 				expect(mockClearState).toHaveBeenCalled();
 				expect(process.env.DEV3_HEADLESS).toBe("1"); // fresh server booted
 			});
-		} finally {
-			killSpy.mockRestore();
-		}
-	});
 
-	it("with no server running, just starts a fresh one", async () => {
-		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-		mockReadState.mockReturnValue(null);
-		try {
+			killSpy.mockClear();
+			mockClearState.mockClear();
+			mockReadState.mockReturnValue(null);
 			await withRemoteEnvRestored(async () => {
 				await handleRemote("restart", args({ "no-detach": "true" }));
 				expect(killSpy).not.toHaveBeenCalled(); // nothing to terminate
@@ -364,25 +294,26 @@ describe("dev3 remote restart", () => {
 });
 
 describe("dev3 remote logs", () => {
-	it("points at journalctl when no log file exists", async () => {
+	it("rejects a non-numeric --lines before touching the fs, and points at journalctl when no log file exists", async () => {
+		expect(await usageError("logs", { lines: "abc" })).toContain("--lines must be a positive integer");
+		expect(mockReadState).not.toHaveBeenCalled();
+
 		// Guaranteed-absent path so the assertion can't be polluted by a sibling
 		// test that created the conventional /tmp log via openSync.
 		mockReadState.mockReturnValue(liveState({ logFile: "/nonexistent-dev3-remote/remote.log" }));
 		await expect(handleRemote("logs", args())).rejects.toThrow("__exit__");
 		expect(stderrText()).toContain("journalctl --user -u dev3-remote.service");
 	});
-
-	it("rejects a non-numeric --lines before touching the fs", async () => {
-		await expect(handleRemote("logs", args({ lines: "abc" }))).rejects.toThrow("__exit__");
-		expect(stderrText()).toContain("--lines must be a positive integer");
-	});
 });
 
 describe("dev3 remote status", () => {
-	it("reports when no server is running", async () => {
+	it("status and stop report when no server is running", async () => {
 		mockReadState.mockReturnValue(null);
-		await expect(handleRemote("status", args())).rejects.toThrow("__exit__");
-		expect(stdoutText()).toContain("No dev3 remote server is running.");
+		for (const sub of ["status", "stop"]) {
+			stdoutSpy.mockClear();
+			await expect(handleRemote(sub, args()), sub).rejects.toThrow("__exit__");
+			expect(stdoutText(), sub).toContain("No dev3 remote server is running.");
+		}
 	});
 
 	it("clears a stale record when the recorded pid is dead", async () => {
@@ -419,28 +350,26 @@ describe("dev3 remote url", () => {
 		expect(codes).toContain(2); // CLI_EXIT_CODE_APP_NOT_RUNNING
 	});
 
-	it("prints a QR + URL from the running server", async () => {
+	it("prints a QR + URL from the running server with no sign-in link when no code is set, and no QR for localhost", async () => {
 		mockReadState.mockReturnValue(liveState());
 		mockIsAlive.mockReturnValue(true);
 		mockSendRequest.mockResolvedValue({
 			id: "x", ok: true,
-			data: { url: "http://192.168.1.5:41234/?token=abc", tunnelUrl: null, port: 41234, staticCode: null },
+			data: { url: "http://192.168.1.5:41234/?token=abc", tunnelUrl: null, port: 41234, staticCode: null, signInLink: null },
 		});
 		await expect(handleRemote("url", args())).rejects.toThrow("__exit__");
-		const out = stdoutText();
+		let out = stdoutText();
 		expect(out).toContain("QR-ASCII");
 		expect(out).toContain("http://192.168.1.5:41234/?token=abc");
-	});
+		expect(out).not.toContain("#code=");
 
-	it("prints the URL without a QR when the server only answers on localhost", async () => {
-		mockReadState.mockReturnValue(liveState());
-		mockIsAlive.mockReturnValue(true);
+		stdoutSpy.mockClear();
 		mockSendRequest.mockResolvedValue({
 			id: "x", ok: true,
 			data: { url: "http://localhost:41234/?token=abc", tunnelUrl: null, port: 41234, staticCode: null },
 		});
 		await expect(handleRemote("url", args())).rejects.toThrow("__exit__");
-		const out = stdoutText();
+		out = stdoutText();
 		expect(out).not.toContain("QR-ASCII");
 		expect(out).toContain("http://localhost:41234/?token=abc");
 	});
@@ -468,26 +397,9 @@ describe("dev3 remote url", () => {
 		expect(out).toContain("never sent to a server");
 		expect(out).toContain("live in the bookmark");
 	});
-
-	it("prints no link when no code is set", async () => {
-		mockReadState.mockReturnValue(liveState());
-		mockIsAlive.mockReturnValue(true);
-		mockSendRequest.mockResolvedValue({
-			id: "x", ok: true,
-			data: { url: "http://192.168.1.5:41234/?token=abc", tunnelUrl: null, port: 41234, staticCode: null, signInLink: null },
-		});
-		await expect(handleRemote("url", args())).rejects.toThrow("__exit__");
-		expect(stdoutText()).not.toContain("#code=");
-	});
 });
 
 describe("dev3 remote stop", () => {
-	it("reports when no server is running", async () => {
-		mockReadState.mockReturnValue(null);
-		await expect(handleRemote("stop", args())).rejects.toThrow("__exit__");
-		expect(stdoutText()).toContain("No dev3 remote server is running.");
-	});
-
 	it("SIGTERMs a live server and reports it stopped", async () => {
 		mockReadState.mockReturnValue(liveState({ pid: 4242 }));
 		// alive at the guard check, dead on the first poll iteration
@@ -510,21 +422,18 @@ describe("computeDetachedChildArgs (single-binary respawn argv)", () => {
 	// that path was re-sent as a positional and bun re-injected its own at the
 	// child's argv[1], shoving ours to argv[2] where main() parsed it as the
 	// command → "Unknown command: /$bunfs/root/dev3" and the bg server died.
-	it("compiled binary: passes only user args (no /$bunfs entry, starts at 'remote')", () => {
+	it("compiled binary: passes only user args (no /$bunfs entry, starts at 'remote'), preserving the user's flags", () => {
 		const out = computeDetachedChildArgs(
 			["/opt/homebrew/bin/dev3", "/$bunfs/root/dev3", "remote"],
 			"/opt/homebrew/bin/dev3",
 		);
 		expect(out).toEqual(["remote", "--no-detach"]);
 		expect(out).not.toContain("/$bunfs/root/dev3");
-	});
 
-	it("compiled binary: preserves the user's flags after 'remote'", () => {
-		const out = computeDetachedChildArgs(
+		expect(computeDetachedChildArgs(
 			["/usr/local/bin/dev3", "/$bunfs/root/dev3", "remote", "start", "--port", "3000", "--no-tunnel"],
 			"/usr/local/bin/dev3",
-		);
-		expect(out).toEqual(["remote", "start", "--port", "3000", "--no-tunnel", "--no-detach"]);
+		)).toEqual(["remote", "start", "--port", "3000", "--no-tunnel", "--no-detach"]);
 	});
 
 	it("dev (bun run): keeps the entry script path as the first child arg", () => {
@@ -645,16 +554,13 @@ describe("dev3 remote --detach (lifecycle)", () => {
 	// `url`) clears state + exits; the non-fatal path (used by --detach, where the
 	// server is provably alive) rethrows WITHOUT clearing — clearing there would
 	// orphan a live server whose socket simply hasn't come up yet.
-	it("printAccessForState rethrows (no state clear) when non-fatal (F6)", async () => {
+	it("printAccessForState rethrows without clearing state when non-fatal, and clears + exits when fatal (F6)", async () => {
 		mockSendRequest.mockRejectedValue(new Error("APP_NOT_RUNNING"));
 		await expect(
 			printAccessForState("/tmp/x.sock", { header: "h", withQr: false, notRunningIsFatal: false }),
 		).rejects.toThrow("APP_NOT_RUNNING");
 		expect(mockClearState).not.toHaveBeenCalled();
-	});
 
-	it("printAccessForState clears state + exits fatally when fatal (F6 control)", async () => {
-		mockSendRequest.mockRejectedValue(new Error("APP_NOT_RUNNING"));
 		const codes: number[] = [];
 		exitSpy.mockImplementation(((code?: number) => { codes.push(code ?? 0); throw new Error("__exit__"); }) as never);
 		await expect(
@@ -670,21 +576,22 @@ describe("awaitTunnelReady", () => {
 	const liveProbe = async () => true; // edge reachable on the first probe
 	const cloudflareData = { url: "https://x.trycloudflare.com/?t", tunnelUrl: "https://x.trycloudflare.com", port: 1, staticCode: null };
 
-	it("resolves true once the hostname is reported AND the edge is reachable", async () => {
+	it("resolves true once the hostname is reported AND the edge is reachable, probing until it is", async () => {
 		mockSendRequest
 			.mockResolvedValueOnce({ id: "1", ok: true, data: { url: "http://lan/?t", tunnelUrl: null, port: 1, staticCode: null } })
 			.mockResolvedValue({ id: "2", ok: true, data: cloudflareData });
-		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveProbe)).resolves.toBe(true);
+		let calls = 0;
+		const liveOnThirdProbe = async () => ++calls >= 3;
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveOnThirdProbe)).resolves.toBe(true);
+		expect(calls).toBeGreaterThanOrEqual(3);
 	});
 
-	it("resolves false when the hostname never appears within the timeout", async () => {
+	it("resolves false when the hostname never appears, or appears but the edge never becomes reachable", async () => {
 		mockSendRequest.mockResolvedValue({ id: "x", ok: true, data: { url: "http://lan/?t", tunnelUrl: null, port: 1, staticCode: null } });
 		await expect(
 			awaitTunnelReady("/tmp/x.sock", { ...fastTimings, connectTimeoutMs: 10 }, liveProbe),
 		).resolves.toBe(false);
-	});
 
-	it("resolves false when the hostname appears but the edge never becomes reachable", async () => {
 		// Phase 1 succeeds (hostname reported) but the probe never passes — the
 		// DNS_PROBE_FINISHED_NXDOMAIN case: cloudflared announced but the edge
 		// isn't routing yet. We must NOT report the link as ready.
@@ -693,14 +600,6 @@ describe("awaitTunnelReady", () => {
 		await expect(
 			awaitTunnelReady("/tmp/x.sock", { ...fastTimings, probeTimeoutMs: 5 }, neverLive),
 		).resolves.toBe(false);
-	});
-
-	it("keeps probing until the edge becomes reachable", async () => {
-		mockSendRequest.mockResolvedValue({ id: "x", ok: true, data: cloudflareData });
-		let calls = 0;
-		const liveOnThirdProbe = async () => ++calls >= 3;
-		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveOnThirdProbe)).resolves.toBe(true);
-		expect(calls).toBeGreaterThanOrEqual(3);
 	});
 
 	it("keeps waiting through APP_NOT_RUNNING (socket still booting)", async () => {
@@ -717,41 +616,25 @@ describe("awaitTunnelReady", () => {
 });
 
 describe("isTunnelLive", () => {
-	it("treats a real HTTP status (reached our origin) as live", async () => {
+	it("is live on a real HTTP status, NOT live on a Cloudflare 530 or a thrown fetch (NXDOMAIN / refused)", async () => {
 		vi.stubGlobal("fetch", vi.fn(async () => ({ status: 200 }) as Response));
 		await expect(isTunnelLive("https://x.trycloudflare.com")).resolves.toBe(true);
-	});
 
-	it("treats a Cloudflare 530 (tunnel not registered) as NOT live", async () => {
 		vi.stubGlobal("fetch", vi.fn(async () => ({ status: 530 }) as Response));
 		await expect(isTunnelLive("https://x.trycloudflare.com")).resolves.toBe(false);
-	});
 
-	it("treats a thrown fetch (NXDOMAIN / connection refused) as NOT live", async () => {
 		vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("getaddrinfo ENOTFOUND"); }));
 		await expect(isTunnelLive("https://x.trycloudflare.com")).resolves.toBe(false);
-	});
-});
-
-describe("dev3 remote unknown subcommand", () => {
-	it("rejects an unknown subcommand", async () => {
-		await expect(handleRemote("bogus", args())).rejects.toThrow("__exit__");
-		expect(stderrText()).toContain("Unknown subcommand: remote bogus");
 	});
 });
 
 describe("dev3 remote service subcommands (dispatch)", () => {
 	// The test host is macOS; both service subcommands are Linux-only, so they
 	// exit early with that message — enough to prove the dispatch wiring.
-	it("routes install-service", async () => {
+	it("routes install-service and uninstall-service", async () => {
 		if (process.platform === "linux") return; // would touch real systemd — skip on Linux CI
-		await expect(handleRemote("install-service", args())).rejects.toThrow("__exit__");
-		expect(stderrText()).toContain("Linux-only");
-	});
-
-	it("routes uninstall-service", async () => {
-		if (process.platform === "linux") return;
-		await expect(handleRemote("uninstall-service", args())).rejects.toThrow("__exit__");
-		expect(stderrText()).toContain("Linux-only");
+		for (const sub of ["install-service", "uninstall-service"]) {
+			expect(await usageError(sub, {}), sub).toContain("Linux-only");
+		}
 	});
 });

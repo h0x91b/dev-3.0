@@ -10,28 +10,21 @@ import {
 } from "../../shared/dev-server-env";
 
 describe("parseDevServerEnvPair", () => {
-	it("splits on the first =, so a value may contain more of them", () => {
+	it("splits on the first =, accepts an empty value, and allows an unrelated DEV3_ name", () => {
 		expect(parseDevServerEnvPair("DEV3_QA_SCOPE=seeded")).toEqual({ key: "DEV3_QA_SCOPE", value: "seeded" });
 		expect(parseDevServerEnvPair("DSN=postgres://u:p@h/db?a=1")).toEqual({
 			key: "DSN",
 			value: "postgres://u:p@h/db?a=1",
 		});
-	});
-
-	// `--env DEBUG=` is how a shell unsets-by-empty; refusing it would be surprising.
-	it("accepts an empty value", () => {
+		// `--env DEBUG=` is how a shell unsets-by-empty; refusing it would be surprising.
 		expect(parseDevServerEnvPair("DEBUG=")).toEqual({ key: "DEBUG", value: "" });
+		expect(isBlockedDevServerEnvKey("DEV3_QA_SCOPE")).toBe(false);
 	});
 
-	it("rejects an argument that is not KEY=VALUE", () => {
-		expect(parseDevServerEnvPair("DEV3_QA_SCOPE")).toHaveProperty("error");
-		expect(parseDevServerEnvPair("=seeded")).toHaveProperty("error");
-	});
-
-	it("rejects a key that is not a valid env identifier", () => {
-		expect(parseDevServerEnvPair("1FOO=x")).toHaveProperty("error");
-		expect(parseDevServerEnvPair("FOO-BAR=x")).toHaveProperty("error");
-		expect(parseDevServerEnvPair("FOO BAR=x")).toHaveProperty("error");
+	it("rejects an argument that is not KEY=VALUE or whose key is not a valid env identifier", () => {
+		for (const arg of ["DEV3_QA_SCOPE", "=seeded", "1FOO=x", "FOO-BAR=x", "FOO BAR=x"]) {
+			expect(parseDevServerEnvPair(arg), arg).toHaveProperty("error");
+		}
 	});
 
 	// The whole point of the blocklist: a caller must not be able to move the
@@ -41,15 +34,10 @@ describe("parseDevServerEnvPair", () => {
 			expect(parseDevServerEnvPair(`${key}=x`), key).toHaveProperty("error");
 		}
 	});
-
-	it("allows an unrelated DEV3_-prefixed name", () => {
-		expect(isBlockedDevServerEnvKey("DEV3_QA_SCOPE")).toBe(false);
-		expect(parseDevServerEnvPair("DEV3_QA_SCOPE=virgin")).toEqual({ key: "DEV3_QA_SCOPE", value: "virgin" });
-	});
 });
 
 describe("sanitizeDevServerEnv", () => {
-	it("drops blocked and malformed keys and keeps the rest", () => {
+	it("drops blocked and malformed keys, keeps the rest, and maps undefined to {}", () => {
 		expect(sanitizeDevServerEnv({
 			DEV3_QA_SCOPE: "seeded",
 			PATH: "/evil",
@@ -57,9 +45,6 @@ describe("sanitizeDevServerEnv", () => {
 			"BAD-KEY": "x",
 			OK: "1",
 		})).toEqual({ DEV3_QA_SCOPE: "seeded", OK: "1" });
-	});
-
-	it("returns an empty map for undefined", () => {
 		expect(sanitizeDevServerEnv(undefined)).toEqual({});
 	});
 });
@@ -84,26 +69,16 @@ describe("dev-server env store", () => {
 		return await import("../dev-server-env-store");
 	}
 
-	it("round-trips an env map", async () => {
-		const { saveDevServerEnv, readDevServerEnv } = await store();
+	it("round-trips an env map; an empty save, a clear, or no save at all reads {}", async () => {
+		const { saveDevServerEnv, readDevServerEnv, clearDevServerEnv } = await store();
 		saveDevServerEnv("task-1", "dev", { DEV3_QA_SCOPE: "seeded" });
 		expect(readDevServerEnv("task-1", "dev")).toEqual({ DEV3_QA_SCOPE: "seeded" });
-	});
-
-	it("reads {} for a task that never started with extra env", async () => {
-		const { readDevServerEnv } = await store();
 		expect(readDevServerEnv("task-unknown", "dev")).toEqual({});
-	});
-
-	it("saving an empty map removes the file, so a later read is not stale", async () => {
-		const { saveDevServerEnv, readDevServerEnv } = await store();
+		// Saving an empty map removes the file, so a later read is not stale.
 		saveDevServerEnv("task-2", "dev", { A: "1" });
 		saveDevServerEnv("task-2", "dev", {});
 		expect(readDevServerEnv("task-2", "dev")).toEqual({});
-	});
-
-	it("clear removes what a stop must not leave behind", async () => {
-		const { saveDevServerEnv, readDevServerEnv, clearDevServerEnv } = await store();
+		// Clear removes what a stop must not leave behind.
 		saveDevServerEnv("task-3", "dev", { A: "1" });
 		clearDevServerEnv("task-3", "dev");
 		expect(readDevServerEnv("task-3", "dev")).toEqual({});
@@ -120,16 +95,13 @@ describe("dev-server env store", () => {
 	});
 
 	// A scratch file is not a reason to refuse a restart.
-	it("reads {} from a corrupt file instead of throwing", async () => {
+	it("reads {} from a corrupt file instead of throwing, and sanitizes what it reads back", async () => {
 		const { readDevServerEnv } = await store();
 		writeFileSync(join(root, "dev3-task-4-dev-server-env.json"), "{not json", "utf-8");
 		expect(readDevServerEnv("task-4", "dev")).toEqual({});
-	});
 
-	// A file written by an older build (or edited by hand) must not smuggle a
-	// blocked name past the handler.
-	it("sanitizes what it reads back", async () => {
-		const { readDevServerEnv } = await store();
+		// A file written by an older build (or edited by hand) must not smuggle a
+		// blocked name past the handler.
 		writeFileSync(
 			join(root, "dev3-task-5-dev-server-env.json"),
 			JSON.stringify({ DEV3_PORT0: "1", PATH: "/evil", KEEP: "yes" }),

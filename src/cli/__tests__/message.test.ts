@@ -76,7 +76,7 @@ afterEach(() => {
 });
 
 describe("message — immediate (bare form)", () => {
-	it("sends immediately with the in-context task attached", async () => {
+	it("sends immediately with the in-context task attached, and says the whole message is held", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId, projectId: CTX.projectId }));
 		await handleMessage(args(["continue please"]), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "message.send", {
@@ -87,11 +87,6 @@ describe("message — immediate (bare form)", () => {
 			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Message queued");
-	});
-
-	it("says the whole message is held, not that the agent is reading it now", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId, projectId: CTX.projectId }));
-		await handleMessage(args(["continue please"]), SOCKET, CTX);
 		expect(stdoutOutput).toContain("15s of quiet");
 		// The human window is its own, longer number — a sender that expects 15s while
 		// the user is typing would chase a peer that is not late at all.
@@ -99,19 +94,15 @@ describe("message — immediate (bare form)", () => {
 		expect(stdoutOutput).not.toContain("Message sent");
 	});
 
-	it("attaches the worktree task as the sender when messaging another task", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: "other", projectId: CTX.projectId }));
-		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, CTX);
-		const [, , params] = mockSend.mock.calls[0]!;
-		expect(params!.taskId).toBe("seq:42");
-		expect(params!.sourceTaskId).toBe(CTX.taskId);
-	});
+	it("attaches the worktree task, its pane and pid as the sender when messaging another task; none without a worktree", async () => {
+		vi.stubEnv("TMUX_PANE", "%3");
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", taskId: "other", projectId: CTX.projectId }));
 
-	it("omits the sender when there is no worktree context", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: "other", projectId: "p" }));
+		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ taskId: "seq:42", sourceTaskId: CTX.taskId, sourcePaneId: "%3", sourcePid: process.pid });
+
 		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, null);
-		const [, , params] = mockSend.mock.calls[0]!;
-		expect(params).not.toHaveProperty("sourceTaskId");
+		expect(mockSend.mock.calls[1]![2]).not.toHaveProperty("sourceTaskId");
 	});
 
 	it("reports a delivery failure as a command error", async () => {
@@ -120,23 +111,14 @@ describe("message — immediate (bare form)", () => {
 		expect(stderrOutput).toContain("no live agent");
 	});
 
-	it("hands the app its own pane and pid on the immediate form too, so a reply can find this agent", async () => {
-		vi.stubEnv("TMUX_PANE", "%3");
-		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", taskId: "other", projectId: CTX.projectId }));
-		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, CTX);
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sourceTaskId: CTX.taskId, sourcePaneId: "%3", sourcePid: process.pid });
-	});
-
-	it("says a message waits behind the receiver's open prompt, exits 0 and warns against resending", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", heldBehindPrompt: true, taskId: CTX.taskId, paneId: "%3" }));
+	it("says a message waits behind the receiver's open prompt, warns against resending, and carries the hold into --json", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", heldBehindPrompt: true, messageId: "m1", taskId: CTX.taskId, paneId: "%3" }));
 		await handleMessage(args(["ping"]), SOCKET, CTX);
 		expect(stdoutOutput).toContain("Message held for task aaaaaaaa (pane %3): the agent is showing a prompt");
 		expect(stdoutOutput).toContain("Do not send it again.");
 		expect(stdoutOutput).not.toContain("Message queued");
-	});
 
-	it("carries the prompt hold into --json", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", heldBehindPrompt: true, messageId: "m1", taskId: CTX.taskId }));
+		stdoutOutput = "";
 		await handleMessage(args(["ping"], { json: "true" }), SOCKET, CTX);
 		expect(JSON.parse(stdoutOutput)).toEqual({ status: "held", messageId: "m1", heldBehindPrompt: true });
 	});
@@ -147,7 +129,11 @@ describe("message — immediate (bare form)", () => {
 		expect(stdoutOutput).toContain("Message queued for task aaaaaaaa (AI Review agent, pane %3).");
 	});
 
-	it("says plainly when the receiver gets no way to reply to this agent", async () => {
+	it("says plainly when the receiver gets no way to reply, on both forms, and says nothing when the sender was proven", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", taskId: "other" }));
+		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, CTX);
+		expect(stderrOutput).not.toContain("Replies to you");
+
 		mockSend.mockResolvedValue(okResp({
 			delivered: true, status: "held", taskId: "other", replyUnavailable: "agent identity cannot be verified on Windows yet",
 		}));
@@ -156,12 +142,10 @@ describe("message — immediate (bare form)", () => {
 			"Replies to you are not available (agent identity cannot be verified on Windows yet): the message carries no reply command.",
 		);
 		expect(stdoutOutput).toContain("Message queued");
-	});
 
-	it("prints no reply notice when the sender was proven", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", taskId: "other" }));
-		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, CTX);
-		expect(stderrOutput).not.toContain("Replies to you");
+		mockSend.mockResolvedValue(okResp({ taskId: "other", pending: 1, replyUnavailable: "a shell, not an agent" }));
+		await handleMessage(args(["later"], { in: "30m", task: "seq:42" }), SOCKET, CTX);
+		expect(stderrOutput).toContain("Replies to you are not available (a shell, not an agent)");
 	});
 });
 
@@ -177,19 +161,13 @@ describe("message — --agent addresses one agent of the task", () => {
 		expect(mockSend.mock.calls[1]![2]).toMatchObject({ agentHandle: HANDLE });
 	});
 
-	it("refuses a raw pane id or a bare flag, sending nothing", async () => {
-		for (const agent of ["%3", "true"]) {
+	it("refuses a raw pane id, a bare flag or an old a1. handle, sending nothing", async () => {
+		for (const agent of ["%3", "true", "a1.WyIlMyJd"]) {
 			stderrOutput = "";
-			await expect(handleMessage(args(["review it"], { task: "seq:42", agent }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-			expect(stderrOutput).toContain("dev3 pane list --task <id>");
+			await expect(handleMessage(args(["review it"], { task: "seq:42", agent }), SOCKET, CTX), agent).rejects.toThrow("EXIT_3");
+			expect(stderrOutput, agent).toContain("dev3 pane list --task <id>");
 		}
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses an old a1. handle, saying where the current one is", async () => {
-		await expect(handleMessage(args(["review it"], { task: "seq:42", agent: "a1.WyIlMyJd" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("written by an older dev3");
-		expect(stderrOutput).toContain("dev3 pane list --task <id>");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
@@ -212,20 +190,20 @@ describe("message — --agent addresses one agent of the task", () => {
 });
 
 describe("message — scheduled", () => {
-	it("schedules with --in and computes a future ISO time", async () => {
+	it("schedules with --in (a future ISO time) or --at, carrying the text and the subject", async () => {
 		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1 }));
 		await handleMessage(args(["later thing"], { in: "30m" }), SOCKET, CTX);
 		const [, method, params] = mockSend.mock.calls[0]!;
 		expect(method).toBe("message.schedule");
 		expect(params!.text).toBe("later thing");
+		expect(params!.subject).toBe(SUBJECT);
 		expect(new Date(params!.at as string).getTime()).toBeGreaterThan(Date.now());
 		expect(stdoutOutput).toContain("Message scheduled");
-	});
 
-	it("tells a scheduled sender, too, when replies cannot reach it", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: "other", pending: 1, replyUnavailable: "a shell, not an agent" }));
-		await handleMessage(args(["later"], { in: "30m", task: "seq:42" }), SOCKET, CTX);
-		expect(stderrOutput).toContain("Replies to you are not available (a shell, not an agent)");
+		await handleMessage(args(["at thing"], { at: "23:59" }), SOCKET, CTX);
+		const [, atMethod, atParams] = mockSend.mock.calls[1]!;
+		expect(atMethod).toBe("message.schedule");
+		expect(typeof atParams!.at).toBe("string");
 	});
 
 	it("hands the app its own tmux pane so a self-reminder can come back to this agent", async () => {
@@ -249,35 +227,23 @@ describe("message — scheduled", () => {
 		}
 	});
 
-	it("schedules with --at a wall-clock time", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1 }));
-		await handleMessage(args(["at thing"], { at: "23:59" }), SOCKET, CTX);
-		const [, method, params] = mockSend.mock.calls[0]!;
-		expect(method).toBe("message.schedule");
-		expect(typeof params!.at).toBe("string");
-	});
-
-	it("rejects both --in and --at", async () => {
-		await expect(handleMessage(args(["x"], { in: "30m", at: "14:00" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/either --in or --at/i);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an invalid --in duration", async () => {
-		await expect(handleMessage(args(["x"], { in: "soon" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/invalid --in/i);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an invalid --at time", async () => {
-		await expect(handleMessage(args(["x"], { at: "99:99" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/invalid --at/i);
+	it("rejects both --in and --at, an invalid --in duration, and an invalid --at time", async () => {
+		const cases: Array<[Record<string, string>, RegExp]> = [
+			[{ in: "30m", at: "14:00" }, /either --in or --at/i],
+			[{ in: "soon" }, /invalid --in/i],
+			[{ at: "99:99" }, /invalid --at/i],
+		];
+		for (const [flags, message] of cases) {
+			stderrOutput = "";
+			await expect(handleMessage(args(["x"], flags), SOCKET, CTX), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toMatch(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
 describe("message — text input", () => {
-	it("reads the body from stdin when the text is -, byte for byte", async () => {
+	it("reads the body from stdin when the text (or --message) is -, byte for byte", async () => {
 		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId }));
 		const body = "Rename `note.ts` addNote — keep $HOME and \"quotes\"\nПроверка 🙂";
 		mockReadStdin.mockResolvedValue(`${body}\n`);
@@ -286,39 +252,27 @@ describe("message — text input", () => {
 
 		expect(mockReadStdin).toHaveBeenCalledOnce();
 		expect(mockSend.mock.calls[0]![2]!.text).toBe(body);
-	});
 
-	it("reads stdin for --message - too", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId }));
 		mockReadStdin.mockResolvedValue("from stdin");
-
 		await handleMessage(args([], { message: "-" }), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0]![2]!.text).toBe("from stdin");
+		expect(mockSend.mock.calls[1]![2]!.text).toBe("from stdin");
 	});
 
-	it("refuses positional text together with --message instead of dropping one", async () => {
+	it("refuses positional text together with --message, and unquoted words, instead of dropping any", async () => {
 		await expect(handleMessage(args(["short"], { message: "the long body" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-
 		expect(stderrOutput).toContain("given twice");
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(mockReadStdin).not.toHaveBeenCalled();
-	});
 
-	it("refuses unquoted words instead of sending only the first", async () => {
 		await expect(handleMessage(args(["only", "the", "first"]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 
 		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockReadStdin).not.toHaveBeenCalled();
 	});
 });
 
 describe("message — validation", () => {
-	it("rejects empty text", async () => {
+	it("rejects empty text, and a send with no task in context", async () => {
 		await expect(handleMessage(args([]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
 
-	it("rejects when no task is in context", async () => {
 		const ctxNoTask = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
 		await expect(handleMessage(args(["x"]), SOCKET, ctxNoTask)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toMatch(/no task in context/i);
@@ -329,16 +283,12 @@ describe("message — validation", () => {
 describe("message — --subject is mandatory", () => {
 	// The error path IS the feature: every agent alive has the habit of sending
 	// without a subject, so this is the message they will actually meet.
-	it("refuses a message with no subject, with its own exit code", async () => {
-		await expect(handleMessage(rawArgs(["ping"], { task: "seq:490" }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("dev3 message needs --subject");
-	});
-
-	it("teaches the shape: the limit, a good example, a bad one, and the corrected command", async () => {
+	it("refuses a message with no subject, with its own exit code, teaching the shape and the corrected command", async () => {
 		await expect(
 			handleMessage(rawArgs(["CI is green on all four shards"], { task: "seq:490" }), SOCKET, CTX),
 		).rejects.toThrow("EXIT_17");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrOutput).toContain("dev3 message needs --subject");
 		expect(stderrOutput).toContain("about 6 words");
 		expect(stderrOutput).toContain("80 characters at most");
 		expect(stderrOutput).toContain('good:  --subject "<pr:1577> merged, main green"');
@@ -363,28 +313,23 @@ describe("message — --subject is mandatory", () => {
 		expect(stderrOutput).not.toContain("x".repeat(80));
 	});
 
-	it("treats a bare --subject with no value as missing", async () => {
-		await expect(handleMessage(rawArgs(["ping"], { subject: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+	it("treats a bare or whitespace-only --subject as missing, on the scheduled form too", async () => {
+		const cases: Array<Record<string, string>> = [{ subject: "true" }, { subject: "   \t " }, { in: "30m" }];
+		for (const flags of cases) {
+			await expect(handleMessage(rawArgs(["ping"], flags), SOCKET, CTX), JSON.stringify(flags)).rejects.toThrow("EXIT_17");
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("treats a whitespace-only subject as missing", async () => {
-		await expect(handleMessage(rawArgs(["ping"], { subject: "   \t " }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an over-limit subject instead of truncating it", async () => {
-		const tooLong = "a".repeat(81);
-		await expect(handleMessage(rawArgs(["ping"], { subject: tooLong }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
-		expect(stderrOutput).toContain("--subject is too long: 81 characters");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("accepts a subject exactly at the limit", async () => {
+	it("accepts a subject exactly at the limit and rejects one over it instead of truncating", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId, projectId: CTX.projectId }));
 		const exact = "a".repeat(80);
 		await handleMessage(rawArgs(["ping"], { subject: exact }), SOCKET, CTX);
 		expect(mockSend.mock.calls[0]?.[2]?.subject).toBe(exact);
+
+		await expect(handleMessage(rawArgs(["ping"], { subject: `${exact}a` }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+		expect(stderrOutput).toContain("--subject is too long: 81 characters");
+		expect(mockSend).toHaveBeenCalledTimes(1);
 	});
 
 	it("collapses a multi-line subject into the one line it is", async () => {
@@ -392,107 +337,81 @@ describe("message — --subject is mandatory", () => {
 		await handleMessage(rawArgs(["ping"], { subject: "  CI green\n  on   main " }), SOCKET, CTX);
 		expect(mockSend.mock.calls[0]?.[2]?.subject).toBe("CI green on main");
 	});
-
-	it("carries the subject on the scheduled form too", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1 }));
-		await handleMessage(args(["later"], { in: "30m" }), SOCKET, CTX);
-		const [, method, params] = mockSend.mock.calls[0]!;
-		expect(method).toBe("message.schedule");
-		expect(params!.subject).toBe(SUBJECT);
-	});
-
-	it("refuses a scheduled message with no subject", async () => {
-		await expect(handleMessage(rawArgs(["later"], { in: "30m" }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
 });
 
 describe("message — --variant", () => {
-	it("carries the index to the server alongside the seq ref", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: "bbbbbbbb-1111-2222-3333-444444444444" }));
-		await handleMessage(args(["ping"], { task: "seq:490", variant: "1" }), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"message.send",
-			expect.objectContaining({ taskId: "seq:490", variantIndex: 1 }),
-		);
-	});
-
-	it("carries the index on the scheduled form too", async () => {
+	it("carries the index alongside the seq ref on both forms, and omits the field when absent", async () => {
 		mockSend.mockResolvedValue(okResp({ taskId: "bbbbbbbb-1111-2222-3333-444444444444", pending: 1 }));
+
+		await handleMessage(args(["ping"], { task: "seq:490", variant: "1" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "message.send", expect.objectContaining({ taskId: "seq:490", variantIndex: 1 }));
+
 		await handleMessage(args(["ping"], { task: "seq:490", variant: "2", in: "30m" }), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"message.schedule",
-			expect.objectContaining({ taskId: "seq:490", variantIndex: 2 }),
-		);
-	});
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "message.schedule", expect.objectContaining({ taskId: "seq:490", variantIndex: 2 }));
 
-	it("omits the field entirely when the flag is absent", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: "bbbbbbbb-1111-2222-3333-444444444444" }));
 		await handleMessage(args(["ping"], { task: "seq:490" }), SOCKET, CTX);
-		expect(mockSend.mock.calls[0]?.[2]).not.toHaveProperty("variantIndex");
+		expect(mockSend.mock.calls[2]?.[2]).not.toHaveProperty("variantIndex");
 	});
 
-	it("rejects --variant against a task id — it names one member already", async () => {
-		await expect(
-			handleMessage(args(["ping"], { task: "bbbbbbbb-1111-2222-3333-444444444444", variant: "1" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/--task seq:<N> --variant/);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects --variant with no --task, where it would mean the worktree's own task", async () => {
-		await expect(handleMessage(args(["ping"], { variant: "1" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects a bare --variant with no index", async () => {
-		await expect(
-			handleMessage(args(["ping"], { task: "seq:490", variant: "true" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/--variant needs an index/);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects a non-numeric --variant", async () => {
-		await expect(
-			handleMessage(args(["ping"], { task: "seq:490", variant: "one" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/Invalid --variant/);
+	it("rejects --variant against a task id, without --task, bare, or non-numeric", async () => {
+		const cases: Array<[Record<string, string>, RegExp | null]> = [
+			[{ task: "bbbbbbbb-1111-2222-3333-444444444444", variant: "1" }, /--task seq:<N> --variant/],
+			[{ variant: "1" }, null],
+			[{ task: "seq:490", variant: "true" }, /--variant needs an index/],
+			[{ task: "seq:490", variant: "one" }, /Invalid --variant/],
+		];
+		for (const [flags, message] of cases) {
+			stderrOutput = "";
+			await expect(handleMessage(args(["ping"], flags), SOCKET, CTX), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+			if (message) expect(stderrOutput).toMatch(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
 describe("message — --json and lost transports", () => {
-	it("prints status and message id as JSON", async () => {
+	it("prints status and message id as JSON, for a send and a schedule", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, status: "held", messageId: "m-123", taskId: CTX.taskId }));
 		await handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX);
 		expect(JSON.parse(stdoutOutput)).toEqual({ status: "held", messageId: "m-123" });
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1, messageId: "sched-1" }));
+		await handleMessage(args(["later"], { in: "10m", json: "true" }), SOCKET, CTX);
+		expect(JSON.parse(stdoutOutput)).toMatchObject({ status: "scheduled", messageId: "sched-1" });
 	});
 
-	it("exits 11 with JSON when the app reports an unconfirmed send", async () => {
+	it("exits 11 (unconfirmed) when the app says so, and for every transport loss after sending — never a re-send prompt", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, status: "unconfirmed", messageId: "m-1", taskId: CTX.taskId }));
 		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_11");
 		expect(JSON.parse(stdoutOutput)).toEqual({ status: "unconfirmed", messageId: "m-1" });
+
+		const losses: Array<[string, Error]> = [
+			["an empty response", Object.assign(new Error("Empty response from server"), { name: "EmptyResponseError" })],
+			["a reset connection", Object.assign(new Error("reset"), { code: "ECONNRESET" })],
+			["a broken pipe", Object.assign(new Error("pipe"), { code: "EPIPE" })],
+			["a socket timeout", new Error("Socket timeout (30s)")],
+			["an unreadable answer", new Error("Invalid JSON response: {oops")],
+		];
+		for (const [name, err] of losses) {
+			stdoutOutput = "";
+			mockSend.mockRejectedValue(err);
+			await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX), name).rejects.toThrow("EXIT_11");
+			expect(JSON.parse(stdoutOutput), name).toEqual({ status: "unconfirmed", messageId: null });
+		}
 	});
 
-	it.each([
-		["an empty response", Object.assign(new Error("Empty response from server"), { name: "EmptyResponseError" })],
-		["a reset connection", Object.assign(new Error("reset"), { code: "ECONNRESET" })],
-		["a broken pipe", Object.assign(new Error("pipe"), { code: "EPIPE" })],
-		["a socket timeout", new Error("Socket timeout (30s)")],
-		["an unreadable answer", new Error("Invalid JSON response: {oops")],
-	])("maps %s after sending to exit 11 (unconfirmed), never a re-send prompt", async (_name, err) => {
-		mockSend.mockRejectedValue(err);
-		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_11");
-		expect(JSON.parse(stdoutOutput)).toEqual({ status: "unconfirmed", messageId: null });
-	});
-
-	it("leaves a connect that never happened to the app-not-running exit, saying not-delivered in JSON", async () => {
-		mockSend.mockRejectedValue(new Error("APP_NOT_RUNNING"));
-		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("APP_NOT_RUNNING");
-		expect(JSON.parse(stdoutOutput)).toEqual({ status: "not-delivered", messageId: null });
+	it("says not-delivered in JSON and leaves the exit to main for a connect that never happened or a stale endpoint", async () => {
+		const errors: Array<[string, Error]> = [
+			["APP_NOT_RUNNING", new Error("APP_NOT_RUNNING")],
+			["STALE_ENDPOINT", Object.assign(new Error("STALE_ENDPOINT"), { name: "StaleEndpointError" })],
+		];
+		for (const [message, err] of errors) {
+			stdoutOutput = "";
+			mockSend.mockRejectedValue(err);
+			await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX), message).rejects.toThrow(message);
+			expect(JSON.parse(stdoutOutput), message).toEqual({ status: "not-delivered", messageId: null });
+		}
 	});
 
 	it("prints a not-delivered verdict when the app refuses the send", async () => {
@@ -505,12 +424,6 @@ describe("message — --json and lost transports", () => {
 		});
 	});
 
-	it("prints a not-delivered verdict for a stale endpoint, then leaves the exit to main", async () => {
-		mockSend.mockRejectedValue(Object.assign(new Error("STALE_ENDPOINT"), { name: "StaleEndpointError" }));
-		await expect(handleMessage(args(["hi"], { json: "true" }), SOCKET, CTX)).rejects.toThrow("STALE_ENDPOINT");
-		expect(JSON.parse(stdoutOutput)).toEqual({ status: "not-delivered", messageId: null });
-	});
-
 	it("names the right verdict for an app that could not even be discovered", () => {
 		expect(unreachableAppVerdict(["message", "--json", "--subject", "s", "hi"])).toBe('{"status":"not-delivered","messageId":null}');
 		expect(unreachableAppVerdict(["message", "--json", "--in", "5m", "hi"])).toBe('{"status":"not-scheduled","messageId":null}');
@@ -518,12 +431,6 @@ describe("message — --json and lost transports", () => {
 		expect(unreachableAppVerdict(["message", "--json=true", "hi"])).toBe('{"status":"not-delivered","messageId":null}');
 		expect(unreachableAppVerdict(["message", "--subject", "s", "hi"])).toBeNull();
 		expect(unreachableAppVerdict(["message", "--list", "--json"])).toBeNull();
-	});
-
-	it("prints the scheduled id as JSON", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1, messageId: "sched-1" }));
-		await handleMessage(args(["later"], { in: "10m", json: "true" }), SOCKET, CTX);
-		expect(JSON.parse(stdoutOutput)).toMatchObject({ status: "scheduled", messageId: "sched-1" });
 	});
 });
 
@@ -535,24 +442,20 @@ describe("message — external senders", () => {
 		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("sourceTaskId");
 	});
 
-	it("refuses --as-sender inside a task worktree", async () => {
-		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+	it("refuses misplaced sender flags before reaching the app", async () => {
+		const cases: Array<[string, string[], Record<string, string>, CliContext | null]> = [
+			["--as-sender inside a task worktree", ["x"], { task: "seq:4", "as-sender": "cli" }, CTX],
+			["--as-sender with --agent", ["x"], { task: "seq:4", "as-sender": "cli", agent: "anything" }, null],
+			["--as-sender with --in", ["x"], { task: "seq:4", "as-sender": "cli", in: "5m" }, null],
+			["--as-sender with --at", ["x"], { task: "seq:4", "as-sender": "cli", at: "14:00" }, null],
+			["a malformed sender id", ["x"], { task: "seq:4", "as-sender": "Bad Id" }, null],
+			["--to-sender outside a task", ["done"], { "to-sender": "cli" }, null],
+			["--in-reply-to without --to-sender", ["done"], { "in-reply-to": "m" }, CTX],
+		];
+		for (const [name, positional, flags, context] of cases) {
+			await expect(handleMessage(args(positional, flags), SOCKET, context), name).rejects.toThrow("EXIT_3");
+		}
 		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses --as-sender with --agent", async () => {
-		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", agent: "anything" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses --as-sender with --in or --at", async () => {
-		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", in: "5m" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", at: "14:00" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses a malformed sender id before reaching the app", async () => {
-		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "Bad Id" }), SOCKET, null)).rejects.toThrow("EXIT_3");
 	});
 
 	it("exits 39 for a sender the registry does not know", async () => {
@@ -578,11 +481,5 @@ describe("message — external senders", () => {
 			inReplyTo: "m-9",
 		});
 		expect(JSON.parse(stdoutOutput)).toEqual({ status: "posted", itemId: "item-1" });
-	});
-
-	it("refuses --to-sender outside a task, and --in-reply-to without it", async () => {
-		await expect(handleMessage(args(["done"], { "to-sender": "cli" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		await expect(handleMessage(args(["done"], { "in-reply-to": "m" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

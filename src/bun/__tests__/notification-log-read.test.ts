@@ -105,17 +105,9 @@ describe("readNotificationLog", () => {
 			]);
 		});
 
-		it("keeps allowed projects and always keeps rows with no project", () => {
-			const page = readNotificationLog({ projectIds: ["proj-1"] });
-			expect(page.rows.map(item => item.message)).toEqual(["no project at all", "visible project"]);
-		});
-
-		it("an empty allowlist means only the rows that belong to nobody", () => {
-			const page = readNotificationLog({ projectIds: [] });
-			expect(page.rows.map(item => item.message)).toEqual(["no project at all"]);
-		});
-
-		it("no allowlist means no filtering", () => {
+		it("keeps allowed projects and always the rows with no project; an empty allowlist keeps only those, none filters nothing", () => {
+			expect(readNotificationLog({ projectIds: ["proj-1"] }).rows.map(item => item.message)).toEqual(["no project at all", "visible project"]);
+			expect(readNotificationLog({ projectIds: [] }).rows.map(item => item.message)).toEqual(["no project at all"]);
 			expect(readNotificationLog().rows).toHaveLength(3);
 		});
 	});

@@ -38,30 +38,27 @@ afterEach(() => {
 });
 
 describe("task notification identifier codec", () => {
-	it("round-trips a task target", () => {
+	it("round-trips a task target, stable per task so newer notifications replace older ones", () => {
 		const target = {
 			taskId: "ed35273b-70cf-4f93-8351-33fd77d2df47",
 			projectId: "a1c9fe4e-8389-4214-9018-4a2580c261f0",
 		};
 		expect(decodeTaskNotificationIdentifier(encodeTaskNotificationIdentifier(target))).toEqual(target);
-	});
-
-	it("is stable per task so newer notifications replace older ones", () => {
-		const target = { taskId: "t-1", projectId: "p-1" };
 		expect(encodeTaskNotificationIdentifier(target)).toBe(encodeTaskNotificationIdentifier({ ...target }));
 	});
 
-	it("rejects identifiers without the dev3 prefix", () => {
-		expect(decodeTaskNotificationIdentifier("some-foreign-notification-id")).toBeNull();
-		expect(decodeTaskNotificationIdentifier("other-prefix|task|project")).toBeNull();
-	});
-
-	it("rejects identifiers with missing parts", () => {
-		expect(decodeTaskNotificationIdentifier("dev3-task-nav|only-task")).toBeNull();
-		expect(decodeTaskNotificationIdentifier("dev3-task-nav||project")).toBeNull();
-		expect(decodeTaskNotificationIdentifier("dev3-task-nav|task|")).toBeNull();
-		expect(decodeTaskNotificationIdentifier("dev3-task-nav|a|b|extra")).toBeNull();
-		expect(decodeTaskNotificationIdentifier("")).toBeNull();
+	it("rejects identifiers without the dev3 prefix or with missing parts", () => {
+		for (const id of [
+			"some-foreign-notification-id",
+			"other-prefix|task|project",
+			"dev3-task-nav|only-task",
+			"dev3-task-nav||project",
+			"dev3-task-nav|task|",
+			"dev3-task-nav|a|b|extra",
+			"",
+		]) {
+			expect(decodeTaskNotificationIdentifier(id), id).toBeNull();
+		}
 	});
 });
 

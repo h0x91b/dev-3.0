@@ -21,22 +21,24 @@ function words(command: string): string[] {
 }
 
 describe("Codex dev3 execpolicy rules (#2043)", () => {
-	it.each([
-		"dev3 pane run touch-probe",
-		"dev3 dev-server start",
-		"dev3 dev-server restart",
-		"dev3 agent spawn --task seq:1",
-		"dev3 automations run x",
-		"dev3 automations create x",
-		"dev3 secret run --env A -- ls",
-		"dev3 __pane-run x",
-		"dev3 remote",
-		"dev3 update",
-		"dev3 --instance primary pane run ls",
-		"dev3 pane --instance primary run ls",
-		"dev3 local pane run ls",
-	])("asks the user before %s", (command) => {
-		expect(prompts(words(command))).toBe(true);
+	it("asks the user before every side-effecting subcommand, however the CLI is spelled", () => {
+		for (const command of [
+			"dev3 pane run touch-probe",
+			"dev3 dev-server start",
+			"dev3 dev-server restart",
+			"dev3 agent spawn --task seq:1",
+			"dev3 automations run x",
+			"dev3 automations create x",
+			"dev3 secret run --env A -- ls",
+			"dev3 __pane-run x",
+			"dev3 remote",
+			"dev3 update",
+			"dev3 --instance primary pane run ls",
+			"dev3 pane --instance primary run ls",
+			"dev3 local pane run ls",
+		]) {
+			expect(prompts(words(command)), command).toBe(true);
+		}
 	});
 
 	it("never prompts on an allowlisted metadata subcommand", () => {
@@ -56,16 +58,18 @@ describe("Codex dev3 execpolicy rules (#2043)", () => {
 		expect(missing).toEqual([]);
 	});
 
-	it.each([
-		["pane", "pane.ts"],
-		["dev-server", "dev-server.ts"],
-		["automations", "automations.ts"],
-		["projects", "projects.ts"],
-	])("knows every %s subcommand its handler accepts", (command, file) => {
-		const source = readFileSync(join(srcRoot, "cli", "commands", file), "utf-8");
-		const handled = [...source.matchAll(/\bcase "([a-z][a-z-]*)":/g)].map((m) => m[1]);
-		const spec = cliCommandSpecs().find((s) => s.name === command);
-		expect(handled.filter((sub) => !spec?.subcommands.includes(sub))).toEqual([]);
+	it("knows every subcommand the pane, dev-server, automations and projects handlers accept", () => {
+		for (const [command, file] of [
+			["pane", "pane.ts"],
+			["dev-server", "dev-server.ts"],
+			["automations", "automations.ts"],
+			["projects", "projects.ts"],
+		]) {
+			const source = readFileSync(join(srcRoot, "cli", "commands", file), "utf-8");
+			const handled = [...source.matchAll(/\bcase "([a-z][a-z-]*)":/g)].map((m) => m[1]);
+			const spec = cliCommandSpecs().find((s) => s.name === command);
+			expect(handled.filter((sub) => !spec?.subcommands.includes(sub)), command).toEqual([]);
+		}
 	});
 
 	it("writes one prompt rule per prefix, for every CLI spelling", () => {

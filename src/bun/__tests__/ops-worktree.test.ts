@@ -43,15 +43,11 @@ describe("resolveLaunchProject", () => {
 		expect(resolved.env).toEqual({ A: "1" });
 		expect(resolved.path).toBe(project.path);
 		expect(resolved.kind).toBe("virtual");
-	});
 
-	it("prefers the worktree's own committed config over the repo's", async () => {
-		const repo = dirWithConfig({ setupScript: "from repo" });
-		const worktree = dirWithConfig({ setupScript: "from worktree" });
-
-		const resolved = await resolveLaunchProject(project, { opsWorktree: true, attachedRepo: repo } as any, worktree);
-
-		expect(resolved.setupScript).toBe("from worktree");
+		// The worktree's own committed config wins over the repo's.
+		const ownConfig = dirWithConfig({ setupScript: "from worktree" });
+		expect((await resolveLaunchProject(project, { opsWorktree: true, attachedRepo: repo } as any, ownConfig)).setupScript)
+			.toBe("from worktree");
 	});
 
 	it("leaves a plain Operations task and an attached-only task untouched", async () => {
@@ -74,9 +70,7 @@ describe("repoPathInOwnTaskFolder", () => {
 		expect(repoPathInOwnTaskFolder(`${OPS_DIR}/slug/99999999/work/repo`, folder())).toBeNull();
 		expect(repoPathInOwnTaskFolder(`${folder()}-2/repo`, folder())).toBeNull();
 		expect(repoPathInOwnTaskFolder("/elsewhere/repo", folder())).toBeNull();
-	});
-
-	it("never treats a folder outside OPS_DIR as a managed one", () => {
+		// A folder outside OPS_DIR is never a managed one.
 		expect(repoPathInOwnTaskFolder("/chosen/dir/repo", "/chosen/dir")).toBeNull();
 		expect(repoPathInOwnTaskFolder("/x", null)).toBeNull();
 	});
@@ -105,9 +99,7 @@ describe("isAttachedRepoInTaskFolder", () => {
 		expect(isAttachedRepoInTaskFolder({ ...task, attachedRepo: "/ops/slug/abcdef12/work-2" })).toBe(false);
 		expect(isAttachedRepoInTaskFolder({ ...task, attachedRepo: null })).toBe(false);
 		expect(isAttachedRepoInTaskFolder({ worktreePath: null, attachedRepo: "/ops/x" })).toBe(false);
-	});
-
-	it("is false for worktree mode and for a user-chosen folder", () => {
+		// Worktree mode and a user-chosen folder are never the task's own folder.
 		expect(isAttachedRepoInTaskFolder({ ...task, attachedRepo: "/ops/slug/abcdef12/work", opsWorktree: true })).toBe(false);
 		expect(isAttachedRepoInTaskFolder({ ...task, attachedRepo: "/ops/slug/abcdef12/work/wt", opsWorkDir: "/ops/slug/abcdef12/work" })).toBe(false);
 	});

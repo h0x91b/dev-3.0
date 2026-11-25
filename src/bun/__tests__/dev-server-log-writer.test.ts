@@ -25,30 +25,21 @@ describe("resetDevServerLog", () => {
 		expect(existsSync(logPath)).toBe(false);
 		expect(existsSync(join(root, "logs"))).toBe(true);
 	});
-
-	it("does not throw when the directory cannot be made", () => {
-		// Parent is a FILE, so the mkdir fails with ENOTDIR on every platform — no
-		// dependence on a path like /proc that only exists on one of them.
-		const blocker = join(root, "not-a-directory");
-		writeFileSync(blocker, "", "utf8");
-		expect(() => resetDevServerLog(join(blocker, "dev-server.log"))).not.toThrow();
-	});
 });
 
 describe("DevServerLogWriter", () => {
-	it("writes complete lines as plain text", () => {
+	it("writes complete lines as plain text, from strings or raw PTY bytes", () => {
 		resetDevServerLog(logPath);
 		const writer = new DevServerLogWriter(logPath);
 		writer.write("\u001b[32mVITE ready\u001b[0m in 300 ms\n");
 		writer.close();
 		expect(readFileSync(logPath, "utf8")).toBe("VITE ready in 300 ms\n");
-	});
 
-	it("accepts raw PTY bytes, not only strings", () => {
+		// Raw PTY bytes are accepted, not only strings.
 		resetDevServerLog(logPath);
-		const writer = new DevServerLogWriter(logPath);
-		writer.write(new TextEncoder().encode("listening on 5173\n"));
-		writer.close();
+		const bytes = new DevServerLogWriter(logPath);
+		bytes.write(new TextEncoder().encode("listening on 5173\n"));
+		bytes.close();
 		expect(readFileSync(logPath, "utf8")).toBe("listening on 5173\n");
 	});
 
@@ -59,13 +50,12 @@ describe("DevServerLogWriter", () => {
 		expect(existsSync(logPath)).toBe(false);
 		writer.close();
 		expect(readFileSync(logPath, "utf8")).toBe("Error: EADDRINUSE\n");
-	});
 
-	it("ignores writes after close", () => {
+		// Writes after close are ignored.
 		resetDevServerLog(logPath);
-		const writer = new DevServerLogWriter(logPath);
-		writer.close();
-		writer.write("late\n");
+		const closed = new DevServerLogWriter(logPath);
+		closed.close();
+		closed.write("late\n");
 		expect(existsSync(logPath)).toBe(false);
 	});
 
@@ -85,9 +75,12 @@ describe("DevServerLogWriter", () => {
 		expect(existsSync(`${logPath}.prev`)).toBe(false);
 	});
 
-	it("swallows a write to an unwritable path rather than taking the dev server down", () => {
+	it("swallows an unmakeable directory or unwritable path rather than taking the dev server down", () => {
+		// Parent is a FILE, so the mkdir fails with ENOTDIR on every platform — no
+		// dependence on a path like /proc that only exists on one of them.
 		const blocker = join(root, "blocker-file");
 		writeFileSync(blocker, "", "utf8");
+		expect(() => resetDevServerLog(join(blocker, "dev-server.log"))).not.toThrow();
 		const writer = new DevServerLogWriter(join(blocker, "dev-server.log"));
 		expect(() => {
 			writer.write("anything\n");
@@ -97,11 +90,8 @@ describe("DevServerLogWriter", () => {
 });
 
 describe("readDevServerLogTail", () => {
-	it("reports a missing file as not-yet-captured rather than as an error", () => {
+	it("reports a missing file as not-yet-captured, then the newest lines and the real size", () => {
 		expect(readDevServerLogTail(logPath, 10)).toEqual({ exists: false, text: "", bytes: 0 });
-	});
-
-	it("returns the newest lines and the real size", () => {
 		resetDevServerLog(logPath);
 		const writer = new DevServerLogWriter(logPath);
 		writer.write("one\ntwo\nthree\n");

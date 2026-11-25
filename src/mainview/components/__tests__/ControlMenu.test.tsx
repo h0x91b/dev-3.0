@@ -51,4 +51,15 @@ describe("ControlMenu", () => {
 		expect(closeTopBackLayer()).toBe(true);
 		expect(onClose).toHaveBeenCalled();
 	});
+
+	it("draws a danger row in the danger colour", () => {
+		render(
+			<I18nProvider>
+				<ControlMenu pos={{ top: 10, left: 10 }} onClose={vi.fn()} entries={[{ key: "a", label: "Copy" }, { key: "d", label: "Delete", danger: true, separated: true }]} />
+			</I18nProvider>,
+		);
+		const rows = document.querySelectorAll<HTMLElement>('[role="menuitem"]');
+		expect(rows[1].className).toContain("text-danger");
+		expect(rows[0].className).not.toContain("text-danger");
+	});
 });
