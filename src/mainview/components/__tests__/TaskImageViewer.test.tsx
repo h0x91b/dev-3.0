@@ -555,6 +555,39 @@ describe("TaskImageViewer with a shared video", () => {
 		expect(screen.queryByTestId("image-save-menu-delete-older")).toBeNull();
 	});
 
+	it("shows the older-clips sweep as a rail button that confirms, deletes and then disappears", async () => {
+		const MB = 1024 * 1024;
+		const big = [vid("old", "old.mp4"), vid("mid", "mid.mp4"), vid("new", "new.mp4")].map((item, i) => ({ ...item, bytes: 20 * MB, createdAt: i + 1 }));
+		const previewMock = mockedApi.request.previewSharedMediaDelete as ReturnType<typeof vi.fn>;
+		const deleteMock = mockedApi.request.deleteSharedMedia as ReturnType<typeof vi.fn>;
+		previewMock.mockReset();
+		deleteMock.mockReset();
+		confirmMock.confirm.mockClear();
+		previewMock.mockResolvedValue({ count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] });
+		deleteMock.mockResolvedValue({
+			task: { id: "t1", sharedVideos: big.map((item) => (item.id === "new" ? item : { ...item, removedAt: 9 })) },
+			summary: { count: 2, bytes: 40 * MB, freeableBytes: 20 * MB, failed: [] },
+		});
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={big} initialIndex={2} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+		const button = await screen.findByTestId("image-viewer-delete-older");
+		await waitFor(() => expect(button).toHaveTextContent("Free 20 MB · delete older clips"));
+		await userEvent.click(button);
+		expect(confirmMock.confirm).toHaveBeenCalledTimes(1);
+		await waitFor(() => expect(screen.getAllByTestId("viewer-thumb-removed")).toHaveLength(2));
+		expect(deleteMock).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", mediaIds: ["old", "mid"] });
+		expect(screen.queryByTestId("image-viewer-delete-older")).toBeNull();
+	});
+
+	it("shows no rail sweep when there are no older large clips", async () => {
+		renderMixed(1, { taskId: "t1", projectId: "p1" });
+		await screen.findByTestId("viewer-main-video");
+		expect(screen.queryByTestId("image-viewer-delete-older")).toBeNull();
+	});
+
 	it("offers no delete item without a task to delete it from", async () => {
 		renderMixed(1);
 		fireEvent.contextMenu(await screen.findByTestId("viewer-main-video"));

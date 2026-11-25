@@ -16,6 +16,7 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
+import Tooltip from "./Tooltip";
 import VideoFrameThumb from "./VideoFrameThumb";
 import { primeFirstFrame } from "../utils/video-first-frame";
 import VideoReviewBar, { SEEK_STEP_SECONDS, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
@@ -746,10 +747,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 
 				{/* Thumbnail history rail */}
 				{images.length > 1 && (
+					<div className="flex-shrink-0 flex items-center border-t border-edge bg-raised">
 					<div
 						ref={thumbStripRef}
 						data-wheel-x
-						className="flex-shrink-0 flex justify-center gap-2 overflow-x-auto px-4 py-3 border-t border-edge bg-raised"
+						className="min-w-0 flex-1 flex justify-center gap-2 overflow-x-auto px-4 py-3"
 					>
 						{media.map((img, i) => {
 							const thumbUrl = urls[img.id];
@@ -786,6 +788,19 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 								</button>
 							);
 						})}
+					</div>
+					{cleanup.available && (
+						<Tooltip content={cleanup.label} detail={t("sharedMedia.deleteOlderHint")}>
+							<button
+								type="button"
+								data-testid="image-viewer-delete-older"
+								onClick={() => void deleteOlder()}
+								className="mr-4 flex-shrink-0 rounded-md border border-danger/30 px-2.5 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10 active:scale-[0.96]"
+							>
+								{cleanup.label}
+							</button>
+						</Tooltip>
+					)}
 					</div>
 				)}
 
