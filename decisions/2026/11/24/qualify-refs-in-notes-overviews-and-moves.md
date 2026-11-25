@@ -6,8 +6,8 @@
 
 ## 2. Decision
 
-- `dev3 note add` and `dev3 overview set` send `sourceTaskId` from the CLI context, as `task update` does. `overview.set` runs `qualifyEditedRefsFor` against the old overview, and `note.add` against the task's existing notes, so a line quoted from one keeps its refs (`src/bun/cli-socket/board-metadata-commands.ts`). `writerProjectIdFor` (`task-resolution.ts`) skips the board scan when a task writes to itself, or, for a note, when the writer is on the same board.
-- `data.moveTaskToProject` qualifies the title, custom title, description, both overviews and every note against the source project. A ref to the moved task itself becomes its new seq, bare (`renumberSelfRefs` in `src/shared/task-refs.ts`). The history log keeps the text as it was.
+- `dev3 note add` and `dev3 overview set` send `sourceTaskId` from the CLI context, as `task update` does. `note.add` runs `qualifyRefsFor`, as `task create` does for new text, and `overview.set` runs `qualifyEditedRefsFor` against the old overview (`src/bun/cli-socket/board-metadata-commands.ts`). `writerProjectIdFor` (`task-resolution.ts`) skips the board scan when a task writes to itself, or, for a note, when the writer is on the same board.
+- `data.moveTaskToProject` qualifies the title, custom title, description, both overviews and every note against the source project. A ref to the moved task itself becomes its new seq, bare (`renumberSelfRefs` in `src/shared/task-refs.ts`). A `seq:N --project P` ref is left as written, because its project comes from the flag. The history log keeps the text as it was.
 
 ## 3. Risks
 
@@ -20,4 +20,5 @@
 ## 4. Alternatives considered
 
 - **Resolve bare refs in a moved task against its old project at render time**: rejected for the reason the 2026-11-21 record gives. The agent and the CLI read the stored text.
+- **The edit rule for notes, against the task's existing notes**: rejected. Notes repeat lines ("Blocked on seq:12"), so a new note from another board would keep a bare ref that names the wrong board. A note that quotes an earlier one re-qualifies the quote instead.
 - **Plain `qualifyRefsFor` for overviews**: rejected. An agent that reads another board's overview and writes it back would turn that board's own `seq:3` into its own.

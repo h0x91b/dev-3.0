@@ -225,7 +225,8 @@ export function renumberSelfRefs(text: string, oldProjectId: string, oldSeq: num
 	let out = "";
 	let cursor = 0;
 	for (const { ref, raw, start, end } of findRefsInText(text)) {
-		if (ref.kind !== "task" || ref.number !== oldSeq || ref.project !== oldProject) continue;
+		// `seq:7 --project P` takes P from the flag; rewriting only `seq:7` would detach it.
+		if (ref.kind !== "task" || ref.number !== oldSeq || ref.project !== oldProject || !raw.includes("/")) continue;
 		const renamed: TaskPrRef = { kind: "task", number: newSeq };
 		out += text.slice(cursor, start) + (raw.startsWith("<") ? formatRef(renamed) : refUri(renamed));
 		cursor = end;
