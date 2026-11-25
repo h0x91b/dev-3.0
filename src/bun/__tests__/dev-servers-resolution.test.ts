@@ -26,9 +26,7 @@ describe("resolveDevServers", () => {
 		expect(errors).toEqual([]);
 		expect(servers).toHaveLength(1);
 		expect(servers[0]).toMatchObject({ name: "dev", script: "bun run dev", isDefault: true, ports: [] });
-	});
-
-	it("declares nothing for an empty devScript", () => {
+		// An empty devScript declares nothing.
 		expect(resolveDevServers(project({ devScript: "   " })).servers).toEqual([]);
 	});
 
@@ -64,12 +62,11 @@ describe("resolveDevServers", () => {
 		expect(errors.join(" ")).toContain("declared twice");
 		expect(servers.map((server) => server.name)).toEqual(["dev"]);
 		expect(servers[0].script).toBe("bun run dev");
-	});
 
-	it("accepts `dev` in devServers when devScript is empty", () => {
-		const { errors, servers } = resolveDevServers(project({ devServers: { dev: { script: "bun run dev" } } }));
-		expect(errors).toEqual([]);
-		expect(servers[0]).toMatchObject({ name: "dev", isDefault: true });
+		// With devScript empty, `dev` in devServers is accepted as the default.
+		const alone = resolveDevServers(project({ devServers: { dev: { script: "bun run dev" } } }));
+		expect(alone.errors).toEqual([]);
+		expect(alone.servers[0]).toMatchObject({ name: "dev", isDefault: true });
 	});
 
 	it("rejects two servers claiming one named port", () => {
@@ -99,16 +96,10 @@ describe("resolveDevServerRef", () => {
 	const singleNamed = resolveDevServers(project({ devServers: { api: { script: "x" } } }));
 	const severalNoDefault = resolveDevServers(project({ devServers: { api: { script: "x" }, web: { script: "y" } } }));
 
-	it("resolves a name to that server", () => {
-		expect(resolveDevServerRef(withDefault, "api")).toMatchObject({ server: { name: "api" } });
-	});
-
-	it("resolves no name to the default", () => {
-		expect(resolveDevServerRef(withDefault)).toMatchObject({ server: { name: "dev" } });
-	});
-
 	// A single-server project should never have to spell its server's name.
-	it("resolves no name to the only server when there is no default", () => {
+	it("resolves a name to that server, and no name to the default or the only server", () => {
+		expect(resolveDevServerRef(withDefault, "api")).toMatchObject({ server: { name: "api" } });
+		expect(resolveDevServerRef(withDefault)).toMatchObject({ server: { name: "dev" } });
 		expect(resolveDevServerRef(singleNamed)).toMatchObject({ server: { name: "api" } });
 	});
 
@@ -130,8 +121,10 @@ describe("resolveDevServerRef", () => {
 });
 
 describe("ports", () => {
-	it("names a port's variable in upper case with dashes as underscores", () => {
+	it("names a port's variable and each server's generated script after it", () => {
 		expect(devServerPortEnvKey("back-office")).toBe("DEV3_PORT_BACK_OFFICE");
+		expect(devServerScriptBase("dev")).toBe("dev");
+		expect(devServerScriptBase("api")).toBe("dev-api");
 	});
 
 	// Positional first, then named sorted by name — the order allocation appends
@@ -142,14 +135,8 @@ describe("ports", () => {
 			named: { api: 10003, web: 10004 },
 		});
 		expect(devServerPortCount(2, ["api", "web"])).toBe(4);
-	});
-
-	it("leaves a named port out when the assignment is short of it", () => {
+		// A short assignment leaves the named port out.
 		expect(splitAssignedPorts([10001], 1, ["api"])).toEqual({ positional: [10001], named: {} });
 	});
 
-	it("names each server's generated script after it", () => {
-		expect(devServerScriptBase("dev")).toBe("dev");
-		expect(devServerScriptBase("api")).toBe("dev-api");
-	});
 });

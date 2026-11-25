@@ -249,7 +249,7 @@ beforeEach(() => {
 // ── taskPaneState ─────────────────────────────────────────────────────────────
 
 describe("taskPaneState", () => {
-	it("returns tmux backend state with normalized rects and labels", async () => {
+	it("returns tmux backend state with normalized rects, labels, zoom and capabilities", async () => {
 		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
 
 		expect(state.backend).toBe("tmux");
@@ -271,25 +271,44 @@ describe("taskPaneState", () => {
 		expect(p1.rect.x).toBeCloseTo(0.5);
 		expect(p1.rect.width).toBeCloseTo(0.5);
 
-		// Zoom flag preserved
 		expect(state.zoomedPaneId).toBeNull();
-	});
+		for (const cap of ["split", "newWindow", "focus", "close"]) expect(state.capabilities).toContain(cap);
 
-	it("preserves zoom flag from pane layout", async () => {
 		mocks.readPaneLayout.mockResolvedValue({ ...twoPane80PaneLayout, zoomed: true, activeIndex: 1 });
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.zoomedPaneId).toBe("%2");
+		const zoomed = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(zoomed.zoomedPaneId).toBe("%2");
 	});
 
-	it("names the agent's tmux pane from the session registry, wherever a swap moved it", async () => {
+	it("names the agent's tmux pane: registry wins, oldest without one, null once gone, undefined without a task", async () => {
+		// No registry → the oldest pane.
+		expect((await taskPanesHandlers.taskPaneState({ taskId: TASK_ID })).agentPaneId).toBe("%1");
+
+		// Registry names the pane wherever a swap moved it.
 		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%2" }] } });
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.agentPaneId).toBe("%2");
-	});
+		expect((await taskPanesHandlers.taskPaneState({ taskId: TASK_ID })).agentPaneId).toBe("%2");
+		// ...and keeps naming it after a pane action.
+		const afterAction = await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		expect(afterAction.agentPaneId).toBe("%2");
 
-	it("names the oldest tmux pane as the agent's when the task has no registry", async () => {
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.agentPaneId).toBe("%1");
+		// Registry pane in another window.
+		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%7" }] } });
+		mocks.getTmuxLayout.mockResolvedValue({
+			...twoPane80TmuxLayout,
+			windows: [...twoPane80TmuxLayout.windows, { index: 1, name: "agent", active: false, panes: 1, zoomed: false }],
+			panes: [...twoPane80TmuxLayout.panes, { windowIndex: 1, paneId: "%7", active: true, left: 0, top: 0, width: 100, height: 40, command: "claude", title: "" }],
+		});
+		const otherWindow = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(otherWindow.panes.map((pane) => pane.paneId)).toEqual(["%1", "%2"]);
+		expect(otherWindow.agentPaneId).toBe("%7");
+
+		// Registry pane gone.
+		mocks.getTmuxLayout.mockResolvedValue(twoPane80TmuxLayout);
+		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%9" }] } });
+		expect((await taskPanesHandlers.taskPaneState({ taskId: TASK_ID })).agentPaneId).toBeNull();
+
+		// Task missing.
+		mocks.getTask.mockRejectedValue(new Error("not found"));
+		expect((await taskPanesHandlers.taskPaneState({ taskId: TASK_ID })).agentPaneId).toBeUndefined();
 	});
 
 	it("keeps the oldest tmux pane as the agent's with no registry after a swap", async () => {
@@ -301,66 +320,9 @@ describe("taskPaneState", () => {
 		expect(state.agentPaneId).toBe("%1");
 	});
 
-	it("names no agent pane when the task cannot be found", async () => {
-		mocks.getTask.mockRejectedValue(new Error("not found"));
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.agentPaneId).toBeUndefined();
-	});
-
-	it("names the native agent pane", async () => {
+	it("returns native backend state with SplitTree rects, capabilities and the agent pane", async () => {
 		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
 		mocks.getTask.mockResolvedValue(nativeTask);
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.agentPaneId).toBe("pane-1");
-	});
-
-	it("names the agent's tmux pane while it sits in another window", async () => {
-		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%7" }] } });
-		mocks.getTmuxLayout.mockResolvedValue({
-			...twoPane80TmuxLayout,
-			windows: [...twoPane80TmuxLayout.windows, { index: 1, name: "agent", active: false, panes: 1, zoomed: false }],
-			panes: [...twoPane80TmuxLayout.panes, { windowIndex: 1, paneId: "%7", active: true, left: 0, top: 0, width: 100, height: 40, command: "claude", title: "" }],
-		});
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.panes.map((pane) => pane.paneId)).toEqual(["%1", "%2"]);
-		expect(state.agentPaneId).toBe("%7");
-	});
-
-	it("names no agent pane once the agent's tmux pane is gone", async () => {
-		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%9" }] } });
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.agentPaneId).toBeNull();
-	});
-
-	it("names no native agent pane once it has exited", async () => {
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		mocks.getTask.mockResolvedValue(nativeTask);
-		const twoPane = makeTwoPaneNativeState();
-		twoPane.panes[0] = { ...twoPane.panes[0]!, alive: false };
-		mocks.nativeTaskPanesState.mockResolvedValue(twoPane);
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.agentPaneId).toBeNull();
-	});
-
-	it("keeps naming the agent's pane after a pane action", async () => {
-		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%2" }] } });
-		const state = await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
-		expect(state.agentPaneId).toBe("%2");
-	});
-
-	it("reports tmux capabilities including newWindow", async () => {
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-		expect(state.capabilities).toContain("split");
-		expect(state.capabilities).toContain("newWindow");
-		expect(state.capabilities).toContain("focus");
-		expect(state.capabilities).toContain("close");
-	});
-
-	it("returns native backend state with rects from SplitTree", async () => {
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		mocks.getTask.mockResolvedValue(nativeTask);
-		const twoPane = makeTwoPaneNativeState();
-		mocks.nativeTaskPanesState.mockResolvedValue(twoPane);
 
 		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
 
@@ -371,15 +333,17 @@ describe("taskPaneState", () => {
 		expect(state.panes[0].rect.width).toBeCloseTo(0.5);
 		expect(state.panes[1].rect.x).toBeCloseTo(0.5);
 		expect(state.panes[1].rect.width).toBeCloseTo(0.5);
-	});
-
-	it("native capabilities do NOT include newWindow", async () => {
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		mocks.getTask.mockResolvedValue(nativeTask);
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
 		expect(state.capabilities).not.toContain("newWindow");
 		expect(state.capabilities).toContain("split");
 		expect(state.capabilities).toContain("focus");
+		expect(state.sessionAbsent).toBeFalsy();
+		expect(state.agentPaneId).toBe("pane-1");
+
+		// An exited agent pane is no longer named.
+		const twoPane = makeTwoPaneNativeState();
+		twoPane.panes[0] = { ...twoPane.panes[0]!, alive: false };
+		mocks.nativeTaskPanesState.mockResolvedValue(twoPane);
+		expect((await taskPanesHandlers.taskPaneState({ taskId: TASK_ID })).agentPaneId).toBeNull();
 	});
 
 	it("marks a vanished native session absent, so empty panes cannot read as loading", async () => {
@@ -394,16 +358,6 @@ describe("taskPaneState", () => {
 		expect(state.sessionAbsent).toBe(true);
 	});
 
-	it("does not mark a live native session absent", async () => {
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		mocks.getTask.mockResolvedValue(nativeTask);
-		mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
-
-		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-
-		expect(state.sessionAbsent).toBeFalsy();
-	});
-
 	it("throws for an unusable persisted backend identity", async () => {
 		mocks.taskTerminalBackendIdentity.mockImplementation(() => {
 			throw new Error("unusable backend: gibberish");
@@ -415,143 +369,80 @@ describe("taskPaneState", () => {
 // ── taskPaneAction — tmux path ────────────────────────────────────────────────
 
 describe("taskPaneAction (tmux)", () => {
-	it("splitH delegates to tmuxAction with splitH", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitH" } });
-		expect(mocks.tmuxActionHelper).toHaveBeenCalledWith(expect.objectContaining({ action: "splitH" }));
-	});
+	const act = (action: Parameters<typeof taskPanesHandlers.taskPaneAction>[0]["action"]) =>
+		taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action });
 
-	it("splitV delegates to tmuxAction with splitV", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitV" } });
+	it("splitH / splitV delegate to tmuxAction", async () => {
+		await act({ kind: "splitH" });
+		expect(mocks.tmuxActionHelper).toHaveBeenCalledWith(expect.objectContaining({ action: "splitH" }));
+		await act({ kind: "splitV" });
 		expect(mocks.tmuxActionHelper).toHaveBeenCalledWith(expect.objectContaining({ action: "splitV" }));
 	});
 
-	it("focus selects the specified pane", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focus", paneId: "%2" } });
+	it("focus, focusStep and focusDirection select the right tmux target", async () => {
+		await act({ kind: "focus", paneId: "%2" });
 		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%2", expect.anything());
+		await act({ kind: "focusStep", step: "next" });
+		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith(expect.stringContaining(".+"), expect.anything());
+		await act({ kind: "focusStep", step: "prev" });
+		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith(expect.stringContaining(".-"), expect.anything());
+		await act({ kind: "focusDirection", direction: "right" });
+		expect(mocks.tmuxSelectPaneDirection).toHaveBeenCalledWith("dev3-aaaaaaaa", "right", expect.anything());
 	});
 
 	it("reveal switches to the pane's window, then selects it, which lifts a zoom", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "reveal", paneId: "%1" } });
+		await act({ kind: "reveal", paneId: "%1" });
 		expect(mocks.tmuxSelectWindow).toHaveBeenCalledWith("%1", { socket: "dev3-sock", bestEffort: true });
 		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%1", { socket: "dev3-sock", bestEffort: true });
 		expect(mocks.tmuxSelectWindow.mock.invocationCallOrder[0]).toBeLessThan(mocks.tmuxSelectPane.mock.invocationCallOrder[0]!);
 	});
 
-	it("focusStep:next selects .+ target", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusStep", step: "next" } });
-		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith(expect.stringContaining(".+"), expect.anything());
-	});
+	it("zoom toggles, and on/off only toggle when the state differs; fresh state comes back", async () => {
+		const state = await act({ kind: "zoom" });
+		expect(mocks.tmuxToggleZoom).toHaveBeenCalledTimes(1);
+		expect(state.backend).toBe("tmux");
+		expect(state.panes).toHaveLength(2);
 
-	it("focusStep:prev selects .- target", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusStep", step: "prev" } });
-		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith(expect.stringContaining(".-"), expect.anything());
-	});
-
-	it("focusDirection calls selectPaneDirection", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusDirection", direction: "right" } });
-		expect(mocks.tmuxSelectPaneDirection).toHaveBeenCalledWith("dev3-aaaaaaaa", "right", expect.anything());
-	});
-
-	it("zoom (toggle) calls toggleZoom", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom" } });
-		expect(mocks.tmuxToggleZoom).toHaveBeenCalled();
+		mocks.readPaneLayout.mockResolvedValue({ ...twoPane80PaneLayout, zoomed: true });
+		mocks.tmuxToggleZoom.mockClear();
+		await act({ kind: "zoom", mode: "on" });
+		expect(mocks.tmuxToggleZoom).not.toHaveBeenCalled();
+		await act({ kind: "zoom", mode: "off" });
+		expect(mocks.tmuxToggleZoom).toHaveBeenCalledTimes(1);
 	});
 
 	it("swapStep hands the window and the step to tmux", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		await act({ kind: "swapStep", step: "next" });
 		expect(mocks.tmuxSwapPaneStep).toHaveBeenCalledWith("dev3-aaaaaaaa", "next", expect.anything());
-
-		mocks.tmuxSwapPaneStep.mockClear();
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "prev" } });
+		await act({ kind: "swapStep", step: "prev" });
 		expect(mocks.tmuxSwapPaneStep).toHaveBeenCalledWith("dev3-aaaaaaaa", "prev", expect.anything());
 	});
 
-	it("zoom:on does not toggle if already zoomed", async () => {
-		mocks.readPaneLayout.mockResolvedValue({ ...twoPane80PaneLayout, zoomed: true });
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom", mode: "on" } });
-		expect(mocks.tmuxToggleZoom).not.toHaveBeenCalled();
+	it("close routes a named pane to tmuxKillPane (passing force) and a bare close to killPane", async () => {
+		await act({ kind: "close", paneId: "%2" });
+		expect(mocks.tmuxKillPaneHelper).toHaveBeenLastCalledWith(expect.objectContaining({ taskId: TASK_ID, paneId: "%2", force: undefined }));
+		await act({ kind: "close", paneId: "%1", force: true });
+		expect(mocks.tmuxKillPaneHelper).toHaveBeenLastCalledWith(expect.objectContaining({ paneId: "%1", force: true }));
+		await act({ kind: "close" });
+		expect(mocks.tmuxActionHelper).toHaveBeenCalledWith(expect.objectContaining({ action: "killPane" }));
 	});
 
-	it("zoom:off toggles when currently zoomed", async () => {
-		mocks.readPaneLayout.mockResolvedValue({ ...twoPane80PaneLayout, zoomed: true });
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom", mode: "off" } });
-		expect(mocks.tmuxToggleZoom).toHaveBeenCalled();
-	});
-
-	it("close with paneId delegates to tmuxKillPane helper", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "close", paneId: "%2" } });
-		expect(mocks.tmuxKillPaneHelper).toHaveBeenCalledWith(
-			expect.objectContaining({ taskId: TASK_ID, paneId: "%2" }),
-		);
-	});
-
-	it("close without paneId delegates to tmuxAction killPane", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "close" } });
-		expect(mocks.tmuxActionHelper).toHaveBeenCalledWith(
-			expect.objectContaining({ action: "killPane" }),
-		);
-	});
-
-	it("close delegates to tmuxKillPane which runs handlePaneExited", async () => {
-		// tmuxKillPane internally calls handlePaneExited. Verify delegation occurs.
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "close", paneId: "%2" } });
-		// tmuxKillPane was called — that function (when not mocked in real code) calls handlePaneExited
-		expect(mocks.tmuxKillPaneHelper).toHaveBeenCalledWith(
-			expect.objectContaining({ taskId: TASK_ID, paneId: "%2" }),
-		);
-	});
-
-	it("close force:true passes force through to tmuxKillPane", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "close", paneId: "%1", force: true } });
-		expect(mocks.tmuxKillPaneHelper).toHaveBeenCalledWith(
-			expect.objectContaining({ force: true }),
-		);
-	});
-
-	it("close force:false (default) does NOT pass force=true to tmuxKillPane", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "close", paneId: "%1" } });
-		expect(mocks.tmuxKillPaneHelper).toHaveBeenCalledWith(
-			expect.objectContaining({ force: undefined }),
-		);
-	});
-
-	it("resize calls resizePaneDirection", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "resize", direction: "right", amount: 10 } });
+	it("resize calls resizePaneDirection, defaulting the amount to 5", async () => {
+		await act({ kind: "resize", direction: "right", amount: 10 });
 		expect(mocks.tmuxResizePaneDirection).toHaveBeenCalledWith("dev3-aaaaaaaa", "right", 10, expect.anything());
-	});
-
-	it("resize uses default amount 5 when omitted", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "resize", direction: "down" } });
+		await act({ kind: "resize", direction: "down" });
 		expect(mocks.tmuxResizePaneDirection).toHaveBeenCalledWith("dev3-aaaaaaaa", "down", 5, expect.anything());
 	});
 
-	it("layoutPreset calls selectLayout with the geometric name", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutPreset", preset: "evenH" } });
-		// evenH → even-vertical
-		expect(mocks.tmuxSelectLayout).toHaveBeenCalledWith("dev3-aaaaaaaa", "even-vertical", expect.anything());
-	});
-
-	it("layoutPreset:evenV uses even-horizontal", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutPreset", preset: "evenV" } });
-		expect(mocks.tmuxSelectLayout).toHaveBeenCalledWith("dev3-aaaaaaaa", "even-horizontal", expect.anything());
-	});
-
-	it("layoutPreset:mainH uses main-horizontal", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutPreset", preset: "mainH" } });
-		expect(mocks.tmuxSelectLayout).toHaveBeenCalledWith("dev3-aaaaaaaa", "main-horizontal", expect.anything());
-	});
-
-	it("layoutCycle calls nextLayout and reports layoutPreset: null", async () => {
-		const state = await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutCycle" } });
+	it("layoutPreset maps to the geometric tmux name; layoutCycle reports layoutPreset: null", async () => {
+		for (const [preset, tmuxName] of [["evenH", "even-vertical"], ["evenV", "even-horizontal"], ["mainH", "main-horizontal"]] as const) {
+			await act({ kind: "layoutPreset", preset });
+			expect(mocks.tmuxSelectLayout, preset).toHaveBeenLastCalledWith("dev3-aaaaaaaa", tmuxName, expect.anything());
+		}
+		const state = await act({ kind: "layoutCycle" });
 		expect(mocks.tmuxNextLayout).toHaveBeenCalled();
 		// After nextLayout tmux cycles freely — we cannot name the preset
 		expect(state.layoutPreset).toBeNull();
-	});
-
-	it("returns fresh tmux state after every action", async () => {
-		const state = await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom" } });
-		expect(state.backend).toBe("tmux");
-		expect(state.panes).toHaveLength(2);
 	});
 });
 
@@ -563,8 +454,11 @@ describe("taskPaneAction (native)", () => {
 		mocks.getTask.mockResolvedValue(nativeTask);
 	});
 
-	it("splitH calls splitNativeTaskPane with orientation 'vertical'", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitH" } });
+	const act = (action: Parameters<typeof taskPanesHandlers.taskPaneAction>[0]["action"]) =>
+		taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action });
+
+	it("splitH / splitV call splitNativeTaskPane with the task's cwd/env", async () => {
+		await act({ kind: "splitH" });
 		expect(mocks.splitNativeTaskPane).toHaveBeenCalledWith(
 			TASK_ID,
 			"pane-1", // active pane id from makeTwoPaneNativeState
@@ -572,92 +466,58 @@ describe("taskPaneAction (native)", () => {
 			// cwd/env come from the task record, so a split survives an app restart.
 			{ cwd: "/tmp/wt", env: expect.objectContaining({ DEV3_WORKTREE_PATH: "/tmp/wt" }) },
 		);
+		await act({ kind: "splitV" });
+		expect(mocks.splitNativeTaskPane).toHaveBeenLastCalledWith(TASK_ID, expect.any(String), "horizontal", expect.objectContaining({ cwd: "/tmp/wt" }));
 	});
 
-	it("splitV calls splitNativeTaskPane with orientation 'horizontal'", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitV" } });
-		expect(mocks.splitNativeTaskPane).toHaveBeenCalledWith(
-			TASK_ID,
-			expect.any(String),
-			"horizontal",
-			expect.objectContaining({ cwd: "/tmp/wt" }),
-		);
-	});
-
-	it("focus calls focusNativeTaskPane", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focus", paneId: "pane-2" } });
+	it("focus, focusStep (wrapping both ways) and focusDirection focus the right pane", async () => {
+		await act({ kind: "focus", paneId: "pane-2" });
+		expect(mocks.focusNativeTaskPane).toHaveBeenLastCalledWith(TASK_ID, "pane-2");
+		// pane-1 is active at index 0: next → pane-2, prev wraps to pane-2.
+		for (const step of ["next", "prev"] as const) {
+			mocks.focusNativeTaskPane.mockClear();
+			await act({ kind: "focusStep", step });
+			expect(mocks.focusNativeTaskPane, step).toHaveBeenCalledWith(TASK_ID, "pane-2");
+		}
+		mocks.focusNativeTaskPane.mockClear();
+		await act({ kind: "focusDirection", direction: "right" });
 		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
 	});
 
-	it("focusStep:next wraps to next pane by layout order", async () => {
-		const state = makeTwoPaneNativeState(); // activePaneId = pane-1
-		mocks.nativeTaskPanesState.mockResolvedValue(state);
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusStep", step: "next" } });
-		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
-	});
+	it("reveal lifts a zoom on another pane, and leaves the layout alone when nothing hides it", async () => {
+		await act({ kind: "reveal", paneId: "pane-1" });
+		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
+		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
 
-	it("focusStep:prev wraps from first pane to last", async () => {
-		const state = makeTwoPaneNativeState();
-		mocks.nativeTaskPanesState.mockResolvedValue(state);
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusStep", step: "prev" } });
-		// pane-1 is index 0; prev wraps to index 1 (pane-2)
-		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
-	});
-
-	it("focusDirection calls setNativeTaskPaneLayout when direction finds a different pane", async () => {
-		// Two panes side by side — direction "right" from pane-1 should focus pane-2
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusDirection", direction: "right" } });
-		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
-	});
-
-	it("reveal lifts a zoom on another pane, then focuses the pane", async () => {
 		const zoomed = makeTwoPaneNativeState();
 		zoomed.layout = serializeSplitTree({ ...restoreSplitTree(zoomed.layout!)!, zoomedPaneId: "pane-2", activePaneId: "pane-2" });
 		mocks.nativeTaskPanesState.mockResolvedValue(zoomed);
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "reveal", paneId: "pane-1" } });
+		await act({ kind: "reveal", paneId: "pane-1" });
 		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].zoomedPaneId).toBeNull();
-		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
+		expect(mocks.focusNativeTaskPane).toHaveBeenLastCalledWith(TASK_ID, "pane-1");
 	});
 
-	it("reveal leaves the layout alone when nothing hides the pane", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "reveal", paneId: "pane-1" } });
-		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
-		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
-	});
+	it("zoom toggle/on/off write the zoomed pane through setNativeTaskPaneLayout", async () => {
+		await act({ kind: "zoom" });
+		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalledTimes(1);
 
-	it("zoom:toggle updates layout via setNativeTaskPaneLayout", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom" } });
-		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalled();
-	});
+		mocks.setNativeTaskPaneLayout.mockClear();
+		await act({ kind: "zoom", mode: "on", paneId: "pane-2" });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].zoomedPaneId).toBe("pane-2");
 
-	it("zoom:on sets zoomedPaneId", async () => {
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "zoom", mode: "on", paneId: "pane-2" },
-		});
-		// After zoomPane, the tree should have zoomedPaneId set; setNativeTaskPaneLayout was called with that tree
-		const calledTree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
-		expect(calledTree.zoomedPaneId).toBe("pane-2");
-	});
-
-	it("zoom:off clears zoomedPaneId", async () => {
-		// Pre-zoom the tree
 		const preZoomedState = makeTwoPaneNativeState();
-		const { restoreSplitTree: restore, zoomPane } = await import("../../../shared/split-tree");
-		const baseTree = restore(preZoomedState.layout)!;
-		const zoomedTree = zoomPane(baseTree, "pane-1");
+		const { zoomPane } = await import("../../../shared/split-tree");
 		mocks.nativeTaskPanesState.mockResolvedValue({
 			...preZoomedState,
-			layout: serializeSplitTree(zoomedTree),
+			layout: serializeSplitTree(zoomPane(restoreSplitTree(preZoomedState.layout)!, "pane-1")),
 		});
-
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom", mode: "off" } });
-		const calledTree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
-		expect(calledTree.zoomedPaneId).toBeNull();
+		mocks.setNativeTaskPaneLayout.mockClear();
+		await act({ kind: "zoom", mode: "off" });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].zoomedPaneId).toBeNull();
 	});
 
-	it("swapStep trades the active pane with its neighbour and wraps", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+	it("swapStep trades the active pane with its neighbour and wraps; a single pane changes nothing", async () => {
+		await act({ kind: "swapStep", step: "next" });
 		const tree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
 		// pane-1 was left of pane-2; after the swap it is on the right.
 		expect(tree.root.first.id).toBe("pane-2");
@@ -670,115 +530,63 @@ describe("taskPaneAction (native)", () => {
 
 		// prev wraps to the same partner in a two-pane tree.
 		mocks.setNativeTaskPaneLayout.mockClear();
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "prev" } });
+		await act({ kind: "swapStep", step: "prev" });
 		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].root.first.id).toBe("pane-2");
-	});
 
-	it("swapStep with a single pane changes nothing", async () => {
+		mocks.setNativeTaskPaneLayout.mockClear();
 		mocks.nativeTaskPanesState.mockResolvedValue(makeSingleNativeState());
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		await act({ kind: "swapStep", step: "next" });
 		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
 	});
 
-	it("close with 1 pane and no force returns unchanged state (refuses)", async () => {
-		mocks.nativeTaskPanesState.mockResolvedValue(makeSingleNativeState());
-		const state = await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "close", force: false },
-		});
-		expect(mocks.closeNativeTaskPane).not.toHaveBeenCalled();
-		expect(state.panes).toHaveLength(1); // unchanged
-	});
-
-	it("close with 1 pane and force:true tears down session", async () => {
-		mocks.nativeTaskPanesState.mockResolvedValue(makeSingleNativeState());
-		mocks.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: true, state: null });
-
-		const state = await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "close", force: true },
-		});
-		expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
-		// Session torn down → empty state returned
-		expect(state.panes).toHaveLength(0);
-	});
-
-	it("close with 2 panes and no force succeeds without confirm", async () => {
-		// Two panes: closing one should proceed without force
+	it("close: two panes close freely; the last pane is refused without force and torn down with it", async () => {
 		mocks.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: makeSingleNativeState() });
-		const state = await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "close", paneId: "pane-2" },
-		});
+		const two = await act({ kind: "close", paneId: "pane-2" });
 		expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
-		expect(state.panes).toHaveLength(1);
+		expect(two.panes).toHaveLength(1);
+
+		mocks.closeNativeTaskPane.mockClear();
+		mocks.nativeTaskPanesState.mockResolvedValue(makeSingleNativeState());
+		const refused = await act({ kind: "close", force: false });
+		expect(mocks.closeNativeTaskPane).not.toHaveBeenCalled();
+		expect(refused.panes).toHaveLength(1); // unchanged
+
+		mocks.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: true, state: null });
+		const forced = await act({ kind: "close", force: true });
+		expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
+		expect(forced.panes).toHaveLength(0);
 	});
 
-	it("layoutPreset applies the correct geometric preset to the tree", async () => {
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "layoutPreset", preset: "evenH" },
-		});
-		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalled();
-		// The tree passed should be the evenH layout (even-vertical in SplitTree)
-		const calledTree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
-		// applySplitLayout with even-vertical produces two equal-height panes
-		expect(calledTree.root.type).toBe("split");
-	});
+	it("layoutPreset, layoutCycle and resize each write a new tree", async () => {
+		await act({ kind: "layoutPreset", preset: "evenH" });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].root.type).toBe("split");
 
-	it("layoutCycle computes nextPreset honestly from current geometry", async () => {
-		// Set up a tree that matches evenH (even-vertical preset)
 		const twoPane = makeTwoPaneNativeState();
-		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
-		const baseTree = restore(twoPane.layout)!;
-		const evenVTree = applySplitLayout(baseTree, "even-vertical");
 		mocks.nativeTaskPanesState.mockResolvedValue({
 			...twoPane,
-			layout: serializeSplitTree(evenVTree),
+			layout: serializeSplitTree(applySplitLayout(restoreSplitTree(twoPane.layout)!, "even-vertical")),
 		});
+		mocks.setNativeTaskPaneLayout.mockClear();
+		await act({ kind: "layoutCycle" });
+		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalled();
 
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutCycle" } });
+		mocks.setNativeTaskPaneLayout.mockClear();
+		mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
+		await act({ kind: "resize", direction: "right", amount: 10 });
 		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalled();
 	});
 
-	it("resize adjusts the split ratio via setNativeTaskPaneLayout", async () => {
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "resize", direction: "right", amount: 10 },
-		});
-		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalled();
-	});
+	it("setSplitRatio persists the dragged ratio, clamps it, and ignores an unknown split", async () => {
+		const splitId = (restoreSplitTree(makeTwoPaneNativeState().layout)! as { root: { id: string } }).root.id;
 
-	it("setSplitRatio persists the dragged ratio through setNativeTaskPaneLayout", async () => {
-		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
-		const splitId = (restore(makeTwoPaneNativeState().layout)! as { root: { id: string } }).root.id;
+		await act({ kind: "setSplitRatio", splitId, ratio: 0.72 });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].root.ratio).toBeCloseTo(0.72, 5);
 
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "setSplitRatio", splitId, ratio: 0.72 },
-		});
+		await act({ kind: "setSplitRatio", splitId, ratio: 0.001 });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[1][1].root.ratio).toBe(0.1);
 
-		const tree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
-		expect(tree.root.ratio).toBeCloseTo(0.72, 5);
-	});
-
-	it("setSplitRatio clamps past the minimum pane ratio", async () => {
-		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
-		const splitId = (restore(makeTwoPaneNativeState().layout)! as { root: { id: string } }).root.id;
-
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "setSplitRatio", splitId, ratio: 0.001 },
-		});
-
-		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].root.ratio).toBe(0.1);
-	});
-
-	it("setSplitRatio on an unknown split writes nothing", async () => {
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "setSplitRatio", splitId: "split-does-not-exist", ratio: 0.7 },
-		});
+		mocks.setNativeTaskPaneLayout.mockClear();
+		await act({ kind: "setSplitRatio", splitId: "split-does-not-exist", ratio: 0.7 });
 		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
 	});
 
@@ -798,9 +606,9 @@ describe("taskPaneAction (native)", () => {
 
 	it("native path issues NO tmux call — ever", async () => {
 		// Exercise the most common native actions and verify the tmux singleton is untouched
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitH" } });
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom" } });
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focus", paneId: "pane-2" } });
+		await act({ kind: "splitH" });
+		await act({ kind: "zoom" });
+		await act({ kind: "focus", paneId: "pane-2" });
 
 		expect(mocks.tmuxSelectPane).not.toHaveBeenCalled();
 		expect(mocks.tmuxSelectPaneDirection).not.toHaveBeenCalled();
@@ -812,6 +620,7 @@ describe("taskPaneAction (native)", () => {
 		expect(mocks.tmuxKillPaneHelper).not.toHaveBeenCalled();
 	});
 });
+
 
 // ── native layoutPreset detection ────────────────────────────────────────────
 
@@ -847,54 +656,34 @@ function makeThreePaneNativeState(): NativeTaskPanesState {
 	};
 }
 
+
 describe("native layoutPreset detection", () => {
 	beforeEach(() => {
 		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
 		mocks.getTask.mockResolvedValue(nativeTask);
 	});
 
-	async function stateForPreset(
-		base: NativeTaskPanesState,
-		preset: "even-horizontal" | "even-vertical" | "main-horizontal" | "main-vertical" | "tiled",
-	) {
-		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
-		const baseTree = restore(base.layout)!;
-		const presetTree = applySplitLayout(baseTree, preset);
-		mocks.nativeTaskPanesState.mockResolvedValue({ ...base, layout: serializeSplitTree(presetTree) });
-		return taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
-	}
-
-	it("detects evenH after applying even-vertical (2 panes)", async () => {
-		const state = await stateForPreset(makeTwoPaneNativeState(), "even-vertical");
-		expect(state.layoutPreset).toBe("evenH");
-	});
-
-	it("detects evenV after applying even-horizontal (2 panes)", async () => {
-		const state = await stateForPreset(makeTwoPaneNativeState(), "even-horizontal");
-		expect(state.layoutPreset).toBe("evenV");
-	});
-
-	// For 3+ panes, main-* and even-* produce distinct geometries and are distinguishable.
-	it("detects mainH after applying main-horizontal (3 panes)", async () => {
-		const state = await stateForPreset(makeThreePaneNativeState(), "main-horizontal");
-		expect(state.layoutPreset).toBe("mainH");
-	});
-
-	it("detects mainV after applying main-vertical (3 panes)", async () => {
-		const state = await stateForPreset(makeThreePaneNativeState(), "main-vertical");
-		expect(state.layoutPreset).toBe("mainV");
-	});
-
-	it("detects tiled after applying tiled (3 panes)", async () => {
-		const state = await stateForPreset(makeThreePaneNativeState(), "tiled");
-		expect(state.layoutPreset).toBe("tiled");
+	it("detects each preset after applying it (main-* needs 3 panes to differ from even-*)", async () => {
+		const cases = [
+			[makeTwoPaneNativeState, "even-vertical", "evenH"],
+			[makeTwoPaneNativeState, "even-horizontal", "evenV"],
+			[makeThreePaneNativeState, "main-horizontal", "mainH"],
+			[makeThreePaneNativeState, "main-vertical", "mainV"],
+			[makeThreePaneNativeState, "tiled", "tiled"],
+		] as const;
+		for (const [make, preset, expected] of cases) {
+			const base = make();
+			const presetTree = applySplitLayout(restoreSplitTree(base.layout)!, preset);
+			mocks.nativeTaskPanesState.mockResolvedValue({ ...base, layout: serializeSplitTree(presetTree) });
+			const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+			expect(state.layoutPreset, preset).toBe(expected);
+		}
 	});
 
 	it("reports null for a hand-built geometry that matches no preset", async () => {
 		// A custom 70/30 ratio matches no standard preset
 		const base = makeTwoPaneNativeState();
-		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
-		const baseTree = restore(base.layout)!;
+		const baseTree = restoreSplitTree(base.layout)!;
 		const customTree = { ...baseTree, root: {
 			type: "split" as const, id: "split-1", orientation: "horizontal" as const, ratio: 0.7,
 			first: { type: "pane" as const, id: "pane-1" },
@@ -907,79 +696,53 @@ describe("native layoutPreset detection", () => {
 	});
 });
 
-// ── tmuxNewWindow ─────────────────────────────────────────────────────────────
+// ── tmux windows ──────────────────────────────────────────────────────────────
+
+describe("tmux window handlers on a native task", () => {
+	it("tmuxNewWindow / tmuxCloseWindow / tmuxRenameWindow are no-ops", async () => {
+		mocks.getTask.mockResolvedValue(nativeTask);
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
+		expect(mocks.tmuxNewWindow).not.toHaveBeenCalled();
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID })).toEqual({ closed: false, reason: "notFound" });
+		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@1", name: "x" })).toEqual({ renamed: false });
+		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
+	});
+});
 
 describe("tmuxNewWindow", () => {
 	it("opens a new tmux window for a tmux task", async () => {
 		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
 		expect(mocks.tmuxNewWindow).toHaveBeenCalled();
 	});
-
-	it("is a no-op for a native task", async () => {
-		mocks.getTask.mockResolvedValue(nativeTask);
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
-		expect(mocks.tmuxNewWindow).not.toHaveBeenCalled();
-	});
 });
 
-// ── tmuxCloseWindow ───────────────────────────────────────────────────────────
-
 describe("tmuxCloseWindow", () => {
-	it("closes the active window when no window is named", async () => {
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID });
-		expect(result).toEqual({ closed: true });
+	it("closes the active window when none is named, or a named one by id", async () => {
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID })).toEqual({ closed: true });
 		expect(mocks.tmuxKillWindow).toHaveBeenCalledWith("@2", { socket: "dev3-sock" });
 		expect(mocks.handlePaneExited).toHaveBeenCalled();
+
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@3" })).toEqual({ closed: true });
+		expect(mocks.tmuxKillWindow).toHaveBeenLastCalledWith("@3", { socket: "dev3-sock" });
 	});
 
-	it("closes a named window by its id", async () => {
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@3" });
-		expect(result).toEqual({ closed: true });
-		expect(mocks.tmuxKillWindow).toHaveBeenCalledWith("@3", { socket: "dev3-sock" });
-	});
-
-	it("refuses the agent's window without force and names it for the retry", async () => {
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@1" });
-		expect(result).toEqual({ closed: false, reason: "agentWindow", windowId: "@1" });
+	it("refuses the agent's window without force (naming it for the retry) and closes it once forced", async () => {
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@1" })).toEqual({ closed: false, reason: "agentWindow", windowId: "@1" });
 		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
-	});
 
-	it("closes the agent's window once forced", async () => {
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@1", force: true });
-		expect(result).toEqual({ closed: true });
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@1", force: true })).toEqual({ closed: true });
 		expect(mocks.tmuxKillWindow).toHaveBeenCalledWith("@1", { socket: "dev3-sock" });
 	});
 
-	it("never closes the last window, even forced", async () => {
+	it("kills nothing for a malformed id, a window already gone, or the last window even forced", async () => {
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "dev3-x:1" })).toEqual({ closed: false, reason: "notFound" });
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@9" })).toEqual({ closed: false, reason: "notFound" });
 		mocks.tmuxListPanes.mockResolvedValue([{ windowId: "@1", windowActive: true, paneId: "%1", agent: false }]);
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, force: true });
-		expect(result).toEqual({ closed: false, reason: "lastWindow" });
+		expect(await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, force: true })).toEqual({ closed: false, reason: "lastWindow" });
 		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
-	});
-
-	it("rejects a window id that is not a tmux window id", async () => {
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "dev3-x:1" });
-		expect(result).toEqual({ closed: false, reason: "notFound" });
-		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
-	});
-
-	it("reports a window that is already gone without killing anything", async () => {
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID, windowId: "@9" });
-		expect(result).toEqual({ closed: false, reason: "notFound" });
-		expect(mocks.tmuxKillWindow).not.toHaveBeenCalled();
-	});
-
-	it("is a no-op for a native task", async () => {
-		mocks.getTask.mockResolvedValue(nativeTask);
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID });
-		expect(result).toEqual({ closed: false, reason: "notFound" });
-		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
 	});
 });
-
-// ── tmuxRenameWindow ──────────────────────────────────────────────────────────
 
 describe("tmuxRenameWindow", () => {
 	beforeEach(() => {
@@ -987,15 +750,12 @@ describe("tmuxRenameWindow", () => {
 		mocks.tmuxUnsetWindowOption.mockReset().mockResolvedValue(undefined);
 	});
 
-	it("stores a cleaned-up name in the window's own option", async () => {
-		const result = await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@3", name: "  Dev\tserver\n " });
-		expect(result).toEqual({ renamed: true });
+	it("stores a cleaned-up name; an empty name hands the window back to automatic naming", async () => {
+		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@3", name: "  Dev\tserver\n " })).toEqual({ renamed: true });
 		expect(mocks.tmuxSetWindowOption).toHaveBeenCalledWith("@3", "@dev3_window_name", "Dev server", { socket: "dev3-sock" });
-	});
 
-	it("an empty name hands the window back to automatic naming", async () => {
-		const result = await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@3", name: "   " });
-		expect(result).toEqual({ renamed: true });
+		mocks.tmuxSetWindowOption.mockClear();
+		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@3", name: "   " })).toEqual({ renamed: true });
 		expect(mocks.tmuxUnsetWindowOption).toHaveBeenCalledWith("@3", "@dev3_window_name", { socket: "dev3-sock" });
 		expect(mocks.tmuxSetWindowOption).not.toHaveBeenCalled();
 	});
@@ -1004,13 +764,6 @@ describe("tmuxRenameWindow", () => {
 		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@9", name: "x" })).toEqual({ renamed: false });
 		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "dev3-x:1", name: "x" })).toEqual({ renamed: false });
 		expect(mocks.tmuxSetWindowOption).not.toHaveBeenCalled();
-	});
-
-	it("is a no-op for a native task", async () => {
-		mocks.getTask.mockResolvedValue(nativeTask);
-		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
-		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@1", name: "x" })).toEqual({ renamed: false });
-		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
 	});
 });
 
@@ -1040,23 +793,13 @@ describe("native pane action reads only the layout", () => {
 		mocks.nativeTaskPanesState.mockClear();
 	});
 
-	it("does not run the per-pane ownership sweep for a layout preset", async () => {
-		await taskPanesHandlers.taskPaneAction({
-			taskId: TASK_ID,
-			action: { kind: "layoutPreset", preset: "evenV" },
-		});
+	it("does not run the per-pane ownership sweep for a layout preset, a layout cycle or a split", async () => {
+		const actions = [{ kind: "layoutPreset", preset: "evenV" }, { kind: "layoutCycle" }, { kind: "splitH" }] as const;
+		for (const action of actions) {
+			await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action });
+			expect(mocks.nativeTaskPanesState, action.kind).not.toHaveBeenCalled();
+		}
 		expect(mocks.nativeTaskPaneLayout).toHaveBeenCalledWith(TASK_ID);
-		expect(mocks.nativeTaskPanesState).not.toHaveBeenCalled();
-	});
-
-	it("does not run it for a layout cycle either", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutCycle" } });
-		expect(mocks.nativeTaskPanesState).not.toHaveBeenCalled();
-	});
-
-	it("does not run it for a split", async () => {
-		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitH" } });
-		expect(mocks.nativeTaskPanesState).not.toHaveBeenCalled();
 	});
 
 	// PR #1222 gave aux panes real titles; an action must return them too, or a split
@@ -1101,16 +844,17 @@ describe("getPanePtyUrl", () => {
 		mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
 	});
 
-	it("returns a ws:// URL for the first pane using the bare taskId", async () => {
+	it("returns a bare-taskId ws:// URL for the first pane, without rebinding a session this process holds", async () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
 		expect(result).toEqual({ url: ptyWsUrl(9999, TASK_ID) });
 		expect(mocks.ensureNativePanePtySession).not.toHaveBeenCalled();
+		expect(mocks.reattachNativeTaskSession).not.toHaveBeenCalled();
 	});
 
 	// The bug: only the process that LAUNCHED the task holds the bare-key session,
 	// so every other viewer got `Unknown session` for pane-1 while panes 2..N —
 	// registered lazily on this very call — attached fine.
-	it("rebinds the first pane when this app process did not launch the task", async () => {
+	it("rebinds the first pane when this app process did not launch the task, never spawning a replacement", async () => {
 		mocks.hasSession.mockReturnValue(false);
 		mocks.reattachNativeTaskSession.mockResolvedValue(true);
 
@@ -1118,12 +862,8 @@ describe("getPanePtyUrl", () => {
 
 		expect(mocks.reattachNativeTaskSession).toHaveBeenCalledWith(TASK_ID, "proj-1", "/tmp/wt");
 		expect(result).toEqual({ url: ptyWsUrl(9999, TASK_ID) });
-	});
-
-	it("does not rebind the first pane when this process already holds the session", async () => {
-		mocks.hasSession.mockReturnValue(true);
-		await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
-		expect(mocks.reattachNativeTaskSession).not.toHaveBeenCalled();
+		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
+		expect(mocks.ensureNativePanePtySession).not.toHaveBeenCalled();
 	});
 
 	it("reports the first pane gone when its host cannot be rebound — never a dead URL", async () => {
@@ -1141,41 +881,21 @@ describe("getPanePtyUrl", () => {
 		expect(result).toEqual({ gone: true });
 	});
 
-	it("never spawns a replacement while rebinding", async () => {
-		mocks.hasSession.mockReturnValue(false);
-		mocks.reattachNativeTaskSession.mockResolvedValue(true);
-		await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
-		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
-		expect(mocks.ensureNativePanePtySession).not.toHaveBeenCalled();
-	});
-
-	it("returns a composite-key URL for a non-first pane", async () => {
+	it("returns a composite-key URL for a non-first pane after ensuring its session", async () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-2" });
 		expect(result).toEqual({ url: ptyWsUrl(9999, `${TASK_ID}~pane-2`) });
+		expect(mocks.ensureNativePanePtySession).toHaveBeenCalledWith(TASK_ID, "pane-2", "sess-2", "proj-1", "/tmp/wt");
 	});
 
-	it("calls ensureNativePanePtySession for non-first panes", async () => {
-		await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-2" });
-		expect(mocks.ensureNativePanePtySession).toHaveBeenCalledWith(
-			TASK_ID,
-			"pane-2",
-			"sess-2",
-			"proj-1",
-			"/tmp/wt",
-		);
-	});
+	it("throws for a tmux task and for a pane missing from the native state", async () => {
+		await expect(
+			taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-99" }),
+		).rejects.toThrow(/Pane pane-99 not found/);
 
-	it("throws for a tmux task", async () => {
 		mocks.taskTerminalBackendIdentity.mockReturnValue("tmux");
 		mocks.getTask.mockResolvedValue(tmuxTask);
 		await expect(
 			taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" }),
 		).rejects.toThrow(/only available for native/);
-	});
-
-	it("throws when the pane does not exist in the native state", async () => {
-		await expect(
-			taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-99" }),
-		).rejects.toThrow(/Pane pane-99 not found/);
 	});
 });

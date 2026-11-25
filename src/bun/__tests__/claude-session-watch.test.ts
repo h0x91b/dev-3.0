@@ -25,7 +25,7 @@ function fixture() {
 }
 
 describe("Claude's native session idle event", () => {
-	it("reports Escape after busy, including before any assistant token or tool hook", async () => {
+	it("reports Escape after busy (before any assistant token or tool hook) once, invalidated by the next prompt", async () => {
 		const { watcher, onIdle, input, write } = fixture();
 		watcher.observe(input, onIdle);
 		write({ status: "idle", statusUpdatedAt: 20 });
@@ -33,29 +33,8 @@ describe("Claude's native session idle event", () => {
 		expect(onIdle).toHaveBeenCalledTimes(1);
 		await watcher.check(input.taskId, input.paneId);
 		expect(onIdle).toHaveBeenCalledTimes(1);
-	});
 
-	it("does not treat a dismissed UI or pending tool cancellation as idle", async () => {
-		const { watcher, onIdle, input, write } = fixture();
-		watcher.observe(input, onIdle);
-		write({ updatedAt: 50 });
-		await watcher.check(input.taskId, input.paneId);
-		expect(onIdle).not.toHaveBeenCalled();
-	});
-
-	it("does not infer interruption from an exited or malformed session", async () => {
-		const { watcher, onIdle, input, write } = fixture();
-		watcher.observe(input, onIdle);
-		write({ kind: "sdk", status: "idle", statusUpdatedAt: 20 });
-		await watcher.check(input.taskId, input.paneId);
-		expect(onIdle).not.toHaveBeenCalled();
-	});
-
-	it("invalidates queued idle events when a subsequent prompt starts", async () => {
-		const { watcher, onIdle, input, write } = fixture();
-		watcher.observe(input, onIdle);
-		write({ status: "idle", statusUpdatedAt: 20 });
-		await watcher.check(input.taskId, input.paneId);
+		// A subsequent prompt invalidates the queued idle event.
 		const event = onIdle.mock.calls[0]![0];
 		expect(watcher.isCurrentIdle(event)).toBe(true);
 		write({ status: "busy", statusUpdatedAt: 30 });
@@ -63,13 +42,14 @@ describe("Claude's native session idle event", () => {
 		expect(watcher.isCurrentIdle(event)).toBe(false);
 	});
 
-	it("does not hide another working or unobserved agent pane", async () => {
+	it("does not treat a dismissed UI, a pending tool cancellation, or an exited/malformed session as idle", async () => {
 		const { watcher, onIdle, input, write } = fixture();
 		watcher.observe(input, onIdle);
-		write({ status: "idle", statusUpdatedAt: 20 });
+		write({ updatedAt: 50 });
 		await watcher.check(input.taskId, input.paneId);
-		expect(watcher.allIdle("task", [{ paneId: "%1", sessionId: "session" }])).toBe(true);
-		expect(watcher.allIdle("task", [{ paneId: "%1", sessionId: "session" }, { paneId: "%2", sessionId: "peer" }])).toBe(false);
+		write({ kind: "sdk", status: "idle", statusUpdatedAt: 20 });
+		await watcher.check(input.taskId, input.paneId);
+		expect(onIdle).not.toHaveBeenCalled();
 	});
 
 	it("rejects process replacement without adopting its later idle edge", async () => {
@@ -82,7 +62,7 @@ describe("Claude's native session idle event", () => {
 		expect(onIdle).not.toHaveBeenCalled();
 	});
 
-	it("waits until all observed Claude panes are idle", async () => {
+	it("waits until all observed Claude panes are idle, never hiding an unobserved one", async () => {
 		const { watcher, onIdle, input, write } = fixture();
 		watcher.observe(input, onIdle);
 		const peer = { pid: 124, sessionId: "peer", cwd: input.cwd, startedAt: 1, kind: "interactive", entrypoint: "cli", status: "busy", statusUpdatedAt: 10 };
@@ -91,6 +71,8 @@ describe("Claude's native session idle event", () => {
 		write({ status: "idle", statusUpdatedAt: 20 });
 		await watcher.check(input.taskId, input.paneId);
 		const panes = [{ paneId: "%1", sessionId: "session" }, { paneId: "%2", sessionId: "peer" }];
+		expect(watcher.allIdle("task", [panes[0]])).toBe(true);
+		expect(watcher.allIdle("task", [...panes, { paneId: "%3", sessionId: "unobserved" }])).toBe(false);
 		expect(watcher.allIdle("task", panes)).toBe(false);
 		writeFileSync(join(input.directory, "124.json"), JSON.stringify({ ...peer, status: "idle", statusUpdatedAt: 20 }));
 		await watcher.check(input.taskId, "%2");

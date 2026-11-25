@@ -30,15 +30,15 @@ import { saveLastRoute, loadLastRoute } from "../data";
 const LAST_ROUTE_FILE = `${TEST_HOME}/last-route.json`;
 
 describe("last route persistence", () => {
-	it("returns null when no route has been saved", async () => {
+	it("returns null before any save, then persists a route and overwrites it on the next save", async () => {
 		expect(await loadLastRoute()).toBeNull();
-	});
-
-	it("persists a saved route and reads it back", async () => {
 		const route = JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" });
 		await saveLastRoute(route);
 		expect(existsSync(LAST_ROUTE_FILE)).toBe(true);
 		expect(await loadLastRoute()).toBe(route);
+		const next = JSON.stringify({ screen: "settings" });
+		await saveLastRoute(next);
+		expect(await loadLastRoute()).toBe(next);
 	});
 
 	it("does NOT clear the route on read — survives repeated launches", async () => {
@@ -51,12 +51,5 @@ describe("last route persistence", () => {
 		expect(await loadLastRoute()).toBe(route);
 		expect(await loadLastRoute()).toBe(route);
 		expect(existsSync(LAST_ROUTE_FILE)).toBe(true);
-	});
-
-	it("overwrites the previous route on the next save", async () => {
-		await saveLastRoute(JSON.stringify({ screen: "dashboard" }));
-		const next = JSON.stringify({ screen: "settings" });
-		await saveLastRoute(next);
-		expect(await loadLastRoute()).toBe(next);
 	});
 });

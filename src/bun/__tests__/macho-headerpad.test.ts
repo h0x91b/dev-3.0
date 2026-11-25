@@ -134,12 +134,9 @@ function buildMachO(opts: BuildOptions = {}): Uint8Array {
 }
 
 describe("inspectMachO", () => {
-	it("returns null for non-Mach-O data", () => {
-		const junk = new Uint8Array(64).fill(0x42);
-		expect(inspectMachO(junk)).toBeNull();
-	});
+	it("returns null for non-Mach-O data, fat binaries, 32-bit Mach-O and truncated buffers", () => {
+		expect(inspectMachO(new Uint8Array(64).fill(0x42))).toBeNull();
 
-	it("returns null for fat binaries and 32-bit Mach-O", () => {
 		const fat = new Uint8Array(64);
 		new DataView(fat.buffer).setUint32(0, 0xcafebabe, false);
 		expect(inspectMachO(fat)).toBeNull();
@@ -147,15 +144,13 @@ describe("inspectMachO", () => {
 		const macho32 = new Uint8Array(64);
 		new DataView(macho32.buffer).setUint32(0, 0xfeedface, true);
 		expect(inspectMachO(macho32)).toBeNull();
-	});
 
-	it("returns null for truncated buffers", () => {
 		const tiny = new Uint8Array(8);
 		new DataView(tiny.buffer).setUint32(0, MH_MAGIC_64, true);
 		expect(inspectMachO(tiny)).toBeNull();
 	});
 
-	it("parses a zero-headerpad unsigned executable", () => {
+	it("parses a zero-headerpad unsigned executable and reports an existing code signature", () => {
 		const info = inspectMachO(buildMachO({ headerpad: 0 }));
 		expect(info).not.toBeNull();
 		expect(info!.hasCodeSignature).toBe(false);
@@ -163,11 +158,8 @@ describe("inspectMachO", () => {
 		expect(info!.headerpad).toBe(0);
 		expect(info!.loadCommandsEnd).toBe(32 + info!.sizeofcmds);
 		expect(info!.firstSectionOffset).toBe(info!.loadCommandsEnd);
-	});
 
-	it("reports existing code signature", () => {
-		const info = inspectMachO(buildMachO({ withCodeSignature: true }));
-		expect(info!.hasCodeSignature).toBe(true);
+		expect(inspectMachO(buildMachO({ withCodeSignature: true }))!.hasCodeSignature).toBe(true);
 	});
 
 	it("ignores zerofill sections when computing headerpad", () => {
@@ -179,22 +171,13 @@ describe("inspectMachO", () => {
 });
 
 describe("needsCodeSignatureSpace", () => {
-	it("is true for unsigned binaries with headerpad < 16", () => {
-		expect(needsCodeSignatureSpace(inspectMachO(buildMachO({ headerpad: 0 }))!)).toBe(true);
-		expect(needsCodeSignatureSpace(inspectMachO(buildMachO({ headerpad: 8 }))!)).toBe(true);
-	});
-
-	it("is false when the LC_CODE_SIGNATURE fits in the pad", () => {
-		expect(needsCodeSignatureSpace(inspectMachO(buildMachO({ headerpad: 16 }))!)).toBe(false);
-		expect(needsCodeSignatureSpace(inspectMachO(buildMachO({ headerpad: 4096 }))!)).toBe(false);
-	});
-
-	it("is false when a code signature already exists", () => {
-		expect(
-			needsCodeSignatureSpace(
-				inspectMachO(buildMachO({ headerpad: 0, withCodeSignature: true }))!,
-			),
-		).toBe(false);
+	it("is true only for unsigned binaries whose headerpad cannot fit LC_CODE_SIGNATURE", () => {
+		const needs = (opts: BuildOptions) => needsCodeSignatureSpace(inspectMachO(buildMachO(opts))!);
+		expect(needs({ headerpad: 0 })).toBe(true);
+		expect(needs({ headerpad: 8 })).toBe(true);
+		expect(needs({ headerpad: 16 })).toBe(false);
+		expect(needs({ headerpad: 4096 })).toBe(false);
+		expect(needs({ headerpad: 0, withCodeSignature: true })).toBe(false);
 	});
 });
 
@@ -231,28 +214,18 @@ describe("reserveCodeSignatureSpace", () => {
 		expect(after.linkedit!.fileoff + after.linkedit!.filesize).toBe(fixed.length);
 	});
 
-	it("throws when the binary already has a code signature", () => {
-		expect(() =>
-			reserveCodeSignatureSpace(buildMachO({ withCodeSignature: true })),
-		).toThrow(/already/i);
-	});
-
-	it("throws when there is no LC_SOURCE_VERSION to repurpose", () => {
-		expect(() =>
-			reserveCodeSignatureSpace(buildMachO({ withSourceVersion: false })),
-		).toThrow(/LC_SOURCE_VERSION/);
-	});
-
-	it("throws on non-Mach-O input", () => {
+	it("throws on an already-signed binary, a missing LC_SOURCE_VERSION, or non-Mach-O input", () => {
+		expect(() => reserveCodeSignatureSpace(buildMachO({ withCodeSignature: true }))).toThrow(/already/i);
+		expect(() => reserveCodeSignatureSpace(buildMachO({ withSourceVersion: false }))).toThrow(/LC_SOURCE_VERSION/);
 		expect(() => reserveCodeSignatureSpace(new Uint8Array(64))).toThrow(/Mach-O/);
 	});
 });
 
 describe("checkLoadCommandOverlap", () => {
-	it("passes a clean binary", () => {
-		const result = checkLoadCommandOverlap(buildMachO({ headerpad: 0 }));
-		expect(result).not.toBeNull();
-		expect(result!.ok).toBe(true);
+	it("passes a clean and a fixed binary, and returns null for non-Mach-O input", () => {
+		expect(checkLoadCommandOverlap(buildMachO({ headerpad: 0 }))?.ok).toBe(true);
+		expect(checkLoadCommandOverlap(reserveCodeSignatureSpace(buildMachO({ headerpad: 0 })))?.ok).toBe(true);
+		expect(checkLoadCommandOverlap(new Uint8Array(32))).toBeNull();
 	});
 
 	it("detects load commands overlapping __text (the codesign clobber)", () => {
@@ -272,14 +245,5 @@ describe("checkLoadCommandOverlap", () => {
 		const result = checkLoadCommandOverlap(corrupted);
 		expect(result).not.toBeNull();
 		expect(result!.ok).toBe(false);
-	});
-
-	it("returns null for non-Mach-O input", () => {
-		expect(checkLoadCommandOverlap(new Uint8Array(32))).toBeNull();
-	});
-
-	it("passes a fixed-then-inspected binary end to end", () => {
-		const fixed = reserveCodeSignatureSpace(buildMachO({ headerpad: 0 }));
-		expect(checkLoadCommandOverlap(fixed)!.ok).toBe(true);
 	});
 });

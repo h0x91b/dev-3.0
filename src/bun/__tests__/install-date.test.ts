@@ -39,7 +39,7 @@ const file = () => join(home, "install-date.json");
 describe("resolveInstallDate", () => {
 	// The point of reading the directory's birth time: an install from February
 	// must not be reported as brand new the day this code first runs.
-	it("seeds from the data directory's birth time, not from now", async () => {
+	it("seeds from the data directory's birth time, not from now, and writes it down", async () => {
 		const { resolveInstallDate } = await loadModule();
 		const birth = Math.floor(statSync(home).birthtimeMs);
 		const now = birth + 90 * 86_400_000;
@@ -47,13 +47,9 @@ describe("resolveInstallDate", () => {
 		const resolved = await resolveInstallDate(now);
 		expect(resolved).toBe(birth);
 		expect(resolved).not.toBe(now);
-	});
-
-	it("writes the answer down so later calls never re-derive it", async () => {
-		const { resolveInstallDate } = await loadModule();
-		const first = await resolveInstallDate(Date.now());
+		// Written down, so later calls never re-derive it.
 		expect(existsSync(file())).toBe(true);
-		expect(JSON.parse(readFileSync(file(), "utf-8")).installedAt).toBe(first);
+		expect(JSON.parse(readFileSync(file(), "utf-8")).installedAt).toBe(resolved);
 	});
 
 	it("prefers the recorded value over the directory, which keeps moving", async () => {
@@ -62,38 +58,29 @@ describe("resolveInstallDate", () => {
 		expect(await resolveInstallDate(Date.now())).toBe(1_700_000_000_000);
 	});
 
-	// Several Linux filesystems report 0 or fall back to mtime here.
-	it("falls back to now when the birth time is unusable", async () => {
-		birthtimeOverride = 0;
-		const { resolveInstallDate } = await loadModule();
-		const now = 1_800_000_000_000;
-		expect(await resolveInstallDate(now)).toBe(now);
+	it("falls back to now for an unusable, pre-dev3 or future birth time", async () => {
+		const cases = [
+			// Several Linux filesystems report 0 or fall back to mtime here.
+			["unusable", 0],
+			// A clock skew or a copied directory can date the tree before dev3 existed.
+			["before dev3", Date.UTC(2019, 0, 1)],
+			// A future one would report a negative age.
+			["future", Date.UTC(2030, 0, 1)],
+		] as const;
+		for (const [name, birth] of cases) {
+			rmSync(file(), { force: true });
+			birthtimeOverride = birth;
+			const { resolveInstallDate } = await loadModule();
+			const now = 1_800_000_000_000;
+			expect(await resolveInstallDate(now), name).toBe(now);
+		}
 	});
 
-	// A clock skew or a copied directory can date the tree before dev3 existed.
-	it("refuses a birth time from before dev3 existed", async () => {
-		birthtimeOverride = Date.UTC(2019, 0, 1);
-		const { resolveInstallDate } = await loadModule();
-		const now = 1_800_000_000_000;
-		expect(await resolveInstallDate(now)).toBe(now);
-	});
-
-	it("refuses a birth time in the future rather than reporting a negative age", async () => {
-		birthtimeOverride = Date.UTC(2030, 0, 1);
-		const { resolveInstallDate } = await loadModule();
-		const now = 1_800_000_000_000;
-		expect(await resolveInstallDate(now)).toBe(now);
-	});
-
-	it("ignores a corrupt record and re-seeds", async () => {
-		writeFileSync(file(), "{ not json");
-		const { resolveInstallDate } = await loadModule();
-		expect(await resolveInstallDate(Date.now())).toBe(Math.floor(statSync(home).birthtimeMs));
-	});
-
-	it("ignores a record whose value is not a number", async () => {
-		writeFileSync(file(), JSON.stringify({ installedAt: "yesterday" }));
-		const { resolveInstallDate } = await loadModule();
-		expect(await resolveInstallDate(Date.now())).toBe(Math.floor(statSync(home).birthtimeMs));
+	it("ignores a corrupt record, or one whose value is not a number, and re-seeds", async () => {
+		for (const record of ["{ not json", JSON.stringify({ installedAt: "yesterday" })]) {
+			writeFileSync(file(), record);
+			const { resolveInstallDate } = await loadModule();
+			expect(await resolveInstallDate(Date.now()), record).toBe(Math.floor(statSync(home).birthtimeMs));
+		}
 	});
 });

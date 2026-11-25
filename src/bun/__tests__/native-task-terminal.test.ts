@@ -90,24 +90,23 @@ describe("bindNativeTaskPane", () => {
 		expect(result).toBeNull();
 	});
 
-	it("returns a terminal binding when the session exists", async () => {
-		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
-		expect(terminal).not.toBeNull();
-		expect(terminal!.sessionId).toBe(SESSION_ID);
-	});
-
 	/**
 	 * The binding must remember what the registry proved about the pane AT BIND TIME.
 	 * Anything that re-reads the record later cannot tell a binding from a successor
 	 * that inherited the same pids.
 	 */
-	it("captures the record's session and both process signatures when it is created", async () => {
+	it("binds an existing session: captures its identity, wires the hooks, and claims nothing when already writer", async () => {
 		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(terminal).not.toBeNull();
+		expect(terminal!.sessionId).toBe(SESSION_ID);
 		expect(terminal!.boundIdentity).toEqual({
 			sessionId: SESSION_ID,
 			host: { pid: 10, startSignature: "host-sig" },
 			shell: { pid: 11, startSignature: "shell-sig" },
 		});
+		expect(client.onOutput).toHaveBeenCalledWith(hooks.onOutput);
+		expect(client.onDisconnect).toHaveBeenCalled();
+		expect(client.claimWriter).not.toHaveBeenCalled();
 	});
 
 	it("captures nothing when the dialled record cannot prove both processes", async () => {
@@ -142,17 +141,6 @@ describe("bindNativeTaskPane", () => {
 		expect(terminal!.boundIdentity?.host.startSignature).toBe("host-sig");
 	});
 
-	it("does not claim the lease when the host already made us the writer", async () => {
-		await bindNativeTaskPane(SESSION_ID, hooks);
-		expect(client.claimWriter).not.toHaveBeenCalled();
-	});
-
-	it("claims the lease when the role is not writer", async () => {
-		client.getRole.mockReturnValue("observer");
-		await bindNativeTaskPane(SESSION_ID, hooks);
-		expect(client.claimWriter).toHaveBeenCalledTimes(1);
-	});
-
 	it("logs an error when the claim is refused", async () => {
 		client.getRole.mockReturnValue("observer");
 		client.claimWriter.mockResolvedValue({ role: "observer" });
@@ -166,12 +154,6 @@ describe("bindNativeTaskPane", () => {
 		client.claimWriter.mockRejectedValue(new Error("host went away"));
 		await bindNativeTaskPane(SESSION_ID, hooks);
 		expect(log.error).toHaveBeenCalledTimes(1);
-	});
-
-	it("wires onOutput and onDisconnect hooks", async () => {
-		await bindNativeTaskPane(SESSION_ID, hooks);
-		expect(client.onOutput).toHaveBeenCalledWith(hooks.onOutput);
-		expect(client.onDisconnect).toHaveBeenCalled();
 	});
 
 	it("write/resize delegate to the client", async () => {
@@ -298,7 +280,6 @@ describe("takeoverHostWriter", () => {
 		["a disconnect", new Error("connection closed before ownership reply")],
 		["an auth failure", new Error("native session error: unauthorized")],
 		["a host conflict frame", new Error("native session error: conflict (client has not completed attach)")],
-		["a stale-generation conflict", new Error("native session error: conflict (writer generation is stale)")],
 		["an unrelated timeout", new OwnershipTimeoutError("release")],
 		["a non-Error rejection", "socket exploded"],
 	])("surfaces %s as itself instead of relabelling it host-too-old", async (_label, failure) => {

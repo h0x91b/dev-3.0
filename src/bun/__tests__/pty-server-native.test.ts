@@ -130,7 +130,7 @@ describe("native output clock for automatic hibernation", () => {
 });
 
 describe("createNativeTaskSession — the boot window", () => {
-	it("reports the session as settling, and not dead, while the host boots", async () => {
+	it("reports the session as settling, not dead and not yet listed while the host boots; stops settling once up", async () => {
 		const boot = deferredBoot();
 
 		const creating = createNativeTaskSession(TASK_ID, "proj-1", "/tmp/wt", LAUNCH);
@@ -138,15 +138,9 @@ describe("createNativeTaskSession — the boot window", () => {
 		expect(hasSession(TASK_ID)).toBe(true);
 		expect(isNativeSessionSettling(TASK_ID)).toBe(true);
 		expect(hasDeadSession(TASK_ID)).toBe(false);
+		// Registered but not bound yet → not an active session.
+		expect(getActiveSessionIds()).toEqual([]);
 
-		boot.settlePanes();
-		await creating;
-		await destroySessionAwaited(TASK_ID);
-	});
-
-	it("stops settling once the host is up", async () => {
-		const boot = deferredBoot();
-		const creating = createNativeTaskSession(TASK_ID, "proj-1", "/tmp/wt", LAUNCH);
 		boot.settlePanes();
 		await creating;
 
@@ -276,19 +270,6 @@ describe("getActiveSessionIds with native sessions", () => {
 
 			expect(getActiveSessionIds()).toEqual([{ taskId: TASK_ID, tmuxSocket: "" }]);
 		} finally {
-			await destroyNativeTaskSession(TASK_ID);
-		}
-	});
-
-	it("lists nothing for a native session that is registered but not bound yet", async () => {
-		const boot = deferredBoot(TASK_ID);
-		const creating = createNativeTaskSession(TASK_ID, "proj-1", "/tmp/wt", LAUNCH);
-		try {
-			expect(hasSession(TASK_ID)).toBe(true);
-			expect(getActiveSessionIds()).toEqual([]);
-		} finally {
-			boot.settlePanes(fakePanesState(TASK_ID));
-			await creating;
 			await destroyNativeTaskSession(TASK_ID);
 		}
 	});

@@ -59,7 +59,7 @@ describe("loadSpacesFile", () => {
 });
 
 describe("createSpace", () => {
-	it("persists, appends to order, and rejects empty name or membership", async () => {
+	it("persists, appends to order, dedupes ids in order, and rejects empty name or membership", async () => {
 		await expect(createSpace("X", [])).rejects.toBeInstanceOf(SpaceValidationError);
 		await expect(createSpace("  ", ["p1"])).rejects.toBeInstanceOf(SpaceValidationError);
 		const s = await createSpace("Client X", ["p1"]);
@@ -68,11 +68,8 @@ describe("createSpace", () => {
 		const file = await loadSpacesFile();
 		expect(file.spaces[0].projectIds).toEqual(["p1"]);
 		expect(file.order).toEqual([s.id]);
-	});
-
-	it("dedupes project ids while keeping their order", async () => {
-		const s = await createSpace("A", ["p1", "p2", "p1"]);
-		expect(s.projectIds).toEqual(["p1", "p2"]);
+		const deduped = await createSpace("A", ["p1", "p2", "p1"]);
+		expect(deduped.projectIds).toEqual(["p1", "p2"]);
 	});
 });
 
@@ -105,17 +102,12 @@ describe("setProjectSpaces", () => {
 });
 
 describe("deleteSpace", () => {
-	it("soft-deletes and keeps the record on disk", async () => {
+	it("soft-deletes, keeps the record on disk, and is idempotent", async () => {
 		const a = await createSpace("A", ["p1"]);
 		await deleteSpace(a.id);
 		const raw = JSON.parse(readFileSync(SPACES_FILE, "utf8")) as SpacesFile;
 		expect(raw.spaces[0].deleted).toBe(true);
 		expect(raw.order).toEqual([]);
-	});
-
-	it("is idempotent", async () => {
-		const a = await createSpace("A", ["p1"]);
-		await deleteSpace(a.id);
 		await expect(deleteSpace(a.id)).resolves.toBeUndefined();
 	});
 });
@@ -221,16 +213,12 @@ describe("setSpaceSensitive", () => {
 });
 
 describe("renameSpace and caching", () => {
-	it("renames, invalidating the read cache", async () => {
+	it("renames, invalidating the read cache, and rejects an empty rename", async () => {
 		const created = await createSpace("A", ["p1"]);
 		await loadSpacesFile();
 		const renamed = await renameSpace(created.id, "A2");
 		expect(renamed.name).toBe("A2");
 		expect((await loadSpacesFile()).spaces[0].name).toBe("A2");
-	});
-
-	it("rejects an empty rename", async () => {
-		const created = await createSpace("A", ["p1"]);
 		await expect(renameSpace(created.id, "  ")).rejects.toBeInstanceOf(SpaceValidationError);
 	});
 });

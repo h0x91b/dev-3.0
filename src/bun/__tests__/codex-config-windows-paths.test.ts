@@ -22,7 +22,7 @@ const WIN_SOCKETS = "C:\\Users\\user\\.dev3.0\\sockets";
  * here decodes the output with a real TOML parser instead.
  */
 describe("codex config with Windows paths", () => {
-	it("produces a config a real TOML parser accepts", () => {
+	it("produces a config a real TOML parser accepts, idempotently", () => {
 		const out = ensureCodexConfig(null, WIN_WORKTREES, WIN_SOCKETS, [
 			"C:\\Users\\user\\.dev3.0\\worktrees\\proj\\abcd1234\\worktree",
 		]);
@@ -33,6 +33,11 @@ describe("codex config with Windows paths", () => {
 			"C:\\Users\\user\\.dev3.0\\worktrees\\proj\\abcd1234\\worktree",
 		);
 		expect(parsed.projects[WIN_WORKTREES].trust_level).toBe("trusted");
+
+		// Idempotent: a second pass adds no duplicate project entry.
+		expect(ensureCodexConfig(out, WIN_WORKTREES, WIN_SOCKETS, [
+			"C:\\Users\\user\\.dev3.0\\worktrees\\proj\\abcd1234\\worktree",
+		])).toBe(out);
 	});
 
 	it("round-trips the socket path through both socket syntaxes", () => {
@@ -45,13 +50,6 @@ describe("codex config with Windows paths", () => {
 			ensureCodexConfig(null, WIN_WORKTREES, WIN_SOCKETS, [], { codexVersion: "0.131.0" }),
 		) as Record<string, any>;
 		expect(modern.permissions.dev3.network.unix_sockets[WIN_SOCKETS]).toBe("allow");
-	});
-
-	it("stays idempotent — a second pass adds no duplicate project entry", () => {
-		const first = ensureCodexConfig(null, WIN_WORKTREES, WIN_SOCKETS, []);
-		const second = ensureCodexConfig(first, WIN_WORKTREES, WIN_SOCKETS, []);
-		expect(second).toBe(first);
-		expect(() => load(second)).not.toThrow();
 	});
 
 	it("keeps a POSIX fixture in POSIX dialect even when the host is Windows", () => {
@@ -93,11 +91,8 @@ const BROKEN_CONFIG = [
 ].join("\n");
 
 describe("repairing an already-broken config", () => {
-	it("the fixture really is unparsable (guard for the repair test)", () => {
-		expect(() => load(BROKEN_CONFIG)).toThrow();
-	});
-
 	it("repairs dev3's own entries and leaves everything else byte-identical", () => {
+		expect(() => load(BROKEN_CONFIG)).toThrow(); // the fixture really is unparsable
 		const repaired = repairWindowsPathEscapes(BROKEN_CONFIG);
 		expect(repaired).not.toBeNull();
 
@@ -120,13 +115,11 @@ describe("repairing an already-broken config", () => {
 		expect(parsed.features.hooks ?? parsed.features.codex_hooks).toBe(true);
 	});
 
-	it("leaves a file broken for any other reason completely alone", () => {
+	it("leaves a file broken for any other reason, or a user's own Windows path, alone", () => {
 		const notOurBug = 'model = "gpt-5"\n[unclosed\n';
 		expect(repairWindowsPathEscapes(notOurBug)).toBeNull();
 		expect(ensureCodexConfig(notOurBug, WIN_WORKTREES, WIN_SOCKETS, [])).toBe(notOurBug);
-	});
-
-	it("never rewrites a user's own Windows path outside dev3's shapes", () => {
+		// Nor a user's own Windows path outside dev3's shapes.
 		const userLine = 'my_tool_path = "C:\\Users\\user\\tools"';
 		expect(repairWindowsPathEscapes(userLine)).toBeNull();
 	});

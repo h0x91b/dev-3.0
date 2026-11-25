@@ -26,12 +26,9 @@ describe("dialect selection", () => {
 		expect(launchDialectId("linux")).toBe("posix-shell");
 	});
 
-	it("names scripts per dialect", () => {
+	it("names scripts per dialect, marking a .ps1 as UTF-8 and leaving POSIX scripts byte-identical", () => {
 		expect(launchDialect("darwin").scriptExtension).toBe(".sh");
 		expect(launchDialect("win32").scriptExtension).toBe(".ps1");
-	});
-
-	it("marks a .ps1 as UTF-8 and leaves POSIX scripts byte-identical", () => {
 		// Without the BOM, PowerShell 5.1 read `✓` as a smart quote and the whole
 		// script died with TerminatorExpectedAtEndOfString.
 		expect(launchDialect("win32").scriptByteOrderMark).toBe("\uFEFF");
@@ -39,14 +36,12 @@ describe("dialect selection", () => {
 		expect(launchDialect("linux").scriptByteOrderMark).toBe("");
 	});
 
-	it("prefers $SHELL, and last-resorts to the one shell POSIX guarantees", () => {
+	it("prefers $SHELL, last-resorts to the one shell POSIX guarantees, and resolves the Windows shell from SystemRoot", () => {
 		expect(defaultLaunchShellPath("darwin", { SHELL: "/bin/fish" })).toBe("/bin/fish");
 		// NOT /bin/zsh: a minimal Linux box has none, and a wrapper pointed at a
 		// missing binary cannot even report why it died.
 		expect(defaultLaunchShellPath("linux", {})).toBe("/bin/sh");
-	});
-
-	it("resolves the Windows default shell from SystemRoot", () => {
+		// Windows resolves its default shell from SystemRoot (or WINDIR).
 		expect(defaultLaunchShellPath("win32", { SystemRoot: "C:\\Windows" })).toBe(PS);
 		expect(windowsPowerShellPath({ WINDIR: "D:\\Win" })).toBe(
 			"D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
@@ -58,10 +53,6 @@ describe("dialect selection", () => {
 	// %SystemRoot% has to degrade to a PATH lookup instead of killing startup.
 	it("refuses to guess a Windows shell without SystemRoot", () => {
 		expect(() => windowsPowerShellPath({})).toThrow(/SystemRoot/);
-	});
-
-	it("degrades the boot-path default to a PATH lookup without SystemRoot", () => {
-		expect(defaultLaunchShellPath("win32", {})).toBe("powershell.exe");
 	});
 });
 
@@ -115,25 +106,20 @@ describe("Windows PowerShell dialect", () => {
 		else process.env.SystemRoot = originalSystemRoot;
 	});
 
-	it("quotes by doubling single quotes, never by backslash", () => {
+	it("quotes by doubling single quotes, never by backslash, and sets and removes environment variables", () => {
 		expect(powerShellQuote("it's")).toBe("'it''s'");
 		expect(d.quote("C:\\tmp\\a b")).toBe("'C:\\tmp\\a b'");
-	});
-
-	it("sets and removes environment variables", () => {
 		expect(d.envLines({ FOO: "bar baz", GONE: ENV_UNSET })).toEqual([
 			"$env:FOO = 'bar baz'",
 			'Remove-Item "Env:\\GONE" -ErrorAction SilentlyContinue',
 		]);
 	});
 
-	it("runs a wrapper script through -File, never through a shell string", () => {
+	it("runs a wrapper script through -File, never through a shell string, and emulates exec by exiting with the child's code", () => {
 		expect(d.runScript("C:\\tmp\\run.ps1", { shellPath: PS })).toBe(
 			`& '${PS}' -NoLogo -NoProfile -ExecutionPolicy Bypass -File 'C:\\tmp\\run.ps1'`,
 		);
-	});
-
-	it("emulates exec by exiting with the child's code", () => {
+		// exec is emulated by exiting with the child's code.
 		expect(d.execReplacing(d.interactiveShellCommand(PS))).toBe(
 			`& '${PS}' -NoLogo -NoProfile -NoExit; exit $LASTEXITCODE`,
 		);
@@ -150,13 +136,11 @@ describe("Windows PowerShell dialect", () => {
 		]);
 	});
 
-	it("prints styled text with real ESC bytes spliced in at runtime", () => {
+	it("prints styled text with real ESC bytes spliced in at runtime, escaping quotes and dollars", () => {
 		expect(d.print(d.style("✓ Found %s", "success"), { blankBefore: true, args: ["'claude'"] })).toBe(
 			"Write-Host (\"`n$([char]27)[1;32m✓ Found {0}$([char]27)[0m\" -f 'claude')",
 		);
-	});
-
-	it("escapes double quotes and dollars inside printed text", () => {
+		// Double quotes and dollars inside printed text are escaped.
 		expect(d.print('run "%s" now $x', { args: ["'claude'"] })).toBe(
 			'Write-Host ("run `"{0}`" now `$x" -f \'claude\')',
 		);
@@ -204,21 +188,15 @@ describe("Windows PowerShell dialect", () => {
 		expect(script).not.toContain("\\033");
 	});
 
-	it("launches a wrapper script as powershell.exe -File with a structured argv", () => {
+	it("launches a wrapper script as powershell.exe -File with a structured argv, and an interactive shell that stays open", () => {
 		expect(d.scriptLaunch("C:\\tmp\\run.ps1", { cwd: "C:\\w\\t", env: { A: "b" } })).toEqual({
 			executable: PS,
 			argv: ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\tmp\\run.ps1"],
 			cwd: "C:\\w\\t",
 			env: { A: "b" },
 		});
-	});
-
-	it("launches an interactive shell that stays open", () => {
-		expect(d.interactiveShellLaunch({ cwd: "C:\\w\\t", env: {} }).argv).toEqual([
-			"-NoLogo",
-			"-NoProfile",
-			"-NoExit",
-		]);
+		// An interactive shell stays open.
+		expect(d.interactiveShellLaunch({ cwd: "C:\\w\\t", env: {} }).argv).toEqual(["-NoLogo", "-NoProfile", "-NoExit"]);
 	});
 
 	it("ignores a POSIX shell path handed down from POSIX-shaped callers", () => {

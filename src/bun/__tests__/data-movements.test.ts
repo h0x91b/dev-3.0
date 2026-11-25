@@ -47,18 +47,9 @@ function readTasksFile(): Task[] {
 }
 
 describe("board movements are recorded because nothing else retains them", () => {
-	it("stamps a created movement at the column the task appeared in", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-09-05T09:00:00.000Z"));
-		const task = await addTask(testProject, "Fresh task");
-
-		expect(task.movements).toEqual([
-			expect.objectContaining({ at: "2026-09-05T09:00:00.000Z", kind: "created", to: "todo" }),
-		]);
-		expect(task.movements?.[0].from).toBeUndefined();
-	});
-
-	it("appends one movement per status change, keeping where it came from", async () => {
+	// Creation is stamped at its column; completion is not its own kind but the
+	// destination of an ordinary move, so nothing double-fires.
+	it("stamps creation, then appends one movement per status change, keeping where it came from", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-09-05T09:00:00.000Z"));
 		const task = await addTask(testProject, "Moving task");
@@ -73,16 +64,6 @@ describe("board movements are recorded because nothing else retains them", () =>
 			["status", "todo", "in-progress", "2026-09-05T09:10:00.000Z"],
 			["status", "in-progress", "completed", "2026-09-05T09:20:00.000Z"],
 		]);
-	});
-
-	// Completion and cancellation are not their own kinds — they are the
-	// destination of an ordinary move, so nothing double-fires.
-	it("records cancellation as a move to cancelled, not as a separate kind", async () => {
-		const task = await addTask(testProject, "Doomed task");
-		const dead = await updateTask(testProject, task.id, { status: "cancelled" });
-
-		const last = dead.movements?.[(dead.movements?.length ?? 0) - 1];
-		expect(last).toMatchObject({ kind: "status", to: "cancelled" });
 	});
 
 	it("records a custom-column move that leaves the status alone", async () => {

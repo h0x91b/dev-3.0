@@ -11,15 +11,15 @@ const HARNESSES: PromptSubmitHarness[] = ["claude", "codex", "copilot", "omp", "
 const WORKING: TaskStatus[] = ["in-progress", "review-by-ai"];
 
 describe("which moves send an armed draft", () => {
-	for (const harness of HARNESSES) {
-		for (const from of WORKING) {
-			it(`${harness}: a PermissionRequest from ${from} never fires it`, () => {
+	it("a PermissionRequest from a working column never fires it, for any harness (#2339)", () => {
+		for (const harness of HARNESSES) {
+			for (const from of WORKING) {
 				const to = getAgentHookTargetStatus("PermissionRequest", from, "review-by-user");
-				expect(to).toBe("user-questions");
-				expect(armedDraftFiresOn(to!)).toBe(false);
-			});
+				expect(to, `${harness} from ${from}`).toBe("user-questions");
+				expect(armedDraftFiresOn(to!), `${harness} from ${from}`).toBe(false);
+			}
 		}
-	}
+	});
 
 	it("copilot's ask_user tool counts as a PermissionRequest and does not fire it", () => {
 		const event = copilotStatusEvent("preToolUse", "ask_user");
@@ -27,12 +27,9 @@ describe("which moves send an armed draft", () => {
 		expect(armedDraftFiresOn(getAgentHookTargetStatus(event!, "in-progress", "review-by-user")!)).toBe(false);
 	});
 
-	it("a finished turn fires it, directly or after AI Review", () => {
+	it("a finished turn fires it, directly or after AI Review, but not a stop that hands the turn to AI Review", () => {
 		expect(armedDraftFiresOn(getAgentHookTargetStatus("Stop", "in-progress", "review-by-user")!)).toBe(true);
 		expect(armedDraftFiresOn(getAgentHookTargetStatus("Stop", "review-by-ai", "review-by-user")!)).toBe(true);
-	});
-
-	it("a stop that hands the turn to AI Review does not fire it yet", () => {
 		expect(armedDraftFiresOn(getAgentHookTargetStatus("Stop", "in-progress", "review-by-ai")!)).toBe(false);
 	});
 });

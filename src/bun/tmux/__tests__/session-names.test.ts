@@ -27,9 +27,7 @@ describe("session name builders", () => {
 			serverName: "back-office",
 		});
 		expect(cleanupSessionName(TASK_ID)).toBe("dev3-cl-593e966a");
-	});
-
-	it("derives the dev-server sibling from a task session name", () => {
+		// The dev-server sibling derives from a task session name.
 		expect(devServerSessionForTaskSession("dev3-593e966a")).toBe("dev3-dev-593e966a");
 	});
 });
@@ -42,13 +40,10 @@ describe("parseDev3SessionName", () => {
 		expect(parseDev3SessionName(cleanupSessionName(TASK_ID))).toEqual({ kind: "cleanup", shortId: "593e966a" });
 	});
 
-	it("returns null for non-dev3 sessions", () => {
+	it("returns null for non-dev3 sessions and a bare prefix with no id fragment", () => {
 		expect(parseDev3SessionName("main")).toBeNull();
 		expect(parseDev3SessionName("mydev3-abc")).toBeNull();
 		expect(parseDev3SessionName("")).toBeNull();
-	});
-
-	it("returns null for a bare prefix with no id fragment", () => {
 		expect(parseDev3SessionName("dev3-")).toBeNull();
 		expect(parseDev3SessionName("dev3-pt-")).toBeNull();
 		expect(parseDev3SessionName("dev3-dev-")).toBeNull();

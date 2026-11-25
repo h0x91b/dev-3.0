@@ -58,10 +58,13 @@ afterEach(() => {
 });
 
 describe("notification log rows", () => {
-	it("round-trips a row through serialize and parse", () => {
+	it("round-trips a row through serialize and parse, keeping a queued row's suppression sources", () => {
 		const input = makeRow();
-		const parsed = parseNotificationLogRow(serializeNotificationLogRow(input));
-		expect(parsed).toEqual({ v: NOTIFICATION_LOG_VERSION, ...input });
+		expect(parseNotificationLogRow(serializeNotificationLogRow(input))).toEqual({ v: NOTIFICATION_LOG_VERSION, ...input });
+		const queued = parseNotificationLogRow(
+			serializeNotificationLogRow(makeRow({ outcome: "queued", suppressedBy: ["focusMode", "terminalImmersive"] })),
+		);
+		expect(queued?.suppressedBy).toEqual(["focusMode", "terminalImmersive"]);
 	});
 
 	it("serialises to exactly one line", () => {
@@ -70,59 +73,37 @@ describe("notification log rows", () => {
 		expect(line.slice(0, -1)).not.toContain("\n");
 	});
 
-	it("keeps a queued row's suppression sources", () => {
-		const parsed = parseNotificationLogRow(
-			serializeNotificationLogRow(makeRow({ outcome: "queued", suppressedBy: ["focusMode", "terminalImmersive"] })),
-		);
-		expect(parsed?.suppressedBy).toEqual(["focusMode", "terminalImmersive"]);
-	});
-
-	it("clips an oversized message but keeps every other field", () => {
+	it("clips an oversized message but keeps every other field, never cutting a multi-byte character in half", () => {
 		const line = serializeNotificationLogRow(makeRow({ message: "x".repeat(NOTIFICATION_LOG_MAX_ROW_BYTES * 2) }));
 		expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(NOTIFICATION_LOG_MAX_ROW_BYTES);
 		const parsed = parseNotificationLogRow(line);
 		expect(parsed?.message.endsWith(NOTIFICATION_LOG_TRUNCATION_MARK)).toBe(true);
 		expect(parsed?.outcome).toBe("delivered");
 		expect(parsed?.taskSeq).toBe(1813);
+
+		const cyrillic = serializeNotificationLogRow(makeRow({ message: "ё".repeat(NOTIFICATION_LOG_MAX_ROW_BYTES) }));
+		const cyrillicParsed = parseNotificationLogRow(cyrillic);
+		expect(cyrillicParsed?.message).not.toContain("�");
+		expect(JSON.parse(cyrillic.trim()).message).toBe(cyrillicParsed?.message);
 	});
 
-	it("never cuts a multi-byte character in half", () => {
-		const line = serializeNotificationLogRow(makeRow({ message: "ё".repeat(NOTIFICATION_LOG_MAX_ROW_BYTES) }));
-		const parsed = parseNotificationLogRow(line);
-		expect(parsed?.message).not.toContain("�");
-		expect(JSON.parse(line.trim()).message).toBe(parsed?.message);
-	});
-
-	it("rejects a torn line instead of throwing", () => {
+	it("rejects a torn line, or a row missing the facts that make it a notification, instead of throwing", () => {
 		const line = serializeNotificationLogRow(makeRow());
 		expect(parseNotificationLogRow(line.slice(0, 30))).toBeNull();
 		expect(parseNotificationLogRow("")).toBeNull();
 		expect(parseNotificationLogRow("null")).toBeNull();
-	});
-
-	it("rejects a row missing the facts that make it a notification", () => {
 		expect(parseNotificationLogRow(JSON.stringify({ at: "now", message: "hi", mode: "toast", level: "info" }))).toBeNull();
 		expect(parseNotificationLogRow(JSON.stringify({ message: "hi", mode: "toast", level: "info", outcome: "delivered" }))).toBeNull();
 	});
 });
 
 describe("notification log on disk", () => {
-	it("appends into a day-file named for the local day", () => {
-		appendNotificationLog(makeRow(), new Date(2026, 8, 7, 23, 30));
-		expect(readdirSync(notificationLogDir())).toEqual(["2026-09-07.jsonl"]);
-		expect(JSON.parse(readDay("2026-09-07")[0]).message).toBe("build green");
-	});
-
-	it("appends rather than overwriting", () => {
-		const day = new Date(2026, 8, 7, 9, 0);
-		appendNotificationLog(makeRow({ message: "first" }), day);
-		appendNotificationLog(makeRow({ message: "second" }), day);
-		expect(readDay("2026-09-07").map((line) => JSON.parse(line).message)).toEqual(["first", "second"]);
-	});
-
-	it("writes the file 0600", () => {
-		appendNotificationLog(makeRow(), new Date(2026, 8, 7));
+	it("appends, never overwrites, into a 0600 day-file named for the local day", () => {
 		const { statSync } = require("node:fs");
+		appendNotificationLog(makeRow({ message: "first" }), new Date(2026, 8, 7, 23, 30));
+		appendNotificationLog(makeRow({ message: "second" }), new Date(2026, 8, 7, 9, 0));
+		expect(readdirSync(notificationLogDir())).toEqual(["2026-09-07.jsonl"]);
+		expect(readDay("2026-09-07").map((line) => JSON.parse(line).message)).toEqual(["first", "second"]);
 		expect(statSync(`${notificationLogDir()}/2026-09-07.jsonl`).mode & 0o777).toBe(0o600);
 	});
 

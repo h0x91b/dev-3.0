@@ -20,11 +20,8 @@ describe("parseSkillFrontmatter", () => {
 		expect(parseSkillFrontmatter(md)).toEqual({ name: "foo", description: "Line one line two" });
 	});
 
-	it("returns nulls without frontmatter", () => {
+	it("returns nulls without frontmatter or with an unterminated one", () => {
 		expect(parseSkillFrontmatter("# Just markdown")).toEqual({ name: null, description: null });
-	});
-
-	it("returns nulls for unterminated frontmatter", () => {
 		expect(parseSkillFrontmatter("---\nname: x\n")).toEqual({ name: null, description: null });
 	});
 });
@@ -58,10 +55,6 @@ describe("listAgentSkills", () => {
 	function addProjectSkill(dir: string, slug: string, frontmatter: string | null) {
 		addSkillIn(project, dir, slug, frontmatter);
 	}
-
-	it("returns empty when no skill directories exist", () => {
-		expect(listAgentSkills(home)).toEqual([]);
-	});
 
 	it("collects skills from all three sources, sorted by name", () => {
 		addSkill(".agents/skills", "zeta", "---\nname: zeta\ndescription: Z\n---\n");
@@ -113,8 +106,9 @@ describe("listAgentSkills", () => {
 		expect(result[0]).toEqual({ name: "shared", description: "from project", source: "claude" });
 	});
 
-	it("ignores project scanning when projectPath is not given", () => {
+	it("returns empty without skill directories, and ignores project scanning when projectPath is not given", () => {
 		addProjectSkill(".claude/skills", "debug-ui", "---\nname: debug-ui\ndescription: Drive the UI\n---\n");
+		expect(listAgentSkills(home)).toEqual([]);
 		expect(listAgentSkills(home)).toEqual([]);
 	});
 });

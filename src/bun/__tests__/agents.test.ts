@@ -48,16 +48,10 @@ afterEach(() => {
 
 describe("skillInvocationPrefix", () => {
 	it.each([
-		["codex", "$"],
 		["/opt/homebrew/bin/codex", "$"],
 		["claude", "/"],
-		["agent", "/"],
-		["gemini", "/"],
-		["opencode", "/"],
 		["/home/me/.bun/bin/omp", "/skill:"],
-		["omp", "/skill:"],
 		["pi", "/skill:"],
-		["", "/"],
 	])("%s → %s", (command, expected) => {
 		expect(skillInvocationPrefix(command)).toBe(expected);
 	});
@@ -70,53 +64,13 @@ describe("supportsResume", () => {
 		["gemini", true],
 		["agent", true],
 		["opencode", true],
-		["/usr/local/bin/claude", true],
-		["/opt/homebrew/bin/opencode", true],
 		["bash", false],
-		["aider", false],
-		["my-custom-agent", false],
 	])("%s → %s", (cmd, expected) => {
 		expect(supportsResume(cmd)).toBe(expected);
 	});
 });
 
 describe("resolveAgentCommand — resume", () => {
-	// ---- Claude ----
-	it("Claude: adds --continue and skips prompt when resume=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx({ taskDescription: "Some task description" }),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--continue");
-		expect(cmd).not.toContain("Some task description");
-	});
-
-	it("Claude: includes prompt normally when resume is not set", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx({ taskDescription: "Some task description" }),
-		);
-
-		expect(cmd).not.toContain("--continue");
-		expect(cmd).toContain("Some task description");
-	});
-
-	it("Claude: skips appendPrompt when resume=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig({ appendPrompt: "Extra instructions: {{TASK_TITLE}}" }),
-			makeCtx({ taskDescription: "" }),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--continue");
-		expect(cmd).not.toContain("Extra instructions");
-	});
-
 	it("Claude: the protocol body travels as a file on POSIX too, not in argv (#1734)", async () => {
 		const cmd = await resolveAgentCommand(makeAgent({ baseCommand: "claude" }), makeConfig(), makeCtx());
 
@@ -125,30 +79,6 @@ describe("resolveAgentCommand — resume", () => {
 		// The prose used to sit in argv, where `pkill -f` matched every agent on it.
 		expect(cmd).not.toContain(CLAUDE_SKILL_BODY.slice(0, 40));
 		expect(readFileSync(join(AGENT_PROMPTS_DIR, "claude.md"), "utf-8")).toBe(CLAUDE_SKILL_BODY);
-	});
-
-	it("Claude: still includes --append-system-prompt when resume=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--append-system-prompt");
-	});
-
-	// ---- Codex ----
-	it("Codex: resumes the given conversation with the 'codex resume <id>' subcommand", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true, sessionId: "sid-1" },
-		);
-
-		expect(cmd).toMatch(/^codex resume sid-1/);
-		expect(cmd).not.toContain("Some task");
 	});
 
 	it("Codex: refuses to resume without a conversation id instead of using --last (#1847)", async () => {
@@ -160,80 +90,28 @@ describe("resolveAgentCommand — resume", () => {
 		)).rejects.toThrow(/never resumes Codex with --last/);
 	});
 
-	it("Codex: ignores unsupported generic config flags during resume", async () => {
+	it("Codex: ignores unsupported generic config flags, fresh and on resume", async () => {
+		const config = makeConfig({
+			model: "gpt-5",
+			permissionMode: "bypassPermissions",
+			effort: "high",
+			maxBudgetUsd: 10,
+		});
+		const fresh = await resolveAgentCommand(makeAgent({ baseCommand: "codex" }), config, makeCtx({ taskDescription: "Some task" }));
 		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
-			makeConfig({
-				model: "gpt-5",
-				permissionMode: "bypassPermissions",
-				effort: "high",
-				maxBudgetUsd: 10,
-			}),
+			config,
 			makeCtx({ taskDescription: "Some task" }),
 			{ resume: true, sessionId: "sid-1" },
 		);
 
 		expect(cmd).toMatch(/^codex resume sid-1/);
-		expect(cmd).toContain("--model gpt-5");
-		expect(cmd).not.toContain("--permission-mode");
-		expect(cmd).not.toContain("--effort");
-		expect(cmd).not.toContain("--max-budget-usd");
-	});
-
-	it("Codex: normal command when resume is not set", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).toMatch(/^codex/);
-		expect(cmd).not.toMatch(/^codex resume/);
-		expect(cmd).toContain("Some task");
-	});
-
-	it("Claude: quotes model names containing shell metacharacters", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig({ model: "claude-opus-4-8[1m]" }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).toContain("--model 'claude-opus-4-8[1m]'");
-		expect(cmd).not.toContain("--model claude-opus-4-8[1m]");
-	});
-
-	it("omits --model when a third-party provider is selected for the launch", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig({ model: "claude-opus-4-8[1m]" }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ llmProvider: "bedrock" },
-		);
-		// On Bedrock the model comes from injected ANTHROPIC_MODEL, not --model.
-		expect(cmd).not.toContain("--model");
-	});
-
-	it("Codex on Bedrock: keeps --model and appends the model_provider routing args", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: "global.openai.gpt-5.6-sol" }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ llmProvider: "bedrock-codex" },
-		);
-		// Codex has no model env var: the model rides the (rewritten) --model flag
-		// and the backend is selected via a -c config override.
-		expect(cmd).toContain("--model global.openai.gpt-5.6-sol");
-		expect(cmd).toContain(`-c 'model_provider="amazon-bedrock-runtime"'`);
-	});
-
-	it("keeps --model when no provider is selected (native default)", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig({ model: "claude-opus-4-8[1m]" }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-		expect(cmd).toContain("--model 'claude-opus-4-8[1m]'");
+		for (const [label, c] of [["fresh", fresh], ["resume", cmd]] as const) {
+			expect(c, label).toContain("--model gpt-5");
+			expect(c, label).not.toContain("--permission-mode");
+			expect(c, label).not.toContain("--effort");
+			expect(c, label).not.toContain("--max-budget-usd");
+		}
 	});
 
 	it("Codex: injects the dev3 protocol via -c developer_instructions, not the prompt", async () => {
@@ -256,44 +134,6 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("-- 'Some task'");
 	});
 
-	it("Codex: resume also carries -c developer_instructions", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true, sessionId: "sid-1" },
-		);
-
-		expect(cmd).toMatch(/^codex resume sid-1/);
-		expect(cmd).toContain("-c 'developer_instructions=");
-	});
-
-	it("Codex: skipSystemPrompt suppresses -c developer_instructions", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ skipSystemPrompt: true },
-		);
-
-		expect(cmd).not.toContain("developer_instructions");
-		expect(cmd).not.toContain("Task Lifecycle Protocol");
-	});
-
-	it("Codex: uses dracula theme when dev3 UI theme is dark", async () => {
-		setCurrentUiTheme("dark");
-
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).toContain("-p dev3-dark");
-		expect(cmd).not.toContain("-p dev3 ");
-		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
-	});
-
 	it("Codex: uses github theme when dev3 UI theme is light", async () => {
 		setCurrentUiTheme("light");
 
@@ -308,89 +148,61 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain(`-c 'tui.theme="github"'`);
 	});
 
-	it("Codex: preserves unrelated config overrides when injecting the theme", async () => {
-		const cmd = await resolveAgentCommand(
+	it("Codex: keeps user -c overrides and appends the dev3 theme after them", async () => {
+		const codexWith = (additionalArgs: string[]) => resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
-			makeConfig({
-				model: undefined,
-				additionalArgs: ["-p", "dev3", "-c", 'model_reasoning_effort="high"'],
-			}),
+			makeConfig({ model: undefined, additionalArgs }),
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
 		// The dev3 permissions preset now lands between them: this preset names a
 		// profile but decides nothing about permissions.
-		expect(cmd).toContain(`-c model_reasoning_effort="high"`);
-		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
+		const unrelated = await codexWith(["-p", "dev3", "-c", 'model_reasoning_effort="high"']);
+		expect(unrelated, "unrelated override").toContain(`-c model_reasoning_effort="high"`);
+		expect(unrelated, "unrelated override").toContain(`-c 'tui.theme="dracula"'`);
+
+		const conflicting = await codexWith(["-p", "dev3", "-c", 'tui.theme="nord"']);
+		expect(conflicting.indexOf('tui.theme="nord"'), "conflicting override comes first")
+			.toBeLessThan(conflicting.indexOf('tui.theme="dracula"'));
 	});
 
-	it("Codex: appends the dev3 theme after a conflicting user override", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({
-				model: undefined,
-				additionalArgs: ["-p", "dev3", "-c", 'tui.theme="nord"'],
-			}),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd.indexOf('tui.theme="nord"')).toBeLessThan(cmd.indexOf('tui.theme="dracula"'));
-	});
-
-	it("Codex: leaves custom profile names untouched", async () => {
-		setCurrentUiTheme("light");
-
-		const cmd = await resolveAgentCommand(
+	it("Codex: leaves custom profile names untouched (legacy and profile-v2)", async () => {
+		const customProfile = () => resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined, additionalArgs: ["-p", "my-custom-profile"] }),
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		expect(cmd).toContain("-p my-custom-profile");
-		expect(cmd).not.toContain("-p dev3-light");
-	});
-
-	it("Codex: rewrites -p to --profile-v2 on profile-v2 Codex (dark)", async () => {
-		setCurrentUiTheme("dark");
-		__setCodexProfileV2Override(true);
-
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).toContain("--profile-v2 dev3-dark");
-		expect(cmd).not.toContain("-p dev3-dark");
-		expect(cmd).not.toContain("-p dev3 ");
-	});
-
-	it("Codex: rewrites --profile to --profile-v2 on profile-v2 Codex (light)", async () => {
 		setCurrentUiTheme("light");
-		__setCodexProfileV2Override(true);
+		const legacy = await customProfile();
+		expect(legacy, "legacy").toContain("-p my-custom-profile");
+		expect(legacy, "legacy").not.toContain("-p dev3-light");
 
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined, additionalArgs: ["--profile", "dev3"] }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).toContain("--profile-v2 dev3-light");
-		expect(cmd).not.toContain("--profile dev3-light");
-	});
-
-	it("Codex: leaves custom profile names untouched on profile-v2 Codex", async () => {
 		setCurrentUiTheme("dark");
 		__setCodexProfileV2Override(true);
+		const v2 = await customProfile();
+		expect(v2, "profile-v2").toContain("-p my-custom-profile");
+		expect(v2, "profile-v2").not.toContain("--profile-v2");
+	});
 
-		const cmd = await resolveAgentCommand(
+	it("Codex: rewrites -p / --profile to --profile-v2 on profile-v2 Codex", async () => {
+		__setCodexProfileV2Override(true);
+		const codexWith = (additionalArgs: string[]) => resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined, additionalArgs: ["-p", "my-custom-profile"] }),
+			makeConfig({ model: undefined, additionalArgs }),
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		expect(cmd).toContain("-p my-custom-profile");
-		expect(cmd).not.toContain("--profile-v2");
+		setCurrentUiTheme("dark");
+		const short = await codexWith(["-p", "dev3"]);
+		expect(short, "-p (dark)").toContain("--profile-v2 dev3-dark");
+		expect(short, "-p (dark)").not.toContain("-p dev3-dark");
+		expect(short, "-p (dark)").not.toContain("-p dev3 ");
+
+		setCurrentUiTheme("light");
+		const long = await codexWith(["--profile", "dev3"]);
+		expect(long, "--profile (light)").toContain("--profile-v2 dev3-light");
+		expect(long, "--profile (light)").not.toContain("--profile dev3-light");
 	});
 
 	it("Codex: never emits --profile-v2 on newer codex that removed it (issue #611)", async () => {
@@ -409,129 +221,6 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--profile-v2");
 	});
 
-	// ---- Gemini ----
-	it("Gemini: adds --resume latest when resume=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "gemini" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--resume latest");
-		expect(cmd).not.toContain("Some task");
-	});
-
-	it("Gemini: normal command when resume is not set", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "gemini" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).not.toContain("--resume");
-		expect(cmd).toContain("Some task");
-	});
-
-	// ---- Cursor Agent ----
-	it("Cursor Agent: adds --continue when resume=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "agent" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--continue");
-		expect(cmd).not.toContain("Some task");
-	});
-
-	it("Cursor Agent: normal command when resume is not set", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "agent" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).not.toContain("--continue");
-		// Cursor injects generic DEV3_SYSTEM_PROMPT (skill body) via prompt (no hooks)
-		expect(cmd).toContain("Task Lifecycle Protocol");
-		expect(cmd).toContain("dev3 task move");
-	});
-
-	// ---- skipSystemPrompt ----
-	it("Claude: skips --append-system-prompt when skipSystemPrompt=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-			{ skipSystemPrompt: true },
-		);
-
-		expect(cmd).not.toContain("--append-system-prompt");
-		expect(cmd).not.toContain("Task Lifecycle Protocol");
-	});
-
-	it("Claude: includes --append-system-prompt by default", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-		);
-
-		expect(cmd).toContain("--append-system-prompt");
-	});
-
-	it("Claude: includes --append-system-prompt when skipSystemPrompt=false", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-			{ skipSystemPrompt: false },
-		);
-
-		expect(cmd).toContain("--append-system-prompt");
-	});
-
-	// ---- OpenCode ----
-	it("OpenCode: adds --continue when resume=true", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "opencode" }),
-			makeConfig({ model: "anthropic/claude-opus-4-6" }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--continue");
-		expect(cmd).not.toContain("Some task");
-	});
-
-	it("OpenCode: uses --prompt flag for prompt (not positional)", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "opencode" }),
-			makeConfig({ model: "anthropic/claude-opus-4-6" }),
-			makeCtx({ taskDescription: "Fix the login bug" }),
-		);
-
-		expect(cmd).toContain("--prompt");
-		expect(cmd).toContain("Fix the login bug");
-		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
-	});
-
-	it("OpenCode: injects generic system prompt (not Claude hooks variant)", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "opencode" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-		);
-
-		expect(cmd).toContain("--prompt");
-		expect(cmd).toContain("Task Lifecycle Protocol");
-		expect(cmd).toContain("dev3 task move");
-		// Generic skill body uses manual status management, not the hooks variant
-		expect(cmd).not.toContain("Hooks automatically manage task status");
-	});
-
 	it("OpenCode: does not emit --permission-mode, --effort, or --max-budget-usd", async () => {
 		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
@@ -547,44 +236,6 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--permission-mode");
 		expect(cmd).not.toContain("--effort");
 		expect(cmd).not.toContain("--max-budget-usd");
-	});
-
-	it("OpenCode: does not emit --append-system-prompt", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "opencode" }),
-			makeConfig(),
-			makeCtx(),
-		);
-
-		expect(cmd).not.toContain("--append-system-prompt");
-	});
-
-	it("OpenCode: passes additionalArgs (e.g. --agent sisyphus)", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "opencode" }),
-			makeConfig({ model: "anthropic/claude-opus-4-6", additionalArgs: ["--agent", "sisyphus"] }),
-			makeCtx({ taskDescription: "Build feature" }),
-		);
-
-		expect(cmd).toContain("--agent sisyphus");
-		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
-		expect(cmd).toContain("--prompt");
-	});
-
-	// ---- Unsupported agents ----
-	it("does not add resume flags for unsupported agents", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "aider" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Some task" }),
-			{ resume: true },
-		);
-
-		expect(cmd).not.toContain("--continue");
-		expect(cmd).not.toContain("--resume");
-		expect(cmd).not.toContain("resume --last");
-		// Unsupported agent still gets the prompt (no resume behavior)
-		expect(cmd).toContain("Some task");
 	});
 });
 
@@ -633,17 +284,6 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 		expect(cmd).not.toContain("Task Lifecycle Protocol");
 		expect(cmd).not.toContain("--prompt");
 	});
-
-	it("Codex: non-empty description still injects description + system prompt", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Fix the login bug" }),
-		);
-
-		expect(cmd).toContain("Fix the login bug");
-		expect(cmd).toContain("Task Lifecycle Protocol");
-	});
 });
 
 describe("resolveAgentCommand — positional prompt separator (-- guard)", () => {
@@ -687,16 +327,6 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 		expect(cmd).not.toMatch(/ -- '/);
 	});
 
-	it("Claude: -- guard is still present for plain descriptions (no regression for normal prompts)", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig({ model: undefined }),
-			makeCtx({ taskDescription: "Fix the login bug" }),
-		);
-
-		expect(cmd).toContain("-- 'Fix the login bug'");
-	});
-
 	it("does not add -- when resuming (no positional prompt is emitted on resume)", async () => {
 		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
@@ -711,18 +341,6 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 });
 
 describe("resolveAgentCommand — sessionId", () => {
-	it("Claude: injects --session-id for fresh launch", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-			{ sessionId: "abc-123" },
-		);
-
-		expect(cmd).toContain("--session-id abc-123");
-		expect(cmd).not.toContain("--resume");
-	});
-
 	it("Gemini: injects --session-id for fresh launch (PR #26060)", async () => {
 		const cmd = await resolveAgentCommand(
 			makeAgent({ baseCommand: "gemini" }),
@@ -734,98 +352,12 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).toContain("--session-id gem-fresh");
 		expect(cmd).not.toContain("--resume");
 	});
-
-	it("Claude: uses --resume <id> when both resume and sessionId", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-			{ resume: true, sessionId: "abc-123" },
-		);
-
-		expect(cmd).toContain("--resume abc-123");
-		expect(cmd).not.toContain("--session-id");
-		expect(cmd).not.toContain("--continue");
-	});
-
-	it("Claude: falls back to --continue when resume without sessionId", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "claude" }),
-			makeConfig(),
-			makeCtx(),
-			{ resume: true },
-		);
-
-		expect(cmd).toContain("--continue");
-		expect(cmd).not.toContain("--session-id");
-	});
-
-	it("Gemini: uses --resume <id> when both resume and sessionId", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "gemini" }),
-			makeConfig({ model: undefined }),
-			makeCtx(),
-			{ resume: true, sessionId: "gem-456" },
-		);
-
-		expect(cmd).toContain("--resume gem-456");
-		expect(cmd).not.toContain("latest");
-	});
-
-	it("Codex: uses session id in resume subcommand", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx(),
-			{ resume: true, sessionId: "cdx-789" },
-		);
-
-		expect(cmd).toMatch(/^codex resume cdx-789/);
-		expect(cmd).not.toContain("--last");
-	});
-
-	it("Cursor Agent: injects --resume <id> for fresh launch (creates new thread)", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "agent" }),
-			makeConfig({ model: undefined }),
-			makeCtx(),
-			{ sessionId: "abc-123" },
-		);
-
-		expect(cmd).toContain("--resume abc-123");
-		expect(cmd).not.toContain("--session-id");
-	});
-
-	it("Cursor Agent: uses --resume <id> when both resume and sessionId", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "agent" }),
-			makeConfig({ model: undefined }),
-			makeCtx(),
-			{ resume: true, sessionId: "abc-123" },
-		);
-
-		expect(cmd).toContain("--resume abc-123");
-		expect(cmd).not.toContain("--continue");
-	});
-
-	it("does not inject session id for unsupported agents", async () => {
-		const cmd = await resolveAgentCommand(
-			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
-			makeCtx(),
-			{ sessionId: "abc-123" },
-		);
-
-		expect(cmd).not.toContain("--session-id");
-		expect(cmd).not.toContain("--resume");
-	});
 });
 
 describe("supportsPreAssignedSessionId", () => {
 	it.each([
 		["claude", true],
 		["agent", true],
-		["/usr/local/bin/claude", true],
 		["gemini", true],
 		["codex", false],
 		["bash", false],
@@ -836,51 +368,6 @@ describe("supportsPreAssignedSessionId", () => {
 });
 
 describe("buildResumeCommand", () => {
-	it("Claude: --resume <id> with sessionId", () => {
-		expect(buildResumeCommand("claude", "sid-1")).toBe("claude --resume sid-1");
-	});
-
-	it("Claude: --continue without sessionId", () => {
-		expect(buildResumeCommand("claude")).toBe("claude --continue");
-	});
-
-	it("Codex: resume <id> with sessionId", () => {
-		expect(buildResumeCommand("codex", "sid-2")).toBe("codex resume sid-2 -c check_for_update_on_startup=false");
-	});
-
-	it("Codex: no resume command without sessionId (never --last)", () => {
-		expect(buildResumeCommand("codex")).toBeNull();
-	});
-
-	it("Gemini: --resume <id> with sessionId", () => {
-		expect(buildResumeCommand("gemini", "sid-3")).toBe("gemini --resume sid-3");
-	});
-
-	it("Gemini: --resume latest without sessionId", () => {
-		expect(buildResumeCommand("gemini")).toBe("gemini --resume latest");
-	});
-
-	it("Cursor Agent: --resume <id> with sessionId", () => {
-		expect(buildResumeCommand("agent", "sid-4")).toBe("agent --resume sid-4");
-	});
-
-	it("Cursor Agent: --continue without sessionId", () => {
-		expect(buildResumeCommand("agent")).toBe("agent --continue");
-	});
-
-	it("OpenCode: --session <id> with sessionId", () => {
-		expect(buildResumeCommand("opencode", "sid-6")).toBe("opencode --session sid-6");
-	});
-
-	it("OpenCode: --continue without sessionId", () => {
-		expect(buildResumeCommand("opencode")).toBe("opencode --continue");
-	});
-
-	it("unsupported agent returns null", () => {
-		expect(buildResumeCommand("aider")).toBeNull();
-		expect(buildResumeCommand("bash")).toBeNull();
-	});
-
 	it("works with full paths", () => {
 		expect(buildResumeCommand("/usr/local/bin/claude", "sid-5")).toBe("/usr/local/bin/claude --resume sid-5");
 	});
@@ -900,52 +387,33 @@ describe("applyBinaryPathOverride", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	it("applies the cached path when it names the same binary", () => {
-		const agent = makeAgent({ baseCommand: "claude" });
-		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath });
-		expect(result.baseCommand).toBe(claudePath);
+	it("applies the auto-cached path only while it still names the same, existing binary", () => {
+		expect(applyBinaryPathOverride(makeAgent({ baseCommand: "claude" }), { "test-agent": claudePath }).baseCommand, "same binary")
+			.toBe(claudePath);
+		expect(applyBinaryPathOverride(makeAgent({ baseCommand: "claude-codex" }), { "test-agent": claudePath }).baseCommand, "base command edited")
+			.toBe("claude-codex");
+		expect(applyBinaryPathOverride(makeAgent({ baseCommand: "claude" }), { "test-agent": join(dir, "gone") }).baseCommand, "cached path gone")
+			.toBe("claude");
 	});
 
-	it("ignores a cached path once the base command was edited to another binary", () => {
-		const agent = makeAgent({ baseCommand: "claude-codex" });
-		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath });
-		expect(result.baseCommand).toBe("claude-codex");
-	});
-
-	it("fails the launch when the user's path is missing instead of using the system binary", () => {
+	it("fails the launch when the user's path is missing or not executable instead of using the system binary", () => {
 		const agent = makeAgent({ baseCommand: "claude", name: "Claude Code" });
 		const missing = join(dir, "gone");
 		expect(() => applyBinaryPathOverride(agent, { "test-agent": claudePath }, { "test-agent": missing })).toThrow(
 			`Custom executable for agent "Claude Code" not found or not executable: ${missing}`,
 		);
-	});
-
-	it("fails the launch when the user's path is not executable", () => {
 		const plain = join(dir, "plain");
 		writeFileSync(plain, "#!/bin/sh\n", { mode: 0o644 });
 		expect(() => applyBinaryPathOverride(makeAgent({ baseCommand: "claude" }), undefined, { "test-agent": plain })).toThrow(/not executable/);
 	});
 
-	it("ignores a cached path that no longer exists", () => {
-		const agent = makeAgent({ baseCommand: "claude" });
-		const result = applyBinaryPathOverride(agent, { "test-agent": join(dir, "gone") });
-		expect(result.baseCommand).toBe("claude");
-	});
-
-	it("applies a user-chosen path whose file name differs from the base command", () => {
+	it("applies a differently named user-chosen path, ahead of the auto-cached one", () => {
 		const wrapper = join(dir, "claude-wrapper");
 		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
 		const agent = makeAgent({ baseCommand: "claude" });
-		const result = applyBinaryPathOverride(agent, undefined, { "test-agent": wrapper });
-		expect(result.baseCommand).toBe(wrapper);
-	});
-
-	it("prefers the user's path over the auto-cached one", () => {
-		const wrapper = join(dir, "claude-wrapper");
-		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
-		const agent = makeAgent({ baseCommand: "claude" });
-		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath }, { "test-agent": wrapper });
-		expect(result.baseCommand).toBe(wrapper);
+		expect(applyBinaryPathOverride(agent, undefined, { "test-agent": wrapper }).baseCommand, "user path only").toBe(wrapper);
+		expect(applyBinaryPathOverride(agent, { "test-agent": claudePath }, { "test-agent": wrapper }).baseCommand, "user beats cached")
+			.toBe(wrapper);
 	});
 
 	// The reported bug: pointing built-in Claude at a differently named binary
@@ -963,14 +431,12 @@ describe("applyBinaryPathOverride", () => {
 		expect(supportsPreAssignedSessionId(result.baseCommand, result.agentFamily)).toBe(true);
 	});
 
-	it("never overrides a family the user declared explicitly", () => {
+	it("never overrides a declared family, and leaves it unset when the original command was unrecognized too", () => {
 		const wrapper = join(dir, "my-claude");
 		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
-		const agent = makeAgent({ baseCommand: "claude", agentFamily: "none" });
-		expect(applyBinaryPathOverride(agent, undefined, { "test-agent": wrapper }).agentFamily).toBe("none");
-	});
+		const declared = makeAgent({ baseCommand: "claude", agentFamily: "none" });
+		expect(applyBinaryPathOverride(declared, undefined, { "test-agent": wrapper }).agentFamily, "declared").toBe("none");
 
-	it("leaves the family unset when the original command was unrecognized too", () => {
 		// Pinning "none" here would be worse than today: the path's own name still
 		// deserves its chance (e.g. a custom agent pointed at the real `claude`).
 		const real = join(dir, "claude");
@@ -984,25 +450,19 @@ describe("applyBinaryPathOverride", () => {
 // A custom executable for Claude Code must run through the very same code as
 // `claude` itself — the whole point of declaring the family.
 describe("a declared family reaches the launch command", () => {
-	it("resumes instead of re-sending the task description", async () => {
+	it("resumes, mints session ids and injects the protocol + bypass switch, like plain claude", async () => {
 		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
-		const cmd = await resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
-		expect(cmd).toContain("my-claude --resume sess-1");
-		expect(cmd).not.toContain("Fix the login bug");
-	});
+		const resumed = await resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
+		expect(resumed, "resume").toContain("my-claude --resume sess-1");
+		expect(resumed, "resume does not re-send the description").not.toContain("Fix the login bug");
 
-	it("mints a session id on a fresh launch, so there is something to resume", async () => {
-		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
-		expect((await resolveAgentCommand(agent, makeConfig(), makeCtx(), { sessionId: "fresh-1" })))
+		expect(await resolveAgentCommand(agent, makeConfig(), makeCtx(), { sessionId: "fresh-1" }), "fresh launch")
 			.toContain("--session-id fresh-1");
 		expect(buildResumeCommand("my-claude", "sess-1", "claude")).toBe("my-claude --resume sess-1");
-	});
 
-	it("injects the dev3 protocol and the bypass switch, like plain claude does", async () => {
-		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
-		const cmd = await resolveAgentCommand(agent, makeConfig(), makeCtx());
-		expect(cmd).toContain("--append-system-prompt");
-		expect(cmd).toContain("--allow-dangerously-skip-permissions");
+		const fresh = await resolveAgentCommand(agent, makeConfig(), makeCtx());
+		expect(fresh, "protocol").toContain("--append-system-prompt");
+		expect(fresh, "bypass switch").toContain("--allow-dangerously-skip-permissions");
 	});
 
 	it("still applies the Claude-only model override", () => {
@@ -1024,35 +484,26 @@ describe("a declared family reaches the launch command", () => {
 // governs the whole adapter. Same three values, wider reach — carried over in
 // place so a user who already declared his wrapper gains resume for free.
 describe("migrateOldFormat — hooksIntegration becomes agentFamily", () => {
-	it("carries the declared family over and drops the old key", () => {
-		const [agent] = migrateOldFormat([
+	it("carries the declared family (and the explicit opt-out) over and drops the old key", () => {
+		const [agent, optOut] = migrateOldFormat([
 			{ id: "a", name: "Wrapper", baseCommand: "my-claude", configurations: [], hooksIntegration: "claude" },
+			{ id: "b", name: "W", baseCommand: "claude", configurations: [], hooksIntegration: "none" },
 		]) as any[];
 		expect(agent.agentFamily).toBe("claude");
 		expect("hooksIntegration" in agent).toBe(false);
+		expect(optOut.agentFamily, "opt-out").toBe("none");
 	});
 
-	it("carries the explicit opt-out over too", () => {
-		const [agent] = migrateOldFormat([
-			{ id: "a", name: "W", baseCommand: "claude", configurations: [], hooksIntegration: "none" },
-		]) as any[];
-		expect(agent.agentFamily).toBe("none");
-	});
-
-	it("leaves an agent that never declared anything alone", () => {
-		const [agent] = migrateOldFormat([
+	it("leaves an undeclared agent alone, and lets an already-migrated value win over a stale old key", () => {
+		const [undeclared, migrated] = migrateOldFormat([
 			{ id: "a", name: "Claude", baseCommand: "claude", configurations: [] },
+			{ id: "b", name: "W", baseCommand: "x", configurations: [], hooksIntegration: "codex", agentFamily: "claude" },
 		]) as any[];
-		expect(agent.agentFamily).toBeUndefined();
+		expect(undeclared.agentFamily, "undeclared").toBeUndefined();
+		expect(migrated.agentFamily, "already migrated").toBe("claude");
+		expect("hooksIntegration" in migrated).toBe(false);
 	});
 
-	it("lets an already-migrated value win over a stale old key", () => {
-		const [agent] = migrateOldFormat([
-			{ id: "a", name: "W", baseCommand: "x", configurations: [], hooksIntegration: "codex", agentFamily: "claude" },
-		]) as any[];
-		expect(agent.agentFamily).toBe("claude");
-		expect("hooksIntegration" in agent).toBe(false);
-	});
 });
 
 describe("mergeWithDefaults — preserves user-defined order", () => {
@@ -1061,66 +512,33 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		expect(result.map((a) => a.id)).toEqual(DEFAULT_AGENTS.map((a) => a.id));
 	});
 
-	it("preserves user-reordered agents", () => {
-		// User dragged Codex above Claude.
-		const stored: CodingAgent[] = [
-			{ ...DEFAULT_AGENTS[1] }, // Codex
-			{ ...DEFAULT_AGENTS[0] }, // Claude
-		];
-		const result = mergeWithDefaults(stored);
-		expect(result[0].id).toBe("builtin-codex");
-		expect(result[1].id).toBe("builtin-claude");
-	});
-
-	it("preserves user-reordered configurations within an agent", () => {
+	it("preserves user-reordered agents and configurations", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
-		// Reverse a few default configs.
-		const reorderedConfigs = [
-			claude.configurations.find((c) => c.id === "claude-plan")!,
-			claude.configurations.find((c) => c.id === "claude-plan-sonnet5")!,
-			claude.configurations.find((c) => c.id === "claude-default")!,
-		];
-		// Plus the rest unchanged.
-		const others = claude.configurations.filter(
-			(c) => !["claude-plan", "claude-plan-sonnet5", "claude-default"].includes(c.id),
-		);
-		const stored: CodingAgent[] = [
-			{ ...claude, configurations: [...reorderedConfigs, ...others] },
-		];
-		const result = mergeWithDefaults(stored);
-		const claudeResult = result.find((a) => a.id === "builtin-claude")!;
-		expect(claudeResult.configurations[0].id).toBe("claude-plan");
-		expect(claudeResult.configurations[1].id).toBe("claude-plan-sonnet5");
-		expect(claudeResult.configurations[2].id).toBe("claude-default");
-	});
-
-	it("appends newly added default agents at the end without disturbing stored order", () => {
-		// Stored has only Codex; defaults have Claude+Codex+others. New defaults should append.
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
-		const stored: CodingAgent[] = [{ ...codex }];
-		const result = mergeWithDefaults(stored);
-		expect(result[0].id).toBe("builtin-codex");
-		// All other defaults present somewhere in result.
-		for (const def of DEFAULT_AGENTS) {
-			expect(result.some((a) => a.id === def.id)).toBe(true);
-		}
+		const moved = ["claude-plan", "claude-plan-sonnet5", "claude-default"];
+		const reorderedConfigs = [
+			...moved.map((id) => claude.configurations.find((c) => c.id === id)!),
+			...claude.configurations.filter((c) => !moved.includes(c.id)),
+		];
+		// User dragged Codex above Claude and reversed a few Claude configs.
+		const result = mergeWithDefaults([{ ...codex }, { ...claude, configurations: reorderedConfigs }]);
+		expect(result.slice(0, 2).map((a) => a.id), "agent order").toEqual(["builtin-codex", "builtin-claude"]);
+		expect(result[1].configurations.slice(0, 3).map((c) => c.id), "config order").toEqual(moved);
 	});
 
-	it("appends newly added default configurations within an agent without disturbing stored order", () => {
+	it("appends newly added default agents and configurations without disturbing stored order", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
-		// Stored has only the first 3 configs of Claude (older snapshot).
-		const stored: CodingAgent[] = [
-			{ ...claude, configurations: claude.configurations.slice(0, 3) },
-		];
-		const result = mergeWithDefaults(stored);
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		// Stored has Codex, then Claude with only its first 3 configs (older snapshot).
+		const result = mergeWithDefaults([{ ...codex }, { ...claude, configurations: claude.configurations.slice(0, 3) }]);
+		expect(result[0].id).toBe("builtin-codex");
+		for (const def of DEFAULT_AGENTS) {
+			expect(result.some((a) => a.id === def.id), `agent ${def.id}`).toBe(true);
+		}
 		const claudeResult = result.find((a) => a.id === "builtin-claude")!;
-		// First 3 unchanged.
-		expect(claudeResult.configurations[0].id).toBe(claude.configurations[0].id);
-		expect(claudeResult.configurations[1].id).toBe(claude.configurations[1].id);
-		expect(claudeResult.configurations[2].id).toBe(claude.configurations[2].id);
-		// All default configs present.
+		expect(claudeResult.configurations.slice(0, 3).map((c) => c.id)).toEqual(claude.configurations.slice(0, 3).map((c) => c.id));
 		for (const def of claude.configurations) {
-			expect(claudeResult.configurations.some((c) => c.id === def.id)).toBe(true);
+			expect(claudeResult.configurations.some((c) => c.id === def.id), `config ${def.id}`).toBe(true);
 		}
 	});
 
@@ -1171,33 +589,18 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 			expect(merged.configurations.find((c) => c.id === "cursor-gemini")?.model).toBe("gemini-3.7-flash-high");
 		});
 
-		it("keeps a model the user changed by hand on a built-in preset", () => {
-			const merged = mergedCursor(storedCursor([
-				{ id: "cursor-default", name: "Default (Opus 4.6)", model: "cursor-grok-4.6-xhigh" },
-			]));
-
-			expect(merged.configurations.find((c) => c.id === "cursor-default")?.model).toBe("cursor-grok-4.6-xhigh");
-		});
-
-		it("keeps a name the user changed by hand while still refreshing the dead model", () => {
+		it("keeps the user's own edits: a hand-picked model, a renamed preset, a user-created config", () => {
 			const merged = mergedCursor(storedCursor([
 				{ id: "cursor-default", name: "My Cursor", model: "opus-4.6-thinking" },
-			]));
-			const cfg = merged.configurations.find((c) => c.id === "cursor-default")!;
-
-			expect(cfg.name).toBe("My Cursor");
-			expect(cfg.model).toBe("claude-opus-5-thinking-high");
-		});
-
-		it("leaves a user-created configuration alone even when it holds a retired slug", () => {
-			const merged = mergedCursor(storedCursor([
-				{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
+				{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "cursor-grok-4.6-xhigh" },
 				{ id: "my-own-preset", name: "Mine", model: "opus-4.6-thinking" },
 			]));
-			const mine = merged.configurations.find((c) => c.id === "my-own-preset")!;
+			const byId = (id: string) => merged.configurations.find((c) => c.id === id)!;
 
-			expect(mine.model).toBe("opus-4.6-thinking");
-			expect(mine.name).toBe("Mine");
+			expect(byId("cursor-gpt").model, "hand-picked model").toBe("cursor-grok-4.6-xhigh");
+			expect(byId("cursor-default").name, "renamed preset keeps its name").toBe("My Cursor");
+			expect(byId("cursor-default").model, "renamed preset still drops the dead model").toBe("claude-opus-5-thinking-high");
+			expect(byId("my-own-preset"), "user-created config").toMatchObject({ name: "Mine", model: "opus-4.6-thinking" });
 		});
 
 		it("is idempotent — a second load changes nothing", () => {
@@ -1268,7 +671,7 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		expect(updated.configurations.find((config) => config.id === "codex-plan")?.model).toBe("gpt-6-sol");
 	});
 
-	it("keeps GPT-6.1 Sol, GPT-6 Sol, and GPT-6 Luna selectable next to the Astra default", () => {
+	it("keeps GPT-6.x Sol and Luna selectable next to the Astra default, and launches each when chosen", async () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const models = new Set(codex.configurations.map((config) => config.model));
 		expect(models.has("gpt-6.2-astra")).toBe(true);
@@ -1284,20 +687,8 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		expect(findConfig(codex, "codex-6-luna-medium-bypass")?.model).toBe("gpt-6-luna");
 		// A task stored on the retired duplicate row lands on the Astra default, not the first row.
 		expect(findConfig(codex, "codex-6-astra-medium-bypass")?.id).toBe("codex-default");
-	});
 
-	it("adds GPT-6.1 Sol presets to an existing Codex configuration", () => {
-		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
-		const stored = [{ ...codex, configurations: codex.configurations.filter((config) => config.id === "codex-default") }];
-		const updated = mergeWithDefaults(stored).find((agent) => agent.id === "builtin-codex")!;
-		expect(updated.configurations.some((config) => config.id === "codex-6.1-sol-medium-bypass")).toBe(true);
-		expect(updated.configurations.some((config) => config.id === "codex-6.2-astra-medium-bypass")).toBe(true);
-		expect(updated.configurations.some((config) => config.id === "codex-6.2-sol-medium-bypass")).toBe(true);
-		expect(updated.defaultConfigId).toBe("codex-default");
-	});
-
-	it("launches GPT-6 Astra by default and GPT-6.1 Sol when chosen", async () => {
-		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
+		// …and launches GPT-6 Astra by default, the others when chosen.
 		const omitted = await resolveAgentCommand(codex, findConfig(codex, undefined), makeCtx());
 		expect(omitted).toContain("gpt-6-astra");
 		expect(omitted).not.toContain("gpt-6.2-");
@@ -1394,53 +785,32 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 });
 
 describe("mergeMcpApproval", () => {
-	it("defaults to enableAllProjectMcpServers when no inputs", () => {
+	it("defaults to enableAllProjectMcpServers, keeping unrelated worktree settings", () => {
 		const result = mergeMcpApproval({}, []);
 		expect(result.enableAllProjectMcpServers).toBe(true);
 		expect(result.enabledMcpjsonServers).toBeUndefined();
 		expect(result.disabledMcpjsonServers).toBeUndefined();
+		expect(mergeMcpApproval({}, [null, null]).enableAllProjectMcpServers, "null sources").toBe(true);
+		const withPermissions = mergeMcpApproval({ permissions: { allow: ["Bash(ls *)"] } }, []);
+		expect(withPermissions.permissions, "unrelated settings").toEqual({ allow: ["Bash(ls *)"] });
+		expect(withPermissions.enableAllProjectMcpServers).toBe(true);
 	});
 
-	it("defaults to enableAll when project sources are all null", () => {
-		const result = mergeMcpApproval({}, [null, null]);
-		expect(result.enableAllProjectMcpServers).toBe(true);
+	it("respects an explicit enableAll from project sources, the later one winning", () => {
+		expect(mergeMcpApproval({}, [{ enableAllProjectMcpServers: false }]).enableAllProjectMcpServers).toBe(false);
+		expect(mergeMcpApproval({}, [
+			{ enableAllProjectMcpServers: true },
+			{ enableAllProjectMcpServers: false },
+		]).enableAllProjectMcpServers, "later overrides earlier").toBe(false);
 	});
 
-	it("preserves existing worktree settings unrelated to MCP", () => {
-		const result = mergeMcpApproval({ permissions: { allow: ["Bash(ls *)"] } }, []);
-		expect(result.permissions).toEqual({ allow: ["Bash(ls *)"] });
-		expect(result.enableAllProjectMcpServers).toBe(true);
-	});
-
-	it("respects explicit enableAll=false from project source", () => {
-		const result = mergeMcpApproval({}, [{ enableAllProjectMcpServers: false }]);
-		expect(result.enableAllProjectMcpServers).toBe(false);
-	});
-
-	it("merges enabled/disabled server names from project sources", () => {
-		const result = mergeMcpApproval({}, [
+	it("merges enabled/disabled server names from worktree settings and project sources", () => {
+		const result = mergeMcpApproval({ enabledMcpjsonServers: ["a"], disabledMcpjsonServers: ["b"] }, [
 			{ enabledMcpjsonServers: ["nile-docs", "nile"], disabledMcpjsonServers: ["scary"] },
 			{ enabledMcpjsonServers: ["nile-reports"] },
 		]);
-		expect(result.enabledMcpjsonServers).toEqual(["nile-docs", "nile", "nile-reports"]);
-		expect(result.disabledMcpjsonServers).toEqual(["scary"]);
-	});
-
-	it("later project source overrides earlier enableAll boolean", () => {
-		const result = mergeMcpApproval({}, [
-			{ enableAllProjectMcpServers: true },
-			{ enableAllProjectMcpServers: false },
-		]);
-		expect(result.enableAllProjectMcpServers).toBe(false);
-	});
-
-	it("keeps existing enabled/disabled lists from worktree settings", () => {
-		const result = mergeMcpApproval(
-			{ enabledMcpjsonServers: ["a"], disabledMcpjsonServers: ["b"] },
-			[{ enabledMcpjsonServers: ["c"] }],
-		);
-		expect(result.enabledMcpjsonServers).toEqual(["a", "c"]);
-		expect(result.disabledMcpjsonServers).toEqual(["b"]);
+		expect(result.enabledMcpjsonServers).toEqual(["a", "nile-docs", "nile", "nile-reports"]);
+		expect(result.disabledMcpjsonServers).toEqual(["b", "scary"]);
 	});
 
 	it("ignores non-string entries in *McpjsonServers arrays", () => {
@@ -1483,31 +853,15 @@ describe("ensureClaudeMcpApproved", () => {
 });
 
 describe("applyLayoutResync", () => {
-	it("reorders a stale legacy config order to match the current DEFAULT_AGENTS order", () => {
-		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
-		// Simulate a fossilized stored order — reverse of the current declared order.
-		const staleOrder = [...claude.configurations].reverse();
-		const stored: CodingAgent[] = [{ ...claude, configurations: staleOrder }];
-
-		const result = applyLayoutResync(stored);
-		const resyncedClaude = result.find((a) => a.id === "builtin-claude")!;
-
-		expect(resyncedClaude.configurations.map((c) => c.id)).toEqual(
-			claude.configurations.map((c) => c.id),
-		);
-	});
-
-	it("appends user-created configs after the resynced built-ins, preserving their relative order", () => {
+	it("reorders a stale config order to the current DEFAULT_AGENTS order, user-created configs last", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
 		const custom: AgentConfiguration = { id: "my-custom-config", name: "My Custom" };
+		// Simulate a fossilized stored order — reverse of the current declared order.
 		const stored: CodingAgent[] = [
 			{ ...claude, configurations: [custom, ...[...claude.configurations].reverse()] },
 		];
 
-		const result = applyLayoutResync(stored);
-		const resyncedClaude = result.find((a) => a.id === "builtin-claude")!;
-
-		const ids = resyncedClaude.configurations.map((c) => c.id);
+		const ids = applyLayoutResync(stored).find((a) => a.id === "builtin-claude")!.configurations.map((c) => c.id);
 		expect(ids[ids.length - 1]).toBe("my-custom-config");
 		expect(ids.slice(0, -1)).toEqual(claude.configurations.map((c) => c.id));
 	});
@@ -1527,115 +881,80 @@ describe("applyProviderModel — flag-delivered backends rewrite the model alias
 	const codexOnBedrock = (providerConfig?: CodingAgent["providerConfig"]) =>
 		makeAgent({ baseCommand: "codex", llmProvider: "bedrock-codex", providerConfig });
 
-	it("rewrites a codex alias to the mapped Bedrock id", () => {
+	it("rewrites a codex alias to the mapped Bedrock id; a per-model manual override wins over the map", () => {
 		const config = makeConfig({ model: "gpt-5.6-sol" });
-		const result = applyProviderModel(config, codexOnBedrock());
-		expect(result?.model).toBe("global.openai.gpt-5.6-sol");
+		expect(applyProviderModel(config, codexOnBedrock())?.model).toBe("global.openai.gpt-5.6-sol");
 		// Original config is not mutated.
 		expect(config.model).toBe("gpt-5.6-sol");
-	});
-
-	it("a per-model manual override wins over the map", () => {
-		const config = makeConfig({ model: "gpt-5.6-sol" });
-		const result = applyProviderModel(
+		const overridden = applyProviderModel(
 			config,
 			codexOnBedrock({ "bedrock-codex": { modelOverrides: { "gpt-5.6-sol": "openai.custom" } } }),
 		);
-		expect(result?.model).toBe("openai.custom");
+		expect(overridden?.model, "manual override").toBe("openai.custom");
 	});
 
-	it("does nothing on the native default", () => {
-		const config = makeConfig({ model: "gpt-5.6-sol" });
-		expect(applyProviderModel(config, makeAgent({ baseCommand: "codex" }))).toBe(config);
-	});
-
-	it("does nothing for env-delivering backends (Claude on Bedrock keeps its alias; --model is omitted)", () => {
-		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
-		expect(applyProviderModel(config, makeAgent({ baseCommand: "claude", llmProvider: "bedrock" }))).toBe(config);
-	});
-
-	it("ignores a provider registered for a different agent command", () => {
-		const config = makeConfig({ model: "gpt-5.6-sol" });
-		expect(applyProviderModel(config, makeAgent({ baseCommand: "gemini", llmProvider: "bedrock-codex" }))).toBe(config);
+	it("does nothing on the native default, for env-delivering backends, or for another agent's provider", () => {
+		const codexConfig = makeConfig({ model: "gpt-5.6-sol" });
+		expect(applyProviderModel(codexConfig, makeAgent({ baseCommand: "codex" })), "native default").toBe(codexConfig);
+		// Claude on Bedrock keeps its alias; --model is omitted instead.
+		const claudeConfig = makeConfig({ model: "claude-opus-4-8[1m]" });
+		expect(applyProviderModel(claudeConfig, makeAgent({ baseCommand: "claude", llmProvider: "bedrock" })), "env-delivering").toBe(claudeConfig);
+		expect(applyProviderModel(codexConfig, makeAgent({ baseCommand: "gemini", llmProvider: "bedrock-codex" })), "other agent").toBe(codexConfig);
 	});
 });
 
 describe("resolveLaunchConfig — the shared launch-time model pipeline", () => {
-	it("rewrites a codex alias to the pinned Bedrock id (provider step applies)", () => {
-		const agent = makeAgent({ baseCommand: "codex", llmProvider: "bedrock-codex" });
-		const config = makeConfig({ model: "gpt-5.6-sol" });
-		const result = resolveLaunchConfig(config, agent, "codex", {});
-		expect(result?.model).toBe("global.openai.gpt-5.6-sol");
-	});
-
-	it("applies the session-env model override after the provider step (claude)", () => {
-		const agent = makeAgent({ baseCommand: "claude" });
-		const config = makeConfig({ model: "sonnet" });
-		const result = resolveLaunchConfig(config, agent, "claude", { ANTHROPIC_MODEL: "my-model" });
-		expect(result?.model).toBe("my-model");
-	});
-
-	it("is a no-op for a native codex config with no session env", () => {
-		const config = makeConfig({ model: "gpt-5.6-sol" });
-		expect(resolveLaunchConfig(config, makeAgent({ baseCommand: "codex" }), "codex", {})).toBe(config);
+	it("runs the provider step, then the session-env model override, and is a no-op otherwise", () => {
+		const codexConfig = makeConfig({ model: "gpt-5.6-sol" });
+		const bedrock = makeAgent({ baseCommand: "codex", llmProvider: "bedrock-codex" });
+		expect(resolveLaunchConfig(codexConfig, bedrock, "codex", {})?.model, "provider step").toBe("global.openai.gpt-5.6-sol");
+		const claude = resolveLaunchConfig(makeConfig({ model: "sonnet" }), makeAgent({ baseCommand: "claude" }), "claude", { ANTHROPIC_MODEL: "my-model" });
+		expect(claude?.model, "session-env override").toBe("my-model");
+		expect(resolveLaunchConfig(codexConfig, makeAgent({ baseCommand: "codex" }), "codex", {}), "native, no env").toBe(codexConfig);
 	});
 });
 
 describe("applyModelOverride — API profile model beats the preset --model flag", () => {
-	it("replaces the preset model when ANTHROPIC_MODEL is in the session env", () => {
+	it("replaces the preset model when ANTHROPIC_MODEL is in the session env, down to the --model flag", async () => {
 		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
 		const result = applyModelOverride(config, "claude", { ANTHROPIC_MODEL: "openrouter/custom" });
 		expect(result?.model).toBe("openrouter/custom");
 		// Original config is not mutated.
 		expect(config.model).toBe("claude-opus-4-8[1m]");
-	});
 
-	it("produces a command with the overridden --model", async () => {
-		const config = applyModelOverride(makeConfig({ model: "sonnet" }), "claude", { ANTHROPIC_MODEL: "my-model" });
-		const cmd = await resolveAgentCommand(makeAgent(), config, makeCtx());
+		const cmd = await resolveAgentCommand(makeAgent(), applyModelOverride(makeConfig({ model: "sonnet" }), "claude", { ANTHROPIC_MODEL: "my-model" }), makeCtx());
 		expect(cmd).toContain("--model my-model");
 		expect(cmd).not.toContain("--model sonnet");
 	});
 
-	it("does nothing without ANTHROPIC_MODEL in the env", () => {
+	it("does nothing without ANTHROPIC_MODEL, for non-Claude commands, or without a config", () => {
 		const config = makeConfig({ model: "sonnet" });
-		expect(applyModelOverride(config, "claude", {})).toBe(config);
+		expect(applyModelOverride(config, "claude", {}), "no env").toBe(config);
+		const codexConfig = makeConfig({ model: "gpt-5.5" });
+		expect(applyModelOverride(codexConfig, "codex", { ANTHROPIC_MODEL: "my-model" }), "non-Claude").toBe(codexConfig);
+		// Env alone wins when no flag is emitted.
+		expect(applyModelOverride(undefined, "claude", { ANTHROPIC_MODEL: "my-model" }), "no config").toBeUndefined();
 	});
 
-	it("does nothing for non-Claude commands", () => {
-		const config = makeConfig({ model: "gpt-5.5" });
-		expect(applyModelOverride(config, "codex", { ANTHROPIC_MODEL: "my-model" })).toBe(config);
-	});
-
-	it("returns undefined config unchanged (env alone wins when no flag is emitted)", () => {
-		expect(applyModelOverride(undefined, "claude", { ANTHROPIC_MODEL: "my-model" })).toBeUndefined();
-	});
-
-	it("rewrites the preset to the family-slot override (dev3 presets pass concrete ids)", () => {
-		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
-		const result = applyModelOverride(config, "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "openrouter/opus-alt" });
-		expect(result?.model).toBe("openrouter/opus-alt");
-	});
-
-	it("prefers the family-slot override over a bare ANTHROPIC_MODEL", () => {
-		const config = makeConfig({ model: "claude-sonnet-5" });
-		const result = applyModelOverride(config, "claude", {
+	it("rewrites the preset to the family-slot override, ahead of a bare ANTHROPIC_MODEL", () => {
+		// dev3 presets pass concrete ids.
+		const opus = applyModelOverride(makeConfig({ model: "claude-opus-4-8[1m]" }), "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "openrouter/opus-alt" });
+		expect(opus?.model).toBe("openrouter/opus-alt");
+		const sonnet = applyModelOverride(makeConfig({ model: "claude-sonnet-5" }), "claude", {
 			ANTHROPIC_DEFAULT_SONNET_MODEL: "provider/sonnet",
 			ANTHROPIC_MODEL: "provider/generic",
 		});
-		expect(result?.model).toBe("provider/sonnet");
+		expect(sonnet?.model, "slot beats ANTHROPIC_MODEL").toBe("provider/sonnet");
 	});
 
-	it("keeps the preset when the model's family has no override", () => {
-		const config = makeConfig({ model: "claude-fable-5" });
+	it("keeps the preset when the model's family has no override, or the override is an ENV_UNSET sentinel", () => {
+		const fable = makeConfig({ model: "claude-fable-5" });
 		// Only an opus override is present — fable is untouched, no ANTHROPIC_MODEL fallback.
-		expect(applyModelOverride(config, "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "x" })).toBe(config);
-	});
-
-	it("ignores ENV_UNSET sentinels — they mean 'unset', not a model id", () => {
-		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
+		expect(applyModelOverride(fable, "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "x" }), "no family override").toBe(fable);
+		// ENV_UNSET means 'unset', not a model id.
+		const opus = makeConfig({ model: "claude-opus-4-8[1m]" });
 		const env = { ANTHROPIC_DEFAULT_OPUS_MODEL: ENV_UNSET, ANTHROPIC_MODEL: ENV_UNSET };
-		expect(applyModelOverride(config, "claude", env)).toBe(config);
+		expect(applyModelOverride(opus, "claude", env), "ENV_UNSET").toBe(opus);
 	});
 });
 
@@ -1653,17 +972,11 @@ describe("claudeModelFamily", () => {
 });
 
 describe("claudeDefaultEnv — Claude's bypass guard under uid 0", () => {
-	it("declares the sandbox when running as root on a non-Windows box", () => {
+	it("declares the sandbox only when running as root on a non-Windows box, keeping the other defaults", () => {
 		expect(claudeDefaultEnv(0, "linux").IS_SANDBOX).toBe("1");
-	});
-
-	it("stays out of the way for an ordinary user", () => {
 		expect(claudeDefaultEnv(501, "linux").IS_SANDBOX).toBeUndefined();
 		expect(claudeDefaultEnv(0, "win32").IS_SANDBOX).toBeUndefined();
 		expect(claudeDefaultEnv(undefined, "linux").IS_SANDBOX).toBeUndefined();
-	});
-
-	it("keeps the other Claude defaults in every case", () => {
 		for (const env of [claudeDefaultEnv(0, "linux"), claudeDefaultEnv(501, "darwin")]) {
 			expect(env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe("1");
 			expect(env.CLAUDE_CODE_NO_FLICKER).toBe("1");

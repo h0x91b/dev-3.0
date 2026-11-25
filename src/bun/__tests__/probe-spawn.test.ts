@@ -40,16 +40,13 @@ describe("runProbeText", () => {
 		await expect(runProbeText(["ps"], 1_000)).resolves.toBe("pid rows\n");
 	});
 
-	it("returns empty on a non-zero exit", async () => {
+	it("returns empty on a non-zero exit or when the spawn itself throws", async () => {
 		mockSpawn.mockReturnValue({ stdout: "partial", stderr: "", exited: Promise.resolve(1), kill: vi.fn() } as never);
-		await expect(runProbeText(["ps"], 1_000)).resolves.toBe("");
-	});
-
-	it("returns empty when the spawn itself throws", async () => {
+		await expect(runProbeText(["ps"], 1_000), "non-zero exit").resolves.toBe("");
 		mockSpawn.mockImplementation(() => {
 			throw new Error("posix_spawn ENOENT");
 		});
-		await expect(runProbeText(["ps"], 1_000)).resolves.toBe("");
+		await expect(runProbeText(["ps"], 1_000), "spawn throws").resolves.toBe("");
 	});
 
 	it("stops a child that never exits, and settles anyway", async () => {

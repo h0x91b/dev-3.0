@@ -98,80 +98,27 @@ describe("terminal-state snapshot spike", () => {
 		replay.dispose();
 	});
 
-	it("restores cursor presentation and terminal modes", async () => {
-		const fixture = loadFixture("cursor-modes");
-		const source = await HeadlessTerminalState.create(fixture.initial);
-		await applyFixture(source, fixture);
-		expect(source.inspect()).toMatchObject(fixture.expected);
-
-		const replay = await replayTerminalSnapshot(source.snapshot());
-		expect(replay.inspect()).toEqual(source.inspect());
-
-		source.dispose();
-		replay.dispose();
-	});
-
-	it("bounds and restores scrollback", async () => {
-		const fixture = loadFixture("scrollback");
-		const source = await HeadlessTerminalState.create(fixture.initial);
-		await applyFixture(source, fixture);
-		expect(source.inspect()).toMatchObject(fixture.expected);
-
-		const replay = await replayTerminalSnapshot(source.snapshot());
-		expect(replay.inspect()).toEqual(source.inspect());
-
-		source.dispose();
-		replay.dispose();
-	});
-
-	it("restores truecolor, palette colors, and cell attributes", async () => {
-		const fixture = loadFixture("colors");
-		const source = await HeadlessTerminalState.create(fixture.initial);
-		await applyFixture(source, fixture);
-		const sourceState = source.inspect();
-		expect(sourceState).toMatchObject(fixture.expected);
-		for (const probe of fixture.expectedCells ?? []) {
-			expect(sourceState.screen[probe.row].cells[probe.col]).toEqual(probe.cell);
-		}
-
-		const replay = await replayTerminalSnapshot(source.snapshot());
-		expect(replay.inspect()).toEqual(sourceState);
-
-		source.dispose();
-		replay.dispose();
-	});
-
-	it("restores wide glyphs, combining marks, and emoji cell widths", async () => {
-		const fixture = loadFixture("unicode");
-		const source = await HeadlessTerminalState.create(fixture.initial);
-		await applyFixture(source, fixture);
-		const sourceState = source.inspect();
-		expect(sourceState).toMatchObject(fixture.expected);
-		for (const probe of fixture.expectedCells ?? []) {
-			expect(sourceState.screen[probe.row].cells[probe.col]).toEqual(probe.cell);
-		}
-
-		const replay = await replayTerminalSnapshot(source.snapshot());
-		expect(replay.inspect()).toEqual(sourceState);
-
-		source.dispose();
-		replay.dispose();
-	});
-
-	for (const name of [
-		"line-wrapping",
-		"resize-history",
-		"real-nvim",
-		"real-powershell",
-		"real-cmd",
-		"real-pwsh7",
-	]) {
-		it(`restores the ${name} golden fixture`, async () => {
+	it("round-trips every golden fixture, cell probes and real-shell captures included", async () => {
+		for (const name of [
+			"cursor-modes",
+			"scrollback",
+			"colors",
+			"unicode",
+			"line-wrapping",
+			"resize-history",
+			"real-nvim",
+			"real-powershell",
+			"real-cmd",
+			"real-pwsh7",
+		]) {
 			const fixture = loadFixture(name);
 			const source = await HeadlessTerminalState.create(fixture.initial);
 			await applyFixture(source, fixture);
 			const sourceState = source.inspect();
-			expect(sourceState).toMatchObject(fixture.expected);
+			expect(sourceState, name).toMatchObject(fixture.expected);
+			for (const probe of fixture.expectedCells ?? []) {
+				expect(sourceState.screen[probe.row].cells[probe.col], name).toEqual(probe.cell);
+			}
 			if (name === "real-nvim") {
 				expect(sourceState.screen.some((line) => line.text.includes("NVIM v0.12.4"))).toBe(true);
 			}
@@ -211,10 +158,10 @@ describe("terminal-state snapshot spike", () => {
 			}
 
 			const replay = await replayTerminalSnapshot(source.snapshot());
-			expect(replay.inspect()).toEqual(sourceState);
+			expect(replay.inspect(), name).toEqual(sourceState);
 
 			source.dispose();
 			replay.dispose();
-		});
-	}
+		}
+	});
 });

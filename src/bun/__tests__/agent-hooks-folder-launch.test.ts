@@ -84,21 +84,18 @@ describe("setupAgentHooks in a folder dev3 does not own", () => {
 		expect(again?.claudeSettingsFile).toBe(a?.claudeSettingsFile);
 	});
 
-	it("falls back to the folder's guarded settings when the command passes no managed file", async () => {
-		const launch = await setupAgentHooks(folder, "claude", { stopTarget: "review-by-user" });
-		expect(launch).toBeNull();
+	it("falls back to the folder's guarded settings without a managed file, and still writes a worktree's own", async () => {
+		expect(await setupAgentHooks(folder, "claude", { stopTarget: "review-by-user" })).toBeNull();
 		const local = readJson(join(folder, ".claude", "settings.local.json"));
 		expect(JSON.stringify(local.hooks)).toContain("DEV3_TASK_ID");
-	});
 
-	it("still writes a worktree's own settings file", async () => {
 		const worktree = join(tempHome, "worktrees", "proj", "abcd1234", "worktree");
 		mkdirSync(worktree, { recursive: true });
 		const launch = await setupAgentHooks(worktree, "claude", { stopTarget: "review-by-user", claudeSettingsFile: managed });
-		expect(launch).toBeNull();
-		const local = readJson(join(worktree, ".claude", "settings.local.json"));
+		expect(launch, "worktree").toBeNull();
+		const own = readJson(join(worktree, ".claude", "settings.local.json"));
 		// A worktree is one task's alone: nothing to claim.
-		expect(JSON.stringify(local.hooks)).not.toContain("claude-claim");
+		expect(JSON.stringify(own.hooks)).not.toContain("claude-claim");
 	});
 
 	it("leaves no Codex hooks file in the folder but keeps the trust flag", async () => {

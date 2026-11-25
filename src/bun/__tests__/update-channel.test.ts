@@ -25,8 +25,9 @@ const stableBundle: LocalBuild = { version: "1.42.0", hash: "hash-stable", chann
 const canaryBundle: LocalBuild = { version: "1.42.0", hash: "hash-canary", channel: "canary", buildOrder: 1580 };
 
 describe("the persisted channel value", () => {
-	it("defaults to stable, so nobody is opted into canary by accident", () => {
+	it("defaults to stable, so nobody is opted into canary by accident, and accepts exactly the one opt-in spelling", () => {
 		expect(DEFAULT_UPDATE_CHANNEL).toBe("stable");
+		expect(coerceUpdateChannel("canary", true)).toBe("canary");
 	});
 
 	it("degrades every unrecognised value to stable, which is what makes the rename safe", () => {
@@ -43,10 +44,6 @@ describe("the persisted channel value", () => {
 				`coerceUpdateChannel(${JSON.stringify(rejected)}) must fall back to "stable". An unrecognised channel that survives points the updater at a feed with no manifest, which returns 403 and reads to the user as "you are up to date" forever. Fix: keep the exact-match check in src/shared/update-channel.ts.`,
 			).toBe("stable");
 		}
-	});
-
-	it("accepts exactly the one opt-in spelling where the channel publishes", () => {
-		expect(coerceUpdateChannel("canary", true)).toBe("canary");
 	});
 
 	// The SECOND half of the per-platform gate, and the one that is easy to omit. Disabling
@@ -102,12 +99,15 @@ describe("staying on stable orders by semver", () => {
 });
 
 describe("staying on canary orders by the monotonic build counter", () => {
-	it("offers a build with a higher counter", () => {
+	it("offers a build with a higher counter, never a lower one", () => {
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-newer", sha: "deadbee", buildOrder: 1581 };
 		expect(decideUpdate(canaryBundle, "canary", remote, isNewerVersion)).toEqual({
 			kind: "update",
 			version: "1.42.0",
 		});
+		// …and never one with a LOWER counter.
+		const older: UpdateManifest = { version: "1.42.0", hash: "hash-older", sha: "cafe123", buildOrder: 1579 };
+		expect(decideUpdate(canaryBundle, "canary", older, isNewerVersion)).toEqual({ kind: "none" });
 	});
 
 	it("offers nothing when the same commit is republished, so a re-run is not a reinstall", () => {
@@ -118,11 +118,6 @@ describe("staying on canary orders by the monotonic build counter", () => {
 			decideUpdate(canaryBundle, "canary", remote, isNewerVersion),
 			"a republish of the same commit must offer nothing. buildOrder is reproducible from the commit, so an equal counter means the same source — if this offers an update, pressing the manual dispatch twice costs every canary user a download and a restart.",
 		).toEqual({ kind: "none" });
-	});
-
-	it("never offers a build with a LOWER counter", () => {
-		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-older", sha: "cafe123", buildOrder: 1579 };
-		expect(decideUpdate(canaryBundle, "canary", remote, isNewerVersion)).toEqual({ kind: "none" });
 	});
 
 	it("reports an error rather than guessing when the manifest has no counter", () => {
@@ -146,9 +141,7 @@ describe("the published version says which build it is", () => {
 			channel: "canary",
 			sha: "a0981f55",
 		});
-	});
-
-	it("reports no channel for a stable version, so the UI adds no badge", () => {
+		// A stable version carries no channel, so the UI adds no badge.
 		expect(parseDisplayVersion("1.42.3")).toEqual({ core: "1.42.3" });
 	});
 

@@ -30,17 +30,11 @@ describe("runHandoffJob", () => {
 		expect(await runHandoffJob(job, { timeoutMs: 10_000 })).toEqual({ kind: "none", echoed: "/nowhere/worktree" });
 	});
 
-	it("rejects with the worker's error instead of hanging", async () => {
+	it("rejects instead of hanging on a worker error, a worker that never answers, or one that dies", async () => {
 		configureHandoffWorker(worker("fail.mjs", `parentPort.postMessage({ ok: false, error: "boom" });`));
 		await expect(runHandoffJob(job, { timeoutMs: 10_000 })).rejects.toThrow("boom");
-	});
-
-	it("gives up on a worker that never answers", async () => {
 		configureHandoffWorker(worker("stuck.mjs", `setInterval(() => {}, 1_000);`));
 		await expect(runHandoffJob(job, { timeoutMs: 200 })).rejects.toThrow("timed out");
-	});
-
-	it("rejects when the worker dies without answering", async () => {
 		configureHandoffWorker(worker("exit.mjs", `process.exit(3);`));
 		await expect(runHandoffJob(job, { timeoutMs: 10_000 })).rejects.toThrow(/exited|code/);
 	});

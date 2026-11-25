@@ -36,22 +36,23 @@ const rejection = (effects: { type: string; message?: string }[]) => effects.fin
 const reset = (consent: TaskResetConsent = CONSENT): LifecycleEvent => ({ type: "resetRequested", consent });
 
 describe("plain moves to To Do never destroy a run (T1, T2, T17c)", () => {
-	for (const status of ["in-progress", "user-questions", "review-by-user", "review-by-ai", "review-by-colleague"] as const) {
-		it(`${status} → todo is refused, with and without force`, () => {
+	it("every active column → todo is refused, with and without force, a hibernated one included", () => {
+		for (const status of ["in-progress", "user-questions", "review-by-user", "review-by-ai", "review-by-colleague"] as const) {
 			for (const force of [false, true]) {
 				const result = transition(state(status), { type: "moveRequested", target: { status: "todo" }, force });
-				expect(rejection(result.effects)).toBe(RESET_REQUIRES_CONSENT_ERROR);
-				expect(types(result.effects)).not.toContain("destroyTaskPty");
+				expect(rejection(result.effects), `${status} force=${force}`).toBe(RESET_REQUIRES_CONSENT_ERROR);
+				expect(types(result.effects), `${status} force=${force}`).not.toContain("destroyTaskPty");
 			}
-		});
-	}
+		}
 
-	it("a hibernated active task gets the reset refusal, not a silent move", () => {
-		const result = transition(state("review-by-user", { hibernated: true }), { type: "moveRequested", target: { status: "todo" } });
-		expect(rejection(result.effects)).toBe(RESET_REQUIRES_CONSENT_ERROR);
+		{
+			// A hibernated active task gets the reset refusal, not a silent move.
+			const result = transition(state("review-by-user", { hibernated: true }), { type: "moveRequested", target: { status: "todo" } });
+			expect(rejection(result.effects)).toBe(RESET_REQUIRES_CONSENT_ERROR);
+		}
 	});
 
-	it("completed/cancelled → todo stays a plain, non-destructive move", () => {
+	it("completed/cancelled → todo stays a plain, non-destructive move; todo → todo is a no-op", () => {
 		for (const status of ["completed", "cancelled"] as const) {
 			const result = transition(state(status), { type: "moveRequested", target: { status: "todo" } });
 			expect(rejection(result.effects)).toBeUndefined();
@@ -59,26 +60,25 @@ describe("plain moves to To Do never destroy a run (T1, T2, T17c)", () => {
 			expect(types(result.effects)).not.toContain("removeWorktree");
 			expect(types(result.effects)).not.toContain("resetWorktree");
 		}
-	});
 
-	it("todo → todo is a no-op", () => {
-		expect(transition(state("todo"), { type: "moveRequested", target: { status: "todo" } }).effects).toEqual([]);
+		{
+			// Todo → todo is a no-op.
+			expect(transition(state("todo"), { type: "moveRequested", target: { status: "todo" } }).effects).toEqual([]);
+		}
 	});
 });
 
 describe("a To Do task starts only from an explicit launch (B1, T3)", () => {
-	it("refuses a bare move — what every hook sends", () => {
+	it("refuses a bare move — what every hook sends, into user-questions too", () => {
 		const result = transition(state("todo"), { type: "moveRequested", target: { status: "in-progress" }, guards: { ifStatusNot: "review-by-ai" } });
 		expect(rejection(result.effects)).toBe(LAUNCH_REQUIRES_EXPLICIT_START_ERROR);
 		expect(types(result.effects)).not.toContain("prepareTask");
+		// A bare move into user-questions too (Claude StopFailure, PermissionRequest).
+		const questions = transition(state("todo"), { type: "moveRequested", target: { status: "user-questions" }, force: true });
+		expect(rejection(questions.effects)).toBe(LAUNCH_REQUIRES_EXPLICIT_START_ERROR);
 	});
 
-	it("refuses a bare move into user-questions too (Claude StopFailure, PermissionRequest)", () => {
-		const result = transition(state("todo"), { type: "moveRequested", target: { status: "user-questions" }, force: true });
-		expect(rejection(result.effects)).toBe(LAUNCH_REQUIRES_EXPLICIT_START_ERROR);
-	});
-
-	it("starts with a launch pipeline (preparation) or an explicit out-of-task start", () => {
+	it("starts with a launch pipeline or an explicit out-of-task start; reopening a completed task keeps today's behaviour", () => {
 		const viaPreparation = transition(state("todo"), {
 			type: "moveRequested",
 			target: { status: "in-progress" },
@@ -87,11 +87,12 @@ describe("a To Do task starts only from an explicit launch (B1, T3)", () => {
 		const viaExplicit = transition(state("todo"), { type: "moveRequested", target: { status: "in-progress" }, explicitLaunch: true });
 		expect(types(viaPreparation.effects)).toContain("prepareTask");
 		expect(types(viaExplicit.effects)).toContain("prepareTask");
-	});
 
-	it("reopening a completed task keeps today's behaviour", () => {
-		const result = transition(state("completed"), { type: "moveRequested", target: { status: "in-progress" } });
-		expect(types(result.effects)).toContain("prepareTask");
+		{
+			// Reopening a completed task keeps today's behaviour.
+			const result = transition(state("completed"), { type: "moveRequested", target: { status: "in-progress" } });
+			expect(types(result.effects)).toContain("prepareTask");
+		}
 	});
 });
 
@@ -124,36 +125,33 @@ describe("resetRequested (T8–T10)", () => {
 		expect(result.next.column).toEqual({ status: "todo", customColumnId: null });
 	});
 
-	it("resets a legacy To Do card that still owns a worktree", () => {
+	it("resets a legacy To Do card that still owns a worktree, and keeps a virtual (Operations) folder", () => {
 		const legacy = state("todo", { hasWorktree: true, worktreePath: PATH, lifecycleStartedAt: STARTED });
 		expect(types(transition(legacy, reset()).effects)).toContain("resetWorktree");
+
+		{
+			// Keeps a virtual (Operations) folder: no worktree removal.
+			const result = transition(state("in-progress", { usesWorktrees: false }), reset());
+			expect(types(result.effects)).not.toContain("resetWorktree");
+			expect(types(result.effects)).toContain("persistResetTask");
+		}
 	});
 
-	it("keeps a virtual (Operations) folder: no worktree removal", () => {
-		const result = transition(state("in-progress", { usesWorktrees: false }), reset());
-		expect(types(result.effects)).not.toContain("resetWorktree");
-		expect(types(result.effects)).toContain("persistResetTask");
-	});
-
-	it("refuses a consent from an earlier run at the same path (T9)", () => {
+	it("refuses a consent from an earlier run at the same path, an absent anchor, or a different path (T9)", () => {
 		const relaunched = state("in-progress", { lifecycleStartedAt: "2026-09-25T12:00:00.000Z" });
 		const result = transition(relaunched, reset());
 		expect(rejection(result.effects)).toBe(RESET_CONSENT_STALE_ERROR);
 		expect(types(result.effects)).not.toContain("destroyTaskPty");
-	});
-
-	it("refuses present → absent and a different path", () => {
+		// Present → absent and a different path are stale too.
 		expect(rejection(transition(state("user-questions", { lifecycleStartedAt: null }), reset()).effects)).toBe(RESET_CONSENT_STALE_ERROR);
 		expect(rejection(transition(state("in-progress", { worktreePath: "/elsewhere" }), reset()).effects)).toBe(RESET_CONSENT_STALE_ERROR);
 	});
 
-	it("accepts after the agent moved the card between active columns (T10)", () => {
+	it("accepts after the agent moved the card between active columns, and an unstamped consent on the path alone (T10)", () => {
 		for (const status of ["user-questions", "review-by-user", "review-by-ai"] as const) {
 			expect(rejection(transition(state(status), reset()).effects)).toBeUndefined();
 		}
-	});
-
-	it("absent anchor on both sides binds to the worktree path alone", () => {
+		// An absent anchor on both sides binds to the worktree path alone.
 		const unstamped = state("user-questions", { lifecycleStartedAt: null });
 		expect(rejection(transition(unstamped, reset({ worktreePath: PATH, lifecycleStartedAt: null, attachedRepo: null, approvedAttachedRepo: null })).effects)).toBeUndefined();
 	});

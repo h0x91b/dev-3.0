@@ -76,33 +76,23 @@ describe("saving while a restart is queued after a failed start", () => {
 		restart: { attempt: 3, inMs: 90_000 },
 	});
 
-	it("restarts now instead of waiting out the backoff — the save may be the fix", async () => {
-		h.status.mockReturnValueOnce(queued());
-		h.restart.mockResolvedValueOnce(queued());
-		await modelCatalogSave({ catalog: { providers: [OPENROUTER], models: [] } });
-		expect(h.restart).toHaveBeenCalledOnce();
-		expect(h.cancelRestart).not.toHaveBeenCalled();
-	});
-
-	it("drops the queued restart when the last provider was removed", async () => {
-		h.status.mockReturnValueOnce(queued());
-		await modelCatalogSave({ catalog: { providers: [], models: [] } });
-		expect(h.cancelRestart).toHaveBeenCalledOnce();
-		expect(h.restart).not.toHaveBeenCalled();
-	});
-
-	it("still restarts with the new config when a start is in flight, even with no provider left", async () => {
-		h.status.mockReturnValueOnce({ ...queued(), starting: true });
-		h.restart.mockResolvedValueOnce(queued());
-		await modelCatalogSave({ catalog: { providers: [], models: [] } });
-		expect(h.restart).toHaveBeenCalledOnce();
-		expect(h.cancelRestart).not.toHaveBeenCalled();
-	});
-
-	it("leaves a stopped proxy with nothing queued alone", async () => {
-		await modelCatalogSave({ catalog: { providers: [OPENROUTER], models: [] } });
-		expect(h.restart).not.toHaveBeenCalled();
-		expect(h.cancelRestart).not.toHaveBeenCalled();
+	// A queued restart is skipped in favour of restarting now — the save may be the fix —
+	// unless the last provider was removed; a stopped proxy with nothing queued is left alone.
+	it("restarts now, drops the queue, or leaves the proxy alone depending on what the save leaves", async () => {
+		const cases: Array<{ name: string; status?: ModelSidecarStatus; providers: ModelCatalogView["providers"]; restarts: boolean; cancels: boolean }> = [
+			{ name: "queued, provider kept", status: queued(), providers: [OPENROUTER], restarts: true, cancels: false },
+			{ name: "queued, last provider removed", status: queued(), providers: [], restarts: false, cancels: true },
+			{ name: "start in flight, no provider left", status: { ...queued(), starting: true }, providers: [], restarts: true, cancels: false },
+			{ name: "stopped, nothing queued", providers: [OPENROUTER], restarts: false, cancels: false },
+		];
+		for (const c of cases) {
+			vi.clearAllMocks();
+			if (c.status) h.status.mockReturnValueOnce(c.status);
+			if (c.restarts) h.restart.mockResolvedValueOnce(queued());
+			await modelCatalogSave({ catalog: { providers: c.providers, models: [] } });
+			expect(h.restart, c.name).toHaveBeenCalledTimes(c.restarts ? 1 : 0);
+			expect(h.cancelRestart, c.name).toHaveBeenCalledTimes(c.cancels ? 1 : 0);
+		}
 	});
 });
 
@@ -119,17 +109,14 @@ describe("renaming a custom provider", () => {
 		return { first, view, renamed: h.save.mock.calls[1][0] as ModelCatalog };
 	}
 
-	it("keeps the wire name an agent already holds, and shows the new name under the old prefix", async () => {
+	it("keeps the wire name an agent already holds, shows the new name under the old prefix, and never writes a wire key to disk", async () => {
 		const { first, view, renamed } = await saveThenRename();
 		const heldByAgent = catalogModelWireName(first, "m-1");
 		expect(heldByAgent).toBe("custom-custom-endpoint/kimi");
 		expect(catalogModelWireName(renamed, "m-1")).toBe(heldByAgent);
 		expect(Object.keys(buildSidecarConfig(renamed).providers)).toEqual(["custom-custom-endpoint"]);
 		expect(view.providers[0]).toMatchObject({ label: "Kimi code", wireKey: "custom-custom-endpoint" });
-	});
-
-	it("never writes a wire key to disk, and stores the rename beside the routing label", async () => {
-		const { renamed } = await saveThenRename();
+		// The rename is stored beside the routing label, and no wire key reaches disk.
 		expect(renamed.providers[0]).toMatchObject({ label: "Custom endpoint", displayName: "Kimi code" });
 		expect(renamed.providers[0]).not.toHaveProperty("wireKey");
 	});
@@ -194,14 +181,11 @@ describe("usage tracking on a provider", () => {
 });
 
 describe("revealing a stored key", () => {
-	it("hands back the key of a provider the catalog holds", () => {
+	it("hands back the key of a provider the catalog holds, and refuses one with no key", () => {
 		h.load.mockReturnValue({ providers: [{ id: "p-1", kind: "openrouter", label: "OpenRouter" }], models: [] });
 		h.loadKeys.mockReturnValue({ "p-1": "sk-or-live" });
 		expect(modelCatalogHandlers.modelCatalogRevealKey({ providerId: "p-1" })).toEqual({ key: "sk-or-live" });
-	});
-
-	it("refuses a provider that has no key, instead of answering with an empty string", () => {
-		h.load.mockReturnValue({ providers: [{ id: "p-1", kind: "openrouter", label: "OpenRouter" }], models: [] });
+		// A provider with no key is refused, instead of answered with an empty string.
 		h.loadKeys.mockReturnValue({});
 		expect(() => modelCatalogHandlers.modelCatalogRevealKey({ providerId: "p-1" })).toThrow(/no stored key/);
 	});

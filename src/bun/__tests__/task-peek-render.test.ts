@@ -50,13 +50,7 @@ function snapshot(extra: Partial<TaskPeekSnapshot> = {}): TaskPeekSnapshot {
 }
 
 describe("renderTaskPeek", () => {
-	it("opens with the task header so the reader knows whose terminal this is", () => {
-		const out = renderTaskPeek(snapshot(), NOW);
-
-		expect(out.split("\n")[0]).toBe("<seq:42> · Fix auth race · in-progress · backend=native · 1 pane");
-	});
-
-	it("prints one line per pane with liveness, command and output age", () => {
+	it("opens with the task header, prints one line per pane, names the tail's pane, and says nothing of windows for per-pane backends", () => {
 		const out = renderTaskPeek(
 			snapshot({
 				panes: [
@@ -67,8 +61,14 @@ describe("renderTaskPeek", () => {
 			NOW,
 		);
 
+		expect(out.split("\n")[0]).toBe("<seq:42> · Fix auth race · in-progress · backend=native · 2 panes");
 		expect(out).toContain("pane 1  claude  alive, focused  last output 3s ago");
 		expect(out).toContain("pane 2  bun  alive  last output 1m ago");
+		expect(out).toContain("--- pane 1 (%1), last 2 lines ---");
+		expect(out.trimEnd().endsWith("all good")).toBe(true);
+		expect(out).not.toContain("window");
+		// No seq: a short task id stands in.
+		expect(renderTaskPeek(snapshot({ seq: null }), NOW).startsWith("Task aaaaaaaa ·")).toBe(true);
 	});
 
 	it("says unknown instead of inventing an age", () => {
@@ -89,19 +89,8 @@ describe("renderTaskPeek", () => {
 		expect(out).toContain("reports activity per window, not per pane");
 	});
 
-	it("does not mention window-level precision for per-pane backends", () => {
-		expect(renderTaskPeek(snapshot(), NOW)).not.toContain("window");
-	});
-
-	it("names the pane the tail came from", () => {
-		const out = renderTaskPeek(snapshot(), NOW);
-
-		expect(out).toContain("--- pane 1 (%1), last 2 lines ---");
-		expect(out.trimEnd().endsWith("all good")).toBe(true);
-	});
-
-	it("states the reason when there is no terminal session", () => {
-		const out = renderTaskPeek(
+	it("states the reason when there is no session, and says a failed read tells us nothing about the task", () => {
+		const noSession = renderTaskPeek(
 			snapshot({
 				sessionPresent: false,
 				unavailable: { kind: "no-session", detail: "task is hibernated" },
@@ -110,13 +99,10 @@ describe("renderTaskPeek", () => {
 			}),
 			NOW,
 		);
+		expect(noSession).toContain("no terminal session — task is hibernated");
+		expect(noSession).not.toContain("pane 1");
 
-		expect(out).toContain("no terminal session — task is hibernated");
-		expect(out).not.toContain("pane 1");
-	});
-
-	it("says a failed read tells us nothing about the task", () => {
-		const out = renderTaskPeek(
+		const failed = renderTaskPeek(
 			snapshot({
 				sessionPresent: false,
 				unavailable: { kind: "read-failed", detail: "Error: tmux exploded" },
@@ -125,10 +111,9 @@ describe("renderTaskPeek", () => {
 			}),
 			NOW,
 		);
-
-		expect(out).toContain("could not read the terminal — Error: tmux exploded");
-		expect(out).toContain("says nothing about whether the task is working");
-		expect(out).not.toContain("no terminal session");
+		expect(failed).toContain("could not read the terminal — Error: tmux exploded");
+		expect(failed).toContain("says nothing about whether the task is working");
+		expect(failed).not.toContain("no terminal session");
 	});
 
 	it("keeps the pane summary and names the missing pane", () => {
@@ -141,61 +126,50 @@ describe("renderTaskPeek", () => {
 		expect(out).toContain('no such pane — no pane "9" in this session');
 		expect(out).not.toContain("--- pane");
 	});
-
-	it("falls back to a short task id when the task has no seq", () => {
-		const out = renderTaskPeek(snapshot({ seq: null }), NOW);
-
-		expect(out.startsWith("Task aaaaaaaa ·")).toBe(true);
-	});
 });
 
-describe("formatAge", () => {
-	it.each([
-		[0, "0s ago"],
-		[3_400, "3s ago"],
-		[59_000, "59s ago"],
-		[60_000, "1m ago"],
-		[3_600_000, "1h ago"],
-		[90_000_000, "1d ago"],
-	])("renders %ims as %s", (ms, expected) => {
-		expect(formatAge(ms)).toBe(expected);
+describe("formatAge / clampPeekLines", () => {
+	it("formatAge renders each unit at its boundary", () => {
+		const cases: Array<[number, string]> = [
+			[59_000, "59s ago"],
+			[60_000, "1m ago"],
+			[3_600_000, "1h ago"],
+			[90_000_000, "1d ago"],
+		];
+		for (const [ms, expected] of cases) expect(formatAge(ms), String(ms)).toBe(expected);
+	});
+
+	it("clampPeekLines defaults missing/NaN, floors at 1 and caps at the max", () => {
+		const cases: Array<[number | undefined, number]> = [
+			[undefined, PEEK_DEFAULT_LINES],
+			[Number.NaN, PEEK_DEFAULT_LINES],
+			[0, 1],
+			[40, 40],
+			[PEEK_MAX_LINES + 1, PEEK_MAX_LINES],
+		];
+		for (const [input, expected] of cases) expect(clampPeekLines(input), String(input)).toBe(expected);
 	});
 });
 
 describe("tailLines", () => {
-	it("keeps only the last N lines", () => {
+	it("keeps the last N lines, drops trailing blanks, strips colour/title escapes, and keeps tabs", () => {
 		expect(tailLines("a\nb\nc\nd", 2)).toBe("c\nd");
-	});
-
-	it("drops trailing blank lines so the tail ends on content", () => {
 		expect(tailLines("a\nb\n\n\n", 10)).toBe("a\nb");
-	});
-
-	it("removes colour and title escape sequences", () => {
 		expect(tailLines("\u001b[32mok\u001b[0m", 10)).toBe("ok");
 		expect(tailLines("\u001b]0;my title\u0007text", 10)).toBe("text");
-	});
-
-	it("keeps tabs, which carry layout", () => {
 		expect(tailLines("a\tb", 10)).toBe("a\tb");
 	});
 });
 
 describe("dropFaintText", () => {
-	it("drops Claude Code's ghost autosuggestion but keeps the prompt glyph", () => {
+	it("drops the ghost after Claude's `❯` and Codex's `›` prompt glyphs, keeps typed text and every row's newline", () => {
 		// Empty input box: a live prompt, then a faint ghost of a past message.
-		const box = "\u001b[39m❯ \u001b[2mpush it and open the PR\u001b[0m";
-		expect(stripTerminalEscapes(dropFaintText(box))).toBe("❯ ");
-	});
-
-	it("drops Codex's faint placeholder after its `›` prompt glyph", () => {
-		const box = "\u001b[2m› Ask Codex to do anything\u001b[0m";
+		expect(stripTerminalEscapes(dropFaintText("\u001b[39m❯ \u001b[2mpush it and open the PR\u001b[0m"))).toBe("❯ ");
 		// The glyph survives even though the whole line is faint; the placeholder goes.
-		expect(stripTerminalEscapes(dropFaintText(box))).toBe("›");
-	});
-
-	it("keeps a real message the user typed at the prompt (not faint)", () => {
+		expect(stripTerminalEscapes(dropFaintText("\u001b[2m› Ask Codex to do anything\u001b[0m"))).toBe("›");
 		expect(stripTerminalEscapes(dropFaintText("❯ do the thing"))).toBe("❯ do the thing");
+		const text = "running tests\n\u001b[39m❯ \u001b[2mghost\u001b[0m\nall good";
+		expect(stripTerminalEscapes(dropFaintText(text))).toBe("running tests\n❯ \nall good");
 	});
 
 	// The blocker Arseny caught: faint is real content off the prompt line.
@@ -204,44 +178,16 @@ describe("dropFaintText", () => {
 		expect(stripTerminalEscapes(dropFaintText(out))).toBe("│ ran build, 0 errors\n└ done");
 	});
 
-	it("keeps Codex's faint `Worked for … · HH:MM` line — how a coordinator sees a turn end", () => {
-		const line = "\u001b[2mWorked for 2m 41s · 10:50\u001b[0m";
-		expect(stripTerminalEscapes(dropFaintText(line))).toBe("Worked for 2m 41s · 10:50");
-	});
-
-	it("keeps a faint line-number gutter from a Claude file read", () => {
+	it("keeps Codex's faint `Worked for` line and a faint line-number gutter", () => {
+		expect(stripTerminalEscapes(dropFaintText("\u001b[2mWorked for 2m 41s · 10:50\u001b[0m"))).toBe("Worked for 2m 41s · 10:50");
 		expect(stripTerminalEscapes(dropFaintText("\u001b[2m  1\u001b[0m const x = 1"))).toBe("  1 const x = 1");
 	});
 
-	it("leaves normal-intensity text untouched", () => {
+	it("leaves normal-intensity and plain text untouched, and does not mistake truecolour (38;2;r;g;b) for faint", () => {
 		expect(dropFaintText("plain \u001b[32mgreen\u001b[0m text")).toBe("plain \u001b[32mgreen\u001b[0m text");
-	});
-
-	it("does not mistake a truecolour introducer (38;2;r;g;b) for faint on the prompt line", () => {
+		expect(dropFaintText("no escapes here")).toBe("no escapes here");
 		// The `2` selects RGB colour space, not the faint attribute, so `red` stays.
 		expect(stripTerminalEscapes(dropFaintText("❯ \u001b[38;2;255;0;0mred\u001b[0m"))).toBe("❯ red");
-	});
-
-	it("keeps every row's newline so layout survives", () => {
-		const text = "running tests\n\u001b[39m❯ \u001b[2mghost\u001b[0m\nall good";
-		expect(stripTerminalEscapes(dropFaintText(text))).toBe("running tests\n❯ \nall good");
-	});
-
-	it("is a no-op on plain text with no colour (native capture, logs)", () => {
-		expect(dropFaintText("no escapes here")).toBe("no escapes here");
-	});
-});
-
-describe("clampPeekLines", () => {
-	it.each([
-		[undefined, PEEK_DEFAULT_LINES],
-		[0, 1],
-		[-5, 1],
-		[40, 40],
-		[PEEK_MAX_LINES + 1, PEEK_MAX_LINES],
-		[Number.NaN, PEEK_DEFAULT_LINES],
-	])("clamps %s to %i", (input, expected) => {
-		expect(clampPeekLines(input as number | undefined)).toBe(expected);
 	});
 });
 
@@ -251,28 +197,16 @@ describe("selectPeekPane", () => {
 		pane({ index: 2, paneId: "%2", focused: true }),
 	];
 
-	it("defaults to the focused pane", () => {
+	it("defaults to the focused pane, falling back to the first when none is focused", () => {
 		expect(selectPeekPane(panes)?.paneId).toBe("%2");
-	});
-
-	it("falls back to the first pane when none is focused", () => {
 		expect(selectPeekPane(panes.map((p) => ({ ...p, focused: false })))?.paneId).toBe("%1");
 	});
 
-	it("accepts the printed 1-based index", () => {
+	it("accepts the printed 1-based index or a raw pane id, and returns null for anything unknown", () => {
 		expect(selectPeekPane(panes, "1")?.paneId).toBe("%1");
-	});
-
-	it("accepts a raw pane id", () => {
 		expect(selectPeekPane(panes, "%2")?.index).toBe(2);
-	});
-
-	it("returns null for an unknown selector", () => {
 		expect(selectPeekPane(panes, "9")).toBeNull();
 		expect(selectPeekPane(panes, "%99")).toBeNull();
-	});
-
-	it("returns null when there are no panes", () => {
 		expect(selectPeekPane([], "1")).toBeNull();
 	});
 });

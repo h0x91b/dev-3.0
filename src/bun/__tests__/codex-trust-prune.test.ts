@@ -25,6 +25,8 @@ ${trustBlock(`${HOME}/other-project`)}`;
 		expect(result).toContain('[projects."/Users/testuser/my-project"]');
 		expect(result).toContain('[projects."/Users/testuser/other-project"]');
 		expect(result.indexOf("my-project")).toBeLessThan(result.indexOf("other-project"));
+		// Nothing matching is a byte-identical no-op.
+		expect(pruneCodexProjectEntries(config, () => false)).toBe(config);
 	});
 
 	it("keeps a comment that sits between the removed block and the next header", () => {
@@ -43,7 +45,7 @@ ${trustBlock(`${HOME}/keep`)}`;
 		expect(result).toContain('model = "gpt-5.4"\n\n# explains');
 	});
 
-	it("drops the removed block's own comments and leaves no blank tail at EOF", () => {
+	it("drops the removed block's own comments and sub-tables, leaving no blank tail at EOF", () => {
 		const config = `${trustBlock(`${HOME}/keep`)}
 [projects."${WORKTREES_PATH}/proj/aaaa/worktree"]
 # dev3 wrote this block
@@ -57,23 +59,21 @@ trust_level = "trusted"
 		expect(result).toContain('[projects."/Users/testuser/keep"]');
 		expect(result.trimEnd()).toBe(result.replace(/\n+$/, ""));
 		expect(result.endsWith("\n\n")).toBe(false);
-	});
 
-	it("removes sub-tables of the pruned project too", () => {
+		// Sub-tables of the pruned project go too.
 		const path = `${WORKTREES_PATH}/proj/aaaa/worktree`;
-		const config = `${trustBlock(path)}
+		const withSub = `${trustBlock(path)}
 [projects."${path}".experimental]
 foo = 1
 
 ${trustBlock(`${HOME}/keep`)}`;
 
-		const result = pruneCodexProjectEntries(config, (p) => p === path);
-
-		expect(result).not.toContain("experimental");
-		expect(result).toContain('[projects."/Users/testuser/keep"]');
+		const pruned = pruneCodexProjectEntries(withSub, (p) => p === path);
+		expect(pruned).not.toContain("experimental");
+		expect(pruned).toContain('[projects."/Users/testuser/keep"]');
 	});
 
-	it("matches a Windows path written as an escaped basic string", () => {
+	it("matches escaped basic strings, literal strings and paths with spaces", () => {
 		const path = "C:\\Users\\test\\.dev3.0\\worktrees\\proj\\aaaa\\worktree";
 		const config = `[projects."C:\\\\Users\\\\test\\\\.dev3.0\\\\worktrees\\\\proj\\\\aaaa\\\\worktree"]
 trust_level = "trusted"
@@ -87,42 +87,34 @@ trust_level = "trusted"
 
 		expect(result).not.toContain("worktrees");
 		expect(result).toContain("code");
-	});
 
-	it("matches a path written as a literal string and a path with spaces", () => {
+		// Literal strings and paths with spaces match too.
 		const literal = "C:\\Users\\test\\dev3 stuff";
 		const spaced = `${HOME}/My Projects/app one`;
-		const config = `[projects.'C:\\Users\\test\\dev3 stuff']
+		const config2 = `[projects.'C:\\Users\\test\\dev3 stuff']
 trust_level = "trusted"
 
 ${trustBlock(spaced)}
 ${trustBlock(`${HOME}/keep`)}`;
 
-		const result = pruneCodexProjectEntries(config, (p) => p === literal || p === spaced);
-
-		expect(result).not.toContain("dev3 stuff");
-		expect(result).not.toContain("My Projects");
-		expect(result).toContain("keep");
+		const result2 = pruneCodexProjectEntries(config2, (p) => p === literal || p === spaced);
+		expect(result2).not.toContain("dev3 stuff");
+		expect(result2).not.toContain("My Projects");
+		expect(result2).toContain("keep");
 	});
 
-	it("leaves an unparsable config completely alone", () => {
-		const config = `[projects."C:\\Users\\test"]\ntrust_level = "trusted"\n`;
+	it("leaves the file alone when it is unparsable, or a header-looking line or the edit lives inside a string", () => {
+		const unparsable = `[projects."C:\\Users\\test"]\ntrust_level = "trusted"\n`;
+		expect(pruneCodexProjectEntries(unparsable, () => true)).toBe(unparsable);
 
-		expect(pruneCodexProjectEntries(config, () => true)).toBe(config);
-	});
-
-	it("leaves the file alone when a header-looking line lives inside a string value", () => {
-		const config = `notes = """
+		const headerInString = `notes = """
 [projects."${WORKTREES_PATH}/proj/aaaa/worktree"]
 still inside the string
 """
 
 ${trustBlock(`${HOME}/keep`)}`;
+		expect(pruneCodexProjectEntries(headerInString, (p) => p.startsWith(WORKTREES_PATH))).toBe(headerInString);
 
-		expect(pruneCodexProjectEntries(config, (p) => p.startsWith(WORKTREES_PATH))).toBe(config);
-	});
-
-	it("leaves the file alone when the edit would change an unrelated string value", () => {
 		// Blank-line collapsing is safe in TOML syntax but not inside a multi-line
 		// string: the result still parses, so only the before/after comparison catches it.
 		const config = `${trustBlock(`${WORKTREES_PATH}/proj/aaaa/worktree`)}
@@ -136,12 +128,6 @@ second
 `;
 
 		expect(pruneCodexProjectEntries(config, (p) => p.startsWith(WORKTREES_PATH))).toBe(config);
-	});
-
-	it("is a no-op when nothing matches", () => {
-		const config = trustBlock(`${HOME}/keep`);
-
-		expect(pruneCodexProjectEntries(config, () => false)).toBe(config);
 	});
 
 	it("keeps unrelated sections and their values intact", () => {
@@ -181,9 +167,8 @@ describe("isDev3TrustPath", () => {
 		expect(isDev3TrustPath("/Users/u/acme/.dev3/worktrees", DEV3_HOME)).toBe(false);
 		expect(isDev3TrustPath(`${HOME}/my-project`, DEV3_HOME)).toBe(false);
 		expect(isDev3TrustPath(`${HOME}/.dev3.0-elsewhere/worktrees/x`, DEV3_HOME)).toBe(false);
-	});
 
-	it("understands Windows roots", () => {
+		// Windows roots.
 		const home = "C:\\Users\\test\\.dev3.0";
 		expect(isDev3TrustPath(`${home}\\worktrees\\proj\\aaaa`, home)).toBe(true);
 		expect(isDev3TrustPath("C:\\Users\\test\\code", home)).toBe(false);

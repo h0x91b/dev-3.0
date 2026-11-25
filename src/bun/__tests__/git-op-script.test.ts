@@ -61,7 +61,7 @@ const POSIX_PUSH = [
 ].join("\n") + "\n";
 
 describe("POSIX git-op scripts (pinned)", () => {
-	it("renders the push script exactly", () => {
+	it("renders the push script exactly — plain, never forced, when no lease is supplied", () => {
 		asPlatform("darwin");
 		expect(buildGitOpScript(pushGitOpSpec({ exitFilePath: EXIT }))).toBe(POSIX_PUSH);
 	});
@@ -86,13 +86,6 @@ describe("POSIX git-op scripts (pinned)", () => {
 		expect(script).toContain("✓ Force push complete");
 	});
 
-	it("pushes plainly, and never forces, when no lease is supplied", () => {
-		asPlatform("darwin");
-		const script = buildGitOpScript(pushGitOpSpec({ exitFilePath: EXIT }));
-		expect(script).not.toContain("force");
-		expect(script).toContain("'git' 'push' '-u' 'origin' 'HEAD'");
-	});
-
 	it("keeps the rebase's fetch non-fatal and its conflict guidance intact", () => {
 		asPlatform("darwin");
 		const script = buildGitOpScript(rebaseGitOpSpec({
@@ -113,7 +106,7 @@ describe("POSIX git-op scripts (pinned)", () => {
 	// `git rebase` exits 1 when it stopped mid-rebase and 128 when it refused
 	// before touching the branch (both measured). One blanket "resolve conflicts,
 	// then --continue" sent the user hunting for conflicts that never existed.
-	it("tells apart a stopped rebase from one git refused to start", () => {
+	it("tells apart a stopped rebase from one git refused to start, and skips the fetch for a local target", () => {
 		asPlatform("darwin");
 		const script = buildGitOpScript(rebaseGitOpSpec({
 			exitFilePath: EXIT,
@@ -126,22 +119,17 @@ describe("POSIX git-op scripts (pinned)", () => {
 		expect(onOne).toContain("git rebase --abort");
 		expect(onAnythingElse).toContain("Nothing to continue or abort");
 		expect(onAnythingElse).not.toContain("git rebase --continue");
-	});
 
-	// A local rebase target means no remote to fetch from: the step is absent, not
-	// present-and-failing with "Fetch exited with 128 — continuing".
-	it("omits the fetch step entirely for a local rebase target", () => {
-		asPlatform("darwin");
-		const script = buildGitOpScript(rebaseGitOpSpec({
-			exitFilePath: EXIT,
-			fetchBranch: null,
-			rebaseTarget: "master",
-		}));
+		// A local rebase target means no remote to fetch from: the step is absent, not
+		// present-and-failing with "Fetch exited with 128 — continuing".
 		expect(script).not.toContain("fetch");
 		expect(script).toContain("'git' 'rebase' 'master'");
 		// The rebase is now step 0, so its code is the one that becomes the verdict.
 		expect(script).toContain("printf '%s' \"$__DEV3_EC0\" > '/tmp/dev3-T-git-rebase.sh.exit'");
 	});
+
+	// A local rebase target means no remote to fetch from: the step is absent, not
+	// present-and-failing with "Fetch exited with 128 — continuing".
 
 	it("passes the merge subject as a file, never as an argument", () => {
 		asPlatform("darwin");
@@ -158,7 +146,7 @@ describe("POSIX git-op scripts (pinned)", () => {
 		expect(script).not.toContain("commit' '-m");
 	});
 
-	it("omits the checkout step when the project is already on the base branch", () => {
+	it("omits the checkout step when already on the base branch, and stays local without pushBase", () => {
 		asPlatform("darwin");
 		const script = buildGitOpScript(mergeGitOpSpec({
 			exitFilePath: EXIT,
@@ -169,6 +157,9 @@ describe("POSIX git-op scripts (pinned)", () => {
 		}));
 		// The COMMAND, not the word: guidance text may legitimately mention it.
 		expect(script).not.toContain("'checkout'");
+		// Without pushBase the merge stays local.
+		expect(script).not.toContain("'push'");
+		expect(script).toContain("✓ Merge complete");
 	});
 
 	/**
@@ -193,19 +184,6 @@ describe("POSIX git-op scripts (pinned)", () => {
 		// The push is the verdict step, so its failure must exit rather than warn.
 		expect(script).toMatch(/Push failed[\s\S]*?exit \$__DEV3_EC/);
 	});
-
-	it("stays local when pushBase is absent", () => {
-		asPlatform("darwin");
-		const script = buildGitOpScript(mergeGitOpSpec({
-			exitFilePath: EXIT,
-			checkoutCommand: null,
-			baseBranch: "main",
-			branchForMerge: "feat/x",
-			messagePath: "/tmp/m.txt",
-		}));
-		expect(script).not.toContain("'push'");
-		expect(script).toContain("✓ Merge complete");
-	});
 });
 
 describe("Windows git-op scripts", () => {
@@ -226,39 +204,30 @@ describe("Windows git-op scripts", () => {
 		};
 	};
 
-	it("contains no bash whatsoever", () => {
+	it("contains no bash whatsoever and clears $LASTEXITCODE before every command it judges", () => {
 		const { push, rebase, merge } = scripts();
-		for (const script of [push, rebase, merge]) {
-			expect(script).not.toContain("#!/bin/bash");
-			expect(script).not.toContain("read -n 1 -s");
-			expect(script).not.toMatch(/\bprintf '/);
-			expect(script).not.toMatch(/=\$\?/);
+		for (const [name, script] of Object.entries({ push, rebase, merge })) {
+			expect(script, name).not.toContain("#!/bin/bash");
+			expect(script, name).not.toContain("read -n 1 -s");
+			expect(script, name).not.toMatch(/\bprintf '/);
+			expect(script, name).not.toMatch(/=\$\?/);
+			const runs = script.match(/^\$global:LASTEXITCODE = \$null; & /gm) ?? [];
+			const captures = script.match(/^\$__DEV3_EC\d+ = /gm) ?? [];
+			// A stale exit code from the PREVIOUS command is what turns "git could
+			// not even launch" into a reported success.
+			expect(runs.length, name).toBe(captures.length);
+			expect(runs.length, name).toBeGreaterThan(0);
 		}
 	});
 
-	it("writes the verdict with an explicit ASCII write, never a redirection", () => {
+	it("writes the verdict with an explicit ASCII write, never a redirection, and never blocks on redirected input", () => {
 		const { push, exitFile } = scripts();
 		expect(push).toContain(`[System.IO.File]::WriteAllText('${exitFile}', [string]$__DEV3_EC0)`);
 		// `>` here is UTF-16LE with a BOM in PowerShell 5.1: monitorGitPane would
 		// read mojibake and call every operation a failure.
 		expect(push).not.toContain(`> '${exitFile}'`);
 		expect(push).not.toMatch(/>\s*["']?C:/);
-	});
-
-	it("clears $LASTEXITCODE before every command it judges", () => {
-		const { push, rebase, merge } = scripts();
-		for (const script of [push, rebase, merge]) {
-			const runs = script.match(/^\$global:LASTEXITCODE = \$null; & /gm) ?? [];
-			const captures = script.match(/^\$__DEV3_EC\d+ = /gm) ?? [];
-			// A stale exit code from the PREVIOUS command is what turns "git could
-			// not even launch" into a reported success.
-			expect(runs.length).toBe(captures.length);
-			expect(runs.length).toBeGreaterThan(0);
-		}
-	});
-
-	it("never blocks on a keypress when console input is redirected", () => {
-		const { push } = scripts();
+		// It never blocks on a keypress when console input is redirected.
 		expect(push).toContain("[Console]::IsInputRedirected");
 	});
 

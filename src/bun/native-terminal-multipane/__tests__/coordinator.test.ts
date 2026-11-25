@@ -315,7 +315,7 @@ describe("native multipane coordinator background split", () => {
 		expect(coordinator.layout.activePaneId).toBe("pane-1");
 	});
 
-	it("keeps the active pane when the anchor is a different pane", async () => {
+	it("keeps the active pane for a different anchor, and clears zoom like a tmux split does", async () => {
 		const coordinator = await createWithPanes(deps, 2);
 		await coordinator.publishGeometry({ ...coordinator.layout, activePaneId: "pane-2" });
 
@@ -323,13 +323,9 @@ describe("native multipane coordinator background split", () => {
 
 		expect(coordinator.paneIds()).toContain(created);
 		expect(coordinator.layout.activePaneId).toBe("pane-2");
-	});
 
-	it("clears zoom like a tmux split does, but keeps the active pane", async () => {
-		const coordinator = await createWithPanes(deps, 2);
 		await coordinator.publishGeometry({ ...coordinator.layout, activePaneId: "pane-1", zoomedPaneId: "pane-1" });
-
-		await coordinator.split("pane-1", "vertical", { ...launchFor("pane-3"), background: true });
+		await coordinator.split("pane-1", "vertical", { ...launchFor("pane-4"), background: true });
 
 		expect(coordinator.layout.activePaneId).toBe("pane-1");
 		expect(coordinator.layout.zoomedPaneId).toBeNull();
@@ -360,45 +356,28 @@ describe("native multipane coordinator publishGeometry", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("persists new ratios and the recovery sees the same layout", async () => {
+	// The zoomed pane must persist too, or the toolbar's Zoom is a no-op.
+	it("persists the new geometry and zoomed pane, and the recovery sees the same layout", async () => {
 		const coordinator = await createWithPanes(deps, 2);
-		const original = coordinator.layout;
-		// Build a tree with pane set unchanged but ratio tweaked.
-		const tweaked = { ...original, activePaneId: "pane-2" };
-		await coordinator.publishGeometry(tweaked);
+		await coordinator.publishGeometry({ ...coordinator.layout, activePaneId: "pane-2", zoomedPaneId: "pane-2" });
 		expect(coordinator.layout.activePaneId).toBe("pane-2");
+		expect(coordinator.layout.zoomedPaneId).toBe("pane-2");
 
 		// A fresh coordinator via recover must see the published layout.
 		coordinator.detach();
 		const recovered = await NativeMultipaneCoordinator.recover(ID, deps);
 		expect(recovered!.layout.activePaneId).toBe("pane-2");
-	});
-
-	it("persists a zoomed pane so the toolbar's Zoom is not a no-op", async () => {
-		const coordinator = await createWithPanes(deps, 2);
-		await coordinator.publishGeometry({ ...coordinator.layout, zoomedPaneId: "pane-2" });
-		expect(coordinator.layout.zoomedPaneId).toBe("pane-2");
-
-		coordinator.detach();
-		const recovered = await NativeMultipaneCoordinator.recover(ID, deps);
 		expect(recovered!.layout.zoomedPaneId).toBe("pane-2");
 	});
 
-	it("rejects when the new tree's pane set differs from the current one", async () => {
+	it("rejects a tree whose pane set differs and leaves the record untouched", async () => {
 		const { LayoutPaneSetMismatchError } = await import("../errors");
 		const coordinator = await createWithPanes(deps, 2);
+		const before = readMultipaneRecord(ID)!.epoch;
 		// A 1-pane tree mismatches the 2-pane coordinator.
-		const singlePaneTree = createSplitTree();
-		await expect(coordinator.publishGeometry(singlePaneTree)).rejects.toBeInstanceOf(
+		await expect(coordinator.publishGeometry(createSplitTree())).rejects.toBeInstanceOf(
 			LayoutPaneSetMismatchError,
 		);
-	});
-
-	it("leaves the record untouched when the pane set mismatches", async () => {
-		const coordinator = await createWithPanes(deps, 2);
-		const before = readMultipaneRecord(ID)!.epoch;
-		const singlePaneTree = createSplitTree();
-		await coordinator.publishGeometry(singlePaneTree).catch(() => {});
 		expect(readMultipaneRecord(ID)!.epoch).toBe(before);
 	});
 });
@@ -418,24 +397,14 @@ describe("native multipane coordinator capture source", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("sources a capture from the pane's parser snapshot, without connecting", async () => {
+	it("sources a capture from the pane's parser snapshot without connecting, and rejects an unknown pane", async () => {
 		const coordinator = await createWithPanes(deps, 2);
 		await coordinator.writePane("pane-1", "hello\r");
 		const source = coordinator.readPaneCaptureSource("pane-1");
 		expect(source.kind).toBe("snapshot");
 		if (source.kind !== "snapshot") throw new Error("expected a snapshot source");
 		expect(source.state.screen.map((line) => line.text).join("\n")).toContain("hello");
-	});
-
-	it("reports a host that advertises no capture surface as disabled", async () => {
-		const coordinator = await createWithPanes(deps, 2);
-		const pane = deps.panes.get(`${coordinator.coordinatorId}-pane-1`);
-		if (!pane) throw new Error("fake pane missing");
-		// What an OLD record looks like: no capabilities block at all. The verdict
-		// comes from the host's own statement, never from a timer.
-		delete pane.record.capabilities;
-		pane.parserState = "absent";
-		expect(coordinator.readPaneCaptureSource("pane-1").kind).toBe("disabled");
+		expect(() => coordinator.readPaneCaptureSource("ghost")).toThrow(PaneNotFoundError);
 	});
 
 	it("reports a host that advertises capture but has not published yet as empty", async () => {
@@ -449,11 +418,14 @@ describe("native multipane coordinator capture source", () => {
 		expect(source.reason).toContain("not published its first screen");
 	});
 
-	it("does not read a snapshot at all for a host with no capture capability", async () => {
+	it("reports a host that advertises no capture surface as disabled, without reading a snapshot", async () => {
 		const coordinator = await createWithPanes(deps, 2);
 		const pane = deps.panes.get(`${coordinator.coordinatorId}-pane-1`);
 		if (!pane) throw new Error("fake pane missing");
+		// What an OLD record looks like: no capabilities block at all. The verdict
+		// comes from the host's own statement, never from a timer.
 		delete pane.record.capabilities;
+		pane.parserState = "absent";
 		let inspected = 0;
 		const inner = deps.inspectPaneParserState!.bind(deps);
 		deps.inspectPaneParserState = (sessionId) => {
@@ -470,11 +442,6 @@ describe("native multipane coordinator capture source", () => {
 		if (!pane) throw new Error("fake pane missing");
 		pane.parserState = "rejected";
 		expect(coordinator.readPaneCaptureSource("pane-1").kind).toBe("unreadable");
-	});
-
-	it("rejects capture of an unknown pane", async () => {
-		const coordinator = await createWithPanes(deps, 2);
-		expect(() => coordinator.readPaneCaptureSource("ghost")).toThrow(PaneNotFoundError);
 	});
 });
 

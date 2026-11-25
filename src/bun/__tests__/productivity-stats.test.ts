@@ -56,7 +56,7 @@ function makeTask(over: Partial<Task> = {}): Task {
 }
 
 describe("toStatEvent", () => {
-	it("uses captured completedDiffStats when no live diff", () => {
+	it("uses captured completedDiffStats when no live diff, and prefers a live diff flagged liveStats", () => {
 		const ev = toStatEvent(
 			makeProject(),
 			makeTask({ completedDiffStats: { files: 3, insertions: 40, deletions: 5, capturedAt: "x" } }),
@@ -69,33 +69,22 @@ describe("toStatEvent", () => {
 		expect(ev.movedAt).toBe("2026-06-02T00:00:00.000Z");
 		expect(ev.lifecycleStartedAt).toBeNull();
 		expect(ev.configId).toBeNull();
-	});
 
-	it("prefers live diff over captured and flags liveStats", () => {
-		const ev = toStatEvent(
+		const live = toStatEvent(
 			makeProject(),
 			makeTask({ completedDiffStats: { files: 3, insertions: 40, deletions: 5, capturedAt: "x" } }),
 			{ files: 1, insertions: 9, deletions: 1 },
 		);
-		expect(ev.insertions).toBe(9);
-		expect(ev.liveStats).toBe(true);
+		expect(live.insertions).toBe(9);
+		expect(live.liveStats).toBe(true);
 	});
 
-	it("defaults to zero when neither captured nor live exists", () => {
-		const ev = toStatEvent(makeProject(), makeTask({ completedDiffStats: undefined }));
-		expect(ev).toMatchObject({ files: 0, insertions: 0, deletions: 0, liveStats: false });
-	});
-
-	it("passes through the launch configuration id", () => {
-		const ev = toStatEvent(makeProject(), makeTask({ configId: "claude-auto-opus5-medium" }));
-		expect(ev.configId).toBe("claude-auto-opus5-medium");
-	});
-
-	it("marks virtual projects and prefers customTitle", () => {
+	it("passes through the launch configuration id, marks virtual projects and prefers customTitle", () => {
 		const ev = toStatEvent(
 			makeProject({ kind: "virtual" }),
-			makeTask({ customTitle: "Custom" }),
+			makeTask({ customTitle: "Custom", configId: "claude-auto-opus5-medium" }),
 		);
+		expect(ev.configId).toBe("claude-auto-opus5-medium");
 		expect(ev.projectKind).toBe("virtual");
 		expect(ev.title).toBe("Custom");
 	});
@@ -126,8 +115,9 @@ describe("toStatEvent", () => {
 		expect(ev.hibernated).toBe(true);
 	});
 
-	it("defaults time-tracking fields for legacy tasks", () => {
-		const ev = toStatEvent(makeProject(), makeTask());
+	it("defaults diff stats to zero and time-tracking fields for legacy tasks", () => {
+		const ev = toStatEvent(makeProject(), makeTask({ completedDiffStats: undefined }));
+		expect(ev).toMatchObject({ files: 0, insertions: 0, deletions: 0, liveStats: false });
 		expect(ev.statusEnteredAt).toBeNull();
 		expect(ev.focusMs).toBe(0);
 		expect(ev.focusByHour).toEqual({});

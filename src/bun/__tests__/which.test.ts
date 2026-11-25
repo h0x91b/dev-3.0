@@ -23,7 +23,7 @@ describe("which — PATH resolution", () => {
 		mockBunWhich.mockReset();
 	});
 
-	it("whichSync passes process.env.PATH explicitly to Bun.which", async () => {
+	it("whichSync and which pass process.env.PATH explicitly to Bun.which", async () => {
 		process.env.PATH = "/custom/resolved/path:/usr/bin";
 		mockBunWhich.mockReturnValue("/custom/resolved/path/tmux");
 
@@ -35,23 +35,21 @@ describe("which — PATH resolution", () => {
 		expect(mockBunWhich).toHaveBeenCalledWith("tmux", {
 			PATH: "/custom/resolved/path:/usr/bin",
 		});
-	});
 
-	it("which (async) passes process.env.PATH explicitly to Bun.which", async () => {
 		process.env.PATH = "/nix/store/bin:/usr/bin";
 		mockBunWhich.mockReturnValue("/nix/store/bin/gh");
 
 		const { which } = await import("../which");
 
-		const result = await which("gh");
+		const asyncResult = await which("gh");
 
-		expect(result).toBe("/nix/store/bin/gh");
+		expect(asyncResult).toBe("/nix/store/bin/gh");
 		expect(mockBunWhich).toHaveBeenCalledWith("gh", {
 			PATH: "/nix/store/bin:/usr/bin",
 		});
 	});
 
-	it("whichSync reads process.env.PATH at call time, not import time", async () => {
+	it("whichSync reads process.env.PATH at call time, not import time, and returns null when Bun.which does", async () => {
 		process.env.PATH = "/initial/path";
 		mockBunWhich.mockReturnValue(null);
 
@@ -66,14 +64,8 @@ describe("which — PATH resolution", () => {
 		expect(mockBunWhich).toHaveBeenCalledWith("tmux", {
 			PATH: "/resolved/shell/path:/usr/local/bin",
 		});
-	});
 
-	it("whichSync returns null when Bun.which returns null", async () => {
-		process.env.PATH = "/usr/bin:/bin";
 		mockBunWhich.mockReturnValue(null);
-
-		const { whichSync } = await import("../which");
-
 		expect(whichSync("nonexistent")).toBeNull();
 	});
 });

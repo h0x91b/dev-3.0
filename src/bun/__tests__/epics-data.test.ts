@@ -34,15 +34,13 @@ describe("epics registry", () => {
 		expect(existsSync(EPICS_FILE)).toBe(false);
 	});
 
-	it("creates an epic with a free-text name and persists it", async () => {
+	it("creates an epic with a free-text name and a given, picked or refused colour, and persists it", async () => {
 		const epic = await createEpic("  Оплата v2  ", "#3B82F6");
 		expect(epic).toMatchObject({ name: "Оплата v2", color: "#3b82f6", archived: false });
 		const onDisk = JSON.parse(readFileSync(EPICS_FILE, "utf8"));
 		expect(onDisk.epics).toHaveLength(1);
 		expect(onDisk.epics[0].id).toBe(epic.id);
-	});
-
-	it("picks a palette colour when none is given and refuses a bad one", async () => {
+		// No colour picks one from the palette; a bad colour is refused.
 		expect((await createEpic("A")).color).toMatch(/^#[0-9a-f]{6}$/);
 		await expect(createEpic("B", "blue")).rejects.toBeInstanceOf(EpicValidationError);
 	});
@@ -55,20 +53,18 @@ describe("epics registry", () => {
 		await expect(createEpic("payments v2")).rejects.toThrow(/archived/);
 	});
 
-	it("renames and recolours by id, refusing a rename onto another epic's name", async () => {
+	it("renames, recolours and archives by id, refusing a rename onto another epic's name", async () => {
 		const a = await createEpic("Alpha");
 		await createEpic("Beta");
 		expect(await updateEpic(a.id, { name: "Gamma", color: "#ef4444" })).toMatchObject({ id: a.id, name: "Gamma", color: "#ef4444" });
 		await expect(updateEpic(a.id, { name: "beta" })).rejects.toBeInstanceOf(EpicValidationError);
 		// Renaming to a different case of its own name is fine.
 		expect((await updateEpic(a.id, { name: "GAMMA" })).name).toBe("GAMMA");
-	});
 
-	it("archives and unarchives without removing anything", async () => {
-		const epic = await createEpic("Effort");
-		expect((await updateEpic(epic.id, { archived: true })).archived).toBe(true);
-		expect((await updateEpic(epic.id, { archived: false })).archived).toBe(false);
-		expect((await loadEpicsFile()).epics).toHaveLength(1);
+		// Archiving and unarchiving removes nothing.
+		expect((await updateEpic(a.id, { archived: true })).archived).toBe(true);
+		expect((await updateEpic(a.id, { archived: false })).archived).toBe(false);
+		expect((await loadEpicsFile()).epics).toHaveLength(2);
 	});
 
 	it("resolves a ref by name (any case), id or id prefix, and refuses unknown ones with the coded error", async () => {

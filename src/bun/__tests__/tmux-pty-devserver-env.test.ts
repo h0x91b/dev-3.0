@@ -296,15 +296,14 @@ describe("dev-server --env precedence", () => {
 			{},
 			{ DEV3_DEV_SERVER: "dev" },
 		]);
-	});
 
-	it("lets the caller override a project env entry", async () => {
+		// The caller can override a project env entry.
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { PROJECT_ONLY: "overridden" } });
 
 		expect(effectiveEnv().PROJECT_ONLY).toBe("overridden");
 	});
 
-	it("never lets the caller move the task's identity", async () => {
+	it("never lets the caller move the task's identity or an assigned port", async () => {
 		await runDevServer({
 			taskId: TASK_ID,
 			projectId: "proj-1",
@@ -313,10 +312,8 @@ describe("dev-server --env precedence", () => {
 
 		expect(effectiveEnv().SHARED).toBe("from-lifecycle");
 		expect(effectiveEnv().DEV3_TASK_ID).toBe(TASK_ID);
-	});
 
-	// The one that would break `--wait`: it polls for a listener on DEV3_PORT0.
-	it("never lets the caller move an assigned port", async () => {
+		// The one that would break `--wait`: it polls for a listener on DEV3_PORT0.
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_PORT0: "1" } });
 
 		expect(effectiveEnv().DEV3_PORT0).toBe("50001");
@@ -327,33 +324,22 @@ describe("dev-server --env precedence", () => {
 	it("writes the wrapper script private, since it exports the caller's values", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { SECRET_TOKEN: "abc" } });
 		expect(vi.mocked(writeLaunchScript)).toHaveBeenCalledWith(expect.any(String), expect.any(String), { private: true });
-	});
 
-	it("passes an empty caller group for an ordinary start", async () => {
+		// An ordinary start passes an empty caller group.
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-
 		expect(callerEnvGroup()).toEqual({});
 	});
 });
 
 describe("dev-server --env across a restart", () => {
-	it("remembers the env of the last start", async () => {
+	it("remembers the env of the last start; a bare restart reuses it and --env replaces it", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
 		expect(saveDevServerEnv).toHaveBeenCalledWith(TASK_ID, "dev", { DEV3_QA_SCOPE: "seeded" });
 		expect(readDevServerEnv(TASK_ID, "dev")).toEqual({ DEV3_QA_SCOPE: "seeded" });
-	});
 
-	// The UI's Restart button and a bare `dev3 dev-server restart` both land here.
-	it("a restart with no env reuses the last start's env", async () => {
-		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
-
+		// The UI's Restart button and a bare `dev3 dev-server restart` both land here.
 		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-
 		expect(callerEnvGroup()).toEqual({ DEV3_QA_SCOPE: "seeded" });
-	});
-
-	it("a restart with --env replaces it", async () => {
-		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
 
 		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "virgin" } });
 
@@ -368,11 +354,9 @@ describe("dev-server --env across a restart", () => {
 
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
 		expect(callerEnvGroup()).toEqual({});
-	});
 
-	// A plain `start` defines its configuration whole — inheriting silently is
-	// exactly the trap the `.dev3/config.local.json` recipe had.
-	it("a plain start after an --env start clears the stored env", async () => {
+		// A plain `start` after an --env start clears the stored env — inheriting
+		// silently is exactly the trap the `.dev3/config.local.json` recipe had.
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { DEV3_QA_SCOPE: "seeded" } });
 
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
@@ -394,14 +378,10 @@ describe("dev-server script args", () => {
 
 		expect(lastScriptArgs()).toEqual(["--own-db", "a b"]);
 		expect(readDevServerArgs(TASK_ID, "dev")).toEqual(["--own-db", "a b"]);
-	});
 
-	it("a restart with no args reuses the last start's args", async () => {
-		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
-
+		// A restart with no args reuses the last start's args.
 		await restartDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-
-		expect(lastScriptArgs()).toEqual(["--own-db"]);
+		expect(lastScriptArgs()).toEqual(["--own-db", "a b"]);
 	});
 
 	it("a restart with new args replaces them, and an empty list clears them", async () => {
@@ -415,15 +395,11 @@ describe("dev-server script args", () => {
 		expect(readDevServerArgs(TASK_ID, "dev")).toEqual([]);
 	});
 
-	it("a plain start clears the stored args, like env", async () => {
+	it("a plain start or a stop clears the stored args, like env", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
-
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1" });
-
 		expect(readDevServerArgs(TASK_ID, "dev")).toEqual([]);
-	});
 
-	it("a stop clears them", async () => {
 		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", args: ["--own-db"] });
 
 		await stopDevServer({ taskId: TASK_ID, projectId: "proj-1" });

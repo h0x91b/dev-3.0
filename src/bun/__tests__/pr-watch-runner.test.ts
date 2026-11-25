@@ -101,14 +101,16 @@ describe("runPrWatches", () => {
 		} finally { vi.useRealTimers(); }
 	});
 
-	it("sends one dev3-origin message and removes the watch once it is accepted", async () => {
+	it("sends one dev3-origin message to the one live agent pane (no subscriber recorded) and removes the watch", async () => {
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["pane-2"]);
 		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
 
 		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+		expect(resolveScheduledMessageAuthorPane).not.toHaveBeenCalled();
 		const [, text, target, source, opts] = vi.mocked(sendMessageImmediately).mock.calls[0];
 		expect(text).toContain("<dev3-pr-status>");
 		expect(text).toContain("<pr:7>: CI finished on 2222222: all 1 checks GitHub listed passed.");
-		expect([target, source]).toEqual([{ kind: "pane", paneId: "%1" }, null]);
+		expect([target, source]).toEqual([{ kind: "pane", paneId: "pane-2" }, null]);
 		expect(opts).toEqual({ subject: "<pr:7>: CI passed", origin: "dev3" });
 		expect(lastStoredWatches()).toBeNull();
 	});
@@ -119,47 +121,32 @@ describe("runPrWatches", () => {
 		expect(lastStoredWatches()).toEqual([watch("ci", { ciSeen: undefined })]);
 	});
 
-	it("notes the first finished look and sends nothing until a second confirms it", async () => {
-		current = task({ prWatches: [watch("ci", { ciSeen: undefined })] });
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-		expect(lastStoredWatches()).toEqual([watch("ci", { ciSeen: { head: HEAD, total: 1, at: expect.any(Number) } })]);
-	});
-
-	it("does nothing for a task without watches", async () => {
-		current = task({ prWatches: null });
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+	it("does nothing for a task without watches or a finished task", async () => {
+		for (const overrides of [{ prWatches: null }, { status: "completed" }] as const) {
+			current = task(overrides as Partial<Task>);
+			await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+		}
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 		expect(git.isRefMergedInto).not.toHaveBeenCalled();
 	});
 
-	for (const [name, overrides] of [
-		["hibernated", { hibernated: true }],
-		["waiting on a question", { status: "user-questions" }],
-		["without a live agent pane", { sessionState: { panes: [] } }],
-	] as const) {
-		it(`keeps the watch and sends nothing while the task is ${name}`, async () => {
+	it("keeps the watch and sends nothing while the task is hibernated, waiting on a question, or has no agent pane", async () => {
+		for (const overrides of [{ hibernated: true }, { status: "user-questions" }, { sessionState: { panes: [] } }] as const) {
 			current = task(overrides as Partial<Task>);
 			await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-			expect(sendMessageImmediately).not.toHaveBeenCalled();
-			expect(data.updateTaskWith).not.toHaveBeenCalled();
-		});
-	}
-
-	it("keeps the watch when delivery is not delivered, and does not retry before the backoff", async () => {
-		vi.mocked(sendMessageImmediately).mockRejectedValue(new Error("no live agent session"));
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-
-		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
-		expect(data.updateTaskWith).not.toHaveBeenCalled();
+			expect(sendMessageImmediately, JSON.stringify(overrides)).not.toHaveBeenCalled();
+			expect(data.updateTaskWith, JSON.stringify(overrides)).not.toHaveBeenCalled();
+		}
 	});
 
-	it("retries once the backoff has passed, and then removes the watch", async () => {
+	it("keeps an undelivered watch, does not retry before the backoff, then retries and removes it", async () => {
 		vi.mocked(sendMessageImmediately).mockRejectedValueOnce(new Error("no live agent session"));
 		const now = Date.now();
 		const clock = vi.spyOn(Date, "now").mockReturnValue(now);
 		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
 		clock.mockReturnValue(now + PR_WATCH_RETRY_BACKOFF_MS + 1);
 		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
 		clock.mockRestore();
@@ -231,16 +218,14 @@ describe("runPrWatches", () => {
 			expect(sentText()).toContain("uncommitted changes or commits the PR does not include");
 		});
 
-		it("does not claim an offer for manual completion even when the PR does not cover the head", async () => {
-			current = task({ manualCompletion: true });
-			await runPrWatches(project, "t1", merged, URL, Date.now(), false);
-			expect(sentText()).toContain("dev3 does not offer completion for this task");
-		});
-
-		it("says no completion is offered for a task with manual completion", async () => {
-			current = task({ manualCompletion: true });
-			await runPrWatches(project, "t1", merged, URL, Date.now(), true);
-			expect(sentText()).toContain("dev3 does not offer completion for this task; continue per your task rules.");
+		it("claims no offer for manual completion, whether or not the PR covers the head", async () => {
+			for (const covered of [true, false]) {
+				vi.mocked(sendMessageImmediately).mockClear();
+				_resetPrWatchRunnerState();
+				current = task({ manualCompletion: true });
+				await runPrWatches(project, "t1", merged, URL, Date.now(), covered);
+				expect(sentText(), `covered=${covered}`).toContain("dev3 does not offer completion for this task; continue per your task rules.");
+			}
 		});
 
 		it("says no completion is offered when the user switched the suggestion off", async () => {
@@ -303,18 +288,14 @@ describe("runPrWatches", () => {
 		} finally { vi.useRealTimers(); }
 	});
 
-	it("logs each evaluation and each delivery at info", async () => {
-		await runPrWatches(project, "t1", pendingSample, URL, Date.now(), true);
-		expect(log.info).toHaveBeenCalledWith("PR watch evaluated", expect.objectContaining({ taskId: "t1", pr: 7, fired: 0 }));
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(log.info).toHaveBeenCalledWith("PR watch evaluated", expect.objectContaining({ fired: 1, agentCanReceive: true }));
-		expect(log.info).toHaveBeenCalledWith("PR watch delivered", expect.objectContaining({ taskId: "t1", pr: 7, paneId: "%1", status: "held" }));
-	});
-
-	it("drops a notice whose watch was removed after the verdict was reached", async () => {
-		vi.mocked(data.getTask).mockResolvedValueOnce(current).mockResolvedValue({ ...current, prWatches: null } as Task);
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	it("drops a notice whose watch was removed, or whose task started waiting on a question, after the verdict", async () => {
+		for (const change of [{ prWatches: null }, { status: "user-questions" }] as const) {
+			current = task();
+			vi.mocked(data.getTask).mockResolvedValueOnce(current).mockResolvedValue({ ...current, ...change } as Task);
+			await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+			expect(sendMessageImmediately, JSON.stringify(change)).not.toHaveBeenCalled();
+			expect(data.updateTaskWith, JSON.stringify(change)).not.toHaveBeenCalled();
+		}
 	});
 
 	it("sends to the pane of the agent that subscribed", async () => {
@@ -354,17 +335,14 @@ describe("runPrWatches", () => {
 		expect(resolveScheduledMessageAuthorPane).toHaveBeenCalledTimes(1);
 	});
 
-	it("delivers a watch that has no recorded subscriber (Windows) when one agent pane runs", async () => {
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
-		expect(resolveScheduledMessageAuthorPane).not.toHaveBeenCalled();
-	});
-
-	it("keeps a watch with no recorded subscriber while several panes run agents", async () => {
-		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1", "%2"]);
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-		expect(lastStoredWatches()).toBeUndefined();
+	it("keeps a watch with no recorded subscriber while several, no, or unknown panes run agents", async () => {
+		// No pane at all covers a stale record lying beside a live shell.
+		for (const panes of [["%1", "%2"], [], null]) {
+			vi.mocked(liveAgentPaneIds).mockResolvedValue(panes);
+			await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+			expect(sendMessageImmediately, JSON.stringify(panes)).not.toHaveBeenCalled();
+			expect(lastStoredWatches(), JSON.stringify(panes)).toBeUndefined();
+		}
 	});
 
 	it("probes the live agent panes once per delivery, even when the answer is unknown", async () => {
@@ -426,26 +404,20 @@ describe("runPrWatches", () => {
 			vi.mocked(resolveScheduledMessageAuthorPane).mockImplementation(async (_t, author) => ({ ok: true, paneId: author.paneId }));
 		});
 
-		it("does not send the second when the task started waiting on a question", async () => {
-			vi.mocked(sendMessageImmediately).mockImplementationOnce(async () => {
-				current = { ...current, status: "user-questions" } as Task;
-				return { status: "held", spilledPath: null, messageId: "m" };
-			});
+		it("does not send the second when the task started waiting on a question or its watch was removed", async () => {
+			for (const change of [{ status: "user-questions" }, { prWatches: null }] as const) {
+				vi.mocked(sendMessageImmediately).mockClear();
+				_resetPrWatchRunnerState();
+				current = task({ prWatches: [watch("ci", { author: a }), watch("merged", { author: b })] });
+				vi.mocked(sendMessageImmediately).mockImplementationOnce(async () => {
+					current = { ...current, ...change } as Task;
+					return { status: "held", spilledPath: null, messageId: "m" };
+				});
 
-			await runPrWatches(project, "t1", merged, URL, Date.now(), true);
+				await runPrWatches(project, "t1", merged, URL, Date.now(), true);
 
-			expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
-		});
-
-		it("does not send the second when its watch was removed, and reports only what is still watched", async () => {
-			vi.mocked(sendMessageImmediately).mockImplementationOnce(async () => {
-				current = { ...current, prWatches: null } as Task;
-				return { status: "held", spilledPath: null, messageId: "m" };
-			});
-
-			await runPrWatches(project, "t1", merged, URL, Date.now(), true);
-
-			expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+				expect(sendMessageImmediately, JSON.stringify(change)).toHaveBeenCalledTimes(1);
+			}
 		});
 
 		it("builds the second message's last line from the fresh watch list (a watch added meanwhile still stays)", async () => {
@@ -460,39 +432,6 @@ describe("runPrWatches", () => {
 		});
 	});
 
-	it("keeps the watch when no pane runs an agent, as when a stale record lies beside a live shell", async () => {
-		vi.mocked(liveAgentPaneIds).mockResolvedValue([]);
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-		expect(lastStoredWatches()).toBeUndefined();
-	});
-
-	it("keeps the watch when the live agent panes cannot be told", async () => {
-		vi.mocked(liveAgentPaneIds).mockResolvedValue(null);
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("delivers to the one live agent pane whatever it is called", async () => {
-		vi.mocked(liveAgentPaneIds).mockResolvedValue(["pane-2"]);
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(vi.mocked(sendMessageImmediately).mock.calls[0][2]).toEqual({ kind: "pane", paneId: "pane-2" });
-	});
-
-	it("keeps the watch when the task started waiting on a question after the verdict was reached", async () => {
-		vi.mocked(data.getTask).mockResolvedValueOnce(current).mockResolvedValue({ ...current, status: "user-questions" } as Task);
-
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-		expect(data.updateTaskWith).not.toHaveBeenCalled();
-	});
-
-	it("ignores a finished task", async () => {
-		current = task({ status: "completed" });
-		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
 });
 
 describe("a PR followed with --pr", () => {
@@ -550,16 +489,13 @@ describe("a PR followed with --pr", () => {
 
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("<pr:2111> merged. It is not this task's own PR, so dev3 offers no completion for it.");
 		expect(hasMergeOfferHold("t1")).toBe(false);
+		expect(mergeOfferHeld(task({ prWatches: [pinned("merged")] }))).toBe(false);
 	});
 
 	it("names only the followed PR's remaining watch kinds", async () => {
 		current = task({ prWatches: [pinned("ci"), watch("merged")] });
 		await runPrWatches(project, "t1", forkSample(), FORK_URL, Date.now(), false, 2111);
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("No watch is left.");
-	});
-
-	it("does not hold the task's merge offer for pinned watches alone", () => {
-		expect(mergeOfferHeld(task({ prWatches: [pinned("merged")] }))).toBe(false);
 	});
 
 	it("clears only the watches of one PR with --off --pr", async () => {
@@ -688,13 +624,13 @@ describe("the merge-completion offer hold", () => {
 		expect(mergeOfferHeld(task(), afterExpiry + MERGE_OFFER_WATCH_HOLD_MS + 1_000)).toBe(false);
 	});
 
-	it("is not started by a message that carries no merged notice", async () => {
+	it("is not started by a message without a merged notice, nor by an undelivered merged one", async () => {
 		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
 		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
 		expect(mergeOfferHeld(withoutWatches())).toBe(false);
-	});
 
-	it("is not started when the message was not delivered", async () => {
+		_resetPrWatchRunnerState();
+		current = task();
 		vi.mocked(sendMessageImmediately).mockRejectedValue(new Error("pane gone"));
 		await runPrWatches(project, "t1", merged, URL, Date.now(), true);
 		expect(mergeOfferHeld(withoutWatches())).toBe(false);
@@ -709,17 +645,10 @@ describe("the merge-completion offer hold", () => {
 		expect(mergeOfferHeld(task(), now + 2 * MERGE_OFFER_WATCH_HOLD_MS)).toBe(false);
 	});
 
-	it.each([
-		["hibernated", { hibernated: true }],
-		["has no panes", { sessionState: { panes: [] } }],
-		["waits on a question", { status: "user-questions" }],
-	])("does not hold for a watch whose agent %s", (_label, overrides) => {
-		expect(mergeOfferHeld(task(overrides as Partial<Task>))).toBe(false);
-	});
-
-	it("does not hold a task without watches", () => {
-		expect(mergeOfferHeld(task({ prWatches: null }))).toBe(false);
-		expect(mergeOfferHeld(task({ prWatches: [] }))).toBe(false);
+	it("does not hold without watches, or for a watch whose agent cannot receive", () => {
+		for (const overrides of [{ prWatches: null }, { prWatches: [] }, { hibernated: true }, { sessionState: { panes: [] } }, { status: "user-questions" }]) {
+			expect(mergeOfferHeld(task(overrides as Partial<Task>)), JSON.stringify(overrides)).toBe(false);
+		}
 	});
 
 	it("keeps reporting an expired hold until mergeOfferHeld clears it", async () => {
@@ -732,12 +661,6 @@ describe("the merge-completion offer hold", () => {
 			expect(mergeOfferHeld(withoutWatches())).toBe(false);
 			expect(hasMergeOfferHold("t1")).toBe(false);
 		} finally { vi.useRealTimers(); }
-	});
-
-	it("is forgotten by the state reset", async () => {
-		await runPrWatches(project, "t1", merged, URL, Date.now(), true);
-		_resetPrWatchRunnerState();
-		expect(mergeOfferHeld(withoutWatches())).toBe(false);
 	});
 });
 

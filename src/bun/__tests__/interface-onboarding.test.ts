@@ -55,7 +55,7 @@ describe("interface onboarding", () => {
 		expect(result.response).toMatchObject({ activeMs: ONBOARDING_ACTIVE_THRESHOLD_MS, postponements: 1, dueAt: DAY + 500, prompt: null });
 	});
 
-	it("postpones from each decision by 1, 3, 9, then 14 days indefinitely", () => {
+	it("postpones by 1, 3, 9, then 14 days indefinitely; manual enable always runs a 14-day schedule", () => {
 		let state = due();
 		let now = 0;
 		for (const days of [1, 3, 9, 14, 14, 14]) {
@@ -64,15 +64,13 @@ describe("interface onboarding", () => {
 			expect(state.dueAt).toBe(now + 100 + days * DAY);
 			now = state.dueAt!;
 		}
-	});
 
-	it("manual enable always begins a recurring 14-day schedule", () => {
-		let state = initialInterfaceOnboarding(false, false, 0);
-		state = run(state, { action: "enable", clientId: "desktop" }, 500).state;
-		expect(state).toMatchObject({ source: "manual", dueAt: 14 * DAY + 500 });
-		state = run(state, poll(), 14 * DAY + 500).state;
-		state = run(state, { action: "postpone", clientId: "desktop" }, 14 * DAY + 600).state;
-		expect(state.dueAt).toBe(28 * DAY + 600);
+		let manual = initialInterfaceOnboarding(false, false, 0);
+		manual = run(manual, { action: "enable", clientId: "desktop" }, 500).state;
+		expect(manual).toMatchObject({ source: "manual", dueAt: 14 * DAY + 500 });
+		manual = run(manual, poll(), 14 * DAY + 500).state;
+		manual = run(manual, { action: "postpone", clientId: "desktop" }, 14 * DAY + 600).state;
+		expect(manual.dueAt).toBe(28 * DAY + 600);
 	});
 
 	it("preserves existing full interface and existing simplified choice", () => {
@@ -112,12 +110,10 @@ describe("interface onboarding", () => {
 		transitionInterfaceMode(state, true, 300);
 		transitionInterfaceMode(state, false, 400);
 		expect(run(state, poll(), 500).response).toMatchObject({ prompt: null, lessonPending: false });
-	});
 
-	it("continues the accepted invitation directly into its one-time lesson", () => {
-		const state = run(due(), poll(), 0).state;
-		const result = run(state, { action: "disable", clientId: "desktop", calm: true }, 100);
-		expect(result.response).toMatchObject({ enabled: false, prompt: "lesson", lessonPending: true });
-		expect(result.state.lease?.clientId).toBe("desktop");
+		// An accepted invitation continues directly into its one-time lesson.
+		const accepted = run(run(due(), poll(), 0).state, { action: "disable", clientId: "desktop", calm: true }, 100);
+		expect(accepted.response).toMatchObject({ enabled: false, prompt: "lesson", lessonPending: true });
+		expect(accepted.state.lease?.clientId).toBe("desktop");
 	});
 });

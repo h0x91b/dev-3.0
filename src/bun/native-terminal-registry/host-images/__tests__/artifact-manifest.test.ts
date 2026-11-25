@@ -114,7 +114,7 @@ describe("generateManifest — platform happy paths", () => {
 });
 
 describe("determinism", () => {
-	test("identical input yields byte-identical serialized output", () => {
+	test("identical input yields byte-identical output regardless of declared-file order or timestamps", () => {
 		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
 		try {
 			const first = serializeManifest(generateManifest(inputFor(LINUX_X64_FIXTURE, root)));
@@ -124,30 +124,28 @@ describe("determinism", () => {
 		} finally {
 			cleanup();
 		}
-	});
-
-	test("declared-file order does not affect output", () => {
-		const { root, cleanup } = materializeFixture(MACOS_ARM64_FIXTURE);
-		try {
-			const forward = serializeManifest(generateManifest(inputFor(MACOS_ARM64_FIXTURE, root)));
-			const reversed = serializeManifest(generateManifest(inputFor(MACOS_ARM64_FIXTURE, root, { files: [...declaredFiles(MACOS_ARM64_FIXTURE)].reverse() })));
-			expect(forward).toBe(reversed);
-		} finally {
-			cleanup();
-		}
-	});
-
-	test("file timestamps do not affect output", () => {
-		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
-		try {
-			const before = serializeManifest(generateManifest(inputFor(LINUX_X64_FIXTURE, root)));
-			for (const fixtureFile of LINUX_X64_FIXTURE.files) {
-				utimesSync(join(root, fixtureFile.path), new Date(0), new Date(0));
+		{
+			const { root, cleanup } = materializeFixture(MACOS_ARM64_FIXTURE);
+			try {
+				const forward = serializeManifest(generateManifest(inputFor(MACOS_ARM64_FIXTURE, root)));
+				const reversed = serializeManifest(generateManifest(inputFor(MACOS_ARM64_FIXTURE, root, { files: [...declaredFiles(MACOS_ARM64_FIXTURE)].reverse() })));
+				expect(forward).toBe(reversed);
+			} finally {
+				cleanup();
 			}
-			const after = serializeManifest(generateManifest(inputFor(LINUX_X64_FIXTURE, root)));
-			expect(before).toBe(after);
-		} finally {
-			cleanup();
+		}
+		{
+			const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
+			try {
+				const before = serializeManifest(generateManifest(inputFor(LINUX_X64_FIXTURE, root)));
+				for (const fixtureFile of LINUX_X64_FIXTURE.files) {
+					utimesSync(join(root, fixtureFile.path), new Date(0), new Date(0));
+				}
+				const after = serializeManifest(generateManifest(inputFor(LINUX_X64_FIXTURE, root)));
+				expect(before).toBe(after);
+			} finally {
+				cleanup();
+			}
 		}
 	});
 
@@ -183,20 +181,19 @@ describe("round-trip parse + validate", () => {
 });
 
 describe("rejections — generation", () => {
-	test("missing: absent artifact root", () => {
+	test("missing: absent artifact root, or a root that is a file", () => {
 		expectManifestError(() => generateManifest(inputFor(WINDOWS_X64_FIXTURE, join(WINDOWS_X64_FIXTURE.name, "does-not-exist-xyz"))), "missing");
-	});
-
-	test("missing: root path is a file, not a directory", () => {
-		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
-		try {
-			expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, join(root, "dev3-terminal-host.js"))), "missing");
-		} finally {
-			cleanup();
+		{
+			const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
+			try {
+				expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, join(root, "dev3-terminal-host.js"))), "missing");
+			} finally {
+				cleanup();
+			}
 		}
 	});
 
-	test("partial: a declared file is absent from an existing root", () => {
+	test("partial / not-regular / empty-file: an absent declared file, a directory, or a zero-byte file", () => {
 		const { root, cleanup } = materializeFixture(WINDOWS_X64_FIXTURE);
 		try {
 			const err = expectManifestError(
@@ -206,6 +203,22 @@ describe("rejections — generation", () => {
 			expect(err.detail.paths).toContain("missing/extra.bin");
 		} finally {
 			cleanup();
+		}
+		{
+			const { root, cleanup } = materializeFixture(WINDOWS_X64_FIXTURE);
+			try {
+				expectManifestError(() => generateManifest(inputFor(WINDOWS_X64_FIXTURE, root, { files: [...declaredFiles(WINDOWS_X64_FIXTURE), "conpty"] })), "not-regular");
+			} finally {
+				cleanup();
+			}
+		}
+		{
+			const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE, [{ path: "empty.bin", contents: "" }]);
+			try {
+				expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, root, { files: [...declaredFiles(LINUX_X64_FIXTURE), "empty.bin"] })), "empty-file");
+			} finally {
+				cleanup();
+			}
 		}
 	});
 
@@ -230,55 +243,36 @@ describe("rejections — generation", () => {
 		}
 	});
 
-	test("not-regular: a declared path points at a directory", () => {
-		const { root, cleanup } = materializeFixture(WINDOWS_X64_FIXTURE);
-		try {
-			expectManifestError(() => generateManifest(inputFor(WINDOWS_X64_FIXTURE, root, { files: [...declaredFiles(WINDOWS_X64_FIXTURE), "conpty"] })), "not-regular");
-		} finally {
-			cleanup();
-		}
-	});
-
-	test("empty-file: a declared regular file has zero bytes", () => {
-		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE, [{ path: "empty.bin", contents: "" }]);
-		try {
-			expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, root, { files: [...declaredFiles(LINUX_X64_FIXTURE), "empty.bin"] })), "empty-file");
-		} finally {
-			cleanup();
-		}
-	});
-
-	test("no-files: an empty declared list", () => {
+	test("no-files / invalid-entrypoint / invalid-metadata are rejected", () => {
 		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
 		try {
 			expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, root, { files: [] })), "no-files");
 		} finally {
 			cleanup();
 		}
-	});
-
-	test("invalid-entrypoint: entrypoint not among declared files", () => {
-		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
-		try {
-			expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, root, { entrypoint: "not-declared.js" })), "invalid-entrypoint");
-		} finally {
-			cleanup();
+		{
+			const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
+			try {
+				expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, root, { entrypoint: "not-declared.js" })), "invalid-entrypoint");
+			} finally {
+				cleanup();
+			}
+		}
+		{
+			const cases: ManifestMetadata[] = [
+				{ ...LINUX_X64_FIXTURE.metadata, os: "windows" as ManifestMetadata["os"] },
+				{ ...LINUX_X64_FIXTURE.metadata, arch: "aarch64" as ManifestMetadata["arch"] },
+				{ ...LINUX_X64_FIXTURE.metadata, protocolVersion: 0 },
+				{ ...LINUX_X64_FIXTURE.metadata, protocolVersion: 1.5 },
+				{ ...LINUX_X64_FIXTURE.metadata, hostVersion: "" },
+				{ ...LINUX_X64_FIXTURE.metadata, bunVersion: "  " },
+			];
+			for (const metadata of cases) {
+				expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, "unused", { metadata })), "invalid-metadata");
+			}
 		}
 	});
 
-	test("invalid-metadata: bad os, non-positive protocol, or blank version", () => {
-		const cases: ManifestMetadata[] = [
-			{ ...LINUX_X64_FIXTURE.metadata, os: "windows" as ManifestMetadata["os"] },
-			{ ...LINUX_X64_FIXTURE.metadata, arch: "aarch64" as ManifestMetadata["arch"] },
-			{ ...LINUX_X64_FIXTURE.metadata, protocolVersion: 0 },
-			{ ...LINUX_X64_FIXTURE.metadata, protocolVersion: 1.5 },
-			{ ...LINUX_X64_FIXTURE.metadata, hostVersion: "" },
-			{ ...LINUX_X64_FIXTURE.metadata, bunVersion: "  " },
-		];
-		for (const metadata of cases) {
-			expectManifestError(() => generateManifest(inputFor(LINUX_X64_FIXTURE, "unused", { metadata })), "invalid-metadata");
-		}
-	});
 });
 
 describe("rejections — validation", () => {
@@ -304,7 +298,7 @@ describe("rejections — validation", () => {
 		}
 	});
 
-	test("partial: a declared file was deleted after the manifest was written", () => {
+	test("partial / missing: a declared file deleted after writing, or an absent root", () => {
 		const { root, cleanup } = materializeFixture(MACOS_ARM64_FIXTURE);
 		try {
 			const manifest = generateManifest(inputFor(MACOS_ARM64_FIXTURE, root));
@@ -318,15 +312,15 @@ describe("rejections — validation", () => {
 		} finally {
 			cleanup();
 		}
-	});
-
-	test("missing: validating against an absent root", () => {
-		const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
-		try {
-			const manifest = generateManifest(inputFor(LINUX_X64_FIXTURE, root));
-			expectManifestError(() => validateManifest(manifest, join(root, "nope")), "missing");
-		} finally {
-			cleanup();
+		{
+			const { root, cleanup } = materializeFixture(LINUX_X64_FIXTURE);
+			try {
+				const manifest = generateManifest(inputFor(LINUX_X64_FIXTURE, root));
+				expectManifestError(() => validateManifest(manifest, join(root, "nope")), "missing");
+			} finally {
+				cleanup();
+			}
 		}
 	});
+
 });

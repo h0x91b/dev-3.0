@@ -41,9 +41,13 @@ describe("withoutPowerShell7ModulePaths", () => {
 		]);
 	});
 
-	it("is a no-op off Windows, where electrobun never calls PowerShell", () => {
+	it("is a no-op off Windows, where electrobun never calls PowerShell, and returns the same object when there is nothing to drop", () => {
 		const input = { PSModulePath: RUNNER_PSMODULEPATH };
 		expect(withoutPowerShell7ModulePaths(input, "darwin", () => true)).toEqual({ env: input, dropped: [] });
+		const winOnly = { PSModulePath: "C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules" };
+		expect(withoutPowerShell7ModulePaths(winOnly, "win32", () => false).env).toBe(winOnly);
+		const empty = { PATH: "x" };
+		expect(withoutPowerShell7ModulePaths(empty, "win32", () => false).env).toBe(empty);
 	});
 
 	it("keeps the key's own spelling, since Windows env names ignore case", () => {
@@ -54,33 +58,21 @@ describe("withoutPowerShell7ModulePaths", () => {
 		);
 		expect(env).toEqual({ PSMODULEPATH: "C:\\Program Files\\WindowsPowerShell\\Modules" });
 	});
-
-	it("returns the same object when there is nothing to drop", () => {
-		const input = { PSModulePath: "C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules" };
-		expect(withoutPowerShell7ModulePaths(input, "win32", () => false).env).toBe(input);
-		const empty = { PATH: "x" };
-		expect(withoutPowerShell7ModulePaths(empty, "win32", () => false).env).toBe(empty);
-	});
 });
 
 describe("isPowerShell7ModuleDir", () => {
-	it("finds $PSHOME\\Modules by the pwsh.exe beside it, wherever pwsh is installed", () => {
+	it("finds $PSHOME\\Modules by the pwsh.exe beside it and the redirected per-user dir, never a 5.1 dir", () => {
 		const scoop = "C:\\Users\\me\\scoop\\apps\\pwsh\\current";
 		expect(isPowerShell7ModuleDir(`${scoop}\\Modules`, pwshAt(scoop))).toBe(true);
 		expect(isPowerShell7ModuleDir(`${scoop}\\Modules`, () => false)).toBe(false);
-	});
-
-	it("never matches a Windows PowerShell 5.1 dir", () => {
 		for (const dir of [
 			"C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules",
 			"C:\\Program Files\\WindowsPowerShell\\Modules",
 			"C:\\Users\\me\\OneDrive\\Documents\\WindowsPowerShell\\Modules",
 		]) {
-			expect(isPowerShell7ModuleDir(dir, () => false)).toBe(false);
+			expect(isPowerShell7ModuleDir(dir, () => false), dir).toBe(false);
 		}
-	});
-
-	it("matches the per-user dir under a redirected Documents folder", () => {
+		// The per-user dir under a redirected Documents folder.
 		expect(isPowerShell7ModuleDir("C:\\Users\\me\\OneDrive\\Documents\\PowerShell\\Modules", () => false)).toBe(true);
 	});
 });

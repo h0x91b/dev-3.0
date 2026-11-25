@@ -6,12 +6,9 @@ const omp = DEFAULT_AGENTS.find((a) => a.id === "builtin-omp")!;
 const pi = DEFAULT_AGENTS.find((a) => a.id === "builtin-pi")!;
 
 describe("agentInstallCommand", () => {
-	it("keeps omp's upstream POSIX installer on macOS and Linux", () => {
+	it("gives omp its upstream installers, POSIX on macOS/Linux and PowerShell on Windows", () => {
 		expect(agentInstallCommand(omp, "darwin")).toBe("curl -fsSL https://omp.sh/install | sh");
 		expect(agentInstallCommand(omp, "linux")).toBe("curl -fsSL https://omp.sh/install | sh");
-	});
-
-	it("gives Windows omp's upstream PowerShell installer", () => {
 		expect(agentInstallCommand(omp, "win32")).toBe("irm https://omp.sh/install.ps1 | iex");
 	});
 
@@ -33,23 +30,19 @@ describe("agentAlternativeInstallCommand", () => {
 		expect(agentAlternativeInstallCommand(pi, "linux")).toBe("brew install pi-coding-agent");
 	});
 
-	it("offers nothing on Windows or for agents without a verified alternative", () => {
-		expect(agentAlternativeInstallCommand(pi, "win32")).toBeUndefined();
-		expect(agentAlternativeInstallCommand(omp, "darwin")).toBeUndefined();
+	it("offers nothing on Windows, for agents without a verified alternative, or when it already is the install command", () => {
+		expect(agentAlternativeInstallCommand(pi, "win32"), "windows").toBeUndefined();
+		expect(agentAlternativeInstallCommand(omp, "darwin"), "no alternative").toBeUndefined();
+		expect(agentAlternativeInstallCommand({ ...pi, installCommand: "brew install pi-coding-agent" }, "darwin"), "user's own command").toBeUndefined();
 	});
 
-	it("does not repeat a command the user already made their install command", () => {
-		expect(agentAlternativeInstallCommand({ ...pi, installCommand: "brew install pi-coding-agent" }, "darwin")).toBeUndefined();
-	});
 });
 
 describe("agent-not-installed message", () => {
-	it("names the alternative install after the upstream one", () => {
+	it("names the alternative install after the upstream one, and carries the marker the renderer keys its re-check on", () => {
 		expect(agentNotInstalledMessage({ agentName: "Pi", binaryName: "pi", installCommand: "curl x | sh", alternativeInstallCommand: "brew install pi-coding-agent" }))
 			.toContain("Install it with: curl x | sh (or: brew install pi-coding-agent)");
-	});
 
-	it("carries the marker the renderer keys its re-check on", () => {
 		const message = agentNotInstalledMessage({ agentName: "Oh My Pi", binaryName: "omp", installCommand: "x" });
 		expect(isAgentNotInstalledError(`Error: ${message}`)).toBe(true);
 		expect(isAgentNotInstalledError("Error: tmux failed")).toBe(false);

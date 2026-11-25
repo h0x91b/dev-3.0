@@ -57,7 +57,7 @@ beforeEach(() => {
 });
 
 describe("resolveTaskStartRef", () => {
-	it("resolves --pr to the pull request's own head ref, not to the number it was given", async () => {
+	it("resolves --pr (number or URL) to the pull request's own head ref, not to the number it was given", async () => {
 		ghSays({ number: 1497, title: "Auto-expand", headRefName: "fix/expand", isCrossRepository: false });
 
 		const ref = await resolveTaskStartRef({ project: PROJECT, pr: "1497" });
@@ -66,9 +66,13 @@ describe("resolveTaskStartRef", () => {
 		expect(ref).toBe("origin/fix/expand");
 		expect(git.fetchOrigin).toHaveBeenCalledWith("/repo", "fix/expand", undefined, { force: true, priority: true });
 		expect(git.refExists).toHaveBeenCalledWith("/repo", "refs/remotes/origin/fix/expand");
+
+		ghSays({ number: 7, headRefName: "feat/x", isCrossRepository: false });
+		expect(await resolveTaskStartRef({ project: PROJECT, pr: "https://github.com/h0x91b/dev-3.0/pull/7" }))
+			.toBe("origin/feat/x");
 	});
 
-	it("resolves a fork pull request to the fork remote's ref after fetching it", async () => {
+	it("resolves a fork pull request to the fork remote's ref after fetching it, and rejects one whose branch could not be fetched", async () => {
 		ghSays({
 			number: 1530,
 			headRefName: "fix/port-release",
@@ -80,39 +84,29 @@ describe("resolveTaskStartRef", () => {
 
 		expect(ref).toBe("Tyagiquamar/fix/port-release");
 		expect(git.fetchFork).toHaveBeenCalledWith("/repo", "Tyagiquamar", "fix/port-release");
-	});
 
-	it("accepts a pull-request URL as well as a number", async () => {
-		ghSays({ number: 7, headRefName: "feat/x", isCrossRepository: false });
-
-		expect(await resolveTaskStartRef({ project: PROJECT, pr: "https://github.com/h0x91b/dev-3.0/pull/7" }))
-			.toBe("origin/feat/x");
-	});
-
-	it("returns undefined when neither flag was passed", async () => {
-		expect(await resolveTaskStartRef({ project: PROJECT })).toBeUndefined();
-		expect(github.runGitHub).not.toHaveBeenCalled();
-	});
-
-	it("rejects a pull request that does not exist", async () => {
-		ghFails("could not resolve to a PullRequest with the number of 999999");
-
-		await expect(resolveTaskStartRef({ project: PROJECT, pr: "999999" }))
-			.rejects.toThrow(/no pull request 999999 in this project/);
-	});
-
-	it("rejects a --pr that is neither a number nor a URL before calling gh", async () => {
-		await expect(resolveTaskStartRef({ project: PROJECT, pr: "origin/feat/x" }))
-			.rejects.toThrow(/--pr takes a pull-request number or URL/);
-		expect(github.runGitHub).not.toHaveBeenCalled();
-	});
-
-	it("rejects a fork whose branch could not be fetched", async () => {
 		ghSays({ number: 3, headRefName: "gone", headRepositoryOwner: { login: "someone" }, isCrossRepository: true });
 		vi.mocked(git.fetchFork).mockResolvedValue(false);
 
 		await expect(resolveTaskStartRef({ project: PROJECT, pr: "3" }))
 			.rejects.toThrow(/Could not fetch gone from fork someone/);
+	});
+
+	it("returns undefined with neither flag, and rejects a malformed --pr or --pr with --branch before calling gh", async () => {
+		expect(await resolveTaskStartRef({ project: PROJECT })).toBeUndefined();
+		await expect(resolveTaskStartRef({ project: PROJECT, pr: "origin/feat/x" }))
+			.rejects.toThrow(/--pr takes a pull-request number or URL/);
+		await expect(resolveTaskStartRef({ project: PROJECT, pr: "1", branch: "origin/x" }))
+			.rejects.toThrow(/pass one of them/);
+		expect(github.runGitHub).not.toHaveBeenCalled();
+	});
+
+	it("rejects a pull request that does not exist, tagged so the CLI can give it its own exit code", async () => {
+		ghFails("could not resolve to a PullRequest with the number of 999999");
+
+		const rejection = resolveTaskStartRef({ project: PROJECT, pr: "999999" });
+		await expect(rejection).rejects.toThrow(/no pull request 999999 in this project/);
+		await expect(rejection).rejects.toThrow(new RegExp(TASK_REF_UNRESOLVED_PREFIX));
 	});
 
 	it("rejects a same-repo pull request whose branch fetch failed, quoting git", async () => {
@@ -126,24 +120,9 @@ describe("resolveTaskStartRef", () => {
 		await expect(rejection).rejects.not.toThrow(/no pull request|fork|gh auth login/);
 	});
 
-		it("rejects --pr and --branch together", async () => {
-		await expect(resolveTaskStartRef({ project: PROJECT, pr: "1", branch: "origin/x" }))
-			.rejects.toThrow(/pass one of them/);
-	});
-
-	it("tags every rejection so the CLI can give it its own exit code", async () => {
-		ghFails("no such pull request");
-
-		await expect(resolveTaskStartRef({ project: PROJECT, pr: "1" }))
-			.rejects.toThrow(new RegExp(TASK_REF_UNRESOLVED_PREFIX));
-	});
-
-	it("rejects --pr on a board with no git repository", async () => {
+	it("rejects --pr on a board with no git repository, and --pr/--branch on a project with the git workflow off", async () => {
 		await expect(resolveTaskStartRef({ project: { ...PROJECT, kind: "virtual" } as Project, pr: "1" }))
 			.rejects.toThrow(/no git workflow/);
-	});
-
-	it("rejects --pr and --branch on a project with the git workflow off", async () => {
 		const gitless = { ...PROJECT, gitWorkflow: false } as Project;
 		await expect(resolveTaskStartRef({ project: gitless, pr: "1" })).rejects.toThrow(/no git workflow/);
 		await expect(resolveTaskStartRef({ project: gitless, branch: "origin/feat/x" })).rejects.toThrow(/no git workflow/);
@@ -151,23 +130,18 @@ describe("resolveTaskStartRef", () => {
 	});
 
 	describe("--branch", () => {
-		it("returns a remote-tracking ref that exists", async () => {
-			vi.mocked(git.refExists).mockImplementation(async (_p, ref) => ref === "refs/remotes/origin/feat/x");
-
+		it("returns a remote-tracking ref or local branch that exists, and rejects one that is not in heads or remotes", async () => {
+			vi.mocked(git.refExists).mockImplementation(async (_p, ref) => ref === "refs/remotes/origin/feat/x" || ref === "refs/heads/my-work");
 			expect(await resolveTaskStartRef({ project: PROJECT, branch: "origin/feat/x" })).toBe("origin/feat/x");
-		});
-
-		it("returns a local branch that exists", async () => {
-			vi.mocked(git.refExists).mockImplementation(async (_p, ref) => ref === "refs/heads/my-work");
-
 			expect(await resolveTaskStartRef({ project: PROJECT, branch: "my-work" })).toBe("my-work");
-		});
-
-		it("rejects a ref that is not in the repo", async () => {
-			vi.mocked(git.refExists).mockResolvedValue(false);
 
 			await expect(resolveTaskStartRef({ project: PROJECT, branch: "origin/typo" }))
 				.rejects.toThrow(/no ref "origin\/typo" in \/repo/);
+
+			// A tag or a bare sha would resolve under neither refs/remotes nor refs/heads,
+			// so the check must not be satisfied by `git rev-parse <anything>`.
+			vi.mocked(git.refExists).mockImplementation(async (_p, ref) => ref === "v1.2.3");
+			await expect(resolveTaskStartRef({ project: PROJECT, branch: "v1.2.3" })).rejects.toThrow();
 		});
 
 		it("does not tell an Operations board to pass --worktree it already passed", async () => {
@@ -189,34 +163,18 @@ describe("resolveTaskStartRef", () => {
 				.rejects.toThrow(OWN_WORKTREE_NOT_A_REPO_ERROR);
 			expect(git.refExists).not.toHaveBeenCalled();
 		});
-
-		// A tag or a bare sha would resolve under neither refs/remotes nor refs/heads,
-		// so the check must not be satisfied by `git rev-parse <anything>`.
-		it("does not accept a ref that only resolves outside heads and remotes", async () => {
-			vi.mocked(git.refExists).mockImplementation(async (_p, ref) => ref === "v1.2.3");
-
-			await expect(resolveTaskStartRef({ project: PROJECT, branch: "v1.2.3" })).rejects.toThrow();
-		});
 	});
 });
 
 describe("describePrFailure", () => {
-	it("names a missing gh binary and offers the way round it", () => {
+	it("names a missing gh, an unauthenticated gh, a missing GitHub remote, and otherwise the pull request with gh's text", () => {
 		expect(describePrFailure("42", "Error: spawn ENOENT gh"))
 			.toContain("`gh`) is not installed");
-	});
-
-	it("names an unauthenticated gh", () => {
 		expect(describePrFailure("42", "gh: To get started with GitHub CLI, please run: gh auth login"))
 			.toContain("gh auth login");
-	});
-
-	it("names a project with no GitHub remote", () => {
 		expect(describePrFailure("42", "none of the git remotes configured for this repository point to a known GitHub host"))
 			.toContain("no GitHub remote");
-	});
 
-	it("falls back to naming the pull request and quoting gh", () => {
 		const message = describePrFailure("42", "GraphQL: Could not resolve to a PullRequest");
 		expect(message).toContain("no pull request 42");
 		expect(message).toContain("Could not resolve to a PullRequest");
@@ -248,7 +206,7 @@ describe("resolvePrUrl failure reasons", () => {
 		expect(result).toMatchObject({ ok: false, reason: "no-github-remote", projectRepo: null });
 	});
 
-	it("keeps not-found for a missing pull request in the project's own repo", async () => {
+	it("keeps not-found for a missing pull request in the project's own repo, and does not ask about the repo when gh is unusable", async () => {
 		vi.mocked(github.runGitHub)
 			.mockResolvedValueOnce(fail("GraphQL: Could not resolve to a PullRequest with the number of 999999."))
 			.mockResolvedValueOnce(ok("H0X91B/Dev-3.0"));
@@ -256,14 +214,11 @@ describe("resolvePrUrl failure reasons", () => {
 		const result = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/h0x91b/dev-3.0/pull/999999" });
 
 		expect(result.reason).toBe("not-found");
-	});
 
-	it("does not ask gh about the repo when gh itself is unusable", async () => {
+		vi.mocked(github.runGitHub).mockClear();
 		vi.mocked(github.runGitHub).mockResolvedValueOnce(fail("gh: To get started with GitHub CLI, please run: gh auth login"));
-
-		const result = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/o/r/pull/1" });
-
-		expect(result.reason).toBe("gh-auth");
+		const unusable = await resolvePrUrl({ projectId: "proj-1", url: "https://github.com/o/r/pull/1" });
+		expect(unusable.reason).toBe("gh-auth");
 		expect(github.runGitHub).toHaveBeenCalledTimes(1);
 	});
 
@@ -271,7 +226,7 @@ describe("resolvePrUrl failure reasons", () => {
 		const URL = "https://github.com/acme/widgets/pull/12";
 		const prJson = JSON.stringify({ number: 12, title: "T", headRefName: "feat/y", isCrossRepository: false });
 
-		it("fails when the fetch fails and no ref was ever cached", async () => {
+		it("fails when the fetch fails, whether or not a stale origin ref is cached", async () => {
 			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
 			vi.mocked(git.fetchOrigin).mockResolvedValue(false);
 			vi.mocked(git.refExists).mockResolvedValue(false);
@@ -283,17 +238,13 @@ describe("resolvePrUrl failure reasons", () => {
 			expect(result).toMatchObject({ ok: false, branch: null, number: 12, isFork: false, reason: "origin-fetch" });
 			expect(result.error).toBe("git fetch origin feat/y failed: fatal: could not read Username: terminal prompts disabled");
 			expect(github.runGitHub).toHaveBeenCalledTimes(1);
-		});
 
-		it("fails when the fetch fails even though a stale origin ref is cached", async () => {
 			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
-			vi.mocked(git.fetchOrigin).mockResolvedValue(false);
+			vi.mocked(git.refExists).mockClear();
 			vi.mocked(git.refExists).mockResolvedValue(true);
 			vi.mocked(git.lastOriginFetchError).mockReturnValue("ERROR: Repository not found.");
-
-			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
-
-			expect(result).toMatchObject({ ok: false, branch: null, reason: "origin-fetch" });
+			const stale = await resolvePrUrl({ projectId: "proj-1", url: URL });
+			expect(stale).toMatchObject({ ok: false, branch: null, reason: "origin-fetch" });
 			expect(git.refExists).not.toHaveBeenCalled();
 		});
 
@@ -317,20 +268,16 @@ describe("resolvePrUrl failure reasons", () => {
 			expect(result.error).toContain("origin/feat/y is still missing");
 		});
 
-		it("resolves to origin/<head> when the fetch succeeds and the ref exists", async () => {
+		it("resolves to origin/<head> when the fetch succeeds, and leaves the fork path on fetchFork alone", async () => {
 			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(prJson));
-
 			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
-
 			expect(result).toEqual({ ok: true, branch: "origin/feat/y", number: 12, title: "T", isFork: false, error: null });
-		});
 
-		it("leaves the fork path on fetchFork alone", async () => {
+			vi.mocked(git.fetchOrigin).mockClear();
+			vi.mocked(git.refExists).mockClear();
 			vi.mocked(github.runGitHub).mockResolvedValueOnce(ok(JSON.stringify({ number: 3, headRefName: "z", headRepositoryOwner: { login: "f" }, isCrossRepository: true })));
-
-			const result = await resolvePrUrl({ projectId: "proj-1", url: URL });
-
-			expect(result).toMatchObject({ ok: true, branch: "f/z", isFork: true });
+			const fork = await resolvePrUrl({ projectId: "proj-1", url: URL });
+			expect(fork).toMatchObject({ ok: true, branch: "f/z", isFork: true });
 			expect(git.fetchOrigin).not.toHaveBeenCalled();
 			expect(git.refExists).not.toHaveBeenCalled();
 		});

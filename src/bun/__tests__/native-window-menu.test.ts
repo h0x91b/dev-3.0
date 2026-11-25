@@ -44,25 +44,21 @@ describe("createWindowsMenuAdopter", () => {
 		expect(native).toHaveBeenCalledTimes(3);
 	});
 
-	it.each(["linux", "win32"] as const)("never loads anything on %s", (platform) => {
-		const { adopter, load } = deps({ platform });
-		adopter();
-		expect(load).not.toHaveBeenCalled();
+	it("never loads anything on linux/win32, in headless (browser/remote) mode, or when the dylib was not bundled", () => {
+		const cases: Array<[string, Partial<Parameters<typeof createWindowsMenuAdopter>[0]>]> = [
+			["linux", { platform: "linux" }],
+			["win32", { platform: "win32" }],
+			["headless", { headless: true }],
+			["no dylib", { exists: () => false }],
+		];
+		for (const [name, overrides] of cases) {
+			const { adopter, load } = deps(overrides);
+			expect(() => adopter(), name).not.toThrow();
+			expect(load, name).not.toHaveBeenCalled();
+		}
 	});
 
-	it("stays inert in headless (browser/remote) mode", () => {
-		const { adopter, load } = deps({ headless: true });
-		adopter();
-		expect(load).not.toHaveBeenCalled();
-	});
-
-	it("is a no-op when the dylib was not bundled", () => {
-		const { adopter, load } = deps({ exists: () => false });
-		expect(() => adopter()).not.toThrow();
-		expect(load).not.toHaveBeenCalled();
-	});
-
-	it("survives a dylib that fails to load and does not retry it", () => {
+	it("survives a dylib that fails to load (not retried) or a native call that throws", () => {
 		const load = vi.fn(() => {
 			throw new Error("bad image");
 		});
@@ -70,14 +66,13 @@ describe("createWindowsMenuAdopter", () => {
 		expect(() => adopter()).not.toThrow();
 		adopter();
 		expect(load).toHaveBeenCalledTimes(1);
-	});
 
-	it("survives the native call throwing", () => {
-		const { adopter } = deps({
+		// It also survives the native call itself throwing.
+		const { adopter: throwing } = deps({
 			load: () => () => {
 				throw new Error("boom");
 			},
 		});
-		expect(() => adopter()).not.toThrow();
+		expect(() => throwing()).not.toThrow();
 	});
 });

@@ -8,11 +8,9 @@ import { ENV_UNSET } from "../../shared/agent-accounts";
 
 describe("pinnedClaudeConfigDir", () => {
 	const home = "/home/me";
-	it("expands ~ and drops trailing slashes", () => {
+	it("expands ~, drops trailing slashes and resolves a relative pin against cwd", () => {
 		expect(pinnedClaudeConfigDir("~/proj/.claude/", home)).toBe("/home/me/proj/.claude");
 		expect(pinnedClaudeConfigDir(" /work/x/.claude// ", home)).toBe("/work/x/.claude");
-	});
-	it("resolves a relative pin against cwd, as claudeConfigLocation does", () => {
 		expect(pinnedClaudeConfigDir(".claude", home, "/work/x")).toBe("/work/x/.claude");
 	});
 	it("treats unset, blank, the switcher's unset sentinel and ~/.claude as the system login", () => {
@@ -25,12 +23,10 @@ describe("pinnedClaudeConfigDir", () => {
 });
 
 describe("claudeConfigLocation", () => {
-	it("falls back to ~/.claude and ~/.claude.json when nothing pins a dir", () => {
-		expect(claudeConfigLocation({}, "/home/u")).toEqual({
-			dir: "/home/u/.claude",
-			claudeJson: "/home/u/.claude.json",
-			pinned: false,
-		});
+	it("falls back to ~/.claude and ~/.claude.json when nothing (or a blank value) pins a dir", () => {
+		const fallback = { dir: "/home/u/.claude", claudeJson: "/home/u/.claude.json", pinned: false };
+		expect(claudeConfigLocation({}, "/home/u")).toEqual(fallback);
+		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "  " }, "/home/u")).toEqual(fallback);
 	});
 
 	it("keeps every file inside CLAUDE_CONFIG_DIR when it is set", () => {
@@ -41,34 +37,24 @@ describe("claudeConfigLocation", () => {
 		});
 	});
 
-	it("expands ~ and drops trailing slashes so one dir has one spelling", () => {
+	it("gives one dir one spelling: ~ expanded, trailing slashes dropped, relative resolved against the agent's cwd", () => {
 		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "~/proj/.claude/" }, "/home/u").dir).toBe("/home/u/proj/.claude");
-	});
-
-	it("resolves a relative value against the agent's cwd, not the server's", () => {
 		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: ".claude-cfg/" }, "/home/u", "/wt/task").dir).toBe("/wt/task/.claude-cfg");
 		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "/abs/cfg" }, "/home/u", "/wt/task").dir).toBe("/abs/cfg");
-	});
-
-	it("treats a blank value as unset", () => {
-		expect(claudeConfigLocation({ CLAUDE_CONFIG_DIR: "  " }, "/home/u").pinned).toBe(false);
 	});
 });
 
 describe("launchClaudeConfigLocation", () => {
-	it("lets the launch env win over the server's own env", () => {
+	it("lets the launch env win over the server's own env (its unset sentinel meaning the default dir), inheriting the server's dir otherwise", () => {
 		expect(launchClaudeConfigLocation({ CLAUDE_CONFIG_DIR: "/proj" }, { CLAUDE_CONFIG_DIR: "/server" }, "/h").dir).toBe("/proj");
-	});
-
-	it("inherits the server's dir when the launch sets none", () => {
 		expect(launchClaudeConfigLocation({}, { CLAUDE_CONFIG_DIR: "/server" }, "/h").dir).toBe("/server");
 		expect(launchClaudeConfigLocation(undefined, {}, "/h").dir).toBe("/h/.claude");
-	});
-
-	it("reads the account switcher's unset sentinel as the default dir, not a path or the server's pin", () => {
+		{
 		const location = launchClaudeConfigLocation({ CLAUDE_CONFIG_DIR: ENV_UNSET }, { CLAUDE_CONFIG_DIR: "/server" }, "/h");
 		expect(location).toEqual({ dir: "/h/.claude", claudeJson: "/h/.claude.json", pinned: false });
+		}
 	});
+
 });
 
 describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
@@ -103,7 +89,7 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		rmSync(home, { recursive: true, force: true });
 	});
 
-	it("writes trust into the pinned dir's .claude.json and never into ~/.claude.json", async () => {
+	it("writes trust into the pinned dir's .claude.json, and into ~/.claude.json only when nothing pins", async () => {
 		const pinned = join(home, "pinned");
 		const { ensureClaudeTrust } = await import("../agents");
 		await ensureClaudeTrust(worktree, undefined, undefined, { CLAUDE_CONFIG_DIR: pinned });
@@ -112,6 +98,12 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(data.projects[realpathSync(worktree)].hasTrustDialogAccepted).toBe(true);
 		expect(existsSync(join(home, ".claude.json"))).toBe(false);
 		expect(remember).toHaveBeenCalledWith(pinned);
+
+		// Nothing pins a dir: ~/.claude.json is used and nothing is remembered.
+		remember.mockReset();
+		await ensureClaudeTrust(worktree, undefined, undefined, {});
+		expect(existsSync(join(home, ".claude.json"))).toBe(true);
+		expect(remember).not.toHaveBeenCalled();
 	});
 
 	it("puts a relative pin's trust and skills inside the worktree the agent runs in", async () => {
@@ -123,14 +115,6 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(data.projects[realpathSync(worktree)].hasTrustDialogAccepted).toBe(true);
 		expect(existsSync(join(worktree, "cfg/skills/dev3/SKILL.md"))).toBe(true);
 		expect(remember).toHaveBeenCalledWith(join(worktree, "cfg"));
-	});
-
-	it("keeps using ~/.claude.json when nothing pins a dir", async () => {
-		const { ensureClaudeTrust } = await import("../agents");
-		await ensureClaudeTrust(worktree, undefined, undefined, {});
-
-		expect(existsSync(join(home, ".claude.json"))).toBe(true);
-		expect(remember).not.toHaveBeenCalled();
 	});
 
 	it("provisions a linked account slot at launch but skips a managed account's", async () => {

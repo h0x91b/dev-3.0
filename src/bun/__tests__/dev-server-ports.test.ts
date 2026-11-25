@@ -15,19 +15,7 @@ const DOCKER = { port: 10569, pid: 1380, processName: "com.docker.backend" };
 const SQUATTER = { port: 10570, pid: 999, processName: "node" };
 
 describe("classifyAssignedPortOwners", () => {
-	it("treats a foreign holder that appeared after start as published for the dev server", () => {
-		const { published, conflicts } = classifyAssignedPortOwners([DOCKER], [], true);
-		expect(published).toEqual([DOCKER]);
-		expect(conflicts).toEqual([]);
-	});
-
-	it("treats a holder already listening before start as a conflict", () => {
-		const { published, conflicts } = classifyAssignedPortOwners([SQUATTER], [SQUATTER], true);
-		expect(published).toEqual([]);
-		expect(conflicts).toEqual([SQUATTER]);
-	});
-
-	it("separates a published port from a squatter in the same snapshot", () => {
+	it("publishes a holder that appeared after start and calls a pre-start holder a conflict", () => {
 		const { published, conflicts } = classifyAssignedPortOwners([DOCKER, SQUATTER], [SQUATTER], true);
 		expect(published).toEqual([DOCKER]);
 		expect(conflicts).toEqual([SQUATTER]);
@@ -55,24 +43,21 @@ describe("dev server start snapshot", () => {
 		clearDevServerStart("task-1", "dev");
 	});
 
-	it("has no snapshot until a dev server start records one", () => {
+	it("records a copied snapshot on start and drops it on teardown", () => {
 		expect(getDevServerStartSnapshot("task-1", "dev")).toBeNull();
 		recordDevServerStart("task-1", "dev", [10569], []);
 		expect(getDevServerStartSnapshot("task-1", "dev")).toEqual({ assignedPorts: [10569], preStartHolders: [] });
-	});
 
-	it("copies the holders so a later mutation cannot rewrite history", () => {
+		// Holders are copied, so a later mutation cannot rewrite history.
 		const holders = [{ ...SQUATTER }];
 		recordDevServerStart("task-1", "dev", [10570], holders);
 		holders[0].pid = 1;
 		expect(getDevServerStartSnapshot("task-1", "dev")?.preStartHolders).toEqual([SQUATTER]);
-	});
 
-	it("drops the snapshot on teardown", () => {
-		recordDevServerStart("task-1", "dev", [10570], [SQUATTER]);
 		clearDevServerStart("task-1", "dev");
 		expect(getDevServerStartSnapshot("task-1", "dev")).toBeNull();
 	});
+
 });
 
 describe("classifyAgainstStartSnapshot", () => {
@@ -88,13 +73,10 @@ describe("classifyAgainstStartSnapshot", () => {
 		const { published, conflicts } = classifyAgainstStartSnapshot("task-2", "dev", [SQUATTER], true);
 		expect(published).toEqual([]);
 		expect(conflicts).toEqual([SQUATTER]);
-	});
 
-	it("classifies against the recorded snapshot once a start was seen", () => {
+		// Once a start was seen, it classifies against the recorded snapshot.
 		recordDevServerStart("task-2", "dev", [10569], []);
-		const { published, conflicts } = classifyAgainstStartSnapshot("task-2", "dev", [DOCKER], true);
-		expect(published).toEqual([DOCKER]);
-		expect(conflicts).toEqual([]);
+		expect(classifyAgainstStartSnapshot("task-2", "dev", [DOCKER], true)).toEqual({ published: [DOCKER], conflicts: [] });
 	});
 
 	// `docker compose up` is HUPed by kill-session and SIGKILLed 1.5s later, so
@@ -154,16 +136,12 @@ describe("per-server snapshots", () => {
 		clearCarriedPublished("task-3");
 	});
 
-	it("keeps one snapshot per server", () => {
+	it("keeps one snapshot per server, cleared independently", () => {
 		recordDevServerStart("task-3", "dev", [10569], []);
 		recordDevServerStart("task-3", "api", [10570], [SQUATTER]);
 		expect(getDevServerStartSnapshot("task-3", "dev")).toEqual({ assignedPorts: [10569], preStartHolders: [] });
 		expect(getDevServerStartSnapshot("task-3", "api")?.preStartHolders).toEqual([SQUATTER]);
-	});
-
-	it("stopping one server leaves the other's snapshot alone", () => {
-		recordDevServerStart("task-3", "dev", [10569], []);
-		recordDevServerStart("task-3", "api", [10570], []);
+		// Stopping one server leaves the other's snapshot alone.
 		clearDevServerStart("task-3", "api");
 		expect(getDevServerStartSnapshot("task-3", "api")).toBeNull();
 		expect(getDevServerStartSnapshot("task-3", "dev")).not.toBeNull();

@@ -67,13 +67,10 @@ describe.skipIf(process.platform === "win32")("codexInstallReadRoots", () => {
 		expect(codexInstallReadRoots(join(prefix, "bin", "codex"))).toEqual([join(prefix, "bin"), pkg]);
 	});
 
-	it("returns only the launcher dir for a plain file", () => {
+	it("returns only the launcher dir for a plain file, and nothing for a missing launcher", () => {
 		const dir = tmp();
 		touch(join(dir, "codex"));
 		expect(codexInstallReadRoots(join(dir, "codex"))).toEqual([dir]);
-	});
-
-	it("returns nothing for a missing launcher", () => {
 		expect(codexInstallReadRoots(join(tmp(), "nope"))).toEqual([]);
 	});
 
@@ -150,7 +147,7 @@ describe("resolveCodexInstallRoots", () => {
 });
 
 describe.skipIf(process.platform === "win32")("ensureCodexConfig codexInstallRoots", () => {
-	it("writes the roots as managed read grants into a new dev3 profile", () => {
+	it("writes the roots as managed read grants into a new or existing dev3 profile", () => {
 		const home = tmp();
 		const roots = codexInstallReadRoots(standalone(home, "0.163.0"));
 		const result = ensureCodexConfig(null, WORKTREES, SOCKETS, [], { codexInstallRoots: roots });
@@ -159,13 +156,10 @@ describe.skipIf(process.platform === "win32")("ensureCodexConfig codexInstallRoo
 			expect(fs[root]).toBe("read");
 			expect(result).toContain(`"${root}" = "read" ${MARKER}`);
 		}
-	});
-
-	it("adds the roots to an existing dev3 profile", () => {
-		const base = ensureCodexConfig(null, WORKTREES, SOCKETS);
-		const result = ensureCodexConfig(base, WORKTREES, SOCKETS, [], { codexInstallRoots: ["/opt/a/bin", "/opt/a/pkg"] });
-		expect(filesystem(result)["/opt/a/bin"]).toBe("read");
-		expect(filesystem(result)["/opt/a/pkg"]).toBe("read");
+		// An existing dev3 profile gets them too.
+		const existing = ensureCodexConfig(ensureCodexConfig(null, WORKTREES, SOCKETS), WORKTREES, SOCKETS, [], { codexInstallRoots: ["/opt/a/bin", "/opt/a/pkg"] });
+		expect(filesystem(existing)["/opt/a/bin"]).toBe("read");
+		expect(filesystem(existing)["/opt/a/pkg"]).toBe("read");
 	});
 
 	it("swaps stale managed lines when the install moves", () => {

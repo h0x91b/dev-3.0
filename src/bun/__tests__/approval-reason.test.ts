@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 import { APPROVAL_REASON_MAX_LENGTH, approvalReasonFromParams, normalizeApprovalReason } from "../../shared/approval-reason";
 
 describe("normalizeApprovalReason", () => {
-	it("keeps plain text and line breaks, and drops control and bidi characters", () => {
+	it("keeps plain text, line breaks and literal markup, and drops control and bidi characters", () => {
 		expect(normalizeApprovalReason("  one\r\ntwo\u0007\u202E three\t\n\n\n\nfour  ")).toBe("one\ntwo three \n\nfour");
-	});
-
-	it("leaves markup as literal text for the renderer to print", () => {
+		// Markup stays literal text for the renderer to print.
 		expect(normalizeApprovalReason("<b>**bold**</b>")).toBe("<b>**bold**</b>");
 	});
 
@@ -22,11 +20,8 @@ describe("normalizeApprovalReason", () => {
 });
 
 describe("approvalReasonFromParams", () => {
-	it("adds nothing when no reason was passed", () => {
+	it("adds nothing without a reason, and attributes one only when a requester is given", () => {
 		expect(approvalReasonFromParams({}, { seq: 1, title: "x" })).toEqual({});
-	});
-
-	it("attributes the reason only when a requester is given", () => {
 		expect(approvalReasonFromParams({ reason: "why" })).toEqual({ reason: { text: "why" } });
 		expect(approvalReasonFromParams({ reason: "why" }, { seq: 4, title: "Coordinator" })).toEqual({ reason: { text: "why", from: { seq: 4, title: "Coordinator" } } });
 	});

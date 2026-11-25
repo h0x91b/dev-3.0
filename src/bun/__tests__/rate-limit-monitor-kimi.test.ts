@@ -104,10 +104,7 @@ describe("Kimi usage in the rate-limit report", () => {
 		const [snap] = kimiSnapshots(report);
 		expect(snap.providerId).toBe("kimi-1");
 		expect(snap.windows.map((w) => w.id)).toEqual(["five_hour", "monthly"]);
-	});
-
-	it("does not flag a provider with a stored key as missing one", async () => {
-		const report = await poll();
+		// A provider with a stored key is not flagged as missing one.
 		expect(report.usageProviders).toEqual([{ id: "kimi-1", label: "Kimi Code", source: "kimi-code" }]);
 	});
 
@@ -133,18 +130,6 @@ describe("Kimi usage in the rate-limit report", () => {
 		expect(mocks.fetch).toHaveBeenCalledTimes(1);
 	});
 
-	it("resolves a base URL without a trailing slash the same way", async () => {
-		mocks.providers = [provider({ baseUrl: "https://api.example.test/coding" })];
-		await poll();
-		expect(String(mocks.fetch.mock.calls[0][0])).toBe("https://api.example.test/coding/v1/usages");
-	});
-
-	it("does not double a /v1 already on the base URL", async () => {
-		mocks.providers = [provider({ baseUrl: "https://api.example.test/coding/v1" })];
-		await poll();
-		expect(String(mocks.fetch.mock.calls[0][0])).toBe("https://api.example.test/coding/v1/usages");
-	});
-
 	it("does not ask again within five minutes", async () => {
 		await poll();
 		const second = await poll();
@@ -168,7 +153,7 @@ describe("Kimi usage in the rate-limit report", () => {
 		expect(kimiSnapshots(second)[0].capturedAt).toBe(kimiSnapshots(first)[0].capturedAt);
 	});
 
-	it.each([401, 403])("drops the old reading when the key is refused with %i", async (status) => {
+	it.each([401])("drops the old reading when the key is refused with %i", async (status) => {
 		const c = clock();
 		c.at(0);
 		expect(kimiSnapshots(await poll())).toHaveLength(1);

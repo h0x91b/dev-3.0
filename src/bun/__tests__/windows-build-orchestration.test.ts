@@ -30,20 +30,17 @@ import {
 import { buildAppReadyMarker, writeAppReadyMarker } from "../app-ready-marker";
 
 describe("packaged CLI binary naming", () => {
-	it("suffixes the Windows binary with .exe and leaves POSIX bare", () => {
+	it("suffixes the Windows binary with .exe, leaves POSIX bare, and maps the copy entry to match", () => {
 		expect(cliBinaryName("win32")).toBe("dev3.exe");
 		expect(cliBinaryName("darwin")).toBe("dev3");
 		expect(cliBinaryName("linux")).toBe("dev3");
-	});
-
-	it("maps the electrobun copy entry to the matching platform name", () => {
 		expect(cliCopyEntry("win32")).toEqual(["dist/dev3.exe", "cli/dev3.exe"]);
 		expect(cliCopyEntry("darwin")).toEqual(["dist/dev3", "cli/dev3"]);
 	});
 });
 
 describe("build plans", () => {
-	it("keeps the POSIX bash steps and drops them on Windows", () => {
+	it("keeps the POSIX bash steps (CLI and macOS native shims) and drops them on Windows", () => {
 		expect(cliBuildPlan("darwin")).toEqual({
 			outfile: "dist/dev3",
 			shellSteps: ["scripts/stage-bundled-tmux.sh", "scripts/sign-cli-binaries.sh"],
@@ -53,16 +50,13 @@ describe("build plans", () => {
 			"scripts/sign-cli-binaries.sh",
 		]);
 		expect(cliBuildPlan("win32")).toEqual({ outfile: "dist/dev3.exe", shellSteps: [] });
-	});
-
-	it("builds the macOS native shims only where a shell exists", () => {
 		expect(nativeBuildPlan("darwin").shellSteps).toEqual(["scripts/build-native-macos.sh"]);
 		expect(nativeBuildPlan("win32").shellSteps).toEqual([]);
 	});
 });
 
 describe("app ready marker", () => {
-	it("describes the running process", () => {
+	it("describes the running process, recording an unmeasured renderer as null rather than a fake zero", () => {
 		const marker = buildAppReadyMarker("9.9.9", 1234, new Date("2026-07-25T10:00:00.000Z"));
 		expect(marker).toEqual({
 			ready: true,
@@ -72,9 +66,6 @@ describe("app ready marker", () => {
 			startedAt: "2026-07-25T10:00:00.000Z",
 			rendererReadyMs: 1234,
 		});
-	});
-
-	it("records an unmeasured renderer as null rather than a fake zero", () => {
 		expect(buildAppReadyMarker("9.9.9", null).rendererReadyMs).toBeNull();
 	});
 
@@ -121,7 +112,7 @@ describe("app ready marker", () => {
 });
 
 describe("windows package discovery", () => {
-	it("picks the single update archive out of the artifact folder", () => {
+	it("picks the single update archive out of the artifact folder, failing loudly on none or several", () => {
 		expect(
 			selectWindowsArchive([
 				"canary-win-x64-update.json",
@@ -130,9 +121,6 @@ describe("windows package discovery", () => {
 				"canary-win-x64-dev-3.0-Setup-canary.zip",
 			]),
 		).toBe("canary-win-x64-dev-3.0-canary.tar.zst");
-	});
-
-	it("fails loudly when there is no archive or more than one", () => {
 		expect(() => selectWindowsArchive(["canary-win-x64-update.json"])).toThrow(/package:win-archive/);
 		expect(() =>
 			selectWindowsArchive(["canary-win-x64-a.tar.zst", "stable-win-x64-a.tar.zst"]),
@@ -151,7 +139,7 @@ describe("windows package discovery", () => {
 		"Resources/app/views/mainview/index.html",
 	];
 
-	it("selects the nested electrobun launcher out of the real Windows layout", () => {
+	it("selects the nested electrobun launcher out of the real Windows layout, or a flat-root one", () => {
 		const selection = selectDesktopExecutable(REAL_WINDOWS_BUNDLE);
 		expect(selection.relativePath).toBe("bin/launcher.exe");
 		expect(selection.rejected.map((entry) => entry.relativePath)).toEqual([
@@ -161,9 +149,7 @@ describe("windows package discovery", () => {
 			"cli/dev3.exe",
 			"native-host-image/dev3-host-1.40.0/dev3-terminal-host.exe",
 		]);
-	});
-
-	it("normalizes Windows separators and accepts a flat-root launcher", () => {
+		// Windows separators are normalized and a flat-root launcher is accepted.
 		expect(selectDesktopExecutable(["bin\\launcher.exe", "cli\\dev3.exe"]).relativePath).toBe("bin/launcher.exe");
 		expect(selectDesktopExecutable(["launcher.exe", "bin\\bun.exe"]).relativePath).toBe("launcher.exe");
 	});
@@ -184,14 +170,11 @@ describe("windows package discovery", () => {
 		});
 	});
 
-	it("fails with the full considered inventory when no launcher is present", () => {
+	it("fails with the full considered inventory on no launcher, and refuses to guess between several", () => {
 		expect(() => selectDesktopExecutable(["cli/dev3.exe", "bin/bun.exe", "build.json"])).toThrow(
 			/found 0[\s\S]*bin\/bun\.exe — rejected: not the electrobun desktop launcher[\s\S]*cli\/dev3\.exe — rejected: outside the bundle exec directory 'bin\/'/,
 		);
 		expect(() => selectDesktopExecutable(["build.json"])).toThrow(/Considered executables:\n {2}none/);
-	});
-
-	it("refuses to guess between ambiguous launcher candidates", () => {
 		expect(() => selectDesktopExecutable(["bin/launcher.exe", "launcher.exe"])).toThrow(
 			/found 2: bin\/launcher\.exe, launcher\.exe/,
 		);
@@ -199,7 +182,7 @@ describe("windows package discovery", () => {
 });
 
 describe("owned process tree", () => {
-	it("collects every descendant of the launched executable", () => {
+	it("collects every descendant of the launched executable and cannot loop on a self-parenting row", () => {
 		const snapshot = [
 			{ pid: 1, parentPid: 0, name: "system" },
 			{ pid: 100, parentPid: 1, name: "dev-3.0.exe" },
@@ -209,9 +192,6 @@ describe("owned process tree", () => {
 		];
 		expect(descendantPids(snapshot, 100)).toEqual([200, 300]);
 		expect(descendantPids(snapshot, 400)).toEqual([]);
-	});
-
-	it("does not loop on a self-parenting snapshot row", () => {
 		expect(descendantPids([{ pid: 7, parentPid: 7, name: "weird.exe" }], 7)).toEqual([]);
 	});
 });
@@ -223,15 +203,13 @@ describe("windows process queries", () => {
 		'"msedgewebview2.exe","6928","Console","2","210,004 K"',
 	].join("\r\n");
 
-	it("reads pids out of tasklist CSV rows regardless of the machine's language", () => {
+	it("reads pids out of tasklist CSV rows regardless of language, and refuses an unparseable list", () => {
 		expect(parseTasklistPids(TASKLIST_CSV)).toEqual([0, 7652, 6928]);
 		// A localized Windows translates the memory unit and the session name; only the
 		// quoted image/pid pair is depended on.
 		expect(parseTasklistPids('"launcher.exe","4242","Консоль","2","57 400 КБ"')).toEqual([4242]);
 		expect(parseTasklistPids('INFO: No tasks are running which match the specified criteria.')).toEqual([]);
-	});
-
-	it("refuses to read an unparseable process list as an empty machine", () => {
+		// An unparseable process list must never read as an empty machine.
 		expect([...livePidSet(TASKLIST_CSV)]).toEqual([0, 7652, 6928]);
 		expect(() => livePidSet("PID | NAME\n7652 | launcher.exe")).toThrow(
 			/no parseable process rows[\s\S]*CAUSE[\s\S]*row shape changed[\s\S]*FIX[\s\S]*passes a shutdown that never happened/,
@@ -287,14 +265,11 @@ describe("freeing the build folder before electrobun wipes it", () => {
 		expect(shouldFreeBuildFolder("linux")).toBe(false);
 	});
 
-	it("matches the folder and its contents, case- and separator-insensitively", () => {
+	it("matches the folder and its contents case- and separator-insensitively, never a prefix-sharing neighbour", () => {
 		expect(isInsideDirectory(BUILD_DIR, BUILD_DIR)).toBe(true);
 		expect(isInsideDirectory(BUILD_DIR, `${BUILD_DIR}\\dev-3.0\\bin\\launcher.exe`)).toBe(true);
 		expect(isInsideDirectory(BUILD_DIR, "d:/src/dev-3.0/build/dev-win-x64/dev-3.0/bin/bun.exe")).toBe(true);
 		expect(isInsideDirectory(`${BUILD_DIR}\\`, `${BUILD_DIR}\\bin\\bun.exe`)).toBe(true);
-	});
-
-	it("does not reach into a neighbouring folder that merely shares the prefix", () => {
 		expect(isInsideDirectory(BUILD_DIR, `${BUILD_DIR}-old\\bin\\launcher.exe`)).toBe(false);
 		expect(isInsideDirectory(BUILD_DIR, "D:\\src\\dev-3.0\\build\\dev-win-arm64\\bin\\bun.exe")).toBe(false);
 		expect(isInsideDirectory("", "D:\\anything")).toBe(false);

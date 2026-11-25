@@ -38,11 +38,8 @@ describe("Claude session state", () => {
 		]) expect(parseClaudeSessionState(raw)).toBeNull();
 	});
 
-	test("detects a confirmed busy to idle edge", () => {
+	test("detects a confirmed busy to idle edge and coalesced activity between two idle snapshots", () => {
 		expect(claudeSessionBecameIdle(state(), state({ status: "idle", statusUpdatedAt: record.statusUpdatedAt + 1 }))).toBe(true);
-	});
-
-	test("detects coalesced activity between two idle snapshots", () => {
 		expect(claudeSessionBecameIdle(state({ status: "idle" }), state({ status: "idle", statusUpdatedAt: record.statusUpdatedAt + 1 }))).toBe(true);
 	});
 

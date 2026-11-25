@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { forgetClaudeTrustEntries, sweepStaleClaudeTrustEntries } from "../claude-json-prune";
@@ -86,14 +86,13 @@ describe("sweepStaleClaudeTrustEntries", () => {
 		expect(readFileSync(file, "utf-8")).toBe(broken);
 	});
 
-	it("reports an absent file without creating it", () => {
+	it("reports an absent file without creating it, and is a no-op on a file with no projects map", () => {
 		const missing = join(dir, "nope.json");
 		expect(sweepStaleClaudeTrustEntries(isUnderRoot, sweepOpts({ files: [missing] }))).toEqual([
 			{ file: missing, removed: 0, skipped: "absent" },
 		]);
-	});
+		expect(existsSync(missing)).toBe(false);
 
-	it("is a no-op when the file has no projects map", () => {
 		write({ numStartups: 1 });
 
 		expect(sweepStaleClaudeTrustEntries(isUnderRoot, sweepOpts())[0]!.skipped).toBeNull();
@@ -147,17 +146,12 @@ describe("forgetClaudeTrustEntries", () => {
 		expect(Object.keys(JSON.parse(readFileSync(file, "utf-8")).projects)).toEqual([dead, deadToo]);
 	});
 
-	it("matches a key that differs only in case or trailing slash", () => {
+	it("does nothing without targets, and matches a key that differs only in case or trailing slash", () => {
 		write({ projects: { [`${dead.toUpperCase()}/`]: {} } });
 
+		expect(forgetClaudeTrustEntries([], normalize, { files: [file] })).toEqual([]);
+		expect(Object.keys(JSON.parse(readFileSync(file, "utf-8")).projects)).toHaveLength(1);
 		expect(forgetClaudeTrustEntries([normalize(dead)], normalize, { files: [file] })[0]!.removed).toBe(1);
 		expect(JSON.parse(readFileSync(file, "utf-8")).projects).toEqual({});
-	});
-
-	it("does nothing when the caller has no targets", () => {
-		write({ projects: { [dead]: {} } });
-
-		expect(forgetClaudeTrustEntries([], normalize, { files: [file] })).toEqual([]);
-		expect(JSON.parse(readFileSync(file, "utf-8")).projects[dead]).toBeTruthy();
 	});
 });

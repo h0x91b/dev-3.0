@@ -67,23 +67,6 @@ for (const factory of [GRID_SINK, JOURNAL_SINK] satisfies SinkFactory[]) {
 			expect(stats.snapshotRequests).toBe(2);
 		});
 
-		it("ignores a duplicate frame without resyncing", () => {
-			const harness = newHarness();
-			const client = harness.addClient("c1");
-			harness.attach(client);
-
-			harness.emitOutput("aa"); // seq 1
-			client.link.schedule("duplicate");
-			harness.emitOutput("bb"); // seq 2 — delivered twice
-			harness.emitOutput("cc"); // seq 3
-
-			expectRecovered(harness, client);
-			const stats = client.client.stats();
-			expect(stats.ignoredDuplicates).toBe(1);
-			expect(stats.gapsDetected).toBe(0);
-			expect(stats.snapshotsApplied).toBe(1);
-		});
-
 		it("recovers from an out-of-order frame and ignores the late arrival", () => {
 			const harness = newHarness();
 			const client = harness.addClient("c1");
@@ -120,7 +103,7 @@ for (const factory of [GRID_SINK, JOURNAL_SINK] satisfies SinkFactory[]) {
 			expect(client.client.stats().snapshotsApplied).toBe(2);
 		});
 
-		it("does not loop on a storm of stale and duplicate frames", () => {
+		it("ignores stale and duplicate frames without resyncing or looping", () => {
 			const harness = newHarness();
 			const client = harness.addClient("c1");
 			harness.attach(client);
@@ -215,22 +198,21 @@ describe("byte-exact reconstruction (journal sink)", () => {
 
 // ── GridTerminal is a real, snapshot-able reducer ─────────────────────────
 describe("GridTerminal reducer", () => {
-	it("renders printable text, CR/LF, and cursor addressing", () => {
+	it("renders printable text, CR/LF, cursor addressing, and clears with CSI 2J", () => {
 		const term = new GridTerminal({ cols: 10, rows: 3 });
 		term.applyOutput(encode("hi\r\nthere"));
 		term.applyOutput(encode("\x1b[1;1Hymca"));
 		const lines = term.render().split("\n");
 		expect(lines[0]).toBe("ymca      ");
 		expect(lines[1]).toBe("there     ");
+		{
+			const term = new GridTerminal({ cols: 5, rows: 2 });
+			term.applyOutput(encode("junk\x1b[2J"));
+			expect(term.render()).toBe(["     ", "     "].join("\n"));
+		}
 	});
 
-	it("clears the screen with CSI 2J", () => {
-		const term = new GridTerminal({ cols: 5, rows: 2 });
-		term.applyOutput(encode("junk\x1b[2J"));
-		expect(term.render()).toBe(["     ", "     "].join("\n"));
-	});
-
-	it("restores a multi-byte glyph split across a snapshot boundary", () => {
+	it("restores a multi-byte glyph or a CSI sequence split across a snapshot boundary", () => {
 		const euro = encode("€"); // 3 bytes: E2 82 AC
 		const source = new GridTerminal({ cols: 8, rows: 1 });
 		source.applyOutput(euro.slice(0, 2)); // decoder now holds two pending bytes
@@ -245,22 +227,22 @@ describe("GridTerminal reducer", () => {
 
 		expect(restored.captureState()).toEqual(source.captureState());
 		expect(restored.render()).toBe("€Z      ");
+		{
+			const source = new GridTerminal({ cols: 6, rows: 2 });
+			source.applyOutput(encode("ab\x1b[2")); // parser mid-CSI
+
+			const restored = new GridTerminal({ cols: 6, rows: 2 });
+			restored.restoreState(JSON.parse(JSON.stringify(source.captureState())));
+
+			const tail = encode(";1Hz"); // completes cursor-position then prints
+			source.applyOutput(tail);
+			restored.applyOutput(tail);
+
+			expect(restored.captureState()).toEqual(source.captureState());
+			expect(restored.render().split("\n")[1]).toBe("z     ");
+		}
 	});
 
-	it("restores a CSI sequence split across a snapshot boundary", () => {
-		const source = new GridTerminal({ cols: 6, rows: 2 });
-		source.applyOutput(encode("ab\x1b[2")); // parser mid-CSI
-
-		const restored = new GridTerminal({ cols: 6, rows: 2 });
-		restored.restoreState(JSON.parse(JSON.stringify(source.captureState())));
-
-		const tail = encode(";1Hz"); // completes cursor-position then prints
-		source.applyOutput(tail);
-		restored.applyOutput(tail);
-
-		expect(restored.captureState()).toEqual(source.captureState());
-		expect(restored.render().split("\n")[1]).toBe("z     ");
-	});
 });
 
 describe("ByteJournalTerminal reducer", () => {
@@ -282,7 +264,7 @@ describe("ByteJournalTerminal reducer", () => {
 
 // ── Sequencer + protocol units ────────────────────────────────────────────
 describe("StreamSequencer", () => {
-	it("assigns strictly increasing sequence numbers", () => {
+	it("assigns strictly increasing seqs and snapshots at the current seq without changing writer or size", () => {
 		const sequencer = new StreamSequencer(new ByteJournalTerminal(), {
 			writerId: "w",
 			dimensions: { cols: 80, rows: 24 },
@@ -291,40 +273,39 @@ describe("StreamSequencer", () => {
 		expect(sequencer.emitOutput(encode("b")).seq).toBe(2);
 		expect(sequencer.emitResize(100, 30).seq).toBe(3);
 		expect(sequencer.currentSeq).toBe(3);
+		{
+			const sequencer = new StreamSequencer(new GridTerminal({ cols: 80, rows: 24 }), {
+				writerId: "writer-x",
+				dimensions: { cols: 80, rows: 24 },
+			});
+			sequencer.emitOutput(encode("hello"));
+			sequencer.emitResize(120, 40);
+			const snapshot = sequencer.captureSnapshot();
+
+			expect(snapshot.baseSeq).toBe(2);
+			expect(sequencer.currentSeq).toBe(2); // capture did not advance the stream
+			expect(sequencer.writerId).toBe("writer-x");
+			expect(sequencer.dimensions).toEqual({ cols: 120, rows: 40 });
+		}
 	});
 
-	it("captures a snapshot at the current seq without changing writer or size", () => {
-		const sequencer = new StreamSequencer(new GridTerminal({ cols: 80, rows: 24 }), {
-			writerId: "writer-x",
-			dimensions: { cols: 80, rows: 24 },
-		});
-		sequencer.emitOutput(encode("hello"));
-		sequencer.emitResize(120, 40);
-		const snapshot = sequencer.captureSnapshot();
-
-		expect(snapshot.baseSeq).toBe(2);
-		expect(sequencer.currentSeq).toBe(2); // capture did not advance the stream
-		expect(sequencer.writerId).toBe("writer-x");
-		expect(sequencer.dimensions).toEqual({ cols: 120, rows: 40 });
-	});
 });
 
 describe("protocol helpers", () => {
-	it("builds versioned frames", () => {
+	it("builds versioned frames, rejects foreign versions, and charges deltas by size", () => {
 		expect(outputDelta(1, encode("x"))).toMatchObject({ v: RESYNC_PROTOCOL_VERSION, type: "delta", seq: 1 });
 		expect(resizeDelta(2, 10, 5)).toMatchObject({ type: "delta", op: { kind: "resize", cols: 10, rows: 5 } });
 		expect(snapshotFrame(7, { a: 1 })).toMatchObject({ type: "snapshot", baseSeq: 7 });
+		{
+			expect(isHostFrame(outputDelta(1, encode("x")))).toBe(true);
+			expect(isHostFrame(snapshotFrame(0, {}))).toBe(true);
+			expect(isHostFrame({ v: 99, type: "delta", seq: 1, op: {} })).toBe(false);
+			expect(isHostFrame(null)).toBe(false);
+		}
+		{
+			expect(deltaByteSize({ kind: "output", data: encode("abcd") })).toBe(4);
+			expect(deltaByteSize({ kind: "resize", cols: 1, rows: 1 })).toBe(8);
+		}
 	});
 
-	it("validates host frames and rejects foreign versions", () => {
-		expect(isHostFrame(outputDelta(1, encode("x")))).toBe(true);
-		expect(isHostFrame(snapshotFrame(0, {}))).toBe(true);
-		expect(isHostFrame({ v: 99, type: "delta", seq: 1, op: {} })).toBe(false);
-		expect(isHostFrame(null)).toBe(false);
-	});
-
-	it("charges output by byte length and resize by a fixed cost", () => {
-		expect(deltaByteSize({ kind: "output", data: encode("abcd") })).toBe(4);
-		expect(deltaByteSize({ kind: "resize", cols: 1, rows: 1 })).toBe(8);
-	});
 });

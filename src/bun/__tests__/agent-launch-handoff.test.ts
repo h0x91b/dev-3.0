@@ -55,23 +55,19 @@ beforeEach(() => {
 // The instruction the coordinator used to type by hand after every launch. If it
 // falls out of the default note, every launcher silently goes back to doing that.
 describe("buildHandoffMessage", () => {
-	it("names the reports dir and asks for the path back, with no launcher note at all", () => {
+	it("names the reports dir and asks for the path back, appending a launcher note under the default and ignoring a blank one", () => {
 		const body = buildHandoffMessage("/tmp/wt/child-12/reports");
 		expect(body).toContain("/tmp/wt/child-12/reports/");
 		expect(body).toMatch(/as a FILE/);
 		expect(body).toMatch(/absolute path/);
 		expect(body).toMatch(/description is the brief/);
-	});
 
-	it("appends the launcher's standing text under the default, never instead of it", () => {
-		const body = buildHandoffMessage("/tmp/wt/child-12/reports", "  Protocol: read orders/PROTOCOL.md  ");
-		expect(body).toContain("absolute path");
-		expect(body).toContain("Standing instructions from your launcher:\nProtocol: read orders/PROTOCOL.md");
-		expect(body.indexOf("absolute path")).toBeLessThan(body.indexOf("Standing instructions"));
-	});
+		const withNote = buildHandoffMessage("/tmp/wt/child-12/reports", "  Protocol: read orders/PROTOCOL.md  ");
+		expect(withNote, "note keeps the default").toContain("absolute path");
+		expect(withNote, "note is appended").toContain("Standing instructions from your launcher:\nProtocol: read orders/PROTOCOL.md");
+		expect(withNote.indexOf("absolute path"), "note goes under the default").toBeLessThan(withNote.indexOf("Standing instructions"));
 
-	it("ignores a blank launcher note", () => {
-		expect(buildHandoffMessage("/r", "   \n ")).toBe(buildHandoffMessage("/r"));
+		expect(buildHandoffMessage("/r", "   \n "), "blank note is ignored").toBe(buildHandoffMessage("/r"));
 	});
 
 	// The default note must fit ONE pty read, envelope included. Over the threshold

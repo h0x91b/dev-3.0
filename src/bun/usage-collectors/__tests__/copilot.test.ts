@@ -37,7 +37,7 @@ describe("Copilot CLI durable usage", () => {
 		}]);
 	});
 
-	it("prefers the explicit billed token breakdown when available", () => {
+	it("prefers the explicit billed token breakdown when available, and never adds reasoning tokens on top", () => {
 		const event = shutdown();
 		Object.assign(event.data.modelMetrics["claude-sonnet-4.6"], {
 			tokenDetails: { input: { tokenCount: 4 }, output: { tokenCount: 7 }, cache_read: { tokenCount: 8 }, cache_write: { tokenCount: 9 } },
@@ -48,6 +48,14 @@ describe("Copilot CLI durable usage", () => {
 		expect([...state.records.values()][0].counts).toEqual({
 			inputTokens: 4, outputTokens: 7, cacheReadInputTokens: 8, cacheCreationInputTokens: 9,
 		});
+
+		// Reasoning tokens are already included in model output and are not added again.
+		const reasoning = shutdown();
+		Object.assign(reasoning.data.modelMetrics["claude-sonnet-4.6"].usage, { reasoningTokens: 20 });
+		write([reasoning]);
+		const withReasoning = newUsageState();
+		collectCopilotUsage(withReasoning, home);
+		expect([...withReasoning.records.values()][0].counts.outputTokens).toBe(30);
 	});
 
 	it("counts each model once rather than adding duplicated agent subtotals", () => {
@@ -62,20 +70,19 @@ describe("Copilot CLI durable usage", () => {
 		]);
 	});
 
-	it("preserves cumulative snapshots with their own timestamps for retained-history deltas", () => {
+	it("preserves cumulative snapshots with their own timestamps, and splits a resumed segment whose accounting start resets", () => {
 		write([shutdown(), shutdown("shutdown-2", 140, 50, "2026-10-01T01:00:00Z")]);
 		const state = newUsageState();
 		collectCopilotUsage(state, home);
 		expect([...state.records.values()].map((record) => [record.timestamp, record.counts.inputTokens, record.counts.outputTokens])).toEqual([
 			[Date.parse(TIME), 50, 30], [Date.parse("2026-10-01T01:00:00Z"), 90, 50],
 		]);
-	});
 
-	it("counts a resumed older-runtime segment separately when its accounting start resets", () => {
+		// A resumed older-runtime segment counts separately when its accounting start resets.
 		write([shutdown(), shutdown("shutdown-2", 100, 30, "2026-10-01T01:00:00Z", START + 100_000)]);
-		const state = newUsageState();
-		collectCopilotUsage(state, home);
-		expect([...state.records.values()].reduce((sum, record) => sum + record.counts.outputTokens, 0)).toBe(60);
+		const resumed = newUsageState();
+		collectCopilotUsage(resumed, home);
+		expect([...resumed.records.values()].reduce((sum, record) => sum + record.counts.outputTokens, 0)).toBe(60);
 	});
 
 	it("reads modern durable accounting checkpoints in the same cumulative scope as shutdown", () => {
@@ -121,14 +128,5 @@ describe("Copilot CLI durable usage", () => {
 		collectCopilotUsage(state, home);
 		collectCopilotUsage(state, join(home, "missing-home"));
 		expect(state.records.size).toBe(1);
-	});
-
-	it("does not add reasoning tokens already included in model output", () => {
-		const event = shutdown();
-		Object.assign(event.data.modelMetrics["claude-sonnet-4.6"].usage, { reasoningTokens: 20 });
-		write([event]);
-		const state = newUsageState();
-		collectCopilotUsage(state, home);
-		expect([...state.records.values()][0].counts.outputTokens).toBe(30);
 	});
 });

@@ -29,16 +29,13 @@ describe("agent handles — lossless", () => {
 		process.env.TZ = savedTz;
 	});
 
-	it("round-trips the exact binding and is one shell word", () => {
+	it("round-trips the exact binding as one shell word, native pane ids, missing conversations, non-UUID ids and every start text", () => {
 		const handle = encodeAgentHandle(AGENT);
-		expect(decodeAgentHandle(handle)).toEqual(AGENT);
-		expect(handle).toMatch(/^[A-Za-z0-9_-]+$/);
+		expect(decodeAgentHandle(handle), "round-trips the exact binding and is one shell word").toEqual(AGENT);
+		expect(handle, "round-trips the exact binding and is one shell word").toMatch(/^[A-Za-z0-9_-]+$/);
 		// version 1 + pane 2 + two UUIDs 2×17 + process 1+3+5: every field took its compact form.
-		expect(bytesOf(handle)).toHaveLength(46);
-		expect(handle).toHaveLength(62);
-	});
-
-	it("round-trips native pane ids, a missing conversation, and ids that are not lowercase UUIDs", () => {
+		expect(bytesOf(handle), "round-trips the exact binding and is one shell word").toHaveLength(46);
+		expect(handle, "round-trips the exact binding and is one shell word").toHaveLength(62);
 		for (const author of [
 			{ ...AGENT, paneId: "pane-1" },
 			{ ...AGENT, paneId: "pane-12", paneToken: "native-s2" },
@@ -49,11 +46,8 @@ describe("agent handles — lossless", () => {
 			{ ...AGENT, paneId: "weird pane/ü", sessionId: "ü-session" },
 			{ ...AGENT, paneId: "%07" },
 		]) {
-			expect(roundTrip(author)).toEqual(author);
+			expect(roundTrip(author), "round-trips native pane ids, a missing conversation, and ids that are not lowercase UUIDs").toEqual(author);
 		}
-	});
-
-	it("round-trips every start text exactly, compact or not", () => {
 		for (const agentProcess of [
 			"7@Thu Jan 1 00:00:00 1970",
 			"4294967295@Tue Feb 29 23:59:59 2028",
@@ -65,7 +59,7 @@ describe("agent handles — lossless", () => {
 			"48213@Mon Oct 26 25:02:11 2026",
 			"48213@x",
 		]) {
-			expect(roundTrip({ ...AGENT, agentProcess })).toEqual({ ...AGENT, agentProcess });
+			expect(roundTrip({ ...AGENT, agentProcess }), "round-trips every start text exactly, compact or not").toEqual({ ...AGENT, agentProcess });
 		}
 	});
 
@@ -83,18 +77,15 @@ describe("agent handles — lossless", () => {
 		}
 	});
 
-	it("does not depend on the machine's timezone, DST included", () => {
+	it("is timezone-independent and survives copy-paste whitespace", () => {
 		const atDstEdge = { ...AGENT, agentProcess: "48213@Sun Mar 29 02:30:00 2026" }; // a wall time that does not exist in Europe
 		const encoded = [encodeAgentHandle(AGENT), encodeAgentHandle(atDstEdge)];
 		for (const tz of ["UTC", "Asia/Jerusalem", "America/New_York", "Europe/Berlin", "Pacific/Chatham"]) {
 			process.env.TZ = tz;
-			expect([encodeAgentHandle(AGENT), encodeAgentHandle(atDstEdge)]).toEqual(encoded);
-			expect(decodeAgentHandle(encoded[1]!)).toEqual(atDstEdge);
+			expect([encodeAgentHandle(AGENT), encodeAgentHandle(atDstEdge)], "does not depend on the machine's timezone, DST included").toEqual(encoded);
+			expect(decodeAgentHandle(encoded[1]!), "does not depend on the machine's timezone, DST included").toEqual(atDstEdge);
 		}
-	});
-
-	it("survives the whitespace a copy-paste adds", () => {
-		expect(decodeAgentHandle(`  ${encodeAgentHandle(AGENT)}\n`)).toEqual(AGENT);
+		expect(decodeAgentHandle(`  ${encodeAgentHandle(AGENT)}\n`), "survives the whitespace a copy-paste adds").toEqual(AGENT);
 	});
 
 	it("rejects an old #2062 handle, a raw pane id, junk, a truncated or extended handle and another version", () => {

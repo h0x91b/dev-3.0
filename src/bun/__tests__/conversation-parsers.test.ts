@@ -66,11 +66,13 @@ describe("parseClaudeTranscript", () => {
 		expect(ev(parsed)[3].tool).toMatchObject({ callId: "toolu_1", name: "Read" });
 		expect(parsed.stats.thinkingBlocks).toBe(1);
 		expect(parsed.stats.toolCalls).toBe(1);
-	});
-
-	it("reads a thinking block from `thinking`, not `text`", () => {
-		const parsed = parseClaudeTranscript(jsonl(claudeAssistant), "/t.jsonl");
-		expect(ev(parsed).find((e) => e.kind === "thinking")?.text).toBe("weighing it");
+		// A thinking block is read from `thinking`, not `text`.
+		expect(ev(parsed)[1].text).toBe("weighing it");
+		// The parent pointer keeps the thread reconstructable.
+		expect(ev(parsed)[0].parentId).toBeNull();
+		expect(ev(parsed)[1].parentId).toBe("u1");
+		// Token usage is summed across assistant records.
+		expect(parsed.stats.usage).toEqual({ input: 3, output: 40, cacheRead: 100, cacheWrite: 7 });
 	});
 
 	it("keeps a signature-only thinking block as evidence that reasoning happened", () => {
@@ -84,12 +86,6 @@ describe("parseClaudeTranscript", () => {
 		expect(ev(parsed)[0].text).toBeUndefined();
 	});
 
-	it("keeps the parent pointer so the thread stays reconstructable", () => {
-		const parsed = parseClaudeTranscript(jsonl(claudeUser, claudeAssistant), "/t.jsonl");
-		expect(ev(parsed)[0].parentId).toBeNull();
-		expect(ev(parsed)[1].parentId).toBe("u1");
-	});
-
 	it("pairs a tool result to its call by id, not by adjacency", () => {
 		const parsed = parseClaudeTranscript(jsonl(claudeAssistant, claudeUser, claudeToolResult), "/t.jsonl");
 		const call = ev(parsed).find((e) => e.kind === "tool-call");
@@ -97,11 +93,6 @@ describe("parseClaudeTranscript", () => {
 		expect(result?.tool?.callId).toBe(call?.tool?.callId);
 		expect(result?.tool?.output).toBe("file body");
 		expect(result?.role).toBe("tool");
-	});
-
-	it("sums token usage across assistant records", () => {
-		const parsed = parseClaudeTranscript(jsonl(claudeAssistant), "/t.jsonl");
-		expect(parsed.stats.usage).toEqual({ input: 3, output: 40, cacheRead: 100, cacheWrite: 7 });
 	});
 
 	it("keeps per-record usage when streaming splits a turn into blockless records", () => {
@@ -127,7 +118,7 @@ describe("parseClaudeTranscript", () => {
 		expect(parsed.endedAt).toBe("2026-08-17T10:00:06.000Z");
 	});
 
-	it("keeps bookkeeping records as lifecycle instead of dropping them", () => {
+	it("keeps bookkeeping records as lifecycle and knows the subagent record type", () => {
 		const parsed = parseClaudeTranscript(
 			jsonl({ type: "ai-title", aiTitle: "Parse conversations", sessionId: "sess-1" }, claudeUser),
 			"/t.jsonl",
@@ -135,16 +126,15 @@ describe("parseClaudeTranscript", () => {
 		expect(parsed.title).toBe("Parse conversations");
 		expect(parsed.sessionEvents[0].kind).toBe("lifecycle");
 		expect(parsed.stats.unknownRecords).toBe(0);
-	});
 
-	it("knows the subagent-transcript record type", () => {
-		// Found in the wild by the unknown-record counter, not anticipated.
-		const parsed = parseClaudeTranscript(
+		// The subagent-transcript record type was found in the wild by the
+		// unknown-record counter, not anticipated.
+		const subagent = parseClaudeTranscript(
 			jsonl({ type: "agent-setting", agentSetting: "general-purpose", sessionId: "sess-1" }),
 			"/t.jsonl",
 		);
-		expect(parsed.stats.unknownRecords).toBe(0);
-		expect(parsed.fidelity.level).toBe("full");
+		expect(subagent.stats.unknownRecords).toBe(0);
+		expect(subagent.fidelity.level).toBe("full");
 	});
 
 	it("flags an unmapped record type instead of silently skipping it", () => {
@@ -154,26 +144,22 @@ describe("parseClaudeTranscript", () => {
 		expect(parsed.fidelity.level).toBe("partial");
 	});
 
-	it("treats a truncated final line as a live write, not corruption", () => {
+	it("treats a truncated final line as a live write, but a broken mid-file line as malformed", () => {
 		const body = `${jsonl(claudeUser)}{"type":"assist`;
 		const parsed = parseClaudeTranscript(body, "/t.jsonl");
 		expect(parsed.stats.malformedLines).toBe(0);
 		expect(parsed.fidelity.warnings.join(" ")).toContain("truncated");
 		expect(ev(parsed)).toHaveLength(1);
+
+		// A broken mid-file line, by contrast, is malformed.
+		const broken = parseClaudeTranscript(`{"type":"user","broken\n${jsonl(claudeUser)}`, "/t.jsonl");
+		expect(broken.stats.malformedLines).toBe(1);
 	});
 
-	it("counts a broken mid-file line as malformed", () => {
-		const body = `{"type":"user","broken\n${jsonl(claudeUser)}`;
-		const parsed = parseClaudeTranscript(body, "/t.jsonl");
-		expect(parsed.stats.malformedLines).toBe(1);
-	});
-
-	it("marks a sidechain record so a subagent branch stays distinguishable", () => {
+	it("marks a sidechain record, and omits raw records unless asked", () => {
 		const parsed = parseClaudeTranscript(jsonl({ ...claudeUser, isSidechain: true }), "/t.jsonl");
 		expect(ev(parsed)[0].sidechain).toBe(true);
-	});
-
-	it("omits raw records unless asked", () => {
+		// Raw records are omitted unless asked.
 		expect(ev(parseClaudeTranscript(jsonl(claudeUser), "/t.jsonl"))[0].raw).toBeUndefined();
 		expect(ev(parseClaudeTranscript(jsonl(claudeUser), "/t.jsonl", { includeRaw: true }))[0].raw).toMatchObject({
 			uuid: "u1",
@@ -319,40 +305,24 @@ describe("parseCursorTranscript", () => {
 		expect(parsed.turns[0].assistantText).toBe("running it");
 		expect(parsed.stats.unknownRecords).toBe(0);
 		expect(parsed.fidelity.level).toBe("full");
-	});
-
-	it("takes the session id from the file name, since the records carry none", () => {
-		expect(parseCursorTranscript(jsonl(cursorUser), path).sessionId).toBe("cur-1");
-	});
-
-	it("keeps only the user's words, without Cursor's timestamp and query wrapper", () => {
-		const parsed = parseCursorTranscript(jsonl(cursorUser), path);
-		expect(parsed.turns[0].userText).toBe("fix the build");
-		expect(ev(parsed)[0].text).toBe("fix the build");
-	});
-
-	it("maps Cursor's tool names to canonical operations", () => {
-		const calls = ev(parseCursorTranscript(jsonl(cursorUser, cursorAssistant), path)).filter((e) => e.kind === "tool-call");
+		// Cursor's tool names map to canonical operations.
+		const calls = ev(parsed).filter((e) => e.kind === "tool-call");
 		expect(calls.map((c) => c.tool?.canonical?.op)).toEqual(["shell.run", "file.edit"]);
 		expect(calls[0].tool?.canonical?.command).toBe("make");
 		expect(calls[1].tool?.canonical?.path).toBe("/w/a.ts");
+		// The records carry no session id, so it comes from the file name.
+		expect(parsed.sessionId).toBe("cur-1");
+		// Only the user's words, without Cursor's timestamp and query wrapper.
+		expect(parsed.turns[0].userText).toBe("fix the build");
+		expect(ev(parsed)[0].text).toBe("fix the build");
 	});
 });
 
 describe("detectConversationSource", () => {
-	it("recognizes a cursor transcript by its role-only records", () => {
-		expect(detectConversationSource(jsonl({ role: "user", message: { content: [] } }))).toBe("cursor");
-	});
-
-	it("recognizes a codex rollout by its header line", () => {
-		expect(detectConversationSource(jsonl(codexMeta))).toBe("codex");
-	});
-
-	it("recognizes a claude transcript by its sessionId-bearing records", () => {
-		expect(detectConversationSource(jsonl(claudeUser))).toBe("claude");
-	});
-
-	it("returns null for something that is not a transcript", () => {
+	it("recognizes cursor, codex and claude transcripts, and nothing else", () => {
+		expect(detectConversationSource(jsonl({ role: "user", message: { content: [] } })), "role-only records").toBe("cursor");
+		expect(detectConversationSource(jsonl(codexMeta)), "header line").toBe("codex");
+		expect(detectConversationSource(jsonl(claudeUser)), "sessionId records").toBe("claude");
 		expect(detectConversationSource(jsonl({ hello: "world" }))).toBeNull();
 	});
 });

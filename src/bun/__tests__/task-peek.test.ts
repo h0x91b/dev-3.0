@@ -219,7 +219,7 @@ beforeEach(() => {
 describe.each<Backend>(["tmux", "native"])("dev3 peek on %s", (backend) => {
 	const expectedGranularity = backend === "tmux" ? "window" : "pane";
 
-	it("summarizes every pane and tails the focused one", async () => {
+	it("summarizes every pane, tails the focused one, and ages output against the observation time", async () => {
 		arrange(backend, TWO_PANES);
 
 		const snap = await taskPeek({ task: task() });
@@ -239,52 +239,35 @@ describe.each<Backend>(["tmux", "native"])("dev3 peek on %s", (backend) => {
 		]);
 		expect(snap.tail).toEqual({ paneIndex: 1, paneId: "P1", lines: 3, text: "line-1\nline-2\nline-3" });
 		expect(Date.parse(snap.observedAt)).not.toBeNaN();
+		expect(snap.panes[0].lastOutputAgeMs).toBe(Date.parse(snap.observedAt) - Date.parse(ACTIVITY_ISO));
 	});
 
-	it("reports the captured pane's output age against the observation time", async () => {
-		arrange(backend, TWO_PANES);
-
-		const snap = await taskPeek({ task: task() });
-
-		const expected = Date.parse(snap.observedAt) - Date.parse(ACTIVITY_ISO);
-		expect(snap.panes[0].lastOutputAt).toBe(ACTIVITY_ISO);
-		expect(snap.panes[0].lastOutputAgeMs).toBe(expected);
-	});
-
-	it("leaves the age null when the time itself is unknown", async () => {
-		arrange(backend, [{ ...TWO_PANES[0], lastOutput: null }]);
+	it("says freshness is unknown rather than guessing a time, and reports a dead pane as dead", async () => {
+		arrange(backend, [{ ...TWO_PANES[0], lastOutput: null, alive: false }]);
 
 		const snap = await taskPeek({ task: task() });
 
 		expect(snap.panes[0].lastOutputAt).toBeNull();
 		expect(snap.panes[0].lastOutputAgeMs).toBeNull();
+		expect(snap.panes[0].granularity).toBe(expectedGranularity);
+		expect(snap.panes[0].alive).toBe(false);
 	});
 
-	it("selects a pane by its 1-based index", async () => {
+	it("selects a pane by 1-based index or raw id, names a missing one, and never writes, focuses, or resizes anything", async () => {
 		arrange(backend, TWO_PANES);
 
-		const snap = await taskPeek({ task: task(), pane: "2" });
+		expect((await taskPeek({ task: task(), pane: "2" })).tail).toEqual({ paneIndex: 2, paneId: "P2", lines: 1, text: "tests ok" });
+		expect((await taskPeek({ task: task(), pane: "P2" })).tail?.paneId).toBe("P2");
 
-		expect(snap.tail).toEqual({ paneIndex: 2, paneId: "P2", lines: 1, text: "tests ok" });
-	});
+		const missing = await taskPeek({ task: task(), pane: "9" });
+		expect(missing.sessionPresent).toBe(true);
+		expect(missing.panes).toHaveLength(2);
+		expect(missing.tail).toBeNull();
+		expect(missing.unavailable).toEqual({ kind: "pane-not-found", detail: expect.stringContaining("9") });
 
-	it("selects a pane by its raw backend pane id", async () => {
-		arrange(backend, TWO_PANES);
-
-		const snap = await taskPeek({ task: task(), pane: "P2" });
-
-		expect(snap.tail?.paneId).toBe("P2");
-	});
-
-	it("says which pane was missing instead of silently returning no tail", async () => {
-		arrange(backend, TWO_PANES);
-
-		const snap = await taskPeek({ task: task(), pane: "9" });
-
-		expect(snap.sessionPresent).toBe(true);
-		expect(snap.panes).toHaveLength(2);
-		expect(snap.tail).toBeNull();
-		expect(snap.unavailable).toEqual({ kind: "pane-not-found", detail: expect.stringContaining("9") });
+		for (const name of ["selectPane", "sendKeys", "resizeWindow", "killPane", "focusView", "writePane", "splitView", "closeView", "attachView"] as const) {
+			expect(mocks[name], name).not.toHaveBeenCalled();
+		}
 	});
 
 	it("honors a line budget and clamps it to the cap", async () => {
@@ -299,24 +282,14 @@ describe.each<Backend>(["tmux", "native"])("dev3 peek on %s", (backend) => {
 		expect(clamped.tail?.lines).toBe(50);
 	});
 
-	it("strips terminal escape sequences from the tail", async () => {
-		const noisy = { ...TWO_PANES[0], text: "\u001b[31mred\u001b[0m\n\u001b]0;title\u0007plain" };
-		arrange(backend, [noisy]);
+	it("strips escape sequences and drops a dimmed ghost autosuggestion so it does not read as unsent input", async () => {
+		arrange(backend, [{ ...TWO_PANES[0], text: "\u001b[31mred\u001b[0m\n\u001b]0;title\u0007plain" }]);
+		expect((await taskPeek({ task: task() })).tail?.text).toBe("red\nplain");
 
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.tail?.text).toBe("red\nplain");
-	});
-
-	it("drops a dimmed ghost autosuggestion so it does not read as unsent input", async () => {
 		// An empty input box showing a faint (SGR 2) ghost of a past message — the
 		// exact shape that made a coordinator report "typed but not sent, press Enter".
-		const ghosted = { ...TWO_PANES[0], text: "running tests\n\u001b[39m❯ \u001b[2mpush it and open the PR\u001b[0m" };
-		arrange(backend, [ghosted]);
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.tail?.text).toBe("running tests\n❯ ");
+		arrange(backend, [{ ...TWO_PANES[0], text: "running tests\n\u001b[39m❯ \u001b[2mpush it and open the PR\u001b[0m" }]);
+		expect((await taskPeek({ task: task() })).tail?.text).toBe("running tests\n❯ ");
 		// The tmux path must capture WITH colour, or the faint marker never arrives.
 		if (backend === "tmux") {
 			expect(mocks.capturePane).toHaveBeenCalledWith(expect.objectContaining({ escapes: true }));
@@ -341,37 +314,22 @@ describe.each<Backend>(["tmux", "native"])("dev3 peek on %s", (backend) => {
 		expect(snap.tail?.text).toBe("│ ran build, 0 errors\nWorked for 2m 41s · 10:50\n›");
 	});
 
-	it("says freshness is unknown rather than guessing a time", async () => {
-		arrange(backend, [{ ...TWO_PANES[0], lastOutput: null }]);
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.panes[0].lastOutputAt).toBeNull();
-		expect(snap.panes[0].granularity).toBe(expectedGranularity);
-	});
-
-	it("reports a dead pane as dead", async () => {
-		arrange(backend, [{ ...TWO_PANES[0], alive: false }]);
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.panes[0].alive).toBe(false);
-	});
-
-	it.each([
-		["a draft", { draft: true }, "draft"],
-		["a hibernated task", { hibernated: true }, "hibernated"],
-		["an idle task", {}, "not running"],
-	])("succeeds with an explicit reason for %s with no session", async (_name, extra, reason) => {
+	it("succeeds with an explicit reason for a draft, a hibernated task and an idle task with no session", async () => {
+		const cases: Array<[Partial<Task>, string]> = [
+			[{ draft: true }, "draft"],
+			[{ hibernated: true }, "hibernated"],
+			[{}, "not running"],
+		];
 		arrange(backend, [], { session: false });
+		for (const [extra, reason] of cases) {
+			const snap = await taskPeek({ task: task(extra) });
 
-		const snap = await taskPeek({ task: task(extra as Partial<Task>) });
-
-		expect(snap.sessionPresent).toBe(false);
-		expect(snap.unavailable?.kind).toBe("no-session");
-		expect(snap.unavailable?.detail).toContain(reason);
-		expect(snap.panes).toEqual([]);
-		expect(snap.tail).toBeNull();
+			expect(snap.sessionPresent, reason).toBe(false);
+			expect(snap.unavailable?.kind, reason).toBe("no-session");
+			expect(snap.unavailable?.detail).toContain(reason);
+			expect(snap.panes, reason).toEqual([]);
+			expect(snap.tail, reason).toBeNull();
+		}
 	});
 
 	it("reports a failed read as OUR failure, never as a quiet task", async () => {
@@ -385,69 +343,39 @@ describe.each<Backend>(["tmux", "native"])("dev3 peek on %s", (backend) => {
 		expect(snap.unavailable?.kind).toBe("read-failed");
 		expect(snap.unavailable?.detail).toContain("exploded");
 	});
-
-	it("never writes, focuses, or resizes anything", async () => {
-		arrange(backend, TWO_PANES);
-
-		await taskPeek({ task: task(), pane: "2" });
-
-		for (const name of ["selectPane", "sendKeys", "resizeWindow", "killPane", "focusView", "writePane", "splitView", "closeView", "attachView"] as const) {
-			expect(mocks[name], name).not.toHaveBeenCalled();
-		}
-	});
 });
 
 // ── Backend-specific labelling ───────────────────────────────────────────────
 
 describe("pane labels", () => {
-	it("prefers the tmux pane title over the foreground command", async () => {
+	it("prefers the tmux pane title over the foreground command, ignoring an unset (hostname) title", async () => {
 		// Agents set their pane title to what they are currently doing, while
 		// pane_current_command only ever names the wrapper shell.
 		arrange("tmux", [{ ...TWO_PANES[0], label: "zsh", title: "Thinking about auth" }]);
+		expect((await taskPeek({ task: task() })).panes[0].label).toBe("Thinking about auth");
 
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.panes[0].label).toBe("Thinking about auth");
-	});
-
-	it("ignores an unset tmux title, which tmux reports as the hostname", async () => {
 		arrange("tmux", [{ ...TWO_PANES[0], label: "bun", title: "hostname" }]);
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.panes[0].label).toBe("bun");
-	});
-
-	it("labels a native pane by its launch executable", async () => {
-		arrange("native", [{ ...TWO_PANES[0], label: "claude" }]);
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.panes[0].label).toBe("claude");
+		expect((await taskPeek({ task: task() })).panes[0].label).toBe("bun");
 	});
 });
 
 // ── Native-specific read discipline ──────────────────────────────────────────
 
 describe("native read discipline", () => {
-	it("observes without ever opening a write channel to the pane", async () => {
-		arrange("native", TWO_PANES);
-
-		await taskPeek({ task: task() });
-
-		expect(mocks.captureView).toHaveBeenCalledTimes(1);
-		expect(mocks.attachView).not.toHaveBeenCalled();
-	});
-
-	it("asks for exactly the requested history depth", async () => {
+	it("observes exactly the requested history depth without ever opening a write channel to the pane", async () => {
 		arrange("native", TWO_PANES);
 
 		await taskPeek({ task: task(), lines: 40 });
 
+		expect(mocks.captureView).toHaveBeenCalledTimes(1);
 		expect(mocks.captureView).toHaveBeenCalledWith(expect.any(String), "P1", { historyLines: 40 });
+		expect(mocks.attachView).not.toHaveBeenCalled();
 	});
 
-	it("reports a capture the backend cannot produce as OUR failure, with its reason", async () => {
+	// A backend that publishes no screen is still a read failure — never "quiet" —
+	// but it is the one miss a UI can explain in plain words instead of printing a
+	// token, so the detail has to stay recognisable end to end.
+	it("reports a capture the backend cannot produce as OUR failure, marking only not-enabled as unsupported", async () => {
 		// Production answer today: the host publishes no capture artifact
 		// (decision 202), which must never read as a quiet worker.
 		arrange("native", TWO_PANES);
@@ -466,6 +394,16 @@ describe("native read discipline", () => {
 			kind: "read-failed",
 			detail: "not-enabled: the host records no capture artifact",
 		});
+		expect(isCaptureUnsupported(snap.unavailable!)).toBe(true);
+
+		mocks.captureView.mockResolvedValue({
+			availability: "unreadable",
+			liveness: "live",
+			reason: "the record could not be parsed",
+		});
+		const broken = await taskPeek({ task: task() });
+		expect(broken.unavailable?.kind).toBe("read-failed");
+		expect(isCaptureUnsupported(broken.unavailable!)).toBe(false);
 	});
 
 	it("maps a pane the backend says is absent onto pane-not-found", async () => {
@@ -481,64 +419,18 @@ describe("native read discipline", () => {
 		expect(snap.unavailable?.kind).toBe("pane-not-found");
 	});
 
-	it("keeps a dead pane's final screen and marks it dead", async () => {
+	it("keeps a dead pane's final screen, marks it dead, and puts history before the viewport", async () => {
 		arrange("native", [{ ...TWO_PANES[0], alive: true }]);
 		mocks.captureView.mockResolvedValue({
 			availability: "captured",
 			liveness: "dead",
 			sourceUpdatedAt: { known: true, value: ACTIVITY_ISO },
-			content: { viewport: ["last words"], history: [], lineModel: "physical-rows" },
+			content: { viewport: ["last words"], history: ["older"], lineModel: "physical-rows" },
 		});
 
 		const snap = await taskPeek({ task: task() });
 
 		expect(snap.panes[0].alive).toBe(false);
-		expect(snap.tail?.text).toBe("last words");
-	});
-
-	it("puts history before the viewport so the tail reads in produced order", async () => {
-		arrange("native", TWO_PANES);
-		mocks.captureView.mockResolvedValue({
-			availability: "captured",
-			liveness: "live",
-			sourceUpdatedAt: { known: true, value: ACTIVITY_ISO },
-			content: { viewport: ["newer"], history: ["older"], lineModel: "physical-rows" },
-		});
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.tail?.text).toBe("older\nnewer");
-	});
-
-	// A backend that publishes no screen is still a read failure — never "quiet" —
-	// but it is the one miss a UI can explain in plain words instead of printing a
-	// token, so the detail has to stay recognisable end to end.
-	it("marks a backend with no screen to publish as unsupported, not as a broken read", async () => {
-		arrange("native", TWO_PANES);
-		mocks.captureView.mockResolvedValue({
-			availability: "not-enabled",
-			liveness: "live",
-			reason: "the host's live parser is off",
-		});
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.unavailable?.kind).toBe("read-failed");
-		expect(isCaptureUnsupported(snap.unavailable!)).toBe(true);
-		expect(snap.unavailable?.detail).toContain("the host's live parser is off");
-	});
-
-	it("does not mark an ordinary failed read as unsupported", async () => {
-		arrange("native", TWO_PANES);
-		mocks.captureView.mockResolvedValue({
-			availability: "unreadable",
-			liveness: "live",
-			reason: "the record could not be parsed",
-		});
-
-		const snap = await taskPeek({ task: task() });
-
-		expect(snap.unavailable?.kind).toBe("read-failed");
-		expect(isCaptureUnsupported(snap.unavailable!)).toBe(false);
+		expect(snap.tail?.text).toBe("older\nlast words");
 	});
 });

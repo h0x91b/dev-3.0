@@ -148,10 +148,11 @@ afterEach(() => {
 });
 
 describe("scheduled-message scheduler — tick", () => {
-	it("delivers a due message and removes it from the queue", async () => {
+	it("delivers a due message once — even on a double start — and removes it from the queue", async () => {
 		const task = makeTask();
 		mockUpdateTaskWith(task);
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
+		startScheduledMessageScheduler();
 		startScheduledMessageScheduler();
 		await flush();
 		expect(holdMessageForPane).toHaveBeenCalledTimes(1);
@@ -200,24 +201,17 @@ describe("scheduled-message scheduler — tick", () => {
 		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue", expect.any(Function), undefined, undefined);
 	});
 
-	it("start is idempotent (double start = one tick)", async () => {
-		const task = makeTask();
-		mockUpdateTaskWith(task);
-		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
-		startScheduledMessageScheduler();
-		startScheduledMessageScheduler();
-		await flush();
-		expect(holdMessageForPane).toHaveBeenCalledTimes(1);
-	});
 });
 
 describe("fireScheduledMessage — notification semantics", () => {
-	it("is silent on a normal (non-late) successful delivery", async () => {
+	it("is silent on a normal (non-late) successful delivery, and notifies success when it fires late (offline catch-up)", async () => {
 		const task = makeTask();
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: false });
 		expect(holdMessageForPane).toHaveBeenCalled();
 		expect(pushFn).not.toHaveBeenCalledWith("cliToast", expect.anything());
+		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: true });
+		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "success" }));
 	});
 
 	it("is NEVER silent on an unconfirmed delivery, even a non-late one", async () => {
@@ -235,23 +229,12 @@ describe("fireScheduledMessage — notification semantics", () => {
 		expect(pushFn).toHaveBeenCalledWith("cliAttention", expect.objectContaining({ taskId: task.id }));
 		// Not the failure line: the text may well be in the agent already.
 		expect(pushFn).not.toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
-	});
 
-	it("does not throw an unconfirmed immediate send back at the caller", async () => {
-		// A throw reads as "nothing happened" and invites a re-send, which is a second
-		// submit into a live agent.
-		vi.mocked(holdMessageForPane).mockResolvedValue(HOLD_UNCONFIRMED);
-
+		// Nor is an unconfirmed immediate send thrown back at the caller: a throw reads as
+		// "nothing happened" and invites a re-send, a second submit into a live agent.
 		await expect(sendMessageImmediately(makeTask() as never, "hello")).resolves.toMatchObject({
 			status: "unconfirmed",
 		});
-	});
-
-	it("notifies success when a delivery fires late (offline catch-up)", async () => {
-		const task = makeTask();
-		mockUpdateTaskWith(task);
-		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: true });
-		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "success" }));
 	});
 
 	it("notifies (toast + attention) and drops when the target is unresolvable", async () => {
@@ -288,16 +271,14 @@ describe("scheduleMessage — validation + queueing", () => {
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
 	});
 
-	it("rejects empty text", async () => {
+	it("rejects empty text, a time in the past, and a terminal-status task", async () => {
 		const task = makeTask();
 		await expect(scheduleMessage(project, task as never, { text: "   ", at: new Date(Date.now() + 60_000).toISOString() }))
 			.rejects.toThrow(/required/i);
-	});
-
-	it("rejects a time in the past", async () => {
-		const task = makeTask();
 		await expect(scheduleMessage(project, task as never, { text: "x", at: new Date(Date.now() - 60_000).toISOString() }))
 			.rejects.toThrow(/future/i);
+		await expect(scheduleMessage(project, makeTask({ status: "cancelled" }) as never, { text: "x", at: new Date(Date.now() + 60_000).toISOString() }))
+			.rejects.toThrow(/completed or cancelled/i);
 	});
 
 	it("rejects when the per-task cap is reached", async () => {
@@ -306,12 +287,6 @@ describe("scheduleMessage — validation + queueing", () => {
 		mockUpdateTaskWith(task);
 		await expect(scheduleMessage(project, task as never, { text: "x", at: new Date(Date.now() + 60_000).toISOString() }))
 			.rejects.toThrow(/too many/i);
-	});
-
-	it("rejects scheduling for a terminal-status task", async () => {
-		const task = makeTask({ status: "cancelled" });
-		await expect(scheduleMessage(project, task as never, { text: "x", at: new Date(Date.now() + 60_000).toISOString() }))
-			.rejects.toThrow(/completed or cancelled/i);
 	});
 });
 
@@ -352,18 +327,7 @@ describe("cancel / send-now / immediate", () => {
 		await sendScheduledMessageNow(project, task.id, "msg-1");
 		expect(sendPromptToAgentPane).toHaveBeenCalled();
 		expect(holdMessageForPane).not.toHaveBeenCalled();
-	});
-
-	it("sendScheduledMessageNow throws for an unknown message id", async () => {
-		const task = makeTask();
-		vi.mocked(data.getTask).mockResolvedValue(task as never);
 		await expect(sendScheduledMessageNow(project, task.id, "nope")).rejects.toThrow(/not found/i);
-	});
-
-	it("sendMessageImmediately delivers to the agent", async () => {
-		const task = makeTask();
-		await sendMessageImmediately(task as never, "hello now");
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%1", "hello now", expect.any(Function), undefined, undefined);
 	});
 
 	// The click paths (a review comment's "Send to agent", the launch handoff) opt out
@@ -379,7 +343,7 @@ describe("cancel / send-now / immediate", () => {
 
 	it("sendMessageImmediately holds by default — an omitted flag is never an instant send", async () => {
 		await sendMessageImmediately(makeTask() as never, "hello now");
-		expect(holdMessageForPane).toHaveBeenCalled();
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%1", "hello now", expect.any(Function), undefined, undefined);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
@@ -394,7 +358,7 @@ describe("cancel / send-now / immediate", () => {
 
 	const senderAgent = { paneId: "%5", sessionId: null, paneToken: "gen-1", agentProcess: "501@Mon Oct 26 09:00:00 2026" };
 
-	it("scopes the reply command when the sender sits on another project", async () => {
+	it("scopes the reply command to the sender's project only when it differs", async () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now", null, {
 			taskId: "other",
@@ -402,20 +366,14 @@ describe("cancel / send-now / immediate", () => {
 			projectId: "proj-2-abcdef",
 			agent: senderAgent,
 		});
-		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
-		expect(text).toContain(`<reply-with>dev3 message --task seq:7 --project proj-2-a --agent ${encodeAgentHandle(senderAgent)} --subject "what your reply is about" "your reply"</reply-with>`);
-	});
-
-	it("leaves the reply command bare for a sender on the same project", async () => {
-		const task = makeTask();
+		expect(vi.mocked(holdMessageForPane).mock.calls[0]![2]).toContain(`<reply-with>dev3 message --task seq:7 --project proj-2-a --agent ${encodeAgentHandle(senderAgent)} --subject "what your reply is about" "your reply"</reply-with>`);
 		await sendMessageImmediately(task as never, "hello now", null, {
 			taskId: "other",
 			seq: 7,
 			projectId: "proj-1",
 			agent: senderAgent,
 		});
-		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
-		expect(text).toContain(`<reply-with>dev3 message --task seq:7 --agent ${encodeAgentHandle(senderAgent)} --subject "what your reply is about" "your reply"</reply-with>`);
+		expect(vi.mocked(holdMessageForPane).mock.calls[1]![2]).toContain(`<reply-with>dev3 message --task seq:7 --agent ${encodeAgentHandle(senderAgent)} --subject "what your reply is about" "your reply"</reply-with>`);
 	});
 
 	it("drops --agent when the sender is its task's only agent, asked at delivery", async () => {
@@ -459,8 +417,10 @@ describe("cancel / send-now / immediate", () => {
 		expect(message.text).toBe("check CI and continue");
 	});
 
-	it("announces an agent-to-agent send so the user sees who wrote to whom", async () => {
+	it("announces an agent-to-agent send so the user sees who wrote to whom, and stays silent for a human's", async () => {
 		const task = makeTask();
+		await sendMessageImmediately(task as never, "hello now");
+		expect(pushFn).not.toHaveBeenCalledWith("agentMessage", expect.anything());
 		await sendMessageImmediately(task as never, "check the payload", null, {
 			taskId: "other",
 			seq: 7,
@@ -495,13 +455,9 @@ describe("cancel / send-now / immediate", () => {
 		);
 	});
 
-	it("stays silent for a message the human sent", async () => {
-		await sendMessageImmediately(makeTask() as never, "hello now");
-		expect(pushFn).not.toHaveBeenCalledWith("agentMessage", expect.anything());
-	});
-
-	it("does not announce an agent-to-agent send that landed nowhere", async () => {
+	it("throws when nothing is live to deliver to, and announces no agent-to-agent send that landed nowhere", async () => {
 		vi.mocked(holdMessageForPane).mockResolvedValue(PANE_GONE);
+		await expect(sendMessageImmediately(makeTask() as never, "hello")).rejects.toThrow(/no live agent/i);
 		await expect(
 			sendMessageImmediately(makeTask() as never, "hi", null, { taskId: "other", seq: 7 }),
 		).rejects.toThrow(/no live agent/i);
@@ -517,12 +473,6 @@ describe("cancel / send-now / immediate", () => {
 			"agentMessage",
 			expect.objectContaining({ fromSeq: 7, toSeq: 42, preview: "check CI and continue" }),
 		);
-	});
-
-	it("sendMessageImmediately throws when nothing is live to deliver to", async () => {
-		vi.mocked(holdMessageForPane).mockResolvedValue(PANE_GONE);
-		const task = makeTask();
-		await expect(sendMessageImmediately(task as never, "hello")).rejects.toThrow(/no live agent/i);
 	});
 });
 
@@ -566,6 +516,8 @@ describe("message draft (#2281)", () => {
 		const state = statefulTask({ status: "review-by-user", messageDraft: { text: "next: rebase", sendOnStop: true, updatedAt: "t0" } });
 		await fireArmedMessageDraft(project, "task-12345678");
 		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", "next: rebase", expect.any(Function), undefined, undefined);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		expect(sendPromptToPane).not.toHaveBeenCalled();
 		expect(state.current.messageDraft).toBeNull();
 	});
 
@@ -620,14 +572,6 @@ describe("message draft (#2281)", () => {
 		expect(holdMessageForPane).not.toHaveBeenCalled();
 		expect(state.current.messageDraft).toBeNull();
 		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow(/no message draft/i);
-	});
-
-	it("hands an armed draft to the hold, never types it directly", async () => {
-		statefulTask({ status: "review-by-user", messageDraft: { text: "after you", sendOnStop: true, updatedAt: "t0" } });
-		await fireArmedMessageDraft(project, "task-12345678");
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", "after you", expect.any(Function), undefined, undefined);
-		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
-		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});
 
 	it("a failed Send now puts the draft back still armed", async () => {
@@ -695,10 +639,13 @@ describe("message draft (#2281)", () => {
 	});
 
 	describe("autosave compare-and-set", () => {
-		it("arms when the draft is still the version the window read", async () => {
+		it("arms when the draft is still the version the window read, or unconditionally on an explicit save with no version", async () => {
 			const state = statefulTask({ messageDraft: { text: "v1", sendOnStop: true, updatedAt: "t0" } });
 			await saveMessageDraft(project, "task-12345678", { text: "v2", sendOnStop: true, expectedUpdatedAt: "t0" });
 			expect(state.current.messageDraft).toEqual(expect.objectContaining({ text: "v2", sendOnStop: true }));
+			state.current = { ...state.current, messageDraft: null };
+			await saveMessageDraft(project, "task-12345678", { text: "arm me", sendOnStop: true });
+			expect(state.current.messageDraft).toEqual(expect.objectContaining({ text: "arm me", sendOnStop: true }));
 		});
 
 		it("never re-arms a draft a stop-send already claimed, but keeps the new text as a note", async () => {
@@ -719,18 +666,10 @@ describe("message draft (#2281)", () => {
 			await expect(saveMessageDraft(project, "task-12345678", { text: "sent already", sendOnStop: true, expectedUpdatedAt: "t0", strict: true }))
 				.rejects.toThrow("message-draft-changed");
 			expect(state.current.messageDraft).toBeNull();
-		});
-
-		it("a strict save with no base refuses to overwrite a draft that exists (Undo)", async () => {
-			const state = statefulTask({ messageDraft: { text: "newer", updatedAt: "t9" } });
+			// With no base, a strict save refuses to overwrite a draft that exists (Undo).
+			state.current = { ...state.current, messageDraft: { text: "newer", updatedAt: "t9" } };
 			await expect(saveMessageDraft(project, "task-12345678", { text: "older", expectedUpdatedAt: null, strict: true })).rejects.toThrow();
 			expect(state.current.messageDraft).toEqual({ text: "newer", updatedAt: "t9" });
-		});
-
-		it("an explicit save with no version arms unconditionally", async () => {
-			const state = statefulTask({ messageDraft: null });
-			await saveMessageDraft(project, "task-12345678", { text: "arm me", sendOnStop: true });
-			expect(state.current.messageDraft).toEqual(expect.objectContaining({ sendOnStop: true }));
 		});
 	});
 });
@@ -756,6 +695,9 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(holdMessageForPane).not.toHaveBeenCalled();
+		// A cross-task message is wrapped in the envelope on the native path too.
+		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
+		expect(vi.mocked(sendPromptToNativePane).mock.calls[1]![2]).toContain("<from-task><seq:7></from-task>");
 	});
 
 	it("carries the caller's opt-out into the native adapter", async () => {
@@ -795,15 +737,6 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		const { delivery } = await fireScheduledMessage(project, task as never, message as never, { late: false });
 		expect(delivery.status).toBe("not-delivered");
 		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
-	});
-
-	it("wraps a cross-task message in the envelope on the native path too", async () => {
-		const task = nativeTask();
-		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "pane-1", author: null });
-		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
-		const text = vi.mocked(sendPromptToNativePane).mock.calls[0]![2];
-		expect(text).toContain("<from-task><seq:7></from-task>");
-		expect(text).toContain("hello now");
 	});
 });
 
@@ -886,9 +819,11 @@ describe("scheduled-message scheduler — self-reminders in a multi-agent task",
 		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%1", "check CI and continue", expect.any(Function), undefined, undefined);
 	});
 
-	it("holds an immediate message addressed to one agent for that agent, bound for the release check", async () => {
+	it("holds an immediate message addressed to one agent for that agent, bound for the release check, and reports the pane and its role", async () => {
+		vi.mocked(holdMessageForPane).mockResolvedValueOnce({ ...HELD, paneId: "%2" });
 		const task = makeTask({ sessionState: twoAgents });
-		await sendMessageImmediately(task as never, "review the diff", null, { taskId: "other", seq: 7 }, { author: authorB });
+		await expect(sendMessageImmediately(task as never, "review the diff", null, { taskId: "other", seq: 7 }, { author: authorB }))
+			.resolves.toMatchObject({ status: "held", paneId: "%2", agentRole: "agent" });
 		expect(resolveScheduledMessageAuthorPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), authorB);
 		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", expect.stringContaining("review the diff"), expect.any(Function), expect.any(Function), expect.objectContaining({ text: expect.stringContaining("review the diff"), delivered: expect.any(Function) }));
 		expect(resolveMainAgentTarget).not.toHaveBeenCalled();
@@ -905,13 +840,6 @@ describe("scheduled-message scheduler — self-reminders in a multi-agent task",
 		expect(holdMessageForPane).not.toHaveBeenCalled();
 		expect(resolveMainAgentTarget).not.toHaveBeenCalled();
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
-	});
-
-	it("reports the pane it went to and which of the task's agents runs there", async () => {
-		vi.mocked(holdMessageForPane).mockResolvedValueOnce({ ...HELD, paneId: "%2" });
-		await expect(
-			sendMessageImmediately(makeTask({ sessionState: twoAgents }) as never, "review the diff", null, null, { author: authorB }),
-		).resolves.toMatchObject({ status: "held", paneId: "%2", agentRole: "agent" });
 	});
 
 	it("cancels a self-reminder by id like any other", async () => {
@@ -943,11 +871,7 @@ describe("sendMessageImmediately as an external sender", () => {
 			`<reply-with>dev3 message --to-sender openclaw:home:main --in-reply-to ${result.messageId} --subject "what your reply is about" "your reply"</reply-with>`,
 		);
 		expect(text).not.toContain("<from-task>");
-	});
-
-	it("never announces a sender's message as task-to-task traffic", async () => {
-		pushFn.mockClear();
-		await sendMessageImmediately(makeTask() as never, "hi", null, null, { externalSender: { id: "cli", label: "cli" } });
+		// Never announced as task-to-task traffic.
 		expect(pushFn.mock.calls.filter(([name]) => name === "agentMessage")).toEqual([]);
 	});
 });

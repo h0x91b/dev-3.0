@@ -2,17 +2,11 @@ import { describe, expect, it } from "vitest";
 import { resolveDev3Home } from "../../shared/dev3-home";
 
 describe("resolveDev3Home", () => {
-	it("honours DEV3_HOME over the user home", () => {
+	it("honours DEV3_HOME, falls back to ~/.dev3.0 when absent or blank, and normalises the override", () => {
 		expect(resolveDev3Home({ DEV3_HOME: "/scratch/qa/.dev3.0", HOME: "/Users/real" }))
 			.toBe("/scratch/qa/.dev3.0");
-	});
-
-	it("falls back to ~/.dev3.0 when the override is absent or blank", () => {
 		expect(resolveDev3Home({ HOME: "/Users/real" })).toBe("/Users/real/.dev3.0");
 		expect(resolveDev3Home({ DEV3_HOME: "   ", HOME: "/Users/real" })).toBe("/Users/real/.dev3.0");
-	});
-
-	it("normalises an override the way every concatenated path expects", () => {
 		// Backslashes and a trailing slash would break the `startsWith` prefix checks
 		// that decide whether a path is dev3-managed.
 		expect(resolveDev3Home({ DEV3_HOME: "C:\\scratch\\qa\\.dev3.0\\", HOME: "/Users/real" }))

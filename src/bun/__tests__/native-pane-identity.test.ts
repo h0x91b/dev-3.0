@@ -30,36 +30,33 @@ describe("a record proves identity only with BOTH start signatures", () => {
 		});
 	});
 
-	it.each([
-		["an empty host signature", { host: { pid: 10, startSignature: "" } }],
-		["an empty shell signature", { shell: { pid: 11, startSignature: "" } }],
-		["a missing host signature", { host: { pid: 10 } }],
-		["a non-integer pid", { host: { pid: 1.5, startSignature: "host-sig" } }],
-		["no session id", { sessionId: "" }],
-	])("refuses %s, because a pid alone is handed to a successor", (_name, over) => {
-		expect(nativeBoundIdentityOf(record(over))).toBeNull();
+	it("refuses a record missing either signature, with a non-integer pid, or no session id, because a pid alone is handed to a successor", () => {
+		const cases: Array<[string, Record<string, unknown>]> = [
+			["an empty host signature", { host: { pid: 10, startSignature: "" } }],
+			["an empty shell signature", { shell: { pid: 11, startSignature: "" } }],
+			["a missing host signature", { host: { pid: 10 } }],
+			["a non-integer pid", { host: { pid: 1.5, startSignature: "host-sig" } }],
+			["no session id", { sessionId: "" }],
+		];
+		for (const [name, over] of cases) expect(nativeBoundIdentityOf(record(over)), name).toBeNull();
 	});
 });
 
 describe("the reader reports WHY a record could not be used", () => {
-	it("passes the record problem through instead of collapsing it to nothing", () => {
+	it("passes the record problem through, reports an unprovable record as invalid fields, and returns a usable identity", () => {
 		vi.mocked(inspectRecordFile).mockReturnValue({ ok: false, problem: { kind: "unreadable-file", message: "EACCES" } });
 		expect(inspectNativePaneIdentity(SESSION)).toEqual({
 			ok: false,
 			problem: { kind: "unreadable-file", message: "EACCES" },
 		});
-	});
 
-	// An accepted record that cannot prove both processes is unusable, NOT proof of death.
-	it("reports an accepted-but-unprovable record as invalid fields", () => {
+		// An accepted record that cannot prove both processes is unusable, NOT proof of death.
 		vi.mocked(inspectRecordFile).mockReturnValue({
 			ok: true,
 			record: record({ shell: { pid: 11, startSignature: "" } }) as never,
 		});
 		expect(inspectNativePaneIdentity(SESSION)).toEqual({ ok: false, problem: { kind: "invalid-fields" } });
-	});
 
-	it("returns the identity when the record is usable", () => {
 		vi.mocked(inspectRecordFile).mockReturnValue({ ok: true, record: record() as never });
 		const read = inspectNativePaneIdentity(SESSION);
 		expect(read.ok && read.identity.shell.startSignature).toBe("shell-sig");

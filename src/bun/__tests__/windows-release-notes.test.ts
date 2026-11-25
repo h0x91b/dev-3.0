@@ -30,22 +30,18 @@ describe("the unsigned-launch warning", () => {
 	// The measured click path, not a prediction: «Подробнее» then «Всё равно запустить» on a real
 	// ru-RU x64 machine (artifact windows-app-068ea95df…, run 31781800859). A user who is not told
 	// what the dialog means concludes the app is malware, so this is a deliverable, not a footnote.
-	it("names the two clicks that get past SmartScreen", () => {
+	it("names the SmartScreen click path and what the dialog means, in the present tense, without quoting its title", () => {
 		expect(
 			WINDOWS_UNSIGNED_WARNING,
 			"the warning no longer names both buttons. 'Windows will warn you' without the click path leaves the user stuck at a full-screen dialog with no visible way forward. Fix: keep **More info** → **Run anyway**.",
 		).toMatch(/More info/);
 		expect(WINDOWS_UNSIGNED_WARNING).toMatch(/Run anyway/);
-	});
-
-	it("says the dialog is about an unrecognised publisher, not a virus", () => {
+		// It says the dialog is about an unrecognised publisher, not a virus.
 		expect(
 			WINDOWS_UNSIGNED_WARNING,
 			"the warning stopped explaining what SmartScreen actually claims. That sentence is the difference between 'unsigned app' and 'my antivirus flagged this' in the reader's head. Fix: keep the publisher-vs-virus line.",
 		).toMatch(/not a virus report/i);
-	});
-
-	it("states the missing signature as a present fact, not a permanent vow", () => {
+		// It states the missing signature as a present fact, not a permanent vow.
 		// There is no certificate today and Arseny does not want to buy one — that is the present
 		// tense. "It never will be" turned a budget decision into a promise about every future build.
 		expect(
@@ -53,9 +49,7 @@ describe("the unsigned-launch warning", () => {
 			"the warning promises the build will never be signed. That is a vow about the future nobody made. Fix: say it is unsigned at this time and leave the future open.",
 		).not.toMatch(/never will be|will never be/i);
 		expect(WINDOWS_UNSIGNED_WARNING).toMatch(/at this time/i);
-	});
-
-	it("does not quote the localised dialog title", () => {
+		// It does not quote the localised dialog title.
 		// The title was never captured on an en-US machine — it is recorded as unknown, not absent.
 		// Quoting an English title to someone whose Windows shows Russian is worse than describing it.
 		expect(
@@ -68,7 +62,7 @@ describe("the unsigned-launch warning", () => {
 describe("the release-notes fragment", () => {
 	const notes = renderWindowsReleaseNotes(FACTS);
 
-	it("carries the warning, the file and the entry point", () => {
+	it("carries the warning, the file, the size and the Windows-form entry point under its own heading", () => {
 		expect(notes, "the release body must carry the unsigned warning next to the download, not somewhere else.").toContain(
 			WINDOWS_UNSIGNED_WARNING,
 		);
@@ -76,16 +70,12 @@ describe("the release-notes fragment", () => {
 		// The real one is 121.0 MB (run 31799430704, windows-latest); the fixture is deliberately a
 		// different number so a hardcoded size in the renderer would show up here.
 		expect(notes, "a size lets the reader decide before starting a nine-figure download").toMatch(/397\.7 MB/);
-	});
-
-	it("writes the entry point the way Windows shows it", () => {
+		// It writes the entry point the way Windows shows it.
 		expect(
 			notes,
 			"the launcher path is printed with POSIX separators, which is how the launch proof records it and not how a Windows user reads it. Fix: keep the backslash conversion.",
 		).toContain("bin\\launcher.exe");
-	});
-
-	it("is a heading plus content, so it can be appended into the Download section", () => {
+		// It is a heading plus content, so it can be appended into the Download section.
 		expect(
 			notes.trimStart(),
 			"release.yml appends this under `## Download`, so it has to open with its own `###` heading or it merges into whatever section came before it.",
@@ -94,14 +84,12 @@ describe("the release-notes fragment", () => {
 });
 
 describe("the CI run summary", () => {
-	it("names the channel it built instead of hardcoding one", () => {
+	it("names the channel it built instead of hardcoding one, and carries the shared warning", () => {
 		// It said "Windows canary build" on every channel while canary was the only caller. A
 		// stable run would have announced itself as canary and read as a mis-published build.
 		expect(renderWindowsRunSummary(FACTS)).toContain("## Windows build (stable)");
 		expect(renderWindowsRunSummary({ ...FACTS, channel: "canary" })).toContain("## Windows build (canary)");
-	});
-
-	it("carries the same warning as the release body", () => {
+		// It carries the same warning as the release body.
 		expect(
 			renderWindowsRunSummary(FACTS),
 			"the two destinations must share one copy of the warning — a second copy drifts, and the drifted one is always the one being read.",

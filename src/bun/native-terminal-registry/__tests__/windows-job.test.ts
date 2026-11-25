@@ -28,19 +28,17 @@ function makeApi(): WindowsJobApi {
 }
 
 describe("native-session Windows Job Object containment", () => {
-	it("names jobs in a registry-specific namespace and rejects bad tokens", () => {
+	it("names jobs in a registry-specific namespace and rejects anything but a 48-hex token", () => {
 		expect(windowsJobName(TOKEN)).toBe(`Local\\dev3-native-sess-${TOKEN}`);
 		expect(() => windowsJobName("short")).toThrow("invalid native-session token");
-	});
-
-	it("validates the 48-hex session token format", () => {
+		// The 48-hex session token format.
 		expect(isValidSessionToken(TOKEN)).toBe(true);
 		for (const bad of ["", "short", "ghost-tok", "z".repeat(48), "a".repeat(47), "a".repeat(49)]) {
 			expect(isValidSessionToken(bad)).toBe(false);
 		}
 	});
 
-	it("enrols the host before spawn with kill-on-close", () => {
+	it("enrols the host before spawn with kill-on-close and closes the owning job and API exactly once", () => {
 		const api = makeApi();
 		const containment = createWindowsJobWithApi(TOKEN, 4242, api);
 
@@ -52,12 +50,8 @@ describe("native-session Windows Job Object containment", () => {
 		const limits = vi.mocked(api.setExtendedLimitInformation).mock.calls[0]?.[1];
 		expect(limits).toBeInstanceOf(BigUint64Array);
 		expect(new DataView(limits!.buffer).getUint32(16, true)).toBe(0x00002000);
-		containment.closeForTreeTermination();
-	});
 
-	it("closes the owning job and API exactly once", () => {
-		const api = makeApi();
-		const containment = createWindowsJobWithApi(TOKEN, 4242, api);
+		// Closing releases the owning job and API exactly once.
 		vi.mocked(api.closeHandle).mockClear();
 		vi.mocked(api.dispose).mockClear();
 

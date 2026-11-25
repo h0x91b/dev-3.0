@@ -64,19 +64,18 @@ function sample(overrides: Partial<CaptureRecord> = {}): CaptureRecord {
 }
 
 describe("capture record — shape and parsing", () => {
-	it("round-trips a live record", () => {
+	it("round-trips a live record carrying the producer's identity with the text", () => {
 		expect(recordOrNull(sample(), "alpha")).toEqual(sample());
-	});
-
-	it("carries the producer's identity with the text", () => {
-		// This is what lets a reader prove the rows came from the pane it means.
-		const parsed = recordOrNull(sample(), "alpha");
-		expect(parsed?.producer).toEqual({
-			hostPid: 4242,
-			hostStartSignature: "h-4242",
-			shellPid: 4243,
-			shellStartSignature: "s-4243",
-		});
+		{
+			// This is what lets a reader prove the rows came from the pane it means.
+			const parsed = recordOrNull(sample(), "alpha");
+			expect(parsed?.producer).toEqual({
+				hostPid: 4242,
+				hostStartSignature: "h-4242",
+				shellPid: 4243,
+				shellStartSignature: "s-4243",
+			});
+		}
 	});
 
 	it("carries no colours, cursor, modes, command, or environment", () => {
@@ -263,7 +262,7 @@ describe("capture record — on disk", () => {
 });
 
 describe("capture record — content identity", () => {
-	it("ignores the timestamp and the producer, so a forced re-write is not a change", () => {
+	it("ignores the timestamp, the producer and the transport watermark, so a forced re-write is not a change", () => {
 		const a = sample({ updatedAt: "2026-08-03T10:00:00.000Z" });
 		const b = sample({ updatedAt: "2026-08-03T11:00:00.000Z" });
 		expect(captureContentIdentity(a)).toBe(captureContentIdentity(b));
@@ -271,12 +270,11 @@ describe("capture record — content identity", () => {
 			producer: { hostPid: 9, hostStartSignature: "x", shellPid: 10, shellStartSignature: "y" },
 		});
 		expect(captureContentIdentity(other)).toBe(captureContentIdentity(a));
-	});
-
-	it("ignores the transport watermark, which advances without changing a row", () => {
-		// It is not publicly observable and it moves on events that change nothing, so
-		// letting it in reset the content timestamp on a quiet pane.
-		expect(captureContentIdentity(sample({ watermarkSeq: 42 }))).toBe(captureContentIdentity(sample()));
+		{
+			// It is not publicly observable and it moves on events that change nothing, so
+			// letting it in reset the content timestamp on a quiet pane.
+			expect(captureContentIdentity(sample({ watermarkSeq: 42 }))).toBe(captureContentIdentity(sample()));
+		}
 	});
 
 	it("changes for every observable field a reader can see", () => {

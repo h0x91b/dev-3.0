@@ -81,25 +81,20 @@ afterEach(() => {
 });
 
 describe("deliverAgentPrompt — tmux tasks (regression)", () => {
-	it("routes an unmarked legacy task through the tmux path", async () => {
+	it("routes an unmarked legacy task and a tmux-marked task through the tmux path, on the task's own socket", async () => {
 		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toEqual({ status: "delivered" });
 		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", PANES);
-		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
-	});
 
-	it("routes an explicitly tmux-marked task through the tmux path", async () => {
 		await deliverAgentPrompt(task({ terminalBackend: "tmux" } as Partial<Task>), "check CI");
-		expect(sendPromptToAgentPane).toHaveBeenCalledTimes(1);
-		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
-	});
+		expect(sendPromptToAgentPane, "tmux-marked").toHaveBeenCalledTimes(2);
 
-	it("honours the task's own tmux socket", async () => {
 		await deliverAgentPrompt(task({ tmuxSocket: "custom" } as Partial<Task>), "check CI");
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(
+		expect(sendPromptToAgentPane).toHaveBeenLastCalledWith(
 			expect.objectContaining({ id: TASK_ID, tmuxSocket: "custom" }),
 			"check CI",
 			PANES,
 		);
+		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
 	});
 
 	it("routes a concrete tmux pane target to the pane path", async () => {
@@ -108,8 +103,8 @@ describe("deliverAgentPrompt — tmux tasks (regression)", () => {
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
-	it("maps a proven tmux refusal to not-delivered, keeping its reason", async () => {
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue({
+	it("maps a proven tmux refusal to not-delivered with its reason, and a send stopped mid-program to unconfirmed", async () => {
+		vi.mocked(sendPromptToAgentPane).mockResolvedValueOnce({
 			deliveryId: "d1",
 			backend: "tmux",
 			paneId: "%1",
@@ -121,12 +116,10 @@ describe("deliverAgentPrompt — tmux tasks (regression)", () => {
 			status: "not-delivered",
 			reason: "pane-dead",
 		});
-	});
 
-	it("maps a tmux send that stopped mid-program to unconfirmed, never to a failure", async () => {
 		// The text stage went in and Enter did not, so the agent has the text sitting in
-		// its input box: a caller that re-sent would submit it twice.
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue({
+		// its input box: a caller that re-sent would submit it twice. Never a failure.
+		vi.mocked(sendPromptToAgentPane).mockResolvedValueOnce({
 			deliveryId: "d1",
 			backend: "tmux",
 			paneId: "%1",
@@ -143,9 +136,11 @@ describe("deliverAgentPrompt — native tasks", () => {
 	const nativeTask = (extra: Partial<Task> = {}) =>
 		task({ terminalBackend: "native", ...extra } as Partial<Task>);
 
-	it("routes an agent target to the native agent pane", async () => {
+	it("routes an agent target to the native agent pane, ignoring stale tmux session state on the task", async () => {
+		// task() carries tmux panes in its session state; a native task must not use them.
 		await expect(deliverAgentPrompt(nativeTask(), "check CI")).resolves.toMatchObject({ status: "unconfirmed" });
 		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", {});
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
 	it("routes a concrete pane target to the native pane path", async () => {
@@ -164,11 +159,6 @@ describe("deliverAgentPrompt — native tasks", () => {
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});
-
-	it("ignores stale tmux session state left on a native task", async () => {
-		await deliverAgentPrompt(nativeTask({ sessionState: { panes: PANES } }), "check CI");
-		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
-	});
 });
 
 describe("deliverAgentPrompt — unusable backend marker", () => {
@@ -182,17 +172,18 @@ describe("deliverAgentPrompt — unusable backend marker", () => {
 });
 
 describe("deliverAgentPrompt — hook re-assertion", () => {
-	it("re-asserts the Claude hooks before the prompt is typed, on either backend", async () => {
-		for (const t of [task(), task({ terminalBackend: "native" } as Partial<Task>)]) {
+	it("re-asserts the Claude hooks before the prompt is typed, on either backend and for a pane target", async () => {
+		const cases: Array<[string, Task, Parameters<typeof deliverAgentPrompt>[2]]> = [
+			["tmux agent", task(), undefined],
+			["native agent", task({ terminalBackend: "native" } as Partial<Task>), undefined],
+			["tmux pane", task(), { kind: "pane", paneId: "%4" }],
+		];
+		for (const [name, t, target] of cases) {
 			vi.clearAllMocks();
-			await deliverAgentPrompt(t, "check CI");
-			expect(refreshClaudeHooksForTask).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }));
+			await deliverAgentPrompt(t, "check CI", target);
+			expect(refreshClaudeHooksForTask, name).toHaveBeenCalledTimes(1);
+			expect(refreshClaudeHooksForTask, name).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }));
 		}
-	});
-
-	it("re-asserts them for a concrete pane target too", async () => {
-		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" });
-		expect(refreshClaudeHooksForTask).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -221,13 +212,19 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
-	it("binds the main agent it resolved, so the release checks it is still that agent", async () => {
+	it("binds the resolved main agent, or an addressed pane target's agent, so the release checks it again", async () => {
 		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "%1", author: { ...AUTHOR, paneId: "%1" } });
 		await deliverAgentPrompt(task(), "check CI", { kind: "agent" }, { hold: true });
-		const verify = vi.mocked(holdMessageForPane).mock.calls[0]![4]!;
+		const verifyMain = vi.mocked(holdMessageForPane).mock.calls[0]![4]!;
 		vi.mocked(addressedAgentRefusal).mockResolvedValueOnce("the addressed agent is no longer running");
-		await expect(verify()).resolves.toBe("the addressed agent is no longer running");
+		await expect(verifyMain(), "main agent").resolves.toBe("the addressed agent is no longer running");
 		expect(addressedAgentRefusal).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), { ...AUTHOR, paneId: "%1" }, "%1");
+
+		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" }, { hold: true, author: AUTHOR });
+		const verifyPane = vi.mocked(holdMessageForPane).mock.calls[1]![4];
+		expect(verifyPane, "addressed pane").toBeTypeOf("function");
+		await expect(verifyPane!()).resolves.toBeNull();
+		expect(addressedAgentRefusal).toHaveBeenLastCalledWith(expect.objectContaining({ id: TASK_ID }), AUTHOR, "%4");
 	});
 
 	it("sends a concrete tmux pane target down the hold path, unbound", async () => {
@@ -235,14 +232,6 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI", undefined, undefined, undefined);
 		expect(resolveMainAgentTarget).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
-	});
-
-	it("binds an addressed pane target to its agent, checked again at release", async () => {
-		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" }, { hold: true, author: AUTHOR });
-		const verify = vi.mocked(holdMessageForPane).mock.calls[0]![4];
-		expect(verify).toBeTypeOf("function");
-		await expect(verify!()).resolves.toBeNull();
-		expect(addressedAgentRefusal).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), AUTHOR, "%4");
 	});
 
 	it("offers a tmux hold to the agent's tool hook, with the board trailer, and takes back the typed receipt once drained", async () => {
@@ -260,22 +249,16 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		expect(typedPromptClaimCount(TASK_ID)).toBe(0);
 	});
 
-	it("never offers a native hold to the tool hook: the native arm keeps the typed path", async () => {
-		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "pane-1", author: null });
-		vi.mocked(sendPromptToNativePane).mockResolvedValue(HELD);
-		await deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "check CI", { kind: "agent" }, {
-			hold: true,
-			hook: { text: "inline envelope", delivered: vi.fn() },
-		});
-		expect(vi.mocked(sendPromptToNativePane).mock.calls[0]![3]).not.toHaveProperty("hook");
-	});
-
-	it("passes the hold and the binding on to the native arm, which owns its own holding", async () => {
+	it("passes the hold and the binding on to the native arm, which owns its holding and never gets the tool hook", async () => {
 		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "pane-1", author: { ...AUTHOR, paneId: "pane-1" } });
 		vi.mocked(sendPromptToNativePane).mockResolvedValue(HELD);
 		await expect(
-			deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "check CI", { kind: "agent" }, { hold: true }),
+			deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "check CI", { kind: "agent" }, {
+				hold: true,
+				hook: { text: "inline envelope", delivered: vi.fn() },
+			}),
 		).resolves.toMatchObject({ status: "held" });
+		// The native arm keeps the typed path, so the options carry no hook.
 		expect(sendPromptToNativePane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "pane-1", "check CI", {
 			hold: true,
 			verify: expect.any(Function),

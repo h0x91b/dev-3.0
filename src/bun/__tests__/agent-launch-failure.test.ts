@@ -14,27 +14,22 @@ const withPane = (sessionId: string | null, launchFailure: Task["launchFailure"]
 	({ launchFailure, sessionState: { panes: [{ agentCmd: "claude", sessionId, agentId: null, configId: null }] } }) as unknown as Task;
 
 describe("the never-started rule", () => {
-	it("holds when the main pane still points at the failed launch", () => {
-		expect(mainAgentNeverStarted(withPane("dead-1"))).toBe(true);
-	});
-
-	it("holds when the main pane has no conversation id", () => {
+	it("holds when the main pane still points at the failed launch, or has no conversation id", () => {
+		expect(mainAgentNeverStarted(withPane("dead-1")), "failed launch").toBe(true);
 		expect(mainAgentNeverStarted(withPane(null))).toBe(true);
 		expect(mainAgentNeverStarted({ launchFailure: failure } as Task)).toBe(true);
 	});
 
-	it("does not hold once the main pane carries another conversation", () => {
-		expect(mainAgentNeverStarted(withPane("later-session"))).toBe(false);
-	});
-
-	it("does not hold for a crash of an agent that had started, or without a failure", () => {
+	it("does not hold once the main pane carries another conversation, for a crash of a started agent, or without a failure", () => {
+		expect(mainAgentNeverStarted(withPane("later-session")), "another conversation").toBe(false);
 		expect(mainAgentNeverStarted(withPane("dead-1", { ...failure, neverStarted: false }))).toBe(false);
 		expect(mainAgentNeverStarted({ ...withPane("dead-1"), launchFailure: undefined })).toBe(false);
 	});
 });
 
 describe("the captured output", () => {
-	it("drops the run script's own Starting line and keeps the last 40 lines", () => {
+	it("drops the run script's own Starting line and keeps the last 40 lines; null when only the banner was printed", () => {
+		expect(trimLaunchFailureOutput("Starting: claude\n\n"), "banner only").toBeNull();
 		const raw = ["Starting: claude --very-long-command", ...Array.from({ length: 50 }, (_, i) => `line ${i}`), "", ""].join("\n");
 		const lines = trimLaunchFailureOutput(raw)?.split("\n");
 		expect(lines).toHaveLength(40);
@@ -42,9 +37,6 @@ describe("the captured output", () => {
 		expect(lines?.[lines.length - 1]).toBe("line 49");
 	});
 
-	it("is null when nothing but the banner was printed", () => {
-		expect(trimLaunchFailureOutput("Starting: claude\n\n")).toBeNull();
-	});
 
 	it("is captured with wrapped lines joined", async () => {
 		const capture = vi.spyOn(tmux, "capturePane").mockResolvedValue("");

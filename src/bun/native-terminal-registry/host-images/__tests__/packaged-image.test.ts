@@ -88,19 +88,18 @@ describe("assemblePackagedImage", () => {
 		);
 	});
 
-	test("identical inputs yield the identical tag and byte-identical manifest", () => {
+	test("identical inputs yield the identical tag and manifest; changed entrypoint bytes change the tag", () => {
 		const sources = writeSources("same");
 		const first = assemblePackagedImage(assembleInput(newPackageRoot("one"), sources));
 		const second = assemblePackagedImage(assembleInput(newPackageRoot("two"), sources));
 
 		expect(second.tag).toBe(first.tag);
 		expect(readFileSync(second.manifestPath, "utf8")).toBe(readFileSync(first.manifestPath, "utf8"));
-	});
-
-	test("changed entrypoint bytes yield a different tag", () => {
-		const first = assemblePackagedImage(assembleInput(newPackageRoot("v1"), writeSources("v1", "runtime", "// v1\n")));
-		const second = assemblePackagedImage(assembleInput(newPackageRoot("v2"), writeSources("v2", "runtime", "// v2\n")));
-		expect(second.tag).not.toBe(first.tag);
+		{
+			const first = assemblePackagedImage(assembleInput(newPackageRoot("v1"), writeSources("v1", "runtime", "// v1\n")));
+			const second = assemblePackagedImage(assembleInput(newPackageRoot("v2"), writeSources("v2", "runtime", "// v2\n")));
+			expect(second.tag).not.toBe(first.tag);
+		}
 	});
 
 	test("re-assembling into the same package reuses the existing image untouched", () => {
@@ -139,22 +138,21 @@ describe("readPackagedImage", () => {
 		if (read.status === "partial") expect(read.code).toBe("checksum-mismatch");
 	});
 
-	test("detects a removed file as a partial image", () => {
+	test("detects a removed file or a missing manifest as a partial image", () => {
 		const image = assemblePackagedImage(assembleInput(newPackageRoot("gone"), writeSources("gone")));
 		rmSync(image.runtimeCarrierPath);
 
 		const read = readPackagedImage(image.imageDir);
 		expect(read.status).toBe("partial");
 		if (read.status === "partial") expect(read.code).toBe("partial");
-	});
+		{
+			const image = assemblePackagedImage(assembleInput(newPackageRoot("nomanifest"), writeSources("nomanifest")));
+			rmSync(image.manifestPath);
 
-	test("detects a missing manifest as a partial image", () => {
-		const image = assemblePackagedImage(assembleInput(newPackageRoot("nomanifest"), writeSources("nomanifest")));
-		rmSync(image.manifestPath);
-
-		const read = readPackagedImage(image.imageDir);
-		expect(read.status).toBe("partial");
-		if (read.status === "partial") expect(read.reason).toContain(PACKAGED_HOST_IMAGE_MANIFEST_FILE);
+			const read = readPackagedImage(image.imageDir);
+			expect(read.status).toBe("partial");
+			if (read.status === "partial") expect(read.reason).toContain(PACKAGED_HOST_IMAGE_MANIFEST_FILE);
+		}
 	});
 
 	test("reports an absent directory rather than throwing", () => {

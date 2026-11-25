@@ -31,15 +31,13 @@ function publish(overrides: Partial<SharedArtifact> = {}): SharedArtifact {
 }
 
 describe("artifactGroupKey", () => {
-	it("normalizes the title and prefers an explicit slug", () => {
+	it("normalizes the title, prefers an explicit slug, and groups a legacy record with no key by its title", () => {
 		expect(artifactGroupKey({ title: "  Weekly   Report " })).toBe("title:weekly report");
 		expect(artifactGroupKey({ title: "Weekly Report" })).toBe(artifactGroupKey({ title: "weekly report" }));
 		expect(artifactGroupKey({ artifactId: "Weekly", title: "Weekly Report" })).toBe("id:weekly");
-	});
 
-	it("groups a legacy record with no key by its title", () => {
 		const legacy = publish({ id: "legacy", groupKey: undefined, version: undefined, title: "Weekly Report" });
-		expect(recordGroupKey(legacy)).toBe("title:weekly report");
+		expect(recordGroupKey(legacy), "legacy").toBe("title:weekly report");
 		expect(latestArtifactVersion(legacy)).toBe(1);
 		expect(artifactVersions(legacy)).toHaveLength(1);
 	});
@@ -63,20 +61,22 @@ describe("appendArtifactVersion", () => {
 		expect(merged.name).toBe("report2.html");
 		expect(merged.bytes).toBe(200);
 		expect(merged.previousVersions?.map((entry) => entry.storedPath)).toEqual([first.storedPath]);
+
+		// Re-runnable: collapsing again only appends.
+		const twice = appendArtifactVersion(artifacts, publish({ id: "c", createdAt: 3 })).artifacts;
+		expect(twice).toHaveLength(1);
+		expect(twice[0].id).toBe("a");
+		expect(artifactVersions(twice[0]).map((entry) => entry.createdAt)).toEqual([1, 2, 3]);
 	});
 
-	it("moves the republished row to the end so the viewer opens on it", () => {
+	it("moves the republished row to the end so the viewer opens on it, and keeps a differently titled artifact as its own row", () => {
 		const other = (n: number) => publish({ id: `other-${n}`, title: `Other ${n}`, groupKey: artifactGroupKey({ title: `Other ${n}` }) });
 		const existing = [publish({ id: "a", createdAt: 1 }), other(1), other(2)];
 		const { artifacts } = appendArtifactVersion(existing, publish({ id: "b", createdAt: 2 }));
 
 		expect(artifacts.map((artifact) => artifact.id)).toEqual(["other-1", "other-2", "a"]);
 		expect(artifacts[artifacts.length - 1].version).toBe(2);
-	});
-
-	it("keeps a differently titled artifact as its own row", () => {
-		const { artifacts } = appendArtifactVersion([publish({ id: "a" })], publish({ id: "b", title: "Other", groupKey: artifactGroupKey({ title: "Other" }) }));
-		expect(artifacts.map((artifact) => artifact.id)).toEqual(["a", "b"]);
+		expect(artifacts.filter((artifact) => artifact.id.startsWith("other-")).map((artifact) => artifact.version ?? 1), "own rows").toEqual([1, 1]);
 	});
 
 	it("collapses pre-versioning records that share a title, oldest first", () => {
@@ -92,13 +92,6 @@ describe("appendArtifactVersion", () => {
 		expect(artifactVersions(artifacts[0]).map((entry) => entry.createdAt)).toEqual([1, 2, 3, 9]);
 	});
 
-	it("is re-runnable: collapsing again only appends", () => {
-		const once = appendArtifactVersion([publish({ id: "a", createdAt: 1 })], publish({ id: "b", createdAt: 2 })).artifacts;
-		const twice = appendArtifactVersion(once, publish({ id: "c", createdAt: 3 })).artifacts;
-		expect(twice).toHaveLength(1);
-		expect(twice[0].id).toBe("a");
-		expect(artifactVersions(twice[0]).map((entry) => entry.createdAt)).toEqual([1, 2, 3]);
-	});
 
 	it("never attaches to a --new artifact, and later publishes group with each other", () => {
 		const standalone = publish({ id: "forced", groupKey: "new:forced" });
@@ -150,10 +143,7 @@ describe("artifactAtVersion", () => {
 		expect(old.previousVersions).toBeUndefined();
 		// The newest version has no bundle — projecting back must not inherit one.
 		expect(artifactAtVersion(merged, 2).bundlePath).toBeUndefined();
-	});
-
-	it("falls back to the record for an unknown version", () => {
-		const only = publish({ id: "a" });
-		expect(artifactAtVersion(only, 7)).toBe(only);
+		// An unknown version falls back to the record.
+		expect(artifactAtVersion(merged, 7)).toBe(merged);
 	});
 });

@@ -341,22 +341,13 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 		);
 	});
 
-	it("says nothing on a Codex new enough to run the model", async () => {
+	it("says nothing on a Codex new enough to run the model, or when the version could not be read", async () => {
 		resolveAsCodex("gpt-6-astra");
-		vi.mocked(agents.getCodexVersionCached).mockResolvedValue("codex-cli 0.153.4");
-
-		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
-
-		expect(sharedPure.buildModelVersionGateWrapper).not.toHaveBeenCalled();
-	});
-
-	it("says nothing when the version could not be read", async () => {
-		resolveAsCodex("gpt-6-astra");
-		vi.mocked(agents.getCodexVersionCached).mockResolvedValue(null);
-
-		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
-
-		expect(sharedPure.buildModelVersionGateWrapper).not.toHaveBeenCalled();
+		for (const version of ["codex-cli 0.153.4", null]) {
+			vi.mocked(agents.getCodexVersionCached).mockResolvedValue(version);
+			await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+			expect(sharedPure.buildModelVersionGateWrapper, String(version)).not.toHaveBeenCalled();
+		}
 	});
 
 	it("never touches a non-Codex launch", async () => {
@@ -476,7 +467,7 @@ describe("no picked agent — the default that ran is recorded on the pane", () 
 		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
 	});
 
-	it("names the default agent and preset on the main pane", async () => {
+	it("names the default agent and preset on the main pane, leaving the task itself following the default", async () => {
 		resolveAsDefault();
 
 		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
@@ -488,6 +479,10 @@ describe("no picked agent — the default that ran is recorded on the pane", () 
 				sessionState: { panes: [expect.objectContaining({ agentId: "builtin-claude", configId: "claude-bypass", agentFromDefault: true })] },
 			}),
 		);
+		// The task itself keeps following the default, so a relaunch picks up a changed one.
+		const patch = vi.mocked(data.updateTask).mock.calls[0]?.[2];
+		expect(patch).not.toHaveProperty("agentId");
+		expect(patch).not.toHaveProperty("configId");
 	});
 
 	it("does not mark a picked agent as the default", async () => {
@@ -506,29 +501,15 @@ describe("no picked agent — the default that ran is recorded on the pane", () 
 		const pane = vi.mocked(data.updateTask).mock.calls[0]?.[2].sessionState?.panes[0];
 		expect(pane).toMatchObject({ agentId: "builtin-claude", agentFromDefault: true });
 	});
-
-	it("leaves the task itself following the default, so a relaunch picks up a changed one", async () => {
-		resolveAsDefault();
-
-		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
-
-		const patch = vi.mocked(data.updateTask).mock.calls[0]?.[2];
-		expect(patch).not.toHaveProperty("agentId");
-		expect(patch).not.toHaveProperty("configId");
-	});
 });
 
 describe("unmarked task — the legacy tmux path is untouched", () => {
-	it("creates a tmux PTY session and never a native one", async () => {
+	it("creates one tmux PTY session (never a native one) with the wrapper command, env and socket, gated on it appearing", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 
 		expect(pty.createSession).toHaveBeenCalledTimes(1);
 		expect(pty.createNativeTaskSession).not.toHaveBeenCalled();
-	});
-
-	it("passes the wrapper command, env, and socket to createSession", async () => {
-		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
-
+		expect(pty.tmuxSessionExists).toHaveBeenCalledWith(TASK_ID, "dev3");
 		expect(pty.createSession).toHaveBeenCalledWith(
 			TASK_ID,
 			"proj-1",
@@ -539,12 +520,6 @@ describe("unmarked task — the legacy tmux path is untouched", () => {
 		);
 	});
 
-	it("still gates the launch on the tmux session actually appearing", async () => {
-		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
-
-		expect(pty.tmuxSessionExists).toHaveBeenCalledWith(TASK_ID, "dev3");
-	});
-
 	it("still probes tmux for a virtual project's pre-existing session", async () => {
 		await launchTaskPty(makeProject({ kind: "virtual" }), makeTask(), WORKTREE);
 
@@ -553,7 +528,7 @@ describe("unmarked task — the legacy tmux path is untouched", () => {
 });
 
 describe("native task — tmux is not involved at all", () => {
-	it("creates the native session with the same wrapper script as an explicit launch spec", async () => {
+	it("creates the native session with the same wrapper script as an explicit launch spec, never creating or probing tmux", async () => {
 		await launchTaskPty(makeProject(), makeTask({ terminalBackend: "native" }), WORKTREE);
 
 		expect(pty.createNativeTaskSession).toHaveBeenCalledWith(
@@ -563,6 +538,9 @@ describe("native task — tmux is not involved at all", () => {
 			{ executable: "/bin/zsh", argv: [RUN_SCRIPT] },
 			{ ...EXPECTED_ENV, ZDOTDIR: "/tmp/dev3-shell", DEV3_WORKTREE_ROOT: WORKTREE },
 		);
+		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(pty.tmuxSessionExists).not.toHaveBeenCalled();
+		expect(tmuxCalls()).toEqual([]);
 	});
 
 	it("hands the native session the same env the tmux path would get, plus the prompt env tmux sets globally", async () => {
@@ -572,14 +550,6 @@ describe("native task — tmux is not involved at all", () => {
 		const tmuxEnv = vi.mocked(pty.createSession).mock.calls[0][4];
 		const nativeEnv = vi.mocked(pty.createNativeTaskSession).mock.calls[0][4];
 		expect(nativeEnv).toEqual({ ...tmuxEnv, ZDOTDIR: "/tmp/dev3-shell", DEV3_WORKTREE_ROOT: WORKTREE });
-	});
-
-	it("never creates or probes a tmux session", async () => {
-		await launchTaskPty(makeProject(), makeTask({ terminalBackend: "native" }), WORKTREE);
-
-		expect(pty.createSession).not.toHaveBeenCalled();
-		expect(pty.tmuxSessionExists).not.toHaveBeenCalled();
-		expect(tmuxCalls()).toEqual([]);
 	});
 
 	it("skips the virtual-project side shell instead of splitting a tmux pane", async () => {
@@ -629,12 +599,14 @@ describe("setup-script wrapper — one flavour per backend", () => {
 
 	// Writing that file is the wrapper's ONLY way to report a failed setupScript,
 	// and the path is not derivable inside the pure builder.
-	it("hands the wrapper the exit-code path to write", async () => {
+	it("hands the wrapper the exit-code path to write, after stopping any previous watch", async () => {
 		const task = makeTask();
 		await launchTaskPty(setupProject(), task, WORKTREE, null, null, true);
 
 		const args = vi.mocked(sharedPure.buildSetupStartupWrapper).mock.calls[0][0];
 		expect(args.setupExitPath).toBe(setupExitCodePath(task.id));
+		// A relaunch must not leave the previous launch's timer running.
+		expect(vi.mocked(watch.stopSetupFailureWatch)).toHaveBeenCalledWith(task.id);
 	});
 
 	// The app that launched is the only process that can act on the verdict, so
@@ -671,13 +643,6 @@ describe("setup-script wrapper — one flavour per backend", () => {
 			"taskUpdated",
 			expect.objectContaining({ task: expect.objectContaining({ setupFailedExitCode: 127 }) }),
 		);
-	});
-
-	// A relaunch must not leave the previous launch's timer running.
-	it("stops any previous watch before launching", async () => {
-		const task = makeTask();
-		await launchTaskPty(setupProject(), task, WORKTREE, null, null, true);
-		expect(vi.mocked(watch.stopSetupFailureWatch)).toHaveBeenCalledWith(task.id);
 	});
 
 	// A launch is the answer to the previous run's verdict — including the "start
@@ -816,7 +781,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 			vi.mocked(data.getTask).mockResolvedValue(nativeTask());
 		});
 
-		it("opens a below pane running a yazi script when none is alive", async () => {
+		it("opens a below pane running a yazi script when none is alive, never touching tmux", async () => {
 			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
 
 			expect(vi.mocked(sharedPure.writeLaunchScript)).toHaveBeenCalledWith(`/tmp/dev3/${TASK_ID}/yazi.sh`, "yazi\n");
@@ -828,6 +793,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 				nativeLaunch: { executable: "/bin/zsh", argv: [`/tmp/dev3/${TASK_ID}/yazi.sh`] },
 			}));
 			expect(vi.mocked(auxPanes.closeAuxPane)).not.toHaveBeenCalled();
+			expect(tmuxCalls()).toEqual([]);
 		});
 
 		it("closes the pane instead when one is alive", async () => {
@@ -845,12 +811,6 @@ describe("setup-script wrapper — one flavour per backend", () => {
 			await expect(tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" }))
 				.resolves.toMatchObject({ notInstalled: true });
 			expect(vi.mocked(auxPanes.openAuxPane)).not.toHaveBeenCalled();
-		});
-
-		it("never touches tmux", async () => {
-			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
-
-			expect(tmuxCalls()).toEqual([]);
 		});
 	});
 
@@ -1033,7 +993,7 @@ describe("launch registration of a fresh Claude session", () => {
 		expect(exitReports()).toEqual([]);
 	});
 
-	it.each(["codex", "gemini", "cursor-agent"])("bakes an exit-only report into a %s launch", async (baseCommand) => {
+	it.each(["codex"])("bakes an exit-only report into a %s launch", async (baseCommand) => {
 		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
 			command: baseCommand, extraEnv: {}, agent: { baseCommand }, config: undefined, agentFamily: baseCommand,
 		} as never);

@@ -28,12 +28,9 @@ import { NEW_WINDOW_STATUS_RANGE, STATUS_FORMAT } from "../themes";
 import { DEV3_HOME } from "../../paths";
 
 describe("tmux config paths", () => {
-	it("uses the isolated test root for the themed configs", () => {
+	it("uses the isolated test root, defaults to the dark config and switches with the theme", () => {
 		expect(tmuxConfigPath("dark", true)).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-dark-dimmed.conf`);
 		expect(tmuxConfigPath("light", false)).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-light-undimmed.conf`);
-	});
-
-	it("defaults to the dark config and switches with the theme", () => {
 		expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("dark", true));
 		expect(setActiveTmuxTheme("light")).toBe(tmuxConfigPath("light", true));
 		expect(activeTmuxConfigPath()).toBe(tmuxConfigPath("light", true));
@@ -57,13 +54,15 @@ describe("tmux config paths", () => {
 });
 
 describe("buildThemeConfig", () => {
-	it.each(["mocha", "latte"] as const)("puts the window bar on top after the theme sources (%s)", (flavor) => {
-		const config = buildThemeConfig(flavor);
-		const position = config.indexOf("set -g status-position top");
-		expect(position).toBeGreaterThan(-1);
-		// After every plugin `source` line, so the theme cannot move it back.
-		expect(position).toBeGreaterThan(config.lastIndexOf("source "));
-		expect(config).not.toMatch(/status-position bottom/);
+	it("puts the window bar on top after the theme sources, for both flavors", () => {
+		for (const flavor of ["mocha", "latte"] as const) {
+			const config = buildThemeConfig(flavor);
+			const position = config.indexOf("set -g status-position top");
+			expect(position, flavor).toBeGreaterThan(-1);
+			// After every plugin `source` line, so the theme cannot move it back.
+			expect(position, flavor).toBeGreaterThan(config.lastIndexOf("source "));
+			expect(config).not.toMatch(/status-position bottom/);
+		}
 	});
 
 	it("draws the + button after the window list and opens a window with the split cwd rule", () => {
@@ -80,28 +79,17 @@ describe("buildThemeConfig", () => {
 		);
 	});
 
-	it("includes synchronized output (Sync) terminal features", () => {
+	it("enables Sync, OSC 8 hyperlinks (forced for CLIs), extended keys, focus events and a 250000 history", () => {
 		const config = buildThemeConfig("mocha");
 		expect(config).toContain("xterm-256color:Sync");
 		expect(config).toContain("tmux-256color:Sync");
-	});
-
-	it("forwards OSC 8 hyperlinks and forces their emission by CLIs", () => {
-		const config = buildThemeConfig("mocha");
 		expect(config).toContain("xterm-256color:hyperlinks");
 		expect(config).toContain("tmux-256color:hyperlinks");
 		expect(config).toContain("set-environment -g FORCE_HYPERLINK 1");
-	});
-
-	it("includes extended-keys and focus-events settings", () => {
-		const config = buildThemeConfig("mocha");
 		expect(config).toContain("extended-keys on");
 		expect(config).toContain("focus-events on");
 		expect(config).toContain("terminal-overrides");
-	});
-
-	it("sets history-limit to 250000", () => {
-		expect(buildThemeConfig("mocha")).toContain("history-limit 250000");
+		expect(config).toContain("history-limit 250000");
 	});
 
 	it("retains scrolled history selections but cancels live-screen copies", () => {
@@ -119,7 +107,7 @@ describe("buildThemeConfig", () => {
 		}
 	});
 
-	it("puts prefix-free pane navigation on Alt+Shift+arrow and frees plain Alt+arrow", () => {
+	it("puts prefix-free pane navigation on Alt+Shift+arrow, frees plain Alt+arrow, and word-deletes on Ctrl+Delete off the alternate screen", () => {
 		for (const flavor of ["mocha", "latte"] as const) {
 			const config = buildThemeConfig(flavor);
 			for (const dir of [
@@ -134,25 +122,14 @@ describe("buildThemeConfig", () => {
 				expect(config).toContain(`unbind -n M-${dir[0]}`);
 				expect(config).not.toContain(`bind -n M-${dir[0]} select-pane`);
 			}
+			expect(config).toContain("bind -n C-DC if -F '#{alternate_on}' 'send-keys C-DC' 'send-keys M-d'");
 		}
-	});
-
-	it("turns Ctrl+Delete into a word delete only off the alternate screen", () => {
-		for (const flavor of ["mocha", "latte"] as const) {
-			expect(buildThemeConfig(flavor)).toContain(
-				"bind -n C-DC if -F '#{alternate_on}' 'send-keys C-DC' 'send-keys M-d'",
-			);
-		}
-	});
-
-	it("writes a backslash split binding with a literal double backslash", () => {
-		expect(buildThemeConfig("mocha")).toContain(
-			String.raw`bind \\ split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R`,
-		);
 	});
 
 	it("user split keys carry an explicit -d (aliases are not yet defined when bind runs) and then focus the new pane", () => {
 		const config = buildThemeConfig("mocha");
+		// The backslash binding is written with a literal double backslash.
+		expect(config).toContain(String.raw`bind \\ split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R`);
 		expect(config).toContain(String.raw`bind | split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R`);
 		expect(config).toContain(String.raw`bind - split-window -d -v -c "${PANE_CWD_FORMAT}" \; select-pane -D`);
 		// The stock prefix " and % splits are rebound too: with the alias they would open in the background.
@@ -173,9 +150,10 @@ describe("buildThemeConfig", () => {
 		}
 	});
 
-	it("never sources the system or user tmux configs", () => {
+	it("selects the requested Catppuccin flavor and never sources the system or user tmux configs", () => {
 		for (const flavor of ["mocha", "latte"] as const) {
 			const config = buildThemeConfig(flavor);
+			expect(config).toContain(`@catppuccin_flavor "${flavor}"`);
 			expect(config).not.toContain("/etc/tmux.conf");
 			expect(config).not.toContain("~/.tmux.conf");
 			expect(config).not.toContain("~/.config/tmux/tmux.conf");
@@ -200,17 +178,13 @@ describe("buildThemeConfig", () => {
 
 	// The styles must follow the server option, not this process's preference:
 	// the text is then identical whichever instance sources it.
-	it("derives both pane styles from the server option in either default", () => {
+	it("derives both pane styles from the server option in either default, after the plugin's own styling", () => {
 		for (const dimmed of [true, false]) {
 			const config = buildThemeConfig("latte", dimmed);
 			expect(config).toContain(WINDOW_STYLE_LINE);
 			expect(config).toContain(BORDER_STYLE_LINE);
+			expect(config.indexOf(WINDOW_STYLE_LINE)).toBeGreaterThan(config.indexOf("catppuccin_tmux.conf"));
 		}
-	});
-
-	it("overrides the plugin's own pane styling rather than being overridden by it", () => {
-		const config = buildThemeConfig("latte", false);
-		expect(config.indexOf(WINDOW_STYLE_LINE)).toBeGreaterThan(config.indexOf("catppuccin_tmux.conf"));
 	});
 
 	it("writes both default variants for both themes, whatever this process prefers", () => {
@@ -254,11 +228,6 @@ describe("buildThemeConfig", () => {
 			setTmuxPaneDimming(true);
 			writeTmuxConfigs();
 		}
-	});
-
-	it("selects the requested Catppuccin flavor", () => {
-		expect(buildThemeConfig("mocha")).toContain('@catppuccin_flavor "mocha"');
-		expect(buildThemeConfig("latte")).toContain('@catppuccin_flavor "latte"');
 	});
 });
 

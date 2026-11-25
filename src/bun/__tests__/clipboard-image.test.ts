@@ -196,39 +196,20 @@ describe("clipboardImageToPng", () => {
 		).toEqual([0, 255, 0, 255]);
 	});
 
-	it("reports empty clipboard bytes instead of writing a zero-byte file", () => {
-		const result = clipboardImageToPng(new Uint8Array(0));
-		expect(result.ok, "cause: empty input accepted. fix: return not-ok for a zero-length buffer").toBe(false);
-		if (result.ok) return;
-		expect(
-			result.reason,
-			'cause: empty input is not distinguishable from an unsupported format. fix: return reason "empty" for zero-length input',
-		).toBe("empty");
-	});
-
-	it("refuses a palette DIB rather than emitting garbage pixels", () => {
-		const dib = buildDib({ width: 2, height: 1, bitCount: 8, rows: [[0, 1]] });
-		const result = clipboardImageToPng(dib);
-		expect(
-			result.ok,
-			"cause: an 8-bit palette DIB was converted as if it were BGR, producing garbage. fix: accept only biBitCount 24 and 32",
-		).toBe(false);
-	});
-
-	it("refuses a DIB whose pixel data is shorter than the header claims", () => {
-		const dib = buildDib({ width: 4, height: 4, bitCount: 24, rows: [], truncate: 20 });
-		const result = clipboardImageToPng(dib);
-		expect(
-			result.ok,
-			"cause: a truncated DIB was converted, reading past the buffer. fix: check pixelStart + stride*height against the buffer length",
-		).toBe(false);
-	});
-
-	it("refuses bytes that are neither PNG nor a plausible DIB", () => {
-		const result = clipboardImageToPng(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]));
-		expect(
-			result.ok,
-			"cause: arbitrary bytes were accepted as a DIB. fix: validate biSize against the known header sizes",
-		).toBe(false);
+	it("refuses empty, palette, truncated and unrecognised input rather than emitting garbage", () => {
+		const empty = clipboardImageToPng(new Uint8Array(0));
+		expect(empty.ok, "cause: empty input accepted. fix: return not-ok for a zero-length buffer").toBe(false);
+		if (!empty.ok) {
+			expect(
+				empty.reason,
+				'cause: empty input is not distinguishable from an unsupported format. fix: return reason "empty" for zero-length input',
+			).toBe("empty");
+		}
+		const refused: Array<[Uint8Array, string]> = [
+			[buildDib({ width: 2, height: 1, bitCount: 8, rows: [[0, 1]] }), "cause: an 8-bit palette DIB was converted as if it were BGR, producing garbage. fix: accept only biBitCount 24 and 32"],
+			[buildDib({ width: 4, height: 4, bitCount: 24, rows: [], truncate: 20 }), "cause: a truncated DIB was converted, reading past the buffer. fix: check pixelStart + stride*height against the buffer length"],
+			[new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]), "cause: arbitrary bytes were accepted as a DIB. fix: validate biSize against the known header sizes"],
+		];
+		for (const [bytes, hint] of refused) expect(clipboardImageToPng(bytes).ok, hint).toBe(false);
 	});
 });

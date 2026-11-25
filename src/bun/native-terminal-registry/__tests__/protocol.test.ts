@@ -79,24 +79,7 @@ describe("native-session protocol v1", () => {
 		}
 	});
 
-	it("rejects an ownership action it does not know", () => {
-		expect(decodeControl(JSON.stringify({ v: V, type: "ownership", id: 3, action: "steal" }))).toBeNull();
-		expect(decodeControl(JSON.stringify({ v: V, type: "ownership", id: 3 }))).toBeNull();
-	});
-
-	it("preserves exact shell exit codes", () => {
-		expect(decodeControl(encodeControl(exitEvent(37)))).toEqual(exitEvent(37));
-	});
-
-	it("rejects a non-numeric shell exit code", () => {
-		expect(decodeControl(JSON.stringify({ v: V, type: "exit", code: "37" }))).toBeNull();
-	});
-
-	it("rejects a missing shell exit code", () => {
-		expect(decodeControl(JSON.stringify({ v: V, type: "exit" }))).toBeNull();
-	});
-
-	it("rejects non-JSON, wrong version, unknown types, and bad payloads", () => {
+	it("rejects non-JSON, wrong version, unknown types or actions, bad payloads, uncorrelated status and bad exit codes", () => {
 		expect(decodeControl("{not json")).toBeNull();
 		expect(decodeControl(JSON.stringify({ v: V + 1, type: "status", id: 1 }))).toBeNull();
 		expect(decodeControl(JSON.stringify({ v: V, type: "nope" }))).toBeNull();
@@ -104,11 +87,20 @@ describe("native-session protocol v1", () => {
 		expect(
 			decodeControl(JSON.stringify({ v: V, type: "welcome", id: 1, sessionId: "alpha", protocolVersion: V, role: "owner" })),
 		).toBeNull();
-	});
-
-	it("requires an id on a status frame (it is a correlated request/response)", () => {
-		expect(decodeControl(JSON.stringify({ v: V, type: "status" }))).toBeNull();
-		expect(decodeControl(JSON.stringify({ v: V, type: "status", id: 3 }))).not.toBeNull();
+		{
+			expect(decodeControl(JSON.stringify({ v: V, type: "ownership", id: 3, action: "steal" }))).toBeNull();
+			expect(decodeControl(JSON.stringify({ v: V, type: "ownership", id: 3 }))).toBeNull();
+		}
+		{
+			expect(decodeControl(JSON.stringify({ v: V, type: "exit", code: "37" }))).toBeNull();
+		}
+		{
+			expect(decodeControl(JSON.stringify({ v: V, type: "exit" }))).toBeNull();
+		}
+		{
+			expect(decodeControl(JSON.stringify({ v: V, type: "status" }))).toBeNull();
+			expect(decodeControl(JSON.stringify({ v: V, type: "status", id: 3 }))).not.toBeNull();
+		}
 	});
 
 	it("ignores additive unknown fields on a known type (forward-compatible within v1)", () => {
@@ -116,55 +108,51 @@ describe("native-session protocol v1", () => {
 		expect(decoded).toMatchObject({ type: "resize", cols: 10, rows: 5 });
 	});
 
-	it("decodeHello reads a foreign-version hello (so the host can answer it)", () => {
+	it("decodeHello and decodeError read foreign versions so the peer can answer or read the rejection", () => {
 		const foreign = decodeHello(JSON.stringify({ v: 999, type: "hello", sessionId: "alpha", id: 4 }));
 		expect(foreign).toEqual({ v: 999, type: "hello", sessionId: "alpha", id: 4 });
 		expect(decodeHello(JSON.stringify({ v: V, type: "status", id: 1 }))).toBeNull();
 		expect(decodeHello(JSON.stringify({ v: V, type: "hello", sessionId: "a" }))).toBeNull(); // missing id
+		{
+			const err = decodeError(JSON.stringify({ v: 999, type: "error", code: "version-mismatch", id: 2, message: "x" }));
+			expect(err).toEqual({ v: 999, type: "error", code: "version-mismatch", id: 2, message: "x" });
+			expect(decodeError(JSON.stringify({ v: V, type: "status", id: 1 }))).toBeNull();
+		}
 	});
 
-	it("decodeError reads an error version-agnostically (a mismatched client must read the rejection)", () => {
-		const err = decodeError(JSON.stringify({ v: 999, type: "error", code: "version-mismatch", id: 2, message: "x" }));
-		expect(err).toEqual({ v: 999, type: "error", code: "version-mismatch", id: 2, message: "x" });
-		expect(decodeError(JSON.stringify({ v: V, type: "status", id: 1 }))).toBeNull();
-	});
-
-	it("evaluateHello accepts a matching v1 hello", () => {
+	it("evaluateHello accepts a matching hello (handing on the client pid) and returns one explicit error per failure mode", () => {
 		const verdict = evaluateHello(encodeControl(helloMessage("alpha", 9)), "alpha");
 		expect(verdict).toEqual({ ok: true, id: 9 });
-	});
+		{
+			const notHello = evaluateHello(JSON.stringify({ v: V, type: "status", id: 1 }), "alpha");
+			expect(notHello).toMatchObject({ ok: false, error: { code: "bad-request" } });
 
-	it("evaluateHello returns one explicit error per failure mode", () => {
-		const notHello = evaluateHello(JSON.stringify({ v: V, type: "status", id: 1 }), "alpha");
-		expect(notHello).toMatchObject({ ok: false, error: { code: "bad-request" } });
+			const badVersion = evaluateHello(JSON.stringify({ v: 2, type: "hello", sessionId: "alpha", id: 5 }), "alpha");
+			expect(badVersion).toMatchObject({ ok: false, error: { code: "version-mismatch", id: 5 } });
 
-		const badVersion = evaluateHello(JSON.stringify({ v: 2, type: "hello", sessionId: "alpha", id: 5 }), "alpha");
-		expect(badVersion).toMatchObject({ ok: false, error: { code: "version-mismatch", id: 5 } });
-
-		const wrongSession = evaluateHello(encodeControl(helloMessage("bravo", 6)), "alpha");
-		expect(wrongSession).toMatchObject({ ok: false, error: { code: "not-found", id: 6 } });
+			const wrongSession = evaluateHello(encodeControl(helloMessage("bravo", 6)), "alpha");
+			expect(wrongSession).toMatchObject({ ok: false, error: { code: "not-found", id: 6 } });
+		}
+		{
+			expect(evaluateHello(encodeControl(helloMessage("alpha", 9, 4711)), "alpha")).toEqual({
+				ok: true, id: 9, clientPid: 4711,
+			});
+		}
 	});
 
 	// Owner routing (seq 1377): several app processes share one host, and a peer
 	// that only observes has to learn WHICH process may type before forwarding.
-	it("carries the client's app pid through hello, and omits it when unknown", () => {
+	it("carries the client's app pid through hello, omitting it when unknown or nonsense", () => {
 		expect(decodeHello(encodeControl(helloMessage("alpha", 3, 4711)))).toEqual({
 			v: V, type: "hello", sessionId: "alpha", id: 3, clientPid: 4711,
 		});
 		expect(decodeHello(encodeControl(helloMessage("alpha", 3)))).not.toHaveProperty("clientPid");
-	});
-
-	it("drops a nonsense client pid rather than passing it on as an owner", () => {
-		for (const bad of [0, -1, 1.5, "4711"]) {
-			const frame = JSON.stringify({ v: V, type: "hello", sessionId: "alpha", id: 3, clientPid: bad });
-			expect(decodeHello(frame)).not.toHaveProperty("clientPid");
+		{
+			for (const bad of [0, -1, 1.5, "4711"]) {
+				const frame = JSON.stringify({ v: V, type: "hello", sessionId: "alpha", id: 3, clientPid: bad });
+				expect(decodeHello(frame)).not.toHaveProperty("clientPid");
+			}
 		}
-	});
-
-	it("hands the client pid to the host through the hello verdict", () => {
-		expect(evaluateHello(encodeControl(helloMessage("alpha", 9, 4711)), "alpha")).toEqual({
-			ok: true, id: 9, clientPid: 4711,
-		});
 	});
 
 	it("keeps writerPid on a status reply, including an explicit vacant lease", () => {

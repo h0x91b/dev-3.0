@@ -181,17 +181,12 @@ describe("applyUpdate", () => {
 });
 
 describe("describeReturnedApply", () => {
-	it("names the restart, not a failure, when the swap completed but quit was vetoed", () => {
+	it("names a vetoed restart, the step it stopped at, or an empty history", () => {
+		// The swap completed but quit was vetoed: a restart problem, not a failure.
 		expect(describeReturnedApply([{ status: "complete", message: "Update complete" }])).toContain(
 			"could not restart itself",
 		);
-	});
-
-	it("names the step it stopped at when no error was emitted", () => {
 		expect(describeReturnedApply([{ status: "extracting", message: "Extracting" }])).toContain('"extracting"');
-	});
-
-	it("still explains an empty history", () => {
 		expect(describeReturnedApply([])).toContain("without reporting why");
 	});
 });
@@ -211,20 +206,17 @@ describe("macBundleReplaceBlocker", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("passes a bundle the user fully owns", () => {
+	it("passes a bundle the user fully owns, and flags App Translocation without touching the disk", () => {
 		expect(macBundleReplaceBlocker(join(root, "dev-3.0.app"))).toBeNull();
+		expect(macBundleReplaceBlocker("/private/var/folders/a/T/AppTranslocation/X/d/dev-3.0.app")).toContain(
+			"/Applications",
+		);
 	});
 
 	it.skipIf(isRoot)("names the first directory rmSync would choke on", () => {
 		chmodSync(join(root, "dev-3.0.app", "Contents"), 0o555);
 
 		expect(macBundleReplaceBlocker(join(root, "dev-3.0.app"))).toContain(join(root, "dev-3.0.app", "Contents"));
-	});
-
-	it("flags App Translocation without touching the disk", () => {
-		expect(macBundleReplaceBlocker("/private/var/folders/a/T/AppTranslocation/X/d/dev-3.0.app")).toContain(
-			"/Applications",
-		);
 	});
 });
 
@@ -313,7 +305,7 @@ describe("dev channel guard", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("checkForUpdateWithChannel reports devBuild without hitting the network", async () => {
+	it("check reports devBuild without the network, and download refuses the built-in updater", async () => {
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 
 		const result = await checkForUpdateWithChannel("stable");
@@ -321,13 +313,11 @@ describe("dev channel guard", () => {
 		expect(result.devBuild).toBe(true);
 		expect(result.updateAvailable).toBe(false);
 		expect(fetchSpy).not.toHaveBeenCalled();
-	});
 
-	it("downloadUpdateForChannel refuses to touch the built-in updater on dev", async () => {
-		const result = await downloadUpdateForChannel("stable", vi.fn());
-
-		expect(result.ok).toBe(false);
-		expect(result.error).toMatch(/dev/i);
+		// downloadUpdateForChannel refuses to touch the built-in updater on dev.
+		const result2 = await downloadUpdateForChannel("stable", vi.fn());
+		expect(result2.ok).toBe(false);
+		expect(result2.error).toMatch(/dev/i);
 		// The crashing Electrobun calls must never run.
 		expect(mockUpdater.checkForUpdate).not.toHaveBeenCalled();
 		expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
@@ -401,11 +391,7 @@ describe("ready-update guard (issue #1072)", () => {
 		await downloadUpdateForChannel("stable", vi.fn());
 
 		expect(isUpdateAlreadyReady("1.30.0")).toBe(true);
-	});
-
-	it("does not treat a newer release as already downloaded", async () => {
-		await downloadUpdateForChannel("stable", vi.fn());
-
+		// A newer release is not "already downloaded".
 		expect(isUpdateAlreadyReady("1.31.0")).toBe(false);
 	});
 
@@ -423,7 +409,8 @@ describe("ready-update guard (issue #1072)", () => {
 		expect(isUpdateAlreadyReady("1.30.0")).toBe(false);
 	});
 
-	it("reminds about a downloaded update only once per reminder interval", () => {
+	it("reminds about a downloaded update only once per reminder interval, and never with nothing downloaded", () => {
+		expect(shouldRemindAboutReadyUpdate(Date.now() + READY_REMINDER_INTERVAL_MS)).toBe(false);
 		markUpdateReady("1.30.0", 1_000);
 
 		expect(shouldRemindAboutReadyUpdate(1_000)).toBe(false);
@@ -431,10 +418,6 @@ describe("ready-update guard (issue #1072)", () => {
 		// The reminder just fired — the next check must stay silent.
 		expect(shouldRemindAboutReadyUpdate(1_000 + READY_REMINDER_INTERVAL_MS + 1)).toBe(false);
 		expect(shouldRemindAboutReadyUpdate(1_000 + 2 * READY_REMINDER_INTERVAL_MS + 1)).toBe(true);
-	});
-
-	it("never reminds when nothing is downloaded", () => {
-		expect(shouldRemindAboutReadyUpdate(Date.now() + READY_REMINDER_INTERVAL_MS)).toBe(false);
 	});
 });
 
@@ -535,7 +518,7 @@ describe("build-time update opt-out (DEV3_DISABLE_UPDATES=1)", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("checkForUpdateWithChannel never reaches the network on a stable build", async () => {
+	it("check never reaches the network on a stable build, and download refuses the built-in updater", async () => {
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 
 		const result = await checkForUpdateWithChannel("stable");
@@ -544,12 +527,10 @@ describe("build-time update opt-out (DEV3_DISABLE_UPDATES=1)", () => {
 		expect(result.devBuild).toBe(true);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(mockUpdater.checkForUpdate).not.toHaveBeenCalled();
-	});
 
-	it("downloadUpdateForChannel refuses before touching the built-in updater", async () => {
-		const result = await downloadUpdateForChannel("stable", vi.fn());
-
-		expect(result.ok).toBe(false);
+		// downloadUpdateForChannel refuses before touching the built-in updater.
+		const download = await downloadUpdateForChannel("stable", vi.fn());
+		expect(download.ok).toBe(false);
 		expect(mockUpdater.checkForUpdate).not.toHaveBeenCalled();
 		expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
 	});

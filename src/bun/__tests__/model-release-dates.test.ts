@@ -14,24 +14,18 @@ describe("MODEL_RELEASE_DATES", () => {
 		expect([...undated]).toEqual([]);
 	});
 
-	it("holds real calendar days only", () => {
+	it("holds real calendar days only, and knows nothing about unknown or missing slugs", () => {
 		for (const [model, date] of Object.entries(MODEL_RELEASE_DATES)) {
 			expect(date, model).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 			expect(new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10), model).toBe(date);
 		}
+		expect(modelReleaseDate("claude-haiku-5-5")).toBe("2026-10-08");
+		expect(modelReleaseDate("some-local-model")).toBeUndefined();
+		expect(modelReleaseDate(undefined)).toBeUndefined();
 	});
 
 	it("carries no entry for a model no preset ships", () => {
 		const shipped = new Set(DEFAULT_AGENTS.flatMap((a) => a.configurations.map((c) => c.model)));
 		expect(Object.keys(MODEL_RELEASE_DATES).filter((model) => !shipped.has(model))).toEqual([]);
-	});
-
-	it("dates Haiku 5.5 to the day it shipped", () => {
-		expect(modelReleaseDate("claude-haiku-5-5")).toBe("2026-10-08");
-	});
-
-	it("knows nothing about unknown or missing slugs", () => {
-		expect(modelReleaseDate("some-local-model")).toBeUndefined();
-		expect(modelReleaseDate(undefined)).toBeUndefined();
 	});
 });

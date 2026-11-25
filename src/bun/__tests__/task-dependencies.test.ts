@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("dependency state", () => {
-	it("walks a chain through blocked, ready and done as each task finishes", () => {
+	it("walks a chain through blocked, ready and done, staying blocked until every dependency is done and naming the open ones", () => {
 		const a = task({ id: "a", seq: 1 });
 		const b = task({ id: "b", seq: 2, relations: dependsOn("a") });
 		const c = task({ id: "c", seq: 3, relations: dependsOn("b") });
@@ -42,9 +42,7 @@ describe("dependency state", () => {
 		expect(verdicts([aDone, b, c])).toEqual(["none", "ready", "blocked"]);
 		const bDone = { ...b, status: "completed" as const };
 		expect(verdicts([aDone, bDone, c])).toEqual(["none", "ready", "ready"]);
-	});
 
-	it("stays blocked until every dependency is done and names the open ones", () => {
 		const tasks = [
 			task({ id: "a", seq: 1, status: "completed" }),
 			task({ id: "b", seq: 2, status: "in-progress" }),
@@ -86,18 +84,13 @@ describe("dependency state", () => {
 		expect(summary.dependencies[0].state).toBe("cancelled");
 	});
 
-	it("resolves the same against a prebuilt index as against the board", () => {
+	it("lists both directions for task show, resolving the same against a prebuilt index as against the board", () => {
 		const tasks = [task({ id: "a", seq: 1, status: "cancelled" }), task({ id: "b", seq: 2, relations: dependsOn("a") }), task({ id: "c", seq: 3, relations: dependsOn("a", "b") })];
 		const index = indexDependencies(tasks);
 		for (const t of tasks) expect(dependencyInfo(t, index)).toEqual(dependencyInfo(t, tasks));
 		expect(dependencyInfo(tasks[0], index)?.blocks.map((d) => d.seq)).toEqual([2, 3]);
-	});
-
-	it("lists both directions for task show", () => {
-		const tasks = [task({ id: "a", seq: 1 }), task({ id: "b", seq: 2, relations: dependsOn("a") }), task({ id: "c", seq: 3 })];
-		expect(dependencyInfo(tasks[0], tasks)?.blocks.map((d) => d.seq)).toEqual([2]);
-		expect(dependencyInfo(tasks[1], tasks)?.dependsOn.map((d) => d.seq)).toEqual([1]);
-		expect(dependencyInfo(tasks[2], tasks)).toBeNull();
+		expect(dependencyInfo(tasks[2], index)?.dependsOn.map((d) => d.seq)).toEqual([1, 2]);
+		expect(dependencyInfo(task({ id: "lonely", seq: 9 }), tasks)).toBeNull();
 	});
 });
 
@@ -106,14 +99,12 @@ describe("dependency refusals", () => {
 	const b = task({ id: "b", seq: 2, relations: dependsOn("a") });
 	const c = task({ id: "c", seq: 3, relations: dependsOn("b") });
 
-	it("refuses a self-link, another board and a cycle through other tasks", () => {
+	it("refuses a self-link, another board, and a cycle — including one mixing a dependency with a start-after condition, in both directions", () => {
 		expect(dependencyRefusal(a, a, [a, b, c])).toMatch(/itself/);
 		expect(dependencyRefusal(a, task({ id: "z", projectId: "proj-2" }), [a, b, c])).toMatch(/another board/);
 		expect(dependencyRefusal(a, c, [a, b, c])).toMatch(/cycle/);
 		expect(dependencyRefusal(c, a, [a, b, c])).toBeNull();
-	});
 
-	it("sees a cycle that mixes a dependency with a start-after condition, in both directions", () => {
 		const waits = task({ id: "w", seq: 4, launchAfter: { taskId: "c", seq: 3, until: "completed", armedAt: "t" } });
 		const board = [a, b, c, waits];
 		expect(dependencyRefusal(a, waits, board)).toMatch(/cycle/);
@@ -142,6 +133,10 @@ describe("writing dependencies", () => {
 		expect((await remove([store[0]])).relations).toEqual([...dependsOn("b"), { type: "relates-to", taskId: "a" }]);
 		await expect(remove([store[0]])).rejects.toThrow("does not depend on #1");
 		expect((await remove("all")).relations).toEqual([{ type: "relates-to", taskId: "a" }]);
+
+		// The link is the start-after condition: point at --no-start-after instead.
+		const waits = [task({ id: "a", seq: 1 }), task({ id: "b", seq: 2, launchAfter: { taskId: "a", seq: 1, until: "completed", armedAt: "t" } })];
+		expect(() => planDependencyChange(waits[1], waits, { drop: [waits[0]] })).toThrow("--no-start-after");
 	});
 
 	it("swaps a link in one write, and writes nothing when the added half is refused", async () => {
@@ -151,10 +146,5 @@ describe("writing dependencies", () => {
 		const swapped = await writeDependencyPlan(project, store[2], planDependencyChange(store[2], store, { drop: [store[0]], add: [store[1]] }));
 		expect(swapped.relations).toEqual(dependsOn("b"));
 		expect(pushMessage).toHaveBeenCalledTimes(1);
-	});
-
-	it("points at --no-start-after when the link is the start-after condition", () => {
-		store = [task({ id: "a", seq: 1 }), task({ id: "b", seq: 2, launchAfter: { taskId: "a", seq: 1, until: "completed", armedAt: "t" } })];
-		expect(() => planDependencyChange(store[1], store, { drop: [store[0]] })).toThrow("--no-start-after");
 	});
 });

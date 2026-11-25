@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("diff snapshot files", () => {
-	it("round-trips a diff through the gzip format", () => {
+	it("round-trips a diff through the gzip format and reads an old plain .patch as-is", () => {
 		const name = writeDiffSnapshot(dir, "2026-10-28T10-00-00", DIFF);
 		expect(name).toBe("2026-10-28T10-00-00.patch.gz");
 		const raw = readFileSync(join(dir, name));
@@ -39,19 +39,12 @@ describe("diff snapshot files", () => {
 		expect(raw[1]).toBe(0x8b);
 		expect(raw.length).toBeLessThan(Buffer.byteLength(DIFF) / 10);
 		expect(readDiffSnapshot(join(dir, name))).toBe(DIFF);
-	});
-
-	it("reads an old uncompressed .patch as-is", () => {
+		// An old uncompressed .patch reads as-is.
 		writePlain("2026-03-10T19-23-18.patch", DIFF);
 		expect(readDiffSnapshot(join(dir, "2026-03-10T19-23-18.patch"))).toBe(DIFF);
 	});
 
-	it("reads a new compressed .patch.gz", () => {
-		writeFileSync(join(dir, "2026-10-28T10-00-00.patch.gz"), gzipSync(DIFF));
-		expect(readDiffSnapshot(join(dir, "2026-10-28T10-00-00.patch.gz"))).toBe(DIFF);
-	});
-
-	it("lists both formats in timestamp order, ignoring everything else", () => {
+	it("lists both formats in timestamp order, ignoring everything else, and nothing for a missing dir", () => {
 		writePlain("2026-03-10T19-23-18.patch", "a");
 		writeDiffSnapshot(dir, "2026-03-09T00-00-00", "b");
 		writeDiffSnapshot(dir, "2026-03-11T00-00-00", "c");
@@ -62,9 +55,6 @@ describe("diff snapshot files", () => {
 			"2026-03-10T19-23-18.patch",
 			"2026-03-11T00-00-00.patch.gz",
 		]);
-	});
-
-	it("lists nothing for a missing directory", () => {
 		expect(listDiffSnapshots(join(dir, "nope"))).toEqual([]);
 	});
 });
@@ -82,6 +72,8 @@ describe("compressDiffSnapshots", () => {
 		expect(readdirSync(dir).sort()).toEqual(["2026-03-10T19-23-18.patch.gz", "2026-03-10T19-32-52.patch.gz"]);
 		expect(gunzipSync(readFileSync(join(dir, "2026-03-10T19-23-18.patch.gz"))).toString("utf-8")).toBe(DIFF);
 		expect(statSync(join(dir, "2026-03-10T19-23-18.patch.gz")).mtimeMs).toBe(OLD.getTime());
+		// A second pass is a no-op.
+		expect(compressDiffSnapshots(dir, Date.now())).toMatchObject({ compressed: 0, skipped: 0 });
 	});
 
 	it("leaves a plain file written in the last minute alone", () => {
@@ -105,11 +97,6 @@ describe("compressDiffSnapshots", () => {
 		expect(readdirSync(dir)).toEqual(["2026-03-10T19-23-18.patch.gz"]);
 	});
 
-	it("is a no-op the second time", () => {
-		writePlain("2026-03-10T19-23-18.patch", DIFF);
-		compressDiffSnapshots(dir, Date.now());
-		expect(compressDiffSnapshots(dir, Date.now())).toMatchObject({ compressed: 0, skipped: 0 });
-	});
 });
 
 describe("whole-tree helpers", () => {
@@ -129,9 +116,7 @@ describe("whole-tree helpers", () => {
 		const result = compressAllDiffSnapshots(taskDirs, Date.now());
 		expect(result).toMatchObject({ dirs: 2, compressed: 2, skipped: 0, bytesBefore: 2 * Buffer.byteLength(DIFF) });
 		expect(measurePlainDiffSnapshots(taskDirs)).toEqual({ dirs: 0, files: 0, bytes: 0 });
-	});
-
-	it("tolerates task dirs that no longer exist", () => {
+		// Task dirs that no longer exist are tolerated.
 		expect(compressAllDiffSnapshots([join(dir, "missing")])).toMatchObject({ dirs: 0, compressed: 0 });
 	});
 });

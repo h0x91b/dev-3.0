@@ -67,17 +67,17 @@ describe("loadWindowStates / saveWindowStates", () => {
 		expect(loadWindowStates(join(tmpdir(), "nope-does-not-exist.json"))).toEqual([]);
 	});
 
+	it("returns an empty session for a wholly invalid file", () => {
+		const path = tmpFile();
+		writeFileSync(path, "{not json", "utf-8");
+		expect(loadWindowStates(path)).toEqual([]);
+	});
+
 	it("drops structurally invalid entries and keeps the good ones", () => {
 		const path = tmpFile();
 		const broken = { ...baseState, frame: { x: 0, y: 0, width: 0, height: 0 } };
 		writeFileSync(path, JSON.stringify({ ...baseState, windows: [broken, secondState] }), "utf-8");
 		expect(loadWindowStates(path)).toEqual([secondState]);
-	});
-
-	it("returns an empty session for a wholly invalid file", () => {
-		const path = tmpFile();
-		writeFileSync(path, "{not json", "utf-8");
-		expect(loadWindowStates(path)).toEqual([]);
 	});
 });
 
@@ -87,11 +87,8 @@ describe("displayContaining", () => {
 		{ id: 2, bounds: { x: 1920, y: 0, width: 2560, height: 1440 } },
 	];
 
-	it("finds the display holding the window center", () => {
+	it("finds the display holding the window center, and null when it is off every display", () => {
 		expect(displayContaining({ x: 2000, y: 100, width: 800, height: 600 }, displays)?.id).toBe(2);
-	});
-
-	it("returns null when the center is off every display", () => {
 		expect(displayContaining({ x: -5000, y: 0, width: 100, height: 100 }, displays)).toBeNull();
 	});
 });

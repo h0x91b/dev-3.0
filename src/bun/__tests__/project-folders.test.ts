@@ -103,12 +103,17 @@ describe("collectProjectFolders", () => {
 		expect(claudeSettingsFiles(projectDir, join(projectDir, ".claude"))).toHaveLength(2);
 	});
 
-	it("fills the branch only when asked and only for git checkouts", async () => {
+	it("fills the branch only when asked and only for git checkouts, running git with bare-repo discovery and fsmonitor off", async () => {
 		const without = await collectProjectFolders(project());
 		expect(without.every((f) => f.branch === undefined)).toBe(true);
+		runGit.mockClear();
 		const withBranch = await collectProjectFolders(project(), { withBranch: true });
 		expect(withBranch.find((f) => f.path === lib)?.branch).toBe("feature/x");
 		expect(withBranch.find((f) => f.path === docs)?.branch).toBeUndefined();
+		for (const [cmd] of runGit.mock.calls) {
+			expect(cmd.slice(0, 5)).toEqual(["git", "-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"]);
+		}
+		expect(runGit).toHaveBeenCalled();
 	});
 
 	it("drops network paths before touching the filesystem", async () => {
@@ -118,15 +123,6 @@ describe("collectProjectFolders", () => {
 		}));
 		expect(folders.map((f) => f.path)).toEqual([lib, docs]);
 		expect(claudeSettingsFiles(projectDir, "//attacker.example/cfg")).toHaveLength(2);
-	});
-
-	it("runs git with bare-repo discovery and fsmonitor turned off", async () => {
-		runGit.mockClear();
-		await collectProjectFolders(project(), { withBranch: true });
-		for (const [cmd] of runGit.mock.calls) {
-			expect(cmd.slice(0, 5)).toEqual(["git", "-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"]);
-		}
-		expect(runGit).toHaveBeenCalled();
 	});
 
 	it("reads the user-scope settings when the project pins no config dir", async () => {
@@ -169,9 +165,7 @@ describe("collectProjectFolders", () => {
 
 	it("strips JSONC comments and trailing commas without touching strings", () => {
 		expect(JSON.parse(stripJsonc('{"a": "//x", /* c */ "b": [1, 2,], // end\n}'))).toEqual({ a: "//x", b: [1, 2] });
-	});
-
-	it("leaves a comma-and-bracket sequence inside a string alone", () => {
+		// A comma-and-bracket sequence inside a string is left alone.
 		const text = '{"folders": [{"path": "../odd,]name"}, {"path": "../b,}c\\",}"},], /* x */}';
 		expect(JSON.parse(stripJsonc(text))).toEqual({ folders: [{ path: "../odd,]name" }, { path: '../b,}c",}' }] });
 	});
@@ -197,9 +191,11 @@ describe("resolveProjectFolders", () => {
 		return (await resolveProjectFolders(project())).map((f) => f.path);
 	}
 
-	it("reads the config dir the project's agent launches with, not the server's own", async () => {
+	it("reads the config dir the project's agent launches with, falling back to the server's only when it sets none", async () => {
 		// The global `{projectPath}/.claude` default resolves to the project's own folder.
 		expect(await foldersWithLaunchEnv({ CLAUDE_CONFIG_DIR: join(projectDir, ".claude") })).toEqual([lib, docs]);
+		// Only a launch that sets none falls back to the server's dir.
+		expect(await foldersWithLaunchEnv({})).toEqual([lib, docs, join(tmp, "other-project-grant")]);
 	});
 
 	it("reads ~/.claude, not the server's dir, when the launch clears the variable", async () => {
@@ -216,9 +212,5 @@ describe("resolveProjectFolders", () => {
 		clearProjectFoldersCache("p");
 		await resolveProjectFolders(project());
 		expect(launchEnv).toHaveBeenCalledTimes(2);
-	});
-
-	it("falls back to the server's dir only when the launch sets none", async () => {
-		expect(await foldersWithLaunchEnv({})).toEqual([lib, docs, join(tmp, "other-project-grant")]);
 	});
 });

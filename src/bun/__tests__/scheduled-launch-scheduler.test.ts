@@ -57,20 +57,14 @@ afterEach(() => {
 });
 
 describe("scheduled-launch scheduler", () => {
-	it("fires a due launch on the first (startup) tick — offline catch-up", async () => {
+	it("fires a due launch on the first (startup) tick — offline catch-up — handing the same task list to the start-after pass", async () => {
 		const task = makeTask();
-		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
+		const tasks = [task];
+		vi.mocked(data.loadTasks).mockResolvedValue(tasks as never);
 		startScheduledLaunchScheduler();
 		await flush();
 		expect(fireScheduledLaunch).toHaveBeenCalledTimes(1);
 		expect(fireScheduledLaunch).toHaveBeenCalledWith(project, task);
-	});
-
-	it("hands the same task list to the start-after pass", async () => {
-		const tasks = [makeTask()];
-		vi.mocked(data.loadTasks).mockResolvedValue(tasks as never);
-		startScheduledLaunchScheduler();
-		await flush();
 		expect(tickLaunchAfter).toHaveBeenCalledWith(project, tasks, expect.any(Number));
 		expect(data.loadTasks).toHaveBeenCalledTimes(1);
 	});
@@ -83,17 +77,10 @@ describe("scheduled-launch scheduler", () => {
 		expect(fireScheduledLaunch).toHaveBeenCalledTimes(1);
 	});
 
-	it("does not fire launches scheduled in the future", async () => {
-		const task = makeTask({ scheduledLaunch: { at: new Date(Date.now() + 3_600_000).toISOString() } });
-		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
-		startScheduledLaunchScheduler();
-		await flush();
-		expect(fireScheduledLaunch).not.toHaveBeenCalled();
-	});
-
-	it("ignores stale scheduledLaunch on non-todo tasks", async () => {
-		const task = makeTask({ status: "in-progress" });
-		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
+	it("neither fires nor touches a launch scheduled in the future or a stale one on a non-todo task", async () => {
+		const future = makeTask({ id: "future", scheduledLaunch: { at: new Date(Date.now() + 3_600_000).toISOString() } });
+		const stale = makeTask({ id: "stale", status: "in-progress" });
+		vi.mocked(data.loadTasks).mockResolvedValue([future, stale] as never);
 		startScheduledLaunchScheduler();
 		await flush();
 		expect(fireScheduledLaunch).not.toHaveBeenCalled();

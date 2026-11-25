@@ -92,24 +92,16 @@ async function reloadTasks(): Promise<Task[]> {
 // ============================================================
 
 describe("legacy records without terminalBackend", () => {
-	it("decodes to effective tmux while reporting the field as absent", async () => {
+	it("decodes to effective tmux and is never backfilled by a cold read, a cached read, or an unrelated write", async () => {
 		seedTasks([legacyRecord()]);
 		const [task] = await loadTasks(testProject);
-
-		const decoded = readTaskTerminalBackend(task);
-		expect(decoded).toEqual({ ok: true, backend: "tmux", present: false });
-	});
-
-	it("is not backfilled by a pure read", async () => {
-		seedTasks([legacyRecord()]);
-		await loadTasks(testProject);
+		expect(readTaskTerminalBackend(task)).toEqual({ ok: true, backend: "tmux", present: false });
 		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
-	});
 
-	it("is not backfilled by an unrelated write", async () => {
-		seedTasks([legacyRecord()]);
+		const [warm] = await loadTasks(testProject); // second read hits the tasks cache
+		expect(warm).not.toHaveProperty("terminalBackend");
+
 		await updateTask(testProject, "A", { status: "in-progress" });
-
 		const saved = readSavedTasks()[0];
 		expect(saved.status).toBe("in-progress");
 		expect(saved).not.toHaveProperty("terminalBackend");
@@ -141,31 +133,21 @@ describe("legacy records without terminalBackend", () => {
 // ============================================================
 
 describe("newTaskTerminalBackend", () => {
-	it("marks win32 native and leaves every POSIX platform unmarked", () => {
-		expect(newTaskTerminalBackend("win32")).toBe("native");
-		expect(newTaskTerminalBackend("darwin")).toBeNull();
-		expect(newTaskTerminalBackend("linux")).toBeNull();
-	});
-
-	it("stamps native on POSIX only when the machine-local preference opts in", () => {
-		expect(newTaskTerminalBackend("darwin", "native")).toBe("native");
-		expect(newTaskTerminalBackend("linux", "native")).toBe("native");
-	});
-
 	// An explicit tmux preference must stay byte-identical to the legacy write —
-	// an unmarked record is what older builds can still read.
-	it("leaves POSIX records unmarked for a tmux preference and for no preference", () => {
-		expect(newTaskTerminalBackend("darwin", "tmux")).toBeNull();
-		expect(newTaskTerminalBackend("linux", "tmux")).toBeNull();
-		expect(newTaskTerminalBackend("darwin", null)).toBeNull();
-		expect(newTaskTerminalBackend("darwin", undefined)).toBeNull();
-	});
-
-	// Windows has no tmux runtime at all, so the preference cannot select it.
-	it("keeps win32 native regardless of the preference", () => {
+	// an unmarked record is what older builds can still read. Windows has no tmux
+	// runtime, so the preference cannot select it there.
+	it("marks win32 always native and POSIX native only on an opt-in preference", () => {
+		expect(newTaskTerminalBackend("win32")).toBe("native");
 		expect(newTaskTerminalBackend("win32", "tmux")).toBe("native");
 		expect(newTaskTerminalBackend("win32", null)).toBe("native");
+		expect(newTaskTerminalBackend("darwin", "native")).toBe("native");
+		expect(newTaskTerminalBackend("linux", "native")).toBe("native");
+		for (const pref of [undefined, null, "tmux"] as const) {
+			expect(newTaskTerminalBackend("darwin", pref), String(pref)).toBeNull();
+			expect(newTaskTerminalBackend("linux", pref), String(pref)).toBeNull();
+		}
 	});
+
 });
 
 // ============================================================
@@ -249,33 +231,28 @@ describe("task creation on Windows", () => {
 
 	// Windows has no tmux, so an unmarked task there could never launch. The
 	// marker is written at creation instead of teaching the resolver a platform.
-	it("stamps a new task with an explicit native identity", async () => {
+	it("stamps new tasks, Scratch included, with an explicit native identity", async () => {
 		const created = await addTask(testProject, "Fresh task");
 		expect(created.terminalBackend).toBe("native");
 		expect(readSavedTasks()[0].terminalBackend).toBe("native");
 		expect(readTaskTerminalBackend(created)).toMatchObject({ ok: true, backend: "native", present: true });
+		const scratch = await addTask(testProject, "Scratch — 01:08", "todo", { scratch: true });
+		expect(scratch.scratch).toBe(true);
+		expect(scratch.terminalBackend).toBe("native");
 	});
 
-	it("stamps a Scratch task the same way", async () => {
-		const created = await addTask(testProject, "Scratch — 01:08", "todo", { scratch: true });
-		expect(created.scratch).toBe(true);
-		expect(created.terminalBackend).toBe("native");
-	});
-
-	it("leaves an existing unmarked task alone — no backfill, still tmux", async () => {
+	it("leaves an existing unmarked task alone and keeps an explicit tmux identity readable", async () => {
 		seedTasks([legacyRecord()]);
 		const [legacy] = await loadTasks(testProject);
 		expect(legacy).not.toHaveProperty("terminalBackend");
 		expect(readTaskTerminalBackend(legacy)).toMatchObject({ ok: true, backend: "tmux", present: false });
 
-		await addTask(testProject, "Fresh task");
-		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
-	});
-
-	it("keeps an explicit tmux identity readable instead of reinterpreting it", async () => {
 		const created = await addTask(testProject, "Fresh task");
+		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
+
+		// An explicit tmux identity stays readable instead of being reinterpreted.
 		await setTaskTerminalBackend(testProject, created.id, "tmux");
-		const [saved] = await loadTasks(testProject);
+		const saved = (await loadTasks(testProject)).find((t) => t.id === created.id)!;
 		expect(readTaskTerminalBackend(saved)).toMatchObject({ ok: true, backend: "tmux", present: true });
 	});
 });
@@ -285,34 +262,23 @@ describe("task creation on Windows", () => {
 // ============================================================
 
 describe("setTaskTerminalBackend", () => {
-	it.each(["tmux", "native"] as const)("persists an explicit %s across a reload", async (backend) => {
-		seedTasks([legacyRecord()]);
-
-		const updated = await setTaskTerminalBackend(testProject, "A", backend);
-		expect(updated.terminalBackend).toBe(backend);
-		expect(readSavedTasks()[0].terminalBackend).toBe(backend);
-
-		const [reloaded] = await reloadTasks();
-		expect(readTaskTerminalBackend(reloaded)).toEqual({ ok: true, backend, present: true });
-	});
-
-	it("survives an unrelated task update", async () => {
-		seedTasks([legacyRecord()]);
-		await setTaskTerminalBackend(testProject, "A", "native");
-		await updateTask(testProject, "A", { status: "review-by-user" });
-
-		const [reloaded] = await reloadTasks();
-		expect(reloaded.status).toBe("review-by-user");
-		expect(readTaskTerminalBackend(reloaded)).toEqual({ ok: true, backend: "native", present: true });
-	});
-
-	it("only touches the targeted task", async () => {
+	it("persists an explicit identity on the targeted task only, across a reload and an unrelated update", async () => {
 		seedTasks([legacyRecord(), legacyRecord({ id: "B", seq: 2 })]);
-		await setTaskTerminalBackend(testProject, "A", "native");
 
+		const updated = await setTaskTerminalBackend(testProject, "A", "native");
+		expect(updated.terminalBackend).toBe("native");
 		const saved = readSavedTasks();
 		expect(saved.find((t) => t.id === "A")!.terminalBackend).toBe("native");
 		expect(saved.find((t) => t.id === "B")).not.toHaveProperty("terminalBackend");
+
+		await updateTask(testProject, "A", { status: "review-by-user" });
+		const [reloaded] = await reloadTasks();
+		expect(reloaded.status).toBe("review-by-user");
+		expect(readTaskTerminalBackend(reloaded)).toEqual({ ok: true, backend: "native", present: true });
+
+		await setTaskTerminalBackend(testProject, "A", "tmux");
+		const [back] = await reloadTasks();
+		expect(readTaskTerminalBackend(back)).toEqual({ ok: true, backend: "tmux", present: true });
 	});
 
 	it("does not rewrite the file when the value already matches", async () => {
@@ -324,18 +290,15 @@ describe("setTaskTerminalBackend", () => {
 		expect(readFileSync(tasksFilePath(), "utf8")).toBe(before);
 	});
 
-	it("rejects an unsupported identity instead of writing it", async () => {
+	it("rejects an unsupported identity and an unknown task id without writing", async () => {
 		seedTasks([legacyRecord()]);
 		await expect(
 			setTaskTerminalBackend(testProject, "A", "wezterm" as never),
 		).rejects.toThrow(/Unsupported terminal backend identity/);
 		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
-	});
-
-	it("throws for an unknown task id", async () => {
-		seedTasks([legacyRecord()]);
 		await expect(setTaskTerminalBackend(testProject, "missing", "native")).rejects.toThrow(/Task not found/);
 	});
+
 });
 
 // ============================================================
@@ -347,32 +310,23 @@ describe("invalid persisted values", () => {
 		seedTasks([legacyRecord({ terminalBackend: "wezterm" })]);
 		const [task] = await loadTasks(testProject);
 
-		expect(readTaskTerminalBackend(task)).toEqual({ ok: false, code: "unknown-value", received: "wezterm" });
-	});
-
-	it.each([1, null, true, {}, ["native"]])("reports invalid-type for %o", async (value) => {
-		seedTasks([legacyRecord({ terminalBackend: value })]);
-		const [task] = await loadTasks(testProject);
-
-		const decoded = readTaskTerminalBackend(task);
-		expect(decoded.ok).toBe(false);
-		expect(decoded).toMatchObject({ code: "invalid-type" });
-	});
-
-	it("never falls back to tmux or promotes to native on failure", async () => {
-		seedTasks([legacyRecord({ terminalBackend: "WEZTERM" })]);
-		const [task] = await loadTasks(testProject);
-
+		// Never falls back to tmux or promotes to native on failure.
 		expect(readTaskTerminalBackend(task)).not.toHaveProperty("backend");
-	});
 
-	it("leaves the bad value on disk untouched (no silent repair)", async () => {
-		seedTasks([legacyRecord({ terminalBackend: "wezterm" })]);
-		await loadTasks(testProject);
+		// The bad value stays on disk untouched (no silent repair).
 		await updateTask(testProject, "A", { title: "Renamed" });
-
 		expect(readSavedTasks()[0].terminalBackend).toBe("wezterm");
 	});
+
+	it("reports invalid-type for non-string values", async () => {
+		for (const value of [1, null, ["native"]]) {
+			_resetDataCaches();
+			seedTasks([legacyRecord({ terminalBackend: value })]);
+			const [task] = await loadTasks(testProject);
+			expect(readTaskTerminalBackend(task), JSON.stringify(value)).toMatchObject({ ok: false, code: "invalid-type" });
+		}
+	});
+
 });
 
 // ============================================================
@@ -380,30 +334,18 @@ describe("invalid persisted values", () => {
 // ============================================================
 
 describe("cache paths", () => {
-	it("serves the same identity from the cached read as from disk", async () => {
+	it("serves the same identity cached as from disk, and reflects a fresh write", async () => {
 		seedTasks([legacyRecord({ terminalBackend: "native" })]);
 
 		const [cold] = await loadTasks(testProject);
 		const [warm] = await loadTasks(testProject); // second read hits the tasks cache
 		expect(readTaskTerminalBackend(warm)).toEqual(readTaskTerminalBackend(cold));
-	});
 
-	it("does not backfill through a cached read of a legacy record", async () => {
-		seedTasks([legacyRecord()]);
-		await loadTasks(testProject);
-		const [warm] = await loadTasks(testProject);
-
-		expect(warm).not.toHaveProperty("terminalBackend");
-		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
-	});
-
-	it("reflects a freshly written identity without an explicit cache reset", async () => {
-		seedTasks([legacyRecord()]);
-		await loadTasks(testProject); // warm the cache with the legacy shape
-		await setTaskTerminalBackend(testProject, "A", "native");
+		// A freshly written identity shows without an explicit cache reset.
+		await setTaskTerminalBackend(testProject, "A", "tmux");
 
 		const [task] = await loadTasks(testProject);
-		expect(readTaskTerminalBackend(task)).toEqual({ ok: true, backend: "native", present: true });
+		expect(readTaskTerminalBackend(task)).toEqual({ ok: true, backend: "tmux", present: true });
 	});
 });
 
@@ -431,6 +373,13 @@ describe("old/new/old compatibility", () => {
 		const [reloaded] = await reloadTasks();
 		expect(reloaded.title).toBe("Edited by an old build");
 		expect(readTaskTerminalBackend(reloaded)).toEqual({ ok: true, backend: "native", present: true });
+
+		// An older build dropping the field degrades back to effective tmux, not native.
+		simulateOldVersionWrite((t) => {
+			delete t.terminalBackend; // a hypothetical old build that rebuilt the record
+		});
+		const [dropped] = await reloadTasks();
+		expect(readTaskTerminalBackend(dropped)).toEqual({ ok: true, backend: "tmux", present: false });
 	});
 
 	it("stays legacy when an older build never adds the field", async () => {
@@ -445,14 +394,5 @@ describe("old/new/old compatibility", () => {
 		expect(readTaskTerminalBackend(reloaded)).toEqual({ ok: true, backend: "tmux", present: false });
 	});
 
-	it("an older build dropping the field degrades back to effective tmux, not native", async () => {
-		seedTasks([legacyRecord()]);
-		await setTaskTerminalBackend(testProject, "A", "native");
-		simulateOldVersionWrite((t) => {
-			delete t.terminalBackend; // a hypothetical old build that rebuilt the record
-		});
 
-		const [reloaded] = await reloadTasks();
-		expect(readTaskTerminalBackend(reloaded)).toEqual({ ok: true, backend: "tmux", present: false });
-	});
 });

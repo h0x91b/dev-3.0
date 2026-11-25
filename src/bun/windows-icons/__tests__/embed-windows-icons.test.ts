@@ -31,14 +31,9 @@ function iconlessBundle() {
 	return fakeBundle(Object.fromEntries(WINDOWS_ICON_TARGETS.map((path) => [absolute(path), PE_WITHOUT_ICON()])));
 }
 
-describe("WINDOWS_ICON_TARGETS", () => {
-	it("covers exactly the two executables a user sees, and not the installer", () => {
-		expect(WINDOWS_ICON_TARGETS).toEqual(["bin/launcher.exe", "bin/bun.exe"]);
-	});
-});
-
 describe("resolveIconTargets", () => {
-	it("resolves every expected executable", () => {
+	it("resolves exactly the two executables a user sees, and not the installer", () => {
+		expect(WINDOWS_ICON_TARGETS).toEqual(["bin/launcher.exe", "bin/bun.exe"]);
 		const targets = resolveIconTargets(BUNDLE_ROOT, iconlessBundle());
 		expect(targets.map((target) => target.relativePath)).toEqual([...WINDOWS_ICON_TARGETS]);
 		expect(targets[0].absolutePath).toBe(absolute("bin/launcher.exe"));
@@ -51,9 +46,7 @@ describe("resolveIconTargets", () => {
 		expect(() => resolveIconTargets(BUNDLE_ROOT, bundle)).toThrow(
 			/found 1 of 2 expected executables.*missing: bin\/bun\.exe.*Cause: the packaged bundle layout.*Fix: .*update WINDOWS_ICON_TARGETS/s,
 		);
-	});
-
-	it("refuses an empty bundle rather than resolving nothing", () => {
+		// An empty bundle is refused rather than resolving nothing.
 		expect(() => resolveIconTargets(BUNDLE_ROOT, fakeBundle({}))).toThrow(/found 0 of 2 expected executables/);
 	});
 });
@@ -77,13 +70,11 @@ describe("assertIconsEmbedded", () => {
 	// A verifier handed nothing loops zero times and reports success. That silent
 	// pass is the failure this assertion exists to prevent, so it gets its own
 	// message rather than falling through the per-file check.
-	it("fails on an empty target list instead of passing vacuously", () => {
+	it("fails on an empty or short target list instead of passing vacuously", () => {
 		expect(() => assertIconsEmbedded([], fakeBundle({}))).toThrow(
 			/handed 0 executables but must inspect exactly 2 \(bin\/launcher\.exe, bin\/bun\.exe\).*would have verified nothing.*Fix: pass the full list from resolveIconTargets/s,
 		);
-	});
-
-	it("fails on a short target list even when every file it was given is fine", () => {
+		// A short target list fails even when every file it was given is fine.
 		const bundle = fakeBundle({ [absolute("bin/launcher.exe")]: PE_WITH_ICON() });
 		const partial: IconTarget[] = [{ relativePath: "bin/launcher.exe", absolutePath: absolute("bin/launcher.exe") }];
 		expect(() => assertIconsEmbedded(partial, bundle)).toThrow(/handed 1 executables but must inspect exactly 2/);
@@ -115,7 +106,7 @@ describe("embedWindowsIcons", () => {
 	});
 
 	// The exact upstream defect: rcedit "succeeds" and writes nothing.
-	it("fails when rcedit exits cleanly without writing an icon", () => {
+	it("fails when rcedit exits cleanly without writing an icon, and when rcedit itself fails", () => {
 		const bundle = iconlessBundle();
 		expect(() =>
 			embedWindowsIcons({
@@ -126,10 +117,8 @@ describe("embedWindowsIcons", () => {
 				run: () => {},
 			}),
 		).toThrow(/No icon resource in bin\/launcher\.exe, bin\/bun\.exe/);
-	});
 
-	it("propagates a failing rcedit instead of verifying stale bytes", () => {
-		const bundle = iconlessBundle();
+		// A failing rcedit propagates instead of verifying stale bytes.
 		expect(() =>
 			embedWindowsIcons({
 				bundleRoot: BUNDLE_ROOT,

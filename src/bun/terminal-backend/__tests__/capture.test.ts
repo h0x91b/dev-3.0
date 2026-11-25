@@ -70,12 +70,9 @@ describe("capture content boundary", () => {
 		expect(sanitizeCaptureLine("\u001B]8;;https://token@host/secret\u0007link")).toBe("link");
 	});
 
-	it("strips control bytes and C1, and trims only the trailing padding", () => {
+	it("strips control bytes and C1, trims only the trailing padding, and keeps wide glyphs and emoji", () => {
 		expect(sanitizeCaptureLine("a\tb\rc\u0000d")).toBe("abcd");
 		expect(sanitizeCaptureLine("  indented  ")).toBe("  indented");
-	});
-
-	it("keeps wide glyphs, combining marks, and emoji intact", () => {
 		expect(sanitizeCaptureLine("日本語 café 🎉")).toBe("日本語 café 🎉");
 	});
 });
@@ -125,11 +122,19 @@ describe("capture bounds", () => {
 		historyAvailable: 9,
 	};
 
-	it("returns the visible screen only when no history was asked for", () => {
+	it("returns the visible screen only when no history was asked for, and a blank pane as an empty success", () => {
 		const bounded = boundCaptureLines(raw, { historyLines: 0, maxBytes: 4096 });
 		expect(bounded.content.viewport).toEqual(["screen-1", "screen-2"]);
 		expect(bounded.content.history).toEqual([]);
 		expect(bounded.content.lineModel).toBe("physical-rows");
+
+		const blank = boundCaptureLines({ viewport: [], history: [], historyAvailable: 0 }, {
+			historyLines: 10,
+			maxBytes: 4096,
+		});
+		expect(blank.content.viewport).toEqual([]);
+		expect(blank.bounds.bytesReturned).toBe(0);
+		expect(blank.issues).toEqual([]);
 	});
 
 	it("keeps the NEWEST history when the line budget is smaller than the history", () => {
@@ -142,14 +147,12 @@ describe("capture bounds", () => {
 			code: "history-truncated",
 			detail: "7 older history row(s) were left out of this capture",
 		});
-	});
 
-	it("reports history the BACKEND already truncated, not just what the seam cut", () => {
-		// All four rows fit the line budget, yet the backend holds nine.
-		const bounded = boundCaptureLines(raw, { historyLines: 100, maxBytes: 4096 });
-		expect(bounded.content.history).toHaveLength(4);
-		expect(bounded.bounds.historyLinesOmitted).toEqual({ known: true, value: 5 });
-		expect(bounded.issues.map((issue) => issue.code)).toContain("history-truncated");
+		// History the BACKEND already truncated counts too: all four rows fit, yet it holds nine.
+		const all = boundCaptureLines(raw, { historyLines: 100, maxBytes: 4096 });
+		expect(all.content.history).toHaveLength(4);
+		expect(all.bounds.historyLinesOmitted).toEqual({ known: true, value: 5 });
+		expect(all.issues.map((issue) => issue.code)).toContain("history-truncated");
 	});
 
 	it("says it does not know the depth when the backend cannot report one", () => {
@@ -192,33 +195,20 @@ describe("capture bounds", () => {
 		expect(bounded.content.viewport).toEqual(["中文字", "한국어"]);
 		// Every returned row is a whole row: no half characters, no partial lines.
 		for (const row of bounded.content.viewport) expect(row).toHaveLength(3);
-	});
 
-	it("treats a genuinely blank pane as a successful empty capture", () => {
-		const bounded = boundCaptureLines({ viewport: [], history: [], historyAvailable: 0 }, {
-			historyLines: 10,
-			maxBytes: 4096,
-		});
-		expect(bounded.content.viewport).toEqual([]);
-		expect(bounded.bounds.bytesReturned).toBe(0);
-		expect(bounded.issues).toEqual([]);
-	});
-
-	it("sanitizes before it measures, so escape bytes never eat the budget", () => {
+		// Sanitized before measured, so escape bytes never eat the budget.
 		const noisy = { viewport: ["\u001B[31mab\u001B[0m"], history: [], historyAvailable: 0 };
-		const bounded = boundCaptureLines(noisy, { historyLines: 0, maxBytes: 4096 });
-		expect(bounded.content.viewport).toEqual(["ab"]);
-		expect(bounded.bounds.bytesReturned).toBe(2);
+		const clean = boundCaptureLines(noisy, { historyLines: 0, maxBytes: 4096 });
+		expect(clean.content.viewport).toEqual(["ab"]);
+		expect(clean.bounds.bytesReturned).toBe(2);
 	});
 });
 
 describe("last-change age", () => {
-	it("is zero when the source changed at the moment of the read", () => {
+	it("is plain data with no verdict: zero at the read, clamped to zero for a clock ahead, however old it gets", () => {
 		const now = "2026-08-03T10:00:00.000Z";
 		expect(lastChangeAge(knownFact(now), now)).toEqual({ known: true, value: 0 });
-	});
-
-	it("is plain data with no verdict, however old it gets", () => {
+		expect(lastChangeAge(knownFact("2026-08-03T10:00:05.000Z"), now)).toEqual({ known: true, value: 0 });
 		// The old contract called this "stale" past 5s. It was wrong: a quiet healthy
 		// pane has an ancient last-change timestamp and a perfectly current screen.
 		// Nothing here returns an issue, a threshold, or a judgement.
@@ -230,31 +220,22 @@ describe("last-change age", () => {
 		expect(lastChangeAge(unknownFact("no snapshot"), "2026-08-03T10:00:00.000Z").known).toBe(false);
 		expect(lastChangeAge(knownFact("not-a-date"), "2026-08-03T10:00:00.000Z").known).toBe(false);
 	});
-
-	it("clamps a source clock that runs ahead of the read to zero, never negative", () => {
-		expect(lastChangeAge(knownFact("2026-08-03T10:00:05.000Z"), "2026-08-03T10:00:00.000Z")).toEqual({
-			known: true,
-			value: 0,
-		});
-	});
 });
 
 describe("capture identity", () => {
-	it("is opaque: the inputs do not appear in the digest", () => {
+	it("is opaque, stable for the same pane, and different for a replacement", () => {
 		const digest = captureIncarnation("session-x", 4242, 4243);
 		expect(digest).toMatch(/^[0-9a-f]{16}$/);
 		expect(digest).not.toContain("4242");
 		expect(digest).not.toContain("session-x");
-	});
-
-	it("is stable for the same pane and different for a replacement", () => {
+		// Stable for the same pane and different for a replacement.
 		expect(captureIncarnation("s", 1, 2)).toBe(captureIncarnation("s", 1, 2));
 		expect(captureIncarnation("s", 1, 2)).not.toBe(captureIncarnation("s", 1, 3));
 		// Field boundaries cannot be smeared: (1,23) is not (12,3).
 		expect(captureIncarnation("s", 1, 23)).not.toBe(captureIncarnation("s", 12, 3));
 	});
 
-	it("detects a pane or a pane set replaced between the two checks", () => {
+	it("detects a pane or pane set replaced between the two checks, never on an unknown field", () => {
 		expect(paneIdentityDrift(identity(), identity())).toBeNull();
 		expect(paneIdentityDrift(identity(), identity({ incarnation: knownFact("zzz") }))).toContain(
 			"incarnation changed",
@@ -262,9 +243,7 @@ describe("capture identity", () => {
 		expect(paneIdentityDrift(identity(), identity({ epoch: knownFact("gen-2") }))).toContain(
 			"epoch changed",
 		);
-	});
-
-	it("does not call drift on a field that was never known", () => {
+		// No drift on a field that was never known.
 		const blind = identity({ epoch: unknownFact("this backend publishes no generation") });
 		expect(paneIdentityDrift(blind, blind)).toBeNull();
 		expect(paneIdentityDrift(blind, identity({ epoch: knownFact("gen-9") }))).toBeNull();
@@ -279,9 +258,7 @@ describe("capture misses", () => {
 		expect(miss.liveness).toBe("live");
 		expect(Date.parse(miss.readAt)).not.toBeNaN();
 		expect(miss).not.toHaveProperty("content");
-	});
-
-	it("default to unknown liveness rather than guessing the pane is alive", () => {
+		// Liveness defaults to unknown rather than guessing the pane is alive.
 		expect(paneCaptureMiss(identity(), "session-absent", "gone").liveness).toBe("unknown");
 	});
 });

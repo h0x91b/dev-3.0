@@ -35,12 +35,14 @@ beforeEach(() => {
 afterEach(() => { forgetTaskActivity("task"); });
 
 describe("automatic hibernation", () => {
-	it.each([null, 0, -1, NaN, Infinity, "10", 0.5, 43_201])("stays disabled for %s", async value => {
-		expect(normalizeAutoHibernateMinutes(value)).toBe(0);
-		minutes = value as number;
-		await scheduler.tick();
-		expect(deps.outputAt).not.toHaveBeenCalled();
-		expect(deps.hibernate).not.toHaveBeenCalled();
+	it("stays disabled for every non-positive, non-integer or out-of-range value", async () => {
+		for (const value of [null, 0, -1, NaN, Infinity, "10", 0.5, 43_201]) {
+			expect(normalizeAutoHibernateMinutes(value), String(value)).toBe(0);
+			minutes = value as number;
+			await scheduler.tick();
+			expect(deps.outputAt, String(value)).not.toHaveBeenCalled();
+			expect(deps.hibernate, String(value)).not.toHaveBeenCalled();
+		}
 	});
 
 	it("suggests at the inactivity boundary, without unattended teardown", async () => {
@@ -87,14 +89,18 @@ describe("automatic hibernation", () => {
 		expect(scheduler.getSuggestion()?.tasks).toHaveLength(1);
 	});
 
-	it.each([null, NaN, 0])("never treats an unreadable output time (%s) as idle", async value => {
-		await scheduler.tick();
-		now += 10 * MINUTE;
-		output = value;
-		await scheduler.tick();
-		output = now - MINUTE;
-		await scheduler.tick();
-		expect(deps.hibernate).not.toHaveBeenCalled();
+	it("never treats an unreadable output time as idle", async () => {
+		for (const value of [null, NaN, 0]) {
+			scheduler = new AutoHibernateScheduler(deps);
+			output = now - MINUTE;
+			await scheduler.tick();
+			now += 10 * MINUTE;
+			output = value;
+			await scheduler.tick();
+			output = now - MINUTE;
+			await scheduler.tick();
+			expect(deps.hibernate, String(value)).not.toHaveBeenCalled();
+		}
 	});
 
 	it("clears an existing suggestion when the policy is disabled", async () => {
@@ -106,20 +112,26 @@ describe("automatic hibernation", () => {
 		expect(scheduler.getSuggestion()).toBeNull();
 	});
 
-	it.each<Partial<Task>>([
-		{ status: "in-progress" }, { status: "review-by-ai" }, { status: "todo" }, { status: "completed" },
-		{ status: "cancelled" }, { hibernated: true }, { draft: true }, { preparing: true },
-		{ runtimeState: { runtime: "tearing-down", updatedAt: 1 } },
-		{ runtimeState: { runtime: "idle", updatedAt: 1 } }, { worktreePath: null },
-		{ keepAlive: { enabled: true } }, { customColumnId: "custom" },
-	])("protects tasks with %j", async patch => {
-		Object.assign(task, patch);
-		expect(canAutoHibernate(task)).toBe(false);
-		await scheduler.tick();
-		now += 20 * MINUTE;
-		await scheduler.tick();
-		expect(deps.outputAt).not.toHaveBeenCalled();
-		expect(deps.hibernate).not.toHaveBeenCalled();
+	it("protects tasks that are working, finished, parked, mid-transition or kept alive", async () => {
+		const base = { ...task };
+		const patches: Partial<Task>[] = [
+			{ status: "in-progress" }, { status: "review-by-ai" }, { status: "todo" }, { status: "completed" },
+			{ status: "cancelled" }, { hibernated: true }, { draft: true }, { preparing: true },
+			{ runtimeState: { runtime: "tearing-down", updatedAt: 1 } },
+			{ runtimeState: { runtime: "idle", updatedAt: 1 } }, { worktreePath: null },
+			{ keepAlive: { enabled: true } }, { customColumnId: "custom" },
+		];
+		for (const patch of patches) {
+			const label = JSON.stringify(patch);
+			task = { ...base, ...patch } as Task;
+			expect(canAutoHibernate(task), label).toBe(false);
+			scheduler = new AutoHibernateScheduler(deps);
+			await scheduler.tick();
+			now += 20 * MINUTE;
+			await scheduler.tick();
+			expect(deps.outputAt, label).not.toHaveBeenCalled();
+			expect(deps.hibernate, label).not.toHaveBeenCalled();
+		}
 	});
 
 	it("does not inherit the old idle clock after working and returning to waiting", async () => {

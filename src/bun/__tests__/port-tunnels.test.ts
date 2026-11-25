@@ -85,22 +85,18 @@ describe("port-tunnels — exposeTaskPort", () => {
 		vi.clearAllMocks();
 	});
 
-	it("starts a quick tunnel and returns ExposedPort shape", async () => {
+	it("starts a quick tunnel with the ExposedPort shape, and re-exposing the same port reuses it", async () => {
 		mockNextSpawn("https://quick-a.trycloudflare.com");
 		const exposed = await exposeTaskPort("task-1", 3000);
 
-		expect(exposed.kind).toBe("quick");
-		expect(exposed.ports).toEqual([3000]);
-		expect(exposed.url).toBe("https://quick-a.trycloudflare.com");
-		expect(exposed.state).toBe("connected");
-		expect(exposed.taskId).toBe("task-1");
-	});
-
-	it("is idempotent — re-exposing the same port returns the existing tunnel", async () => {
-		mockNextSpawn("https://idem.trycloudflare.com");
-		const first = await exposeTaskPort("t", 3000);
-		const second = await exposeTaskPort("t", 3000);
-		expect(first.url).toBe(second.url);
+		expect(exposed).toMatchObject({
+			kind: "quick",
+			ports: [3000],
+			url: "https://quick-a.trycloudflare.com",
+			state: "connected",
+			taskId: "task-1",
+		});
+		expect((await exposeTaskPort("task-1", 3000)).url).toBe(exposed.url);
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 	});
 
@@ -148,7 +144,7 @@ describe("port-tunnels — exposeTaskPortsShared", () => {
 		vi.clearAllMocks();
 	});
 
-	it("starts a shared tunnel registered with the given port set", async () => {
+	it("starts a shared tunnel registered with the given port set, findable by any of its ports", async () => {
 		mockNextSpawn("https://shared-a.trycloudflare.com");
 		const exposed = await exposeTaskPortsShared("t", [3000, 5173], 9000);
 		expect(exposed.kind).toBe("shared");
@@ -156,6 +152,10 @@ describe("port-tunnels — exposeTaskPortsShared", () => {
 		// Shared URLs include the /p/<subtoken>/<first-port>/ capability prefix
 		// so users can paste them straight into a browser.
 		expect(exposed.url).toMatch(/^https:\/\/shared-a\.trycloudflare\.com\/p\/[\w-]+\/3000\/$/);
+
+		expect(findSharedTunnelByPort(3000)?.taskId).toBe("t");
+		expect(findSharedTunnelByPort(5173)?.taskId).toBe("t");
+		expect(findSharedTunnelByPort(9999)).toBeUndefined();
 	});
 
 	it("merges new ports into an existing shared tunnel without restarting cloudflared", async () => {
@@ -166,15 +166,6 @@ describe("port-tunnels — exposeTaskPortsShared", () => {
 		expect(merged.ports).toEqual([3000, 5173]);
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 	});
-
-	it("findSharedTunnelByPort locates the tunnel that owns a port", async () => {
-		mockNextSpawn("https://find.trycloudflare.com");
-		await exposeTaskPortsShared("t", [3000, 5173], 9000);
-
-		expect(findSharedTunnelByPort(3000)?.taskId).toBe("t");
-		expect(findSharedTunnelByPort(5173)?.taskId).toBe("t");
-		expect(findSharedTunnelByPort(9999)).toBeUndefined();
-	});
 });
 
 describe("port-tunnels — liveness auto-stop", () => {
@@ -184,25 +175,16 @@ describe("port-tunnels — liveness auto-stop", () => {
 		vi.clearAllMocks();
 	});
 
-	it("stops a quick tunnel after 2 consecutive port-scan misses", async () => {
+	it("stops a quick tunnel after 2 consecutive port-scan misses, resetting the count when it reappears", async () => {
 		mockNextSpawn("https://live.trycloudflare.com");
-		await exposeTaskPort("t", 3000);
-		expect(getExposedPorts("t")).toHaveLength(1);
-
-		onTaskPortScanUpdate("t", []); // miss 1
-		expect(getExposedPorts("t")).toHaveLength(1);
-		onTaskPortScanUpdate("t", []); // miss 2 → stop
-		expect(getExposedPorts("t")).toHaveLength(0);
-	});
-
-	it("resets miss counter when the port reappears", async () => {
-		mockNextSpawn("https://flap.trycloudflare.com");
 		await exposeTaskPort("t", 3000);
 
 		onTaskPortScanUpdate("t", []); // miss 1
 		onTaskPortScanUpdate("t", [3000]); // recovered
 		onTaskPortScanUpdate("t", []); // miss 1 again, NOT 2
 		expect(getExposedPorts("t")).toHaveLength(1);
+		onTaskPortScanUpdate("t", []); // miss 2 → stop
+		expect(getExposedPorts("t")).toHaveLength(0);
 	});
 
 	it("keeps a shared tunnel alive as long as ANY of its ports is up", async () => {
@@ -241,17 +223,23 @@ describe("port-tunnels — cleanup", () => {
 		_resetState();
 	});
 
-	it("cleanupTaskTunnels stops every tunnel owned by a task", async () => {
+	it("cleanupTaskTunnels stops every tunnel owned by a task; cleanupAllTunnels stops every task's", async () => {
 		mockNextSpawn("https://a.trycloudflare.com");
 		mockNextSpawn("https://b.trycloudflare.com");
 		mockNextSpawn("https://s.trycloudflare.com");
+		mockNextSpawn("https://other.trycloudflare.com");
 		await exposeTaskPort("t", 3000);
 		await exposeTaskPort("t", 5173);
 		await exposeTaskPortsShared("t", [3000, 5173], 9000);
+		await exposeTaskPort("t2", 4000);
 		expect(getExposedPorts("t")).toHaveLength(3);
 
 		cleanupTaskTunnels("t");
 		expect(getExposedPorts("t")).toHaveLength(0);
+		expect(getExposedPorts("t2")).toHaveLength(1);
+
+		cleanupAllTunnels();
+		expect(getExposedPorts()).toHaveLength(0);
 	});
 
 	it("cleanupTaskTunnels also ends a tunnel that is waiting to be retried", async () => {
@@ -308,16 +296,6 @@ describe("port-tunnels — cleanup", () => {
 		attemptStream.close(); // that attempt fails without a URL
 		await vi.waitFor(() => expect(tunnelManager.get("task:t:shared")?.placeholder).toBe(true), { interval: 2 });
 		expect(getExposedPorts("t")).toEqual([expect.objectContaining({ state: "starting", ports: [3000, 4000] })]);
-	});
-
-	it("cleanupAllTunnels stops every task tunnel", async () => {
-		mockNextSpawn("https://a.trycloudflare.com");
-		mockNextSpawn("https://b.trycloudflare.com");
-		await exposeTaskPort("t1", 3000);
-		await exposeTaskPort("t2", 5173);
-
-		cleanupAllTunnels();
-		expect(getExposedPorts()).toHaveLength(0);
 	});
 
 	it("unexposeShared removes only the shared tunnel, not quick ones", async () => {

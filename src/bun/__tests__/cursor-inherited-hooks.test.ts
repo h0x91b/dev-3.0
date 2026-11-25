@@ -37,10 +37,12 @@ describe("refresh inherited Claude hooks for Cursor", () => {
 		expect(read().hooks.PreToolUse).toEqual([{ hooks: [claim] }]);
 	});
 
-	it.each(["{broken", "null", '{"hooks":{"PreToolUse":"custom"}}'])("leaves unreadable or unsupported settings untouched: %s", (text) => {
-		writeFileSync(path, text);
-		expect(refreshClaudePreToolHooks(folder).written).toBe(false);
-		expect(readFileSync(path, "utf8")).toBe(text);
+	it("leaves unreadable or unsupported settings untouched", () => {
+		for (const text of ["{broken", "null", '{"hooks":{"PreToolUse":"custom"}}']) {
+			writeFileSync(path, text);
+			expect(refreshClaudePreToolHooks(folder).written, text).toBe(false);
+			expect(readFileSync(path, "utf8")).toBe(text);
+		}
 	});
 
 	it("does not create settings in a Cursor-only worktree", () => {

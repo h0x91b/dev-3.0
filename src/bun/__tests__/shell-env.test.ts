@@ -137,7 +137,7 @@ describe("shell environment bootstrap", () => {
 		}
 	});
 
-	it("excludes runtime/internal vars from fullEnv (denylist + prefixes)", async () => {
+	it("excludes runtime/internal and neutralized vars from fullEnv (denylist + prefixes)", async () => {
 		process.env.SHELL = "/bin/zsh";
 		spawnMock.mockReturnValue(fakeProc(nullEnv({
 			MY_TOKEN: "keep-me",
@@ -151,6 +151,8 @@ describe("shell environment bootstrap", () => {
 			DEV3_TASK_ID: "abc123",
 			DEV3_DEBUG: "1",
 			BUN_INSTALL: "/Users/tester/.bun",
+			// Breaks copy inside dev3's tmux panes; must never ride in via the login shell.
+			CLAUDE_CODE_DISABLE_MOUSE_CLICKS: "1",
 		})));
 
 		const { resolveShellEnv } = await import("../shell-env");
@@ -158,21 +160,6 @@ describe("shell environment bootstrap", () => {
 
 		// Every DEV3_* variable is internal wiring, with no carve-out: the freeze
 		// collector is a saved setting now, not a shell-profile export.
-		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me" });
-	});
-
-	it("never inherits neutralized third-party vars (CLAUDE_CODE_DISABLE_MOUSE_CLICKS) into fullEnv", async () => {
-		process.env.SHELL = "/bin/zsh";
-		spawnMock.mockReturnValue(fakeProc(nullEnv({
-			MY_TOKEN: "keep-me",
-			CLAUDE_CODE_DISABLE_MOUSE_CLICKS: "1",
-		})));
-
-		const { resolveShellEnv } = await import("../shell-env");
-		const result = await resolveShellEnv();
-
-		// The var breaks copy inside dev3's tmux panes — it must never ride into
-		// dev3 via the login shell.
 		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me" });
 	});
 
@@ -188,15 +175,10 @@ describe("shell environment bootstrap", () => {
 
 			expect(env).toEqual({ KEEP: "yes" });
 			expect("CLAUDE_CODE_DISABLE_MOUSE_CLICKS" in env).toBe(false);
-		});
 
-		it("is a no-op when no neutralized var is present", async () => {
-			const { stripNeutralizedEnvVars } = await import("../shell-env");
-			const env: Record<string, string | undefined> = { KEEP: "yes" };
-
-			stripNeutralizedEnvVars(env);
-
-			expect(env).toEqual({ KEEP: "yes" });
+			const clean: Record<string, string | undefined> = { KEEP: "yes" };
+			stripNeutralizedEnvVars(clean);
+			expect(clean).toEqual({ KEEP: "yes" });
 		});
 	});
 
@@ -205,7 +187,7 @@ describe("shell environment bootstrap", () => {
 			delete process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS;
 		});
 
-		it("strips neutralized vars from process.env even when import is disabled", async () => {
+		it("strips neutralized vars from process.env even when import is disabled or resolution is empty", async () => {
 			process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS = "1";
 
 			const { applyFullShellEnvToProcess } = await import("../shell-env");
@@ -215,19 +197,16 @@ describe("shell environment bootstrap", () => {
 			// obliterated unconditionally.
 			expect(process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS).toBeUndefined();
 			expect(process.env.FOO).toBeUndefined();
-		});
 
-		it("strips neutralized vars from process.env even when shell resolution returned nothing", async () => {
+			// ...and when shell resolution returned nothing.
 			process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS = "1";
-
-			const { applyFullShellEnvToProcess } = await import("../shell-env");
 			applyFullShellEnvToProcess({}, true);
 
 			expect(process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS).toBeUndefined();
 		});
 	});
 
-	it("preserves multiline and '=' containing env values", async () => {
+	it("preserves multiline and '=' containing env values and strips pre-sentinel noise", async () => {
 		process.env.SHELL = "/bin/zsh";
 		spawnMock.mockReturnValue(fakeProc(nullEnv({
 			MULTILINE_KEY: "-----BEGIN-----\nline2\nline3\n-----END-----",
@@ -239,6 +218,11 @@ describe("shell environment bootstrap", () => {
 
 		expect(result.fullEnv?.MULTILINE_KEY).toBe("-----BEGIN-----\nline2\nline3\n-----END-----");
 		expect(result.fullEnv?.URL_WITH_EQUALS).toBe("https://x.test/?a=1&b=2");
+
+		// Login-shell startup noise before the awk sentinel is discarded.
+		spawnMock.mockReturnValue(fakeProc("Welcome!\nsome=junk\n" + nullEnv({ MY_API_KEY: "secret" })));
+		const noisy = await resolveShellEnv();
+		expect(noisy.fullEnv).toEqual({ MY_API_KEY: "secret" });
 	});
 
 	it("disables job control (+m) so the login shell never steals the tty foreground group", async () => {
@@ -254,19 +238,6 @@ describe("shell environment bootstrap", () => {
 
 		const args = spawnMock.mock.calls[0][0] as string[];
 		expect(args.slice(0, 3)).toEqual(["/bin/zsh", "+m", "-ilc"]);
-	});
-
-	it("strips login-shell startup noise that precedes the awk sentinel", async () => {
-		process.env.SHELL = "/bin/zsh";
-		// Simulate .zshrc that echoes a welcome banner to stdout before awk runs.
-		const noise = "Welcome!\nsome=junk\n";
-		spawnMock.mockReturnValue(fakeProc(noise + nullEnv({ MY_API_KEY: "secret" })));
-
-		const { resolveShellEnv } = await import("../shell-env");
-		const result = await resolveShellEnv();
-
-		expect(result.fullEnv?.MY_API_KEY).toBe("secret");
-		expect(Object.keys(result.fullEnv ?? {})).toHaveLength(1);
 	});
 
 	it("prefers the account shell from macOS user records over a stale SHELL env", async () => {
@@ -310,43 +281,28 @@ describe("shell environment bootstrap", () => {
 			const onlyProfile = (p: string) => p === `${home}/.profile`;
 			const files = getShellRcFiles("/bin/bash", home, onlyProfile);
 			expect(files).toEqual([`${home}/.profile`, `${home}/.bashrc`]);
+			// With several present, .bash_profile wins over .bash_login and .profile.
+			expect(getShellRcFiles("/bin/bash", home, () => true)).toEqual([`${home}/.bash_profile`, `${home}/.bashrc`]);
 		});
 
-		it("prefers .bash_profile over .bash_login and .profile when several exist", async () => {
-			const { getShellRcFiles } = await import("../shell-env");
-			const files = getShellRcFiles("/bin/bash", home, () => true);
-			expect(files).toEqual([`${home}/.bash_profile`, `${home}/.bashrc`]);
-		});
-
-		it("uses only .zshrc for zsh (read by every interactive shell)", async () => {
+		it("uses .zshrc for zsh, ~/.profile for sh/dash, nothing for fish", async () => {
 			const { getShellRcFiles } = await import("../shell-env");
 			expect(getShellRcFiles("/bin/zsh", home, none)).toEqual([`${home}/.zshrc`]);
-		});
-
-		it("uses ~/.profile for a POSIX sh — dash reads no other rc on login", async () => {
-			const { getShellRcFiles } = await import("../shell-env");
+			// POSIX sh / dash read only ~/.profile on login; fish is unsupported.
 			expect(getShellRcFiles("/bin/sh", home, none)).toEqual([`${home}/.profile`]);
 			expect(getShellRcFiles("/bin/dash", home, none)).toEqual([`${home}/.profile`]);
-		});
-
-		it("returns no files for unsupported shells like fish", async () => {
-			const { getShellRcFiles } = await import("../shell-env");
 			expect(getShellRcFiles("/usr/local/bin/fish", home, none)).toEqual([]);
 		});
 	});
 
 	describe("the terminalShell preference", () => {
-		it("runs the chosen shell instead of the detected one", async () => {
-			process.env.SHELL = "/bin/zsh";
-			const { getUserShell, setShellPreference } = await import("../shell-env");
-			setShellPreference("bash");
-			expect(getUserShell()).toBe("/bin/bash");
-		});
-
-		it("re-resolves immediately when the setting changes, instead of serving the hour-long cache", async () => {
+		it("runs the chosen shell instead of the detected one, re-resolving on change", async () => {
 			process.env.SHELL = "/bin/zsh";
 			const { getUserShell, setShellPreference } = await import("../shell-env");
 			expect(getUserShell()).toBe("/bin/zsh");
+			setShellPreference("bash");
+			expect(getUserShell()).toBe("/bin/bash");
+			// Re-resolves immediately on change instead of serving the hour-long cache.
 			setShellPreference("sh");
 			expect(getUserShell()).toBe("/bin/sh");
 		});

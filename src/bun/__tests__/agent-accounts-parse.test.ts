@@ -23,42 +23,24 @@ function makeJwt(payload: Record<string, unknown>): string {
 }
 
 describe("claudePlanLabel", () => {
-	it("maps max tiers", () => {
-		expect(claudePlanLabel("default_claude_max_5x")).toBe("Max 5x");
-		expect(claudePlanLabel("default_claude_max_20x")).toBe("Max 20x");
-	});
-
-	it("maps pro tier", () => {
-		expect(claudePlanLabel("default_claude_pro")).toBe("Pro");
-	});
-
-	it("returns null for empty/default tiers", () => {
-		expect(claudePlanLabel(null)).toBeNull();
-		expect(claudePlanLabel("default")).toBeNull();
-	});
-
-	it("title-cases unknown tiers", () => {
-		expect(claudePlanLabel("some_new_tier")).toBe("Some New Tier");
+	it("maps max and pro tiers, returns null for empty/default, title-cases unknown ones", () => {
+		expect(claudePlanLabel("default_claude_max_5x"), "maps max tiers").toBe("Max 5x");
+		expect(claudePlanLabel("default_claude_max_20x"), "maps max tiers").toBe("Max 20x");
+		expect(claudePlanLabel("default_claude_pro"), "maps pro tier").toBe("Pro");
+		expect(claudePlanLabel(null), "returns null for empty/default tiers").toBeNull();
+		expect(claudePlanLabel("default"), "returns null for empty/default tiers").toBeNull();
+		expect(claudePlanLabel("some_new_tier"), "title-cases unknown tiers").toBe("Some New Tier");
 	});
 });
 
 describe("codexPlanLabel", () => {
-	it("maps simple plans", () => {
-		expect(codexPlanLabel("plus")).toBe("Plus");
-		expect(codexPlanLabel("pro")).toBe("Pro");
-	});
-
-	it("collapses enterprise billing-mode variants to Enterprise", () => {
-		expect(codexPlanLabel("enterprise_cbp_usage_based")).toBe("Enterprise");
-		expect(codexPlanLabel("enterprise")).toBe("Enterprise");
-	});
-
-	it("title-cases unknown compound plans", () => {
-		expect(codexPlanLabel("some_new_plan")).toBe("Some New Plan");
-	});
-
-	it("returns null for null", () => {
-		expect(codexPlanLabel(null)).toBeNull();
+	it("maps simple plans, collapses enterprise variants, title-cases unknown compounds, null for null", () => {
+		expect(codexPlanLabel("plus"), "maps simple plans").toBe("Plus");
+		expect(codexPlanLabel("pro"), "maps simple plans").toBe("Pro");
+		expect(codexPlanLabel("enterprise_cbp_usage_based"), "collapses enterprise billing-mode variants to Enterprise").toBe("Enterprise");
+		expect(codexPlanLabel("enterprise"), "collapses enterprise billing-mode variants to Enterprise").toBe("Enterprise");
+		expect(codexPlanLabel("some_new_plan"), "title-cases unknown compound plans").toBe("Some New Plan");
+		expect(codexPlanLabel(null), "returns null for null").toBeNull();
 	});
 });
 
@@ -83,29 +65,23 @@ describe("parseClaudeIdentity", () => {
 		});
 	});
 
-	it("returns null without oauthAccount", () => {
-		expect(parseClaudeIdentity({})).toBeNull();
-		expect(parseClaudeIdentity(null)).toBeNull();
-		expect(parseClaudeIdentity("nope")).toBeNull();
-	});
-
-	it("tolerates partial oauthAccount", () => {
+	it("returns null without oauthAccount and tolerates a partial one", () => {
+		expect(parseClaudeIdentity({}), "returns null without oauthAccount").toBeNull();
+		expect(parseClaudeIdentity(null), "returns null without oauthAccount").toBeNull();
+		expect(parseClaudeIdentity("nope"), "returns null without oauthAccount").toBeNull();
 		const identity = parseClaudeIdentity({ oauthAccount: { emailAddress: "a@b.c" } });
-		expect(identity?.email).toBe("a@b.c");
-		expect(identity?.plan).toBeNull();
-		expect(identity?.accountId).toBeNull();
+		expect(identity?.email, "tolerates partial oauthAccount").toBe("a@b.c");
+		expect(identity?.plan, "tolerates partial oauthAccount").toBeNull();
+		expect(identity?.accountId, "tolerates partial oauthAccount").toBeNull();
 	});
 });
 
 describe("decodeJwtPayload", () => {
-	it("decodes a base64url payload", () => {
+	it("decodes a base64url payload and returns null for malformed input", () => {
 		const jwt = makeJwt({ email: "x@y.z" });
-		expect(decodeJwtPayload(jwt)?.email).toBe("x@y.z");
-	});
-
-	it("returns null for malformed input", () => {
-		expect(decodeJwtPayload("not-a-jwt")).toBeNull();
-		expect(decodeJwtPayload("a.%%%.c")).toBeNull();
+		expect(decodeJwtPayload(jwt)?.email, "decodes a base64url payload").toBe("x@y.z");
+		expect(decodeJwtPayload("not-a-jwt"), "returns null for malformed input").toBeNull();
+		expect(decodeJwtPayload("a.%%%.c"), "returns null for malformed input").toBeNull();
 	});
 });
 
@@ -153,18 +129,15 @@ describe("parseCodexIdentity", () => {
 		expect(identity).toMatchObject({ accountId: "workspace-globex", organization: null });
 	});
 
-	it("falls back to the JWT chatgpt_account_id when tokens.account_id is missing", () => {
+	it("falls back to the JWT chatgpt_account_id, and returns null without tokens", () => {
 		const identity = parseCodexIdentity({
 			tokens: {
 				id_token: makeJwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acc-2" } }),
 			},
 		});
-		expect(identity?.accountId).toBe("acc-2");
-	});
-
-	it("returns null without tokens", () => {
-		expect(parseCodexIdentity({})).toBeNull();
-		expect(parseCodexIdentity(null)).toBeNull();
+		expect(identity?.accountId, "falls back to the JWT chatgpt_account_id when tokens.account_id is missing").toBe("acc-2");
+		expect(parseCodexIdentity({}), "returns null without tokens").toBeNull();
+		expect(parseCodexIdentity(null), "returns null without tokens").toBeNull();
 	});
 
 	it("derives a compact display id from the selected ChatGPT workspace", () => {
@@ -182,41 +155,29 @@ describe("parseCodexIdentity", () => {
 });
 
 describe("defaultAccountLabel", () => {
-	it("prefers the email", () => {
+	it("prefers the email, else an ordinal", () => {
 		expect(
 			defaultAccountLabel({ email: "a@b.c", organization: null, plan: null, planLabel: null, accountId: null }, 1),
 		).toBe("a@b.c");
-	});
-
-	it("falls back to an ordinal", () => {
-		expect(defaultAccountLabel(null, 3)).toBe("Account 3");
+		expect(defaultAccountLabel(null, 3), "falls back to an ordinal").toBe("Account 3");
 	});
 });
 
 describe("parseEnvLines", () => {
-	it("parses KEY=value lines, skipping blanks and comments", () => {
-		expect(parseEnvLines("A=1\n\n# comment\nB = two words \n")).toEqual({ A: "1", B: "two words" });
-	});
-
-	it("keeps '=' inside values", () => {
-		expect(parseEnvLines("URL=https://x?a=b=c")).toEqual({ URL: "https://x?a=b=c" });
-	});
-
-	it("throws on malformed lines and bad key names", () => {
-		expect(() => parseEnvLines("no-equals-here")).toThrow(/Invalid env line/);
-		expect(() => parseEnvLines("1BAD=x")).toThrow(/Invalid env line/);
-		expect(() => parseEnvLines("=value")).toThrow(/Invalid env line/);
+	it("parses KEY=value lines (skipping blanks/comments, keeping '=' in values) and throws on malformed lines", () => {
+		expect(parseEnvLines("A=1\n\n# comment\nB = two words \n"), "parses KEY=value lines, skipping blanks and comments").toEqual({ A: "1", B: "two words" });
+		expect(parseEnvLines("URL=https://x?a=b=c"), "keeps '=' inside values").toEqual({ URL: "https://x?a=b=c" });
+		expect(() => parseEnvLines("no-equals-here"), "throws on malformed lines and bad key names").toThrow(/Invalid env line/);
+		expect(() => parseEnvLines("1BAD=x"), "throws on malformed lines and bad key names").toThrow(/Invalid env line/);
+		expect(() => parseEnvLines("=value"), "throws on malformed lines and bad key names").toThrow(/Invalid env line/);
 	});
 });
 
 describe("defaultApiProfileLabel", () => {
-	it("uses the base URL host when available", () => {
-		expect(defaultApiProfileLabel("https://openrouter.ai/api/v1", 1)).toBe("openrouter.ai");
-	});
-
-	it("falls back to an ordinal for missing or unparsable URLs", () => {
-		expect(defaultApiProfileLabel(null, 2)).toBe("API profile 2");
-		expect(defaultApiProfileLabel("not a url", 3)).toBe("API profile 3");
+	it("uses the base URL host, else an ordinal", () => {
+		expect(defaultApiProfileLabel("https://openrouter.ai/api/v1", 1), "uses the base URL host when available").toBe("openrouter.ai");
+		expect(defaultApiProfileLabel(null, 2), "falls back to an ordinal for missing or unparsable URLs").toBe("API profile 2");
+		expect(defaultApiProfileLabel("not a url", 3), "falls back to an ordinal for missing or unparsable URLs").toBe("API profile 3");
 	});
 });
 
@@ -228,7 +189,7 @@ describe("shortClaudeConfigDir", () => {
 });
 
 describe("omp accounts parsing", () => {
-	it("reads `omp usage accounts --json` rows", () => {
+	it("reads `omp usage accounts --json` rows and fails loudly on any other shape", () => {
 		const logins = parseOmpAccounts({
 			accounts: [
 				{ provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" },
@@ -236,30 +197,24 @@ describe("omp accounts parsing", () => {
 				{ identityKey: "no provider — dropped" },
 			],
 		});
-		expect(logins).toEqual([
+		expect(logins, "reads `omp usage accounts --json` rows").toEqual([
 			{ provider: "openai-codex", identityKey: "email:dev@example.com|org:ws-1", orgName: "plus" },
 			{ provider: "github-copilot", identityKey: null, orgName: null },
 		]);
+		expect(() => parseOmpAccounts({ rows: [] }), "fails loudly on a payload that is not that shape").toThrow();
+		expect(() => parseOmpAccounts(null), "fails loudly on a payload that is not that shape").toThrow();
 	});
 
-	it("fails loudly on a payload that is not that shape", () => {
-		expect(() => parseOmpAccounts({ rows: [] })).toThrow();
-		expect(() => parseOmpAccounts(null)).toThrow();
-	});
-
-	it("takes the email segment out of an identity key", () => {
-		expect(providerLoginEmail({ provider: "p", identityKey: "org:x|email:a@b.c", orgName: null })).toBe("a@b.c");
-		expect(providerLoginEmail({ provider: "p", identityKey: "org:x", orgName: null })).toBeNull();
-	});
-
-	it("names an account by its first emailed sign-in and badges every provider once", () => {
+	it("takes the email out of an identity key, names an account by its first emailed sign-in and badges every provider once", () => {
+		expect(providerLoginEmail({ provider: "p", identityKey: "org:x|email:a@b.c", orgName: null }), "takes the email segment out of an identity key").toBe("a@b.c");
+		expect(providerLoginEmail({ provider: "p", identityKey: "org:x", orgName: null }), "takes the email segment out of an identity key").toBeNull();
 		const identity = providerLoginsIdentity([
 			{ provider: "github-copilot", identityKey: null, orgName: null },
 			{ provider: "openai-codex", identityKey: "email:dev@example.com", orgName: "plus" },
 			{ provider: "openai-codex", identityKey: "email:other@example.com", orgName: null },
 		]);
-		expect(identity).toEqual({ email: "dev@example.com", organization: "plus", plan: null, planLabel: "github-copilot, openai-codex", accountId: null });
-		expect(providerLoginsIdentity([])).toBeNull();
+		expect(identity, "names an account by its first emailed sign-in and badges every provider once").toEqual({ email: "dev@example.com", organization: "plus", plan: null, planLabel: "github-copilot, openai-codex", accountId: null });
+		expect(providerLoginsIdentity([]), "names an account by its first emailed sign-in and badges every provider once").toBeNull();
 	});
 });
 

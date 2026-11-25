@@ -10,18 +10,14 @@ describe("coordinatorLaunchDefault", () => {
 		expect(config).toMatchObject({ model: expect.stringContaining("fable-5-1"), effort: "medium", permissionMode: "auto" });
 	});
 
-	it("honours the user's pick", () => {
+	it("honours the user's pick, falls back to the agent's own default, and is null for a gone agent", () => {
 		expect(coordinatorLaunchDefault(DEFAULT_AGENTS, { coordinatorAgentId: "builtin-codex", coordinatorConfigId: "codex-default" }))
 			.toEqual({ agentId: "builtin-codex", configId: "codex-default" });
-	});
-
-	it("falls back to the agent's own default when the preset belongs elsewhere", () => {
+		// The preset belongs elsewhere: the agent's own default.
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(coordinatorLaunchDefault(DEFAULT_AGENTS, { coordinatorAgentId: "builtin-codex" }))
 			.toEqual({ agentId: "builtin-codex", configId: codex?.defaultConfigId });
-	});
-
-	it("returns null when the agent is gone, so callers keep the global default", () => {
+		// The agent is gone: null, so callers keep the global default.
 		expect(coordinatorLaunchDefault(DEFAULT_AGENTS, { coordinatorAgentId: "removed-agent" })).toBeNull();
 	});
 });

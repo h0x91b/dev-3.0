@@ -2,30 +2,14 @@ import { describe, expect, it } from "vitest";
 import { parseEnvText, serializeEnvText, sanitizeEnvMap, validateEnvMap } from "../../shared/env-text";
 
 describe("parseEnvText", () => {
-	it("parses KEY=value lines", () => {
+	it("parses KEY=value lines: value verbatim after the first =, CRLF, empty values, comments skipped, last duplicate wins", () => {
 		expect(parseEnvText("FOO=bar\nBAZ=qux").env).toEqual({ FOO: "bar", BAZ: "qux" });
-	});
-
-	it("keeps everything after the first = verbatim, including = and spaces", () => {
 		expect(parseEnvText("URL=https://x.dev/?a=1&b=2").env).toEqual({ URL: "https://x.dev/?a=1&b=2" });
 		expect(parseEnvText("MSG= hello world ").env).toEqual({ MSG: " hello world " });
-	});
-
-	it("parses CRLF line endings", () => {
-		expect(parseEnvText("FOO=bar\r\nBAZ=qux\r\n")).toEqual({
-			env: { FOO: "bar", BAZ: "qux" },
-			errors: [],
-		});
-	});
-
-	it("allows empty values", () => {
+		expect(parseEnvText("FOO=bar\r\nBAZ=qux\r\n")).toEqual({ env: { FOO: "bar", BAZ: "qux" }, errors: [] });
 		expect(parseEnvText("EMPTY=").env).toEqual({ EMPTY: "" });
-	});
-
-	it("skips blank lines and # comments", () => {
-		const { env, errors } = parseEnvText("# comment\n\n  \nFOO=1\n  # indented comment");
-		expect(env).toEqual({ FOO: "1" });
-		expect(errors).toEqual([]);
+		expect(parseEnvText("# comment\n\n  \nFOO=1\n  # indented comment")).toEqual({ env: { FOO: "1" }, errors: [] });
+		expect(parseEnvText("A=1\nA=2").env).toEqual({ A: "2" });
 	});
 
 	it("reports invalid lines with 1-based line numbers", () => {
@@ -37,31 +21,22 @@ describe("parseEnvText", () => {
 		]);
 	});
 
-	it("last duplicate key wins", () => {
-		expect(parseEnvText("A=1\nA=2").env).toEqual({ A: "2" });
-	});
 });
 
 describe("serializeEnvText", () => {
-	it("round-trips with parseEnvText", () => {
+	it("round-trips with parseEnvText, and is empty for an empty map", () => {
 		const env = { FOO: "bar", URL: "https://x.dev/?a=1", EMPTY: "" };
 		expect(parseEnvText(serializeEnvText(env)).env).toEqual(env);
-	});
-
-	it("returns empty string for empty map", () => {
 		expect(serializeEnvText({})).toBe("");
 	});
 });
 
 describe("sanitizeEnvMap", () => {
-	it("returns {} for non-objects", () => {
+	it("returns {} for non-objects, and silently for undefined (not configured)", () => {
+		const warnings: string[] = [];
 		expect(sanitizeEnvMap(null)).toEqual({});
 		expect(sanitizeEnvMap("FOO=1")).toEqual({});
 		expect(sanitizeEnvMap([1, 2])).toEqual({});
-	});
-
-	it("returns {} silently for undefined (not configured)", () => {
-		const warnings: string[] = [];
 		expect(sanitizeEnvMap(undefined, (m) => warnings.push(m))).toEqual({});
 		expect(warnings).toEqual([]);
 	});
@@ -75,12 +50,9 @@ describe("sanitizeEnvMap", () => {
 });
 
 describe("validateEnvMap", () => {
-	it("accepts a valid map and undefined", () => {
+	it("accepts a valid map and undefined; rejects non-object, invalid keys, non-string values", () => {
 		expect(validateEnvMap({ FOO: "bar" })).toEqual([]);
 		expect(validateEnvMap(undefined)).toEqual([]);
-	});
-
-	it("rejects non-object, invalid keys, non-string values", () => {
 		expect(validateEnvMap("x").length).toBe(1);
 		expect(validateEnvMap({ "2BAD": "x" }).length).toBe(1);
 		expect(validateEnvMap({ FOO: 3 }).length).toBe(1);

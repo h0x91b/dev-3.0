@@ -18,50 +18,49 @@ const valid = {
 };
 
 describe("validateExtensionManifest", () => {
-	it("accepts a complete manifest and defaults main", () => {
+	it("accepts a complete manifest, defaults main, and requires a matching install folder", () => {
 		const { main: _main, ...withoutMain } = valid;
 		const result = validateExtensionManifest(withoutMain, "focus-list");
 		expect(result).toEqual({ ok: true, manifest: { ...valid } });
+		// The install folder must carry the manifest id.
+		expect(validateExtensionManifest(valid, "other-name").ok).toBe(false);
 	});
 
-	it.each([
-		["a non-object", "nope", /not a JSON object/],
-		["a reserved id", { ...valid, id: "builtin" }, /reserved/],
-		["an id with a path", { ...valid, id: "../evil" }, /id must be/],
-		["no publisher", { ...valid, publisher: " " }, /publisher/],
-		["a non-semver version", { ...valid, version: "one" }, /version/],
-		["no engines.dev3", { ...valid, engines: {} }, /engines\.dev3/],
-		["another main file", { ...valid, main: "../../steal.js" }, /main must be/],
-		["no views", { ...valid, contributes: { boardViews: [] } }, /at least one view/],
-		["a duplicate view", { ...valid, contributes: { boardViews: [{ id: "a", label: "A" }, { id: "a", label: "B" }] } }, /listed twice/],
-		["a view id with a colon", { ...valid, contributes: { boardViews: [{ id: "builtin:kanban", label: "K" }] } }, /each board view/],
-	])("rejects %s", (_name, raw, error) => {
-		const result = validateExtensionManifest(raw);
-		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error).toMatch(error);
-	});
-
-	it("requires the install folder to carry the manifest id", () => {
-		const result = validateExtensionManifest(valid, "other-name");
-		expect(result.ok).toBe(false);
+	it("rejects each malformed manifest with a specific error", () => {
+		for (const [name, raw, error] of [
+			["a non-object", "nope", /not a JSON object/],
+			["a reserved id", { ...valid, id: "builtin" }, /reserved/],
+			["an id with a path", { ...valid, id: "../evil" }, /id must be/],
+			["no publisher", { ...valid, publisher: " " }, /publisher/],
+			["a non-semver version", { ...valid, version: "one" }, /version/],
+			["no engines.dev3", { ...valid, engines: {} }, /engines\.dev3/],
+			["another main file", { ...valid, main: "../../steal.js" }, /main must be/],
+			["no views", { ...valid, contributes: { boardViews: [] } }, /at least one view/],
+			["a duplicate view", { ...valid, contributes: { boardViews: [{ id: "a", label: "A" }, { id: "a", label: "B" }] } }, /listed twice/],
+			["a view id with a colon", { ...valid, contributes: { boardViews: [{ id: "builtin:kanban", label: "K" }] } }, /each board view/],
+		] as Array<[string, unknown, RegExp]>) {
+			const result = validateExtensionManifest(raw);
+			expect(result.ok, name).toBe(false);
+			if (!result.ok) expect(result.error, name).toMatch(error);
+		}
 	});
 });
 
 describe("satisfiesRange (engines.dev3)", () => {
-	it.each([
-		["1.0.0", "^1.0.0", true],
-		["1.4.2", "^1.0.0", true],
-		["2.0.0", "^1.0.0", false],
-		["1.0.0", "^2.0.0", false],
-		["1.0.0", ">=1.0.0 <2.0.0", true],
-		["1.0.0", "~1.1.0", false],
-		["1.0.0", "1.x", true],
-		["1.0.0", "*", true],
-		["1.0.0", "^0.9.0 || ^1.0.0", true],
-		["0.2.0", "^0.1.0", false],
-		["1.0.0", "banana", false],
-	])("%s against %s → %s", (version, range, expected) => {
-		expect(satisfiesRange(version, range)).toBe(expected);
+	it("matches caret, tilde, x-range, star, comparator and || ranges; refuses garbage", () => {
+		for (const [version, range, expected] of [
+			["1.4.2", "^1.0.0", true],
+			["2.0.0", "^1.0.0", false],
+			["1.0.0", ">=1.0.0 <2.0.0", true],
+			["1.0.0", "~1.1.0", false],
+			["1.0.0", "1.x", true],
+			["1.0.0", "*", true],
+			["1.0.0", "^0.9.0 || ^1.0.0", true],
+			["0.2.0", "^0.1.0", false],
+			["1.0.0", "banana", false],
+		] as Array<[string, string, boolean]>) {
+			expect(satisfiesRange(version, range), `${version} against ${range}`).toBe(expected);
+		}
 	});
 });
 

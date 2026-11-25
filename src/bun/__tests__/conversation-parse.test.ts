@@ -48,9 +48,7 @@ describe("dump layout", () => {
 		const base = { source: "claude", sessionId: "sess-1" } as ParsedConversation;
 		expect(conversationDumpName(base)).toBe("claude-sess-1.json");
 		expect(conversationDumpName({ ...base, source: "codex", sessionId: "roll-2" })).toBe("codex-roll-2.json");
-	});
-
-	it("falls back to a stable name when the transcript has no session id", () => {
+		// A stable fallback name when the transcript has no session id.
 		expect(conversationDumpName({ source: "codex", sessionId: null } as ParsedConversation)).toBe("codex-no-session.json");
 	});
 
@@ -98,18 +96,9 @@ describe("parseWorktreeConversations", () => {
 		writeFileSync(join(dir, `rollout-2026-08-21T12-16-55-${sessionId}.jsonl`), `${header}\n${message}\n`);
 	}
 
-	it("finds a Codex session launched under a dev3 agent account", () => {
-		// dev3 points CODEX_HOME at the account directory, so the rollout never lands
-		// in ~/.codex/sessions and a scan of the home store alone misses it entirely.
-		const worktree = `${taskContainerDir(`${home}/.dev3.0`, SLUG, SHORT_ID)}/worktree`;
-		seedCodexRollout(`${home}/.dev3.0/agent-accounts/codex/acct-1/sessions`, worktree, "roll-7");
-
-		const parsed = parseWorktreeConversations(worktree, { home });
-		expect(parsed.map((p) => p.conversation.source)).toEqual(["codex"]);
-		expect(parsed[0].conversation.sessionId).toBe("roll-7");
-	});
-
-	it("finds Codex sessions in the home store and in an account side by side", () => {
+	// dev3 points CODEX_HOME at the account directory, so the rollout never lands
+	// in ~/.codex/sessions and a scan of the home store alone misses it entirely.
+	it("finds Codex sessions in the home store and in a dev3 agent account side by side", () => {
 		const worktree = `${taskContainerDir(`${home}/.dev3.0`, SLUG, SHORT_ID)}/worktree`;
 		seedCodexRollout(`${home}/.codex/sessions`, worktree, "roll-home");
 		seedCodexRollout(`${home}/.dev3.0/agent-accounts/codex/acct-1/sessions`, worktree, "roll-acct");
@@ -130,11 +119,8 @@ describe("parseTranscriptFile", () => {
 		expect(parseTranscriptFile(path)?.source).toBe("claude");
 	});
 
-	it("returns null for an unreadable path instead of throwing", () => {
+	it("returns null for an unreadable path or non-transcript content instead of throwing", () => {
 		expect(parseTranscriptFile(join(home, "nope.jsonl"))).toBeNull();
-	});
-
-	it("returns null when the content is not a transcript", () => {
 		const path = join(home, "other.jsonl");
 		writeFileSync(path, '{"hello":"world"}\n');
 		expect(parseTranscriptFile(path)).toBeNull();

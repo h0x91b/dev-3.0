@@ -71,8 +71,11 @@ describe.skipIf(process.platform === "win32")("git probes cannot outlive their c
 		expect(await waitUntilGone(marker, 3_000)).toBe(0);
 	});
 
-	it("reads a status that never finished as dirty, not clean", async () => {
+	it("reads a status that never finished as dirty, not clean, and starts a fresh one once it settled", async () => {
 		expect(await isWorktreeDirty(repo.local)).toBe(true);
+		expect(await isWorktreeDirty(repo.local)).toBe(true);
+
+		expect(statusSpawns()).toBe(2);
 	});
 
 	it("lets concurrent pollers of one worktree share a single git status", async () => {
@@ -81,13 +84,6 @@ describe.skipIf(process.platform === "win32")("git probes cannot outlive their c
 		expect(answers).toEqual([true, true, true, true, true]);
 		expect(statusSpawns()).toBe(1);
 		expect(await waitUntilGone(marker, 3_000)).toBe(0);
-	});
-
-	it("starts a fresh status once the previous one has settled", async () => {
-		await isWorktreeDirty(repo.local);
-		await isWorktreeDirty(repo.local);
-
-		expect(statusSpawns()).toBe(2);
 	});
 
 	it("leaves an explicit caller timeout in charge", async () => {

@@ -111,131 +111,64 @@ describe("github", () => {
 		});
 	});
 
-	it("falls back to plain gh auth status when --json flag is unsupported (old gh)", async () => {
-		whichMock.mockResolvedValue("/usr/bin/gh");
-		spawnMock.mockImplementation((cmd: string[]) => {
-			if (cmd.join(" ") === "gh auth status --json hosts") {
-				return fakeProc("", "unknown flag: --json\n\nUsage:\n  gh auth status [flags]\n", 1);
-			}
-			if (cmd.join(" ") === "gh auth status") {
+	it("falls back to plain gh auth status when --json is unsupported, across gh's output variants", async () => {
+		const cases: Array<{ name: string; gh: string; stdout: string; stderr: string; exitCode?: number; expected: unknown }> = [
+			{
 				// Old gh writes auth status output to stderr.
-				const text =
-					"github.com\n" +
-					"  ✓ Logged in to github.com as h0x91b (oauth_token)\n" +
-					"  ✓ Git operations for github.com configured to use https protocol.\n" +
-					"  ✓ Token: gho_******\n";
-				return fakeProc("", text, 0);
-			}
-			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
-		});
-
-		const { getGitHubCliStatus } = await import("../github");
-		await expect(getGitHubCliStatus()).resolves.toEqual({
-			authStatus: "authenticated",
-			binaryPath: "/usr/bin/gh",
-			accounts: [{ login: "h0x91b", host: "github.com", active: true }],
-		});
-	});
-
-	it("fallback parses plain output written to stdout instead of stderr", async () => {
-		whichMock.mockResolvedValue("/usr/bin/gh");
-		spawnMock.mockImplementation((cmd: string[]) => {
-			if (cmd.join(" ") === "gh auth status --json hosts") {
-				return fakeProc("", "unknown flag: --json\n", 1);
-			}
-			if (cmd.join(" ") === "gh auth status") {
-				const text =
-					"github.com\n" +
-					"  ✓ Logged in to github.com as h0x91b-work (keyring)\n" +
-					"  ✓ Logged in to github.com as h0x91b (oauth_token)\n";
-				return fakeProc(text, "", 0);
-			}
-			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
-		});
-
-		const { getGitHubCliStatus } = await import("../github");
-		const status = await getGitHubCliStatus();
-		expect(status.authStatus).toBe("authenticated");
-		expect(status.accounts).toEqual([
-			{ login: "h0x91b-work", host: "github.com", active: true },
-			{ login: "h0x91b", host: "github.com", active: false },
-		]);
-	});
-
-	it("fallback parses modern plain wording ('account X' instead of 'as X')", async () => {
-		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
-		spawnMock.mockImplementation((cmd: string[]) => {
-			if (cmd.join(" ") === "gh auth status --json hosts") {
-				return fakeProc("", "unknown flag: --json\n\nUsage:  gh auth status [flags]\n", 1);
-			}
-			if (cmd.join(" ") === "gh auth status") {
+				name: "old gh, stderr",
+				gh: "/usr/bin/gh",
+				stdout: "",
+				stderr: "github.com\n  ✓ Logged in to github.com as h0x91b (oauth_token)\n  ✓ Git operations for github.com configured to use https protocol.\n  ✓ Token: gho_******\n",
+				expected: { authStatus: "authenticated", binaryPath: "/usr/bin/gh", accounts: [{ login: "h0x91b", host: "github.com", active: true }] },
+			},
+			{
+				name: "plain output on stdout",
+				gh: "/usr/bin/gh",
+				stdout: "github.com\n  ✓ Logged in to github.com as h0x91b-work (keyring)\n  ✓ Logged in to github.com as h0x91b (oauth_token)\n",
+				stderr: "",
+				expected: { authStatus: "authenticated", binaryPath: "/usr/bin/gh", accounts: [
+					{ login: "h0x91b-work", host: "github.com", active: true },
+					{ login: "h0x91b", host: "github.com", active: false },
+				] },
+			},
+			{
 				// gh ~2.50+ (e.g. v2.63.2) wording: "Logged in to <host> account <login>".
-				const text =
-					"github.com\n" +
-					"  ✓ Logged in to github.com account barvolovski (keyring)\n" +
-					"  - Active account: true\n" +
-					"  - Git operations protocol: https\n" +
-					"  - Token: gho_******\n" +
-					"  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'\n";
-				return fakeProc(text, "", 0);
-			}
-			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
-		});
-
-		const { getGitHubCliStatus } = await import("../github");
-		await expect(getGitHubCliStatus()).resolves.toEqual({
-			authStatus: "authenticated",
-			binaryPath: "/opt/homebrew/bin/gh",
-			accounts: [{ login: "barvolovski", host: "github.com", active: true }],
-		});
-	});
-
-	it("fallback marks the account flagged 'Active account: true' as active, not the first listed", async () => {
-		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
-		spawnMock.mockImplementation((cmd: string[]) => {
-			if (cmd.join(" ") === "gh auth status --json hosts") {
-				return fakeProc("", "unknown flag: --json\n", 1);
-			}
-			if (cmd.join(" ") === "gh auth status") {
-				const text =
-					"github.com\n" +
-					"  ✓ Logged in to github.com account h0x91b-work (keyring)\n" +
-					"  - Active account: false\n" +
-					"\n" +
-					"  ✓ Logged in to github.com account h0x91b (keyring)\n" +
-					"  - Active account: true\n";
-				return fakeProc(text, "", 0);
-			}
-			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
-		});
-
-		const { getGitHubCliStatus } = await import("../github");
-		const status = await getGitHubCliStatus();
-		expect(status.authStatus).toBe("authenticated");
-		expect(status.accounts).toEqual([
-			{ login: "h0x91b", host: "github.com", active: true },
-			{ login: "h0x91b-work", host: "github.com", active: false },
-		]);
-	});
-
-	it("returns not_authenticated when fallback gh auth status also fails", async () => {
-		whichMock.mockResolvedValue("/usr/bin/gh");
-		spawnMock.mockImplementation((cmd: string[]) => {
-			if (cmd.join(" ") === "gh auth status --json hosts") {
-				return fakeProc("", "unknown flag: --json\n", 1);
-			}
-			if (cmd.join(" ") === "gh auth status") {
-				return fakeProc("", "You are not logged into any GitHub hosts.\n", 1);
-			}
-			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
-		});
-
-		const { getGitHubCliStatus } = await import("../github");
-		await expect(getGitHubCliStatus()).resolves.toEqual({
-			authStatus: "not_authenticated",
-			binaryPath: "/usr/bin/gh",
-			accounts: [],
-		});
+				name: "modern 'account X' wording",
+				gh: "/opt/homebrew/bin/gh",
+				stdout: "github.com\n  ✓ Logged in to github.com account barvolovski (keyring)\n  - Active account: true\n  - Git operations protocol: https\n  - Token: gho_******\n  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'\n",
+				stderr: "",
+				expected: { authStatus: "authenticated", binaryPath: "/opt/homebrew/bin/gh", accounts: [{ login: "barvolovski", host: "github.com", active: true }] },
+			},
+			{
+				name: "'Active account: true' wins over list order",
+				gh: "/opt/homebrew/bin/gh",
+				stdout: "github.com\n  ✓ Logged in to github.com account h0x91b-work (keyring)\n  - Active account: false\n\n  ✓ Logged in to github.com account h0x91b (keyring)\n  - Active account: true\n",
+				stderr: "",
+				expected: { authStatus: "authenticated", binaryPath: "/opt/homebrew/bin/gh", accounts: [
+					{ login: "h0x91b", host: "github.com", active: true },
+					{ login: "h0x91b-work", host: "github.com", active: false },
+				] },
+			},
+			{
+				name: "fallback also fails",
+				gh: "/usr/bin/gh",
+				stdout: "",
+				stderr: "You are not logged into any GitHub hosts.\n",
+				exitCode: 1,
+				expected: { authStatus: "not_authenticated", binaryPath: "/usr/bin/gh", accounts: [] },
+			},
+		];
+		for (const c of cases) {
+			vi.resetModules();
+			whichMock.mockResolvedValue(c.gh);
+			spawnMock.mockImplementation((cmd: string[]) => {
+				if (cmd.join(" ") === "gh auth status --json hosts") return fakeProc("", "unknown flag: --json\n", 1);
+				if (cmd.join(" ") === "gh auth status") return fakeProc(c.stdout, c.stderr, c.exitCode ?? 0);
+				throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+			});
+			const { getGitHubCliStatus } = await import("../github");
+			expect(await getGitHubCliStatus(), c.name).toEqual(c.expected);
+		}
 	});
 
 	it("caches authenticated status — repeated calls spawn gh only once", async () => {
@@ -529,17 +462,13 @@ describe("github", () => {
 		const account = { host: "github.com", login: "reader", active: true };
 		beforeEach(() => spawnMock.mockImplementation(() => fakeProc("reader-token")));
 
-		it.each([["github.com", "https://api.github.com/graphql"], ["team.ghe.com", "https://api.team.ghe.com/graphql"], ["git.example.com", "https://git.example.com/api/graphql"]])("uses the API endpoint for %s", async (host, endpoint) => {
-			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { ok: true } })));
-			const { queryGitHub } = await import("../github");
-			await expect(queryGitHub({ ...account, host }, "query { viewer { login } }", {}, AbortSignal.timeout(1000))).resolves.toEqual({ ok: true });
-			expect(fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer reader-token" }), redirect: "error" }));
-		});
-
-		it("rejects GraphQL errors even on HTTP 200, including partial data", async () => {
-			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { ok: true }, errors: [{ message: "Unavailable field" }] })));
-			const { queryGitHub } = await import("../github");
-			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow("Unavailable field");
+		it("uses the API endpoint for github.com, GHE.com and GHE Server hosts", async () => {
+			for (const [host, endpoint] of [["github.com", "https://api.github.com/graphql"], ["team.ghe.com", "https://api.team.ghe.com/graphql"], ["git.example.com", "https://git.example.com/api/graphql"]]) {
+				vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { ok: true } })));
+				const { queryGitHub } = await import("../github");
+				expect(await queryGitHub({ ...account, host }, "query { viewer { login } }", {}, AbortSignal.timeout(1000)), host).toEqual({ ok: true });
+				expect(fetch, host).toHaveBeenCalledWith(endpoint, expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer reader-token" }), redirect: "error" }));
+			}
 		});
 
 		it("does not rate-limit unrelated repositories after a permission-only 403", async () => {
@@ -550,21 +479,24 @@ describe("github", () => {
 			expect(fetch).toHaveBeenCalledTimes(2);
 		});
 
-		it.each([200, 403])("backs off on a secondary rate-limit message with HTTP %s and no retry header", async (status) => {
-			const body = status === 200 ? { errors: [{ message: "You have exceeded a secondary rate limit." }] } : { message: "You have exceeded a secondary rate limit." };
-			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(body, { status })));
-			const { queryGitHub } = await import("../github");
-			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow();
-			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toThrow("rate limit");
-			expect(fetch).toHaveBeenCalledTimes(1);
+		it("backs off on a secondary rate-limit message with HTTP 200 or 403 and no retry header", async () => {
+			for (const status of [200, 403]) {
+				vi.resetModules();
+				const body = status === 200 ? { errors: [{ message: "You have exceeded a secondary rate limit." }] } : { message: "You have exceeded a secondary rate limit." };
+				vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(body, { status })));
+				const { queryGitHub } = await import("../github");
+				await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000)), `HTTP ${status}`).rejects.toThrow();
+				await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000)), `HTTP ${status}`).rejects.toThrow("rate limit");
+				expect(fetch, `HTTP ${status}`).toHaveBeenCalledTimes(1);
+			}
 		});
 
-		it("preserves GraphQL error paths and partial data for the PR reader", async () => {
+		it("rejects GraphQL errors on HTTP 200, preserving error paths and partial data for the PR reader", async () => {
 			const data = { repository: { open: { nodes: [{ number: 42 }] }, known: null } };
 			const errors = [{ type: "NOT_FOUND", path: ["repository", "known"], message: "No such PR" }];
 			vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data, errors })));
 			const { queryGitHub } = await import("../github");
-			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toMatchObject({ data, errors });
+			await expect(queryGitHub(account, "q", {}, AbortSignal.timeout(1000))).rejects.toMatchObject({ message: expect.stringContaining("No such PR"), data, errors });
 		});
 
 		it("honors Retry-After and does not issue more requests while rate limited", async () => {
@@ -630,34 +562,20 @@ describe("github", () => {
 			} } } } : { errors: [{ message: "no such PR" }] })));
 		}
 
-		it("returns true for a merged PR on this branch", async () => {
-			mockGhPrView("MERGED");
-			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(true);
-		});
-
-		it("returns false for an open PR", async () => {
-			mockGhPrView("OPEN");
-			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(false);
-		});
-
-		it("returns false when the gh command fails (offline / unauthenticated)", async () => {
-			mockGhPrView(null, false);
-			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(false);
-		});
-
-		it("refuses a merged PR that belongs to another branch", async () => {
-			mockGhPrView("MERGED", true, "contributor/their-feature");
-			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1255, "fix/mine")).resolves.toBe(false);
-		});
-
-		it("accepts a merged PR without an ownership check when no branch is known", async () => {
-			mockGhPrView("MERGED", true, "contributor/their-feature");
-			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1255, null)).resolves.toBe(true);
+		it("answers merged only for a merged PR owned by this branch (or any merged PR when no branch is known)", async () => {
+			const cases: Array<[name: string, state: string | null, ok: boolean, head: string, pr: number, branch: string | null, expected: boolean]> = [
+				["merged PR on this branch", "MERGED", true, "feat/mine", 1077, "feat/mine", true],
+				["open PR", "OPEN", true, "feat/mine", 1077, "feat/mine", false],
+				["gh fails (offline / unauthenticated)", null, false, "feat/mine", 1077, "feat/mine", false],
+				["merged PR of another branch", "MERGED", true, "contributor/their-feature", 1255, "fix/mine", false],
+				["no branch known: no ownership check", "MERGED", true, "contributor/their-feature", 1255, null, true],
+			];
+			for (const [name, state, ok, head, pr, branch, expected] of cases) {
+				vi.resetModules();
+				mockGhPrView(state, ok, head);
+				const { isPullRequestMerged } = await import("../github");
+				expect(await isPullRequestMerged(PROJECT, "/tmp/wt", pr, branch), name).toBe(expected);
+			}
 		});
 
 		it("reports state and head branch via getPullRequestSnapshot", async () => {
@@ -703,16 +621,12 @@ describe("github", () => {
 	describe("isNotAGitHubRepoError", () => {
 		const PROJECT = { githubAuthHost: "github.com", githubAuthLogin: "h0x91b" };
 
-		it("recognises gh's refusal on a non-GitHub remote", async () => {
+		it("recognises only gh's refusal on a non-GitHub remote, never any other failure", async () => {
 			const { isNotAGitHubRepoError } = await import("../github");
 			expect(isNotAGitHubRepoError({
 				stderr: "none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
 			})).toBe(true);
 			expect(isNotAGitHubRepoError({ stdout: "no git remotes found" })).toBe(true);
-		});
-
-		it("does NOT claim non-GitHub for any other failure", async () => {
-			const { isNotAGitHubRepoError } = await import("../github");
 			// Every one of these must leave the PR button alone: killing a working
 			// button is worse than one wasted agent turn.
 			for (const stderr of [
@@ -723,7 +637,7 @@ describe("github", () => {
 				"HTTP 502: Bad gateway",
 				"could not resolve host",
 			]) {
-				expect(isNotAGitHubRepoError({ stderr })).toBe(false);
+				expect(isNotAGitHubRepoError({ stderr }), stderr).toBe(false);
 			}
 		});
 
@@ -741,23 +655,19 @@ describe("github", () => {
 			});
 		}
 
-		it("treats a successful gh call as GitHub", async () => {
-			mockGhRepoView('{"nameWithOwner":"h0x91b/dev-3.0"}');
-			const { isGitHubRepo } = await import("../github");
-			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(true);
-		});
-
-		it("reports not-GitHub when gh says the remotes are not GitHub", async () => {
-			mockGhRepoView("", "none of the git remotes configured for this repository point to a known GitHub host.", 1);
-			const { isGitHubRepo } = await import("../github");
-			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(false);
-		});
-
 		/** A blip must not disable the button — the whole point of the polarity. */
-		it("stays GitHub when gh fails for any other reason", async () => {
-			mockGhRepoView("", "HTTP 502: Bad gateway", 1);
-			const { isGitHubRepo } = await import("../github");
-			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(true);
+		it("reports not-GitHub only when gh says the remotes are not GitHub", async () => {
+			const cases: Array<[name: string, stdout: string, stderr: string, exitCode: number, expected: boolean]> = [
+				["gh succeeds", '{"nameWithOwner":"h0x91b/dev-3.0"}', "", 0, true],
+				["remotes are not GitHub", "", "none of the git remotes configured for this repository point to a known GitHub host.", 1, false],
+				["any other gh failure", "", "HTTP 502: Bad gateway", 1, true],
+			];
+			for (const [name, stdout, stderr, exitCode, expected] of cases) {
+				vi.resetModules();
+				mockGhRepoView(stdout, stderr, exitCode);
+				const { isGitHubRepo } = await import("../github");
+				expect(await isGitHubRepo(PROJECT, "/tmp/wt"), name).toBe(expected);
+			}
 		});
 
 		describe("findOpenPullRequest", () => {
@@ -808,18 +718,16 @@ describe("github", () => {
 				expect(args).toContain("--state all");
 			});
 
-			it("picks a same-repo PR for an origin ref, open before an older closed one", async () => {
-				mockGhRepoView(JSON.stringify([fork(2071, "mcaldas"), own(1500, "CLOSED"), own(2068)]));
+			it("picks a same-repo PR for an origin ref (open before an older closed one), or a merged PR when nothing open shares its head", async () => {
+				const cases = [
+					{ name: "origin ref", prs: [fork(2071, "mcaldas"), own(1500, "CLOSED"), own(2068)], forkOwner: null, expected: 2068 },
+					{ name: "merged only", prs: [fork(2067, "mcaldas", "MERGED")], forkOwner: "mcaldas", expected: 2067 },
+				];
 				const { findPullRequestForHead } = await import("../github");
-				await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: null }))
-					.resolves.toMatchObject({ number: 2068 });
-			});
-
-			it("keeps a merged PR when nothing open shares its head", async () => {
-				mockGhRepoView(JSON.stringify([fork(2067, "mcaldas", "MERGED")]));
-				const { findPullRequestForHead } = await import("../github");
-				await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: "mcaldas" }))
-					.resolves.toMatchObject({ number: 2067 });
+				for (const c of cases) {
+					mockGhRepoView(JSON.stringify(c.prs));
+					expect(await findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: c.forkOwner }), c.name).toMatchObject({ number: c.expected });
+				}
 			});
 
 			it("answers null for no match, a gh failure, unparsable output and no branch", async () => {

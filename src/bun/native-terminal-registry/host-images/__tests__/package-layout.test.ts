@@ -29,22 +29,21 @@ afterEach(() => {
 });
 
 describe("Electrobun target tokens", () => {
-	test("maps every supported OS token onto a manifest OS", () => {
+	test("maps every supported OS token, refuses unknown ones, and treats non-arm64 as x64", () => {
 		expect(manifestOsForElectrobunOs("macos")).toBe("darwin");
 		expect(manifestOsForElectrobunOs("linux")).toBe("linux");
 		expect(manifestOsForElectrobunOs("win")).toBe("win32");
+		{
+			expect(() => manifestOsForElectrobunOs(undefined)).toThrow(/Unsupported ELECTROBUN_OS/);
+			expect(() => manifestOsForElectrobunOs("darwin")).toThrow(/Unsupported ELECTROBUN_OS/);
+		}
+		{
+			expect(manifestArchForElectrobunArch("arm64")).toBe("arm64");
+			expect(manifestArchForElectrobunArch("x64")).toBe("x64");
+			expect(manifestArchForElectrobunArch(undefined)).toBe("x64");
+		}
 	});
 
-	test("refuses an unknown or missing OS token instead of guessing", () => {
-		expect(() => manifestOsForElectrobunOs(undefined)).toThrow(/Unsupported ELECTROBUN_OS/);
-		expect(() => manifestOsForElectrobunOs("darwin")).toThrow(/Unsupported ELECTROBUN_OS/);
-	});
-
-	test("treats anything that is not arm64 as x64", () => {
-		expect(manifestArchForElectrobunArch("arm64")).toBe("arm64");
-		expect(manifestArchForElectrobunArch("x64")).toBe("x64");
-		expect(manifestArchForElectrobunArch(undefined)).toBe("x64");
-	});
 });
 
 describe("nativeHostPackageLayout", () => {
@@ -89,14 +88,13 @@ describe("packagedRuntimePathIn", () => {
 		return bundleRoot;
 	}
 
-	test("finds the macOS runtime inside Contents/MacOS", () => {
+	test("finds the macOS runtime in Contents/MacOS and the Linux one in bin/", () => {
 		const bundleRoot = bundleWithRuntime("dev-3.0.app", join("Contents", "MacOS", "bun"));
 		expect(packagedRuntimePathIn("darwin", bundleRoot)).toBe(join(bundleRoot, "Contents", "MacOS", "bun"));
-	});
-
-	test("finds the Linux runtime inside bin/", () => {
-		const bundleRoot = bundleWithRuntime("dev-3.0", join("bin", "bun"));
-		expect(packagedRuntimePathIn("linux", bundleRoot)).toBe(join(bundleRoot, "bin", "bun"));
+		{
+			const bundleRoot = bundleWithRuntime("dev-3.0", join("bin", "bun"));
+			expect(packagedRuntimePathIn("linux", bundleRoot)).toBe(join(bundleRoot, "bin", "bun"));
+		}
 	});
 
 	test("reports a miss instead of searching a second location", () => {

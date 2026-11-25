@@ -29,7 +29,7 @@ describe("native-session journal frames", () => {
 		expect(frames.map((f) => dec(f.data))).toEqual(["a", "b"]);
 	});
 
-	it("caps the rolling buffer to maxBytes, always keeping the newest frame", () => {
+	it("caps the rolling buffer to maxBytes, keeping the newest frame even when it alone is over the cap", () => {
 		let frames: string[] = [];
 		let bytes = 0;
 		for (let i = 0; i < 50; i++) {
@@ -41,13 +41,12 @@ describe("native-session journal frames", () => {
 		// Oldest frames were dropped; the most recent one is always retained.
 		const parsed = parseJournal(frames.join(""));
 		expect(parsed[parsed.length - 1]?.seq).toBe(49);
-	});
-
-	it("keeps a single over-cap frame rather than dropping everything", () => {
-		const huge = encodeJournalFrame(0, "t", enc("x".repeat(1000)));
-		const { frames, bytes } = pushFrameCapped([], 0, huge, 100);
-		expect(frames).toHaveLength(1);
-		expect(bytes).toBeGreaterThan(100);
+		{
+			const huge = encodeJournalFrame(0, "t", enc("x".repeat(1000)));
+			const { frames, bytes } = pushFrameCapped([], 0, huge, 100);
+			expect(frames).toHaveLength(1);
+			expect(bytes).toBeGreaterThan(100);
+		}
 	});
 
 	it("JournalWriter flushes the capped tail to disk", () => {

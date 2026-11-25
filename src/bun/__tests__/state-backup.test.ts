@@ -109,48 +109,52 @@ describe("the protected-state registry", () => {
 });
 
 describe("hourly snapshots, per protected file", () => {
-	for (const fixture of FIXTURES) {
-		it(`snapshots ${fixture.basename} on a timer tick with no save at all`, async () => {
-			const payload = fixture.payload();
-			write(fixture.basename, payload);
+	// One test per behaviour, each asserted for EVERY protected file — the
+	// snapshot path is shared, so per-file tests only multiplied the runs.
+	it("snapshots every file on a timer tick with no save at all, and that first copy is the good one", async () => {
+		for (const fixture of FIXTURES) write(fixture.basename, fixture.payload());
 
-			await snapshotProtectedState(HOUR_A);
+		await snapshotProtectedState(HOUR_A);
 
-			expect(listSlots(fixture.stem)).toEqual([SLOT_A]);
+		for (const fixture of FIXTURES) {
+			expect(listSlots(fixture.stem), fixture.id).toEqual([SLOT_A]);
 			const snapshot = JSON.parse(readFileSync(`${TEST_HOME}/${fixture.stem}-backups/${SLOT_A}`, "utf-8"));
-			expect(snapshot).toEqual(payload);
-			expect(readGood(fixture.stem)).toEqual(payload);
-		});
+			expect(snapshot, fixture.id).toEqual(fixture.payload());
+			expect(readGood(fixture.stem), fixture.id).toEqual(fixture.payload());
+		}
+	});
 
-		it(`writes at most one ${fixture.basename} snapshot per hour`, async () => {
-			write(fixture.basename, fixture.payload());
+	it("writes at most one snapshot per file per hour", async () => {
+		for (const fixture of FIXTURES) write(fixture.basename, fixture.payload());
 
-			await snapshotProtectedState(HOUR_A);
-			await snapshotProtectedState(new Date("2026-08-31T10:59:59.000Z"));
+		await snapshotProtectedState(HOUR_A);
+		await snapshotProtectedState(new Date("2026-08-31T10:59:59.000Z"));
 
-			expect(listSlots(fixture.stem)).toEqual([SLOT_A]);
-		});
+		for (const fixture of FIXTURES) expect(listSlots(fixture.stem), fixture.id).toEqual([SLOT_A]);
+	});
 
-		it(`snapshots nothing when ${fixture.basename} does not exist yet`, async () => {
-			await snapshotProtectedState(HOUR_A);
+	it("snapshots nothing for a file that does not exist yet", async () => {
+		await snapshotProtectedState(HOUR_A);
 
-			expect(listSlots(fixture.stem)).toEqual([]);
-			expect(existsSync(`${TEST_HOME}/${fixture.stem}-last-known-good.json`)).toBe(false);
-		});
+		for (const fixture of FIXTURES) {
+			expect(listSlots(fixture.stem), fixture.id).toEqual([]);
+			expect(existsSync(`${TEST_HOME}/${fixture.stem}-last-known-good.json`), fixture.id).toBe(false);
+		}
+	});
 
-		it(`never lets unreadable ${fixture.basename} bytes become the good copy`, async () => {
-			const payload = fixture.payload();
-			write(fixture.basename, payload);
-			await snapshotProtectedState(HOUR_A);
+	it("never lets unreadable bytes become the good copy, for any file", async () => {
+		for (const fixture of FIXTURES) write(fixture.basename, fixture.payload());
+		await snapshotProtectedState(HOUR_A);
 
-			writeFileSync(`${TEST_HOME}/${fixture.basename}`, "{ truncated");
-			await snapshotProtectedState(HOUR_B);
+		for (const fixture of FIXTURES) writeFileSync(`${TEST_HOME}/${fixture.basename}`, "{ truncated");
+		await snapshotProtectedState(HOUR_B);
 
-			// The hourly slot records the wreck faithfully; the good copy does not move.
-			expect(readFileSync(`${TEST_HOME}/${fixture.stem}-backups/${SLOT_B}`, "utf-8")).toBe("{ truncated");
-			expect(readGood(fixture.stem)).toEqual(payload);
-		});
-	}
+		// The hourly slot records the wreck faithfully; the good copy does not move.
+		for (const fixture of FIXTURES) {
+			expect(readFileSync(`${TEST_HOME}/${fixture.stem}-backups/${SLOT_B}`, "utf-8"), fixture.id).toBe("{ truncated");
+			expect(readGood(fixture.stem), fixture.id).toEqual(fixture.payload());
+		}
+	});
 
 	it("gives one file's failure no power over the others", async () => {
 		for (const fixture of FIXTURES) write(fixture.basename, fixture.payload());
@@ -318,12 +322,6 @@ describe("the collapse rule, per file, in both directions", () => {
 	it("settings.json: refuses bytes that are not an object at all", () => {
 		expect(settingsAdvance("[]", JSON.stringify(settings({})))).toBe(false);
 		expect(settingsAdvance("{ truncated", JSON.stringify(settings({})))).toBe(false);
-	});
-
-	it("accepts the very first copy of every file, with nothing to compare against", async () => {
-		for (const fixture of FIXTURES) write(fixture.basename, fixture.payload());
-		await snapshotProtectedState(HOUR_A);
-		for (const fixture of FIXTURES) expect(readGood(fixture.stem)).toEqual(fixture.payload());
 	});
 });
 

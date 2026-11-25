@@ -48,16 +48,19 @@ describe("parseClaudeStatusLinePayload", () => {
 		expect(snap!.windows[1].usedPercent).toBe(77.4);
 	});
 
-	it("returns null when rate_limits is absent (older Claude Code)", () => {
-		expect(parseClaudeStatusLinePayload({ session_id: "s" }, NOW)).toBeNull();
-		expect(parseClaudeStatusLinePayload(null, NOW)).toBeNull();
-		expect(parseClaudeStatusLinePayload("garbage", NOW)).toBeNull();
-	});
-
 	it("parses a single window when only five_hour is present", () => {
 		const snap = parseClaudeStatusLinePayload({ rate_limits: { five_hour: { used_percentage: 3 } } }, NOW);
 		expect(snap!.windows).toHaveLength(1);
 		expect(snap!.windows[0].resetsAt).toBeNull();
+	});
+
+	it("returns null without rate_limits (older Claude Code) and before the session's first API response", () => {
+		expect(parseClaudeStatusLinePayload({ session_id: "s" }, NOW)).toBeNull();
+		expect(parseClaudeStatusLinePayload(null, NOW)).toBeNull();
+		expect(parseClaudeStatusLinePayload("garbage", NOW)).toBeNull();
+		// Pro/Max sessions also lack rate_limits until the first response.
+		expect(parseClaudeStatusLinePayload({ cost: { total_cost_usd: 0, total_api_duration_ms: 0 } }, NOW)).toBeNull();
+		expect(parseClaudeStatusLinePayload({ rate_limits: null, cost: { total_cost_usd: 0 } }, NOW)).toBeNull();
 	});
 
 	// h0x91b/dev-3.0#1948: an Enterprise session sends cost but never rate_limits.
@@ -75,12 +78,6 @@ describe("parseClaudeStatusLinePayload", () => {
 		expect(snap!.creditsBalance).toBeNull();
 		expect(snap!.spendLimit).toBeUndefined();
 		expect(formatStatusLineSegment(snap, NOW)).toBe("");
-	});
-
-	it("says nothing about limits before the session's first API response", () => {
-		// Pro/Max sessions also lack rate_limits until the first response.
-		expect(parseClaudeStatusLinePayload({ cost: { total_cost_usd: 0, total_api_duration_ms: 0 } }, NOW)).toBeNull();
-		expect(parseClaudeStatusLinePayload({ rate_limits: null, cost: { total_cost_usd: 0 } }, NOW)).toBeNull();
 	});
 
 	it("parses a Claude apps gateway spend limit with its dollars", () => {
@@ -134,7 +131,7 @@ describe("latestRateLimitSnapshot with limit-less readings", () => {
 });
 
 describe("parseCodexRateLimits", () => {
-	it("handles the enterprise usage-based shape (null windows, credits only)", () => {
+	it("handles the enterprise usage-based shape (null windows, credits only) and returns null for empty/garbage", () => {
 		const snap = parseCodexRateLimits(
 			{
 				limit_id: "codex",
@@ -149,6 +146,8 @@ describe("parseCodexRateLimits", () => {
 		expect(snap!.windows).toHaveLength(0);
 		expect(snap!.creditsBalance).toBe("42.5");
 		expect(snap!.planType).toBe("enterprise_cbp_usage_based");
+		expect(parseCodexRateLimits({ primary: null, secondary: null, credits: { has_credits: false } }, NOW)).toBeNull();
+		expect(parseCodexRateLimits(null, NOW)).toBeNull();
 	});
 
 	it("parses absolute resets_at windows (newer Codex)", () => {
@@ -166,15 +165,10 @@ describe("parseCodexRateLimits", () => {
 		);
 		expect(snap!.windows[0].resetsAt).toBe(NOW + 3_600_000);
 	});
-
-	it("returns null for empty/garbage objects", () => {
-		expect(parseCodexRateLimits({ primary: null, secondary: null, credits: { has_credits: false } }, NOW)).toBeNull();
-		expect(parseCodexRateLimits(null, NOW)).toBeNull();
-	});
 });
 
 describe("parseCodexAppServerRateLimits", () => {
-	it("parses the live monthly individual credit limit and makes it a constraint", () => {
+	it("parses the live monthly individual credit limit as a constraint, and null without usable limit data", () => {
 		const snap = parseCodexAppServerRateLimits(
 			{
 				limitId: "codex",
@@ -189,9 +183,6 @@ describe("parseCodexAppServerRateLimits", () => {
 
 		expect(snap?.monthlyCredits).toEqual({ limit: 8824, used: 329.5322287082672, remainingPercent: 96, resetsAt: 1_785_542_400_000 });
 		expect(snap?.windows).toContainEqual({ id: "monthly_credits", usedPercent: 4, resetsAt: 1_785_542_400_000, windowMinutes: null });
-	});
-
-	it("returns null when the live response carries no usable limit data", () => {
 		expect(parseCodexAppServerRateLimits({ individualLimit: null, primary: null, secondary: null }, NOW)).toBeNull();
 		expect(parseCodexAppServerRateLimits(null, NOW)).toBeNull();
 	});
@@ -220,20 +211,17 @@ describe("extractCodexSnapshotFromRolloutLines", () => {
 			payload: { type: "token_count", rate_limits: { primary: { used_percent: percent, window_minutes: 300 } } },
 		});
 
-	it("returns the LAST rate_limits event in the file", () => {
+	it("returns the LAST rate_limits event, and null without any", () => {
 		const lines = [event("2026-07-05T10:00:00Z", 10), '{"type":"other"}', event("2026-07-05T11:00:00Z", 42)];
 		const snap = extractCodexSnapshotFromRolloutLines(lines);
 		expect(snap!.windows[0].usedPercent).toBe(42);
 		expect(snap!.capturedAt).toBe(Date.parse("2026-07-05T11:00:00Z"));
+		expect(extractCodexSnapshotFromRolloutLines(['{"type":"other"}', ""])).toBeNull();
 	});
 
 	it("skips a torn trailing line and falls back to the previous event", () => {
 		const lines = [event("2026-07-05T10:00:00Z", 10), '{"timestamp":"2026-07-05T11:00:00Z","payload":{"rate_limits":{"pri'];
 		expect(extractCodexSnapshotFromRolloutLines(lines)!.windows[0].usedPercent).toBe(10);
-	});
-
-	it("returns null when no event carries rate limits", () => {
-		expect(extractCodexSnapshotFromRolloutLines(['{"type":"other"}', ""])).toBeNull();
 	});
 });
 
@@ -267,13 +255,10 @@ describe("withElapsedResets", () => {
 });
 
 describe("formatResetDelta", () => {
-	it("formats minutes, hours and days", () => {
+	it("formats minutes, hours and days, and empty for unknown or past resets", () => {
 		expect(formatResetDelta(NOW + 42 * 60_000, NOW)).toBe("42m");
 		expect(formatResetDelta(NOW + (2 * 60 + 13) * 60_000, NOW)).toBe("2h13m");
 		expect(formatResetDelta(NOW + (3 * 24 + 2) * 3_600_000, NOW)).toBe("3d2h");
-	});
-
-	it("returns empty for unknown or past resets", () => {
 		expect(formatResetDelta(null, NOW)).toBe("");
 		expect(formatResetDelta(NOW - 1000, NOW)).toBe("");
 	});
@@ -316,7 +301,7 @@ describe("windowLabel", () => {
 });
 
 describe("worstWindow", () => {
-	it("picks the most-used window across snapshots", () => {
+	it("picks the most-used window across snapshots, and null without windows", () => {
 		const report = {
 			generatedAt: NOW,
 			snapshots: [
@@ -327,9 +312,6 @@ describe("worstWindow", () => {
 		const worst = worstWindow(report);
 		expect(worst!.source).toBe("claude");
 		expect(worst!.window.id).toBe("seven_day");
-	});
-
-	it("returns null when no snapshot has windows", () => {
 		expect(worstWindow({ generatedAt: NOW, snapshots: [] })).toBeNull();
 	});
 
@@ -351,19 +333,13 @@ describe("formatStatusLineSegment", () => {
 			NOW,
 		);
 
-	it("renders both windows with percent and reset delta", () => {
+	it("renders both windows with percent and reset delta, warning at ≥80% and danger at ≥95%, and nothing for null", () => {
 		const seg = formatStatusLineSegment(snap(12, 77), NOW);
 		expect(seg).toContain("5h 12% ↻1h");
 		expect(seg).toContain("7d 77%");
-	});
-
-	it("uses warning color at ≥80% and danger at ≥95%", () => {
 		expect(formatStatusLineSegment(snap(81, 10), NOW)).toContain("\x1b[33m5h 81%");
 		expect(formatStatusLineSegment(snap(96, 10), NOW)).toContain("\x1b[31m5h 96%");
 		expect(formatStatusLineSegment(snap(12, 10), NOW)).toContain("\x1b[90m5h 12%");
-	});
-
-	it("returns empty for null/empty snapshots", () => {
 		expect(formatStatusLineSegment(null, NOW)).toBe("");
 	});
 });
@@ -402,15 +378,9 @@ describe("scopeRateLimitSnapshots", () => {
 	});
 	const all = [reading("claude", "/a/.claude"), reading("claude", "/b/.claude"), reading("claude"), reading("codex")];
 
-	it("keeps everything with no scope", () => {
+	it("keeps everything with no scope, one pinned dir's Claude readings plus every other agent's, or only unpinned ones without a pin", () => {
 		expect(scopeRateLimitSnapshots(all, undefined)).toHaveLength(4);
-	});
-
-	it("keeps one pinned dir's Claude readings and every other agent's", () => {
 		expect(scopeRateLimitSnapshots(all, { configDir: "/a/.claude" })).toEqual([all[0], all[3]]);
-	});
-
-	it("keeps only unpinned Claude readings when the project has no pin", () => {
 		expect(scopeRateLimitSnapshots(all, { configDir: null })).toEqual([all[2], all[3]]);
 	});
 });
@@ -426,27 +396,19 @@ describe("headerPillWindows", () => {
 		planType: null,
 	});
 
-	it("lists the 5h window before the weekly one, whatever the input order", () => {
+	it("lists the 5h window before the weekly one, and keeps monthly credits only when they are all there is", () => {
 		const out = headerPillWindows(snap([w("seven_day", 55, 10080), w("five_hour", 7, 300)]));
 		expect(out.map((x) => x.id)).toEqual(["five_hour", "seven_day"]);
-	});
-
-	it("leaves monthly credits out beside timed windows, and keeps them when they are all there is", () => {
 		expect(headerPillWindows(snap([w("monthly_credits", 40, null), w("primary", 10, 300)])).map((x) => x.id)).toEqual(["primary"]);
 		expect(headerPillWindows(snap([w("monthly_credits", 40, null)])).map((x) => x.id)).toEqual(["monthly_credits"]);
 	});
 });
 
 describe("kimiUsageUrl", () => {
-	it.each([
-		["https://api.example.test/coding/", "https://api.example.test/coding/v1/usages"],
-		["https://api.example.test/coding", "https://api.example.test/coding/v1/usages"],
-		["https://api.example.test/coding/v1/", "https://api.example.test/coding/v1/usages"],
-	])("maps %s to %s", (base, expected) => {
-		expect(kimiUsageUrl(base)?.href).toBe(expected);
-	});
-
-	it("gives nothing for a base URL that does not parse", () => {
+	it("appends v1/usages with or without a trailing slash or v1, and gives nothing for an unparseable base", () => {
+		for (const base of ["https://api.example.test/coding/", "https://api.example.test/coding", "https://api.example.test/coding/v1/"]) {
+			expect(kimiUsageUrl(base)?.href, base).toBe("https://api.example.test/coding/v1/usages");
+		}
 		expect(kimiUsageUrl("not a url")).toBeNull();
 	});
 });
@@ -578,27 +540,18 @@ describe("parseAgyQuotaDump with a real Google AI Ultra payload", () => {
 	};
 	const snapshot = () => parseAgyQuotaDump({ capturedAt: NOW, email: "me@example.com", planTier: "Google AI Ultra", quota: QUOTA }, "k")!;
 
-	it("orders the buckets gemini-5h, gemini-weekly, 3p-5h, 3p-weekly", () => {
+	it("orders the buckets gemini-5h, gemini-weekly, 3p-5h, 3p-weekly and reads each one's used percent, reset, length and label", () => {
 		expect(snapshot().windows.map((w) => w.id)).toEqual(["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"]);
-	});
-
-	it("reads each bucket's used percent, reset and window length", () => {
 		expect(snapshot().windows.map((w) => [w.usedPercent, w.windowMinutes])).toEqual([[75, 300], [40, 10080], [0, 300], [10, 10080]]);
 		expect(snapshot().windows[0]!.resetsAt).toBe(Date.parse("2026-11-20T13:00:00Z"));
 		expect(snapshot().planType).toBe("Google AI Ultra");
-	});
-
-	it("names the buckets by their length, like every other agent's windows", () => {
 		expect(snapshot().windows.map(windowLabel)).toEqual(["5h", "7d", "5h", "7d"]);
 	});
 
-	it("leaves the other models out of the header pill, which keeps the first-party 5-hour and weekly", () => {
+	it("leaves the other models out of the header pill, and answers null before the first conversation", () => {
 		expect(headerPillWindows(snapshot()).map((w) => w.id)).toEqual(["gemini-5h", "gemini-weekly"]);
 		const onlyOther = { ...snapshot(), windows: snapshot().windows.filter((w) => w.id.startsWith("3p")) };
 		expect(headerPillWindows(onlyOther).map((w) => w.id)).toEqual(["3p-5h", "3p-weekly"]);
-	});
-
-	it("answers null for a payload before the first conversation: no quota, no plan tier", () => {
 		expect(parseAgyQuotaDump({ capturedAt: NOW, email: "me@example.com", planTier: null, quota: undefined }, "k")).toBeNull();
 	});
 });

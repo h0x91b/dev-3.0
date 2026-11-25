@@ -24,26 +24,17 @@ function decodeOrThrow(source: unknown): TerminalBackendDecodeSuccess {
 }
 
 describe("constants", () => {
-	it("recognizes exactly tmux and native", () => {
+	it("recognizes exactly tmux and native, treats tmux as the legacy backend, and owns the field name", () => {
 		expect(TERMINAL_BACKENDS).toEqual(["tmux", "native"]);
-	});
-
-	it("treats tmux as the legacy effective backend", () => {
 		expect(LEGACY_TERMINAL_BACKEND).toBe("tmux");
-	});
-
-	it("owns the future field name locally", () => {
 		expect(TERMINAL_BACKEND_FIELD).toBe("terminalBackend");
 	});
 });
 
 describe("isTerminalBackendIdentity", () => {
-	it("accepts supported identities", () => {
+	it("accepts exactly the supported identities and rejects everything else", () => {
 		expect(isTerminalBackendIdentity("tmux")).toBe(true);
 		expect(isTerminalBackendIdentity("native")).toBe(true);
-	});
-
-	it("rejects everything else", () => {
 		for (const value of ["", "TMUX", "wezterm", 1, null, undefined, {}, ["native"], true]) {
 			expect(isTerminalBackendIdentity(value)).toBe(false);
 		}
@@ -70,13 +61,10 @@ describe("decodeTerminalBackend — compatibility table", () => {
 });
 
 describe("decodeTerminalBackend — legacy default", () => {
-	it("resolves a missing field to effective tmux while preserving absence", () => {
+	it("resolves a missing field to effective tmux while preserving absence, ignoring unrelated and unknown-future siblings", () => {
 		const result = decodeOrThrow(LEGACY_RECORD_NO_FIELD);
 		expect(result.backend).toBe("tmux");
 		expect(result.present).toBe(false);
-	});
-
-	it("ignores unrelated and unknown-future sibling properties", () => {
 		expect(decodeOrThrow(LEGACY_RECORD_EXTRA_PROPS).present).toBe(false);
 		expect(decodeOrThrow(UNKNOWN_FUTURE_SIBLING_RECORD).backend).toBe("tmux");
 	});

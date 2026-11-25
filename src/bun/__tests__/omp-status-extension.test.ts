@@ -21,18 +21,12 @@ afterEach(() => {
 });
 
 describe("buildOmpStatusExtension", () => {
-	it("bakes the CLI path in as a JSON string and spawns `hook omp`", () => {
-		const body = buildOmpStatusExtension({ cli: "C:\\Users\\u\\.dev3.0\\bin\\dev3.exe" });
-		expect(body).toContain('const DEV3_CLI = "C:\\\\Users\\\\u\\\\.dev3.0\\\\bin\\\\dev3.exe";');
-		expect(body).toContain('["hook", "omp"]');
-	});
-
-	it("is inert outside a dev3 task pane", () => {
-		expect(buildOmpStatusExtension({ cli: "/x/dev3" })).toContain("if (!process.env.DEV3_TASK_ID) return;");
-	});
-
-	it("reports only events the socket handler accepts", () => {
+	it("bakes the CLI path in as a JSON string, spawns `hook omp`, is inert outside a task pane, and reports only accepted events", () => {
+		const winBody = buildOmpStatusExtension({ cli: "C:\\Users\\u\\.dev3.0\\bin\\dev3.exe" });
+		expect(winBody).toContain('const DEV3_CLI = "C:\\\\Users\\\\u\\\\.dev3.0\\\\bin\\\\dev3.exe";');
+		expect(winBody).toContain('["hook", "omp"]');
 		const body = buildOmpStatusExtension({ cli: "/x/dev3" });
+		expect(body).toContain("if (!process.env.DEV3_TASK_ID) return;");
 		for (const name of body.matchAll(/report(?:Working|Idle)?\(ctx, "([A-Za-z]+)"/g)) {
 			expect(AGENT_STATUS_HOOK_EVENTS).toContain(name[1]);
 		}
@@ -53,28 +47,24 @@ describe("buildOmpStatusExtension", () => {
 });
 
 describe("ompStatusHookCli", () => {
-	it("is an absolute path on POSIX, under the dev3 home", () => {
+	it("is an absolute path on POSIX under the dev3 home, and the Windows CLI lookup on win32", () => {
 		const cli = ompStatusHookCli({ platform: "linux" });
 		expect(cli.endsWith("/.dev3.0/bin/dev3")).toBe(true);
 		expect(cli.startsWith("~")).toBe(false);
-	});
-
-	it("uses the Windows CLI lookup on win32", () => {
+		// win32 uses the Windows CLI lookup.
 		expect(ompStatusHookCli({ platform: "win32", execDir: "C:\\app", exists: (p) => p === "C:\\app\\cli\\dev3.exe" }))
 			.toBe("C:\\app\\cli\\dev3.exe");
 	});
 });
 
 describe("writeOmpStatusExtension", () => {
-	it("writes the module under <dev3 home>/data/agent-hooks and returns its path", () => {
+	it("writes the module under <dev3 home>/data/agent-hooks, rewriting it only when stale", () => {
 		const path = writeOmpStatusExtension({ dev3Home: tempHome, cli: "/x/dev3" });
 		expect(path).toBe(ompStatusExtensionPath(tempHome));
 		expect(path).toBe(join(tempHome, "data", "agent-hooks", "omp-status.ts"));
 		expect(readFileSync(path, "utf-8")).toBe(buildOmpStatusExtension({ cli: "/x/dev3" }));
-	});
 
-	it("leaves an up-to-date file untouched and replaces a stale one", () => {
-		const path = writeOmpStatusExtension({ dev3Home: tempHome, cli: "/x/dev3" });
+		// An up-to-date file is left untouched; a stale one is replaced.
 		const inode = statSync(path).ino;
 		writeOmpStatusExtension({ dev3Home: tempHome, cli: "/x/dev3" });
 		expect(statSync(path).ino).toBe(inode);
@@ -167,20 +157,14 @@ describe.skipIf(isWindows)("the generated extension at runtime", () => {
 		expect((await h.reports())[2]!.promptEnd).toBe(true);
 	});
 
-	it("ignores another session's approval and an agent_end omp will continue from", async () => {
+	it("ignores another session's approval, an agent_end omp will continue from, and an extension-sourced prompt", async () => {
 		const h = await load();
 		await h.fire("session_start", {});
 		await h.fire("tool_approval_requested", { sessionId: "someone-else", toolName: "bash" });
 		await h.fire("agent_end", { messages: [], willContinue: true });
 		await h.fire("agent_end", { messages: [] });
 
-		expect((await h.reports()).map((r) => r.event)).toEqual(["SessionStart", "Stop"]);
-	});
-
-	it("does not forward an extension-sourced input as the human's prompt", async () => {
-		const h = await load();
-		await h.fire("session_start", {});
-		await h.fire("agent_end", { messages: [] });
+		// An extension-sourced input is not forwarded as the human's prompt.
 		await h.fire("input", { text: "[from peer] hi", source: "extension" });
 
 		const reports = await h.reports();
