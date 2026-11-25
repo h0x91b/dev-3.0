@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { storesInProject } from "../shared/project-storage";
-import { qualifyRefsFor } from "../shared/task-refs";
+import { qualifyRefsFor, renumberSelfRefs } from "../shared/task-refs";
 import { liveProjectDataDir, liveStorage } from "./project-storage-live";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskOrigin, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
 import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
@@ -1283,8 +1283,10 @@ export async function moveTaskToProject(
 			}
 
 			const now = new Date().toISOString();
-			// Bare refs in the task's text named the source board's tasks; keep them there.
-			const retarget = (text: string) => qualifyRefsFor(text, sourceProject.id, targetProject.id);
+			// Bare refs in the task's text named the source board's tasks; keep them there,
+			// except the task's refs to itself, which follow it to its new seq.
+			const seq = nextSeq(targetTasks);
+			const retarget = (text: string) => renumberSelfRefs(qualifyRefsFor(text, sourceProject.id, targetProject.id), sourceProject.id, source.seq, seq);
 			const retargetOptional = (text: string | null | undefined) => (text ? retarget(text) : text);
 			const moved: Task = {
 				...source,
@@ -1295,7 +1297,7 @@ export async function moveTaskToProject(
 				userOverview: retargetOptional(source.userOverview),
 				...(source.notes ? { notes: source.notes.map((note) => ({ ...note, content: retarget(note.content) })) } : {}),
 				projectId: targetProject.id,
-				seq: nextSeq(targetTasks),
+				seq,
 				baseBranch: deriveTaskBaseBranch(targetProject),
 				labelIds: remappedLabelIds,
 				customColumnId: null,

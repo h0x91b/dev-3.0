@@ -1,7 +1,7 @@
 import type { Project, Task, TaskStatus, NoteSource } from "../../shared/types";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../../shared/review";
 import { formatStatus, getTaskTitle, STATUS_LABELS } from "../../shared/types";
-import { qualifyEditedRefsFor, qualifyRefsFor } from "../../shared/task-refs";
+import { qualifyEditedRefsFor } from "../../shared/task-refs";
 import { nextKeepAliveState } from "../../shared/keep-alive";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../../shared/board-events";
 import * as data from "../data";
@@ -15,6 +15,12 @@ import { getPushMessage } from "../rpc-handlers";
 import { addVent } from "../vents";
 import { conversationImport, log, type Handler } from "./shared";
 import { findByIdPrefix, findTaskByRef, resolveReviewTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, writerProjectIdFor } from "./task-resolution";
+
+/** A note quoting a line of an existing note keeps its refs, as an edit keeps old lines. */
+function qualifyNote(content: string, task: Task, writerProjectId: string | undefined, readerProjectId: string): string {
+	const existing = (task.notes ?? []).map((note) => note.content).join("\n");
+	return qualifyEditedRefsFor(content, existing, writerProjectId, readerProjectId);
+}
 
 export const boardMetadataHandlers: Record<string, Handler> = {
 
@@ -76,11 +82,12 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 
 		let project: Project;
 		let task: Task;
+		let boardTasks: Task[] | undefined;
 
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
-			const tasks = await data.loadTasks(project);
-			const found = findTaskByRef(tasks, taskId);
+			boardTasks = await data.loadTasks(project);
+			const found = findTaskByRef(boardTasks, taskId);
 			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
@@ -91,7 +98,7 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 		}
 
 		const { task: updated } = await taskNotes.addNote(
-			boardPorts, project, task.id, qualifyRefsFor(content, await writerProjectIdFor(params, project, task), project.id), AGENT_ACTOR, params.source as NoteSource | undefined,
+			boardPorts, project, task.id, qualifyNote(content, task, await writerProjectIdFor(params, project, task, boardTasks), project.id), AGENT_ACTOR, params.source as NoteSource | undefined,
 		);
 		return updated;
 	},
@@ -190,11 +197,12 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 
 		let project: Project;
 		let task: Task;
+		let boardTasks: Task[] | undefined;
 
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
-			const tasks = await data.loadTasks(project);
-			const found = findTaskByRef(tasks, taskId);
+			boardTasks = await data.loadTasks(project);
+			const found = findTaskByRef(boardTasks, taskId);
 			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
