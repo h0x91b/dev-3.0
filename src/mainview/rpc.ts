@@ -132,6 +132,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	openDeepLink: (payload) => window.dispatchEvent(new CustomEvent("rpc:openDeepLink", { detail: payload })),
 	boardCopyFailed: (payload) => window.dispatchEvent(new CustomEvent("rpc:boardCopyFailed", { detail: payload })),
 	staleAgentPath: (payload) => window.dispatchEvent(new CustomEvent("rpc:staleAgentPath", { detail: payload })),
+	agentsStoreNotice: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentsStoreNotice", { detail: payload })),
 	cliToast: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliToast", { detail: payload })),
 	agentMessageLogChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentMessageLogChanged", { detail: payload })),
 	notificationLogChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:notificationLogChanged", { detail: payload })),

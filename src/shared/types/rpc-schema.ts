@@ -98,6 +98,14 @@ export interface CliResponse {
 
 // ---- RPC schema ----
 
+/** agents.json could not be read: its presets were restored from the last-known-good
+ *  copy, or (no usable copy) built-in defaults are being served. `backupFile` is the
+ *  basename of the copy of the unreadable bytes, next to agents.json. */
+export interface AgentsStoreNotice {
+	kind: "recovered" | "unreadable";
+	backupFile: string | null;
+}
+
 export type AppRPCSchema = {
 	bun: RPCSchema<{
 		requests: {
@@ -504,6 +512,11 @@ export type AppRPCSchema = {
 			getAgents: {
 				params: void;
 				response: CodingAgent[];
+			};
+			/** The pending agents.json storage notice, for a renderer that mounted after it was pushed. */
+			getAgentsStoreNotice: {
+				params: void;
+				response: AgentsStoreNotice | null;
 			};
 			saveAgents: {
 				params: { agents: CodingAgent[] };
@@ -2343,6 +2356,8 @@ export type AppRPCSchema = {
 			 * paths became strict no longer exists. Once per agent and path per host run.
 			 */
 			staleAgentPath: { agentId: string; agentName: string; path: string; command: string };
+			/** agents.json was unreadable; see AgentsStoreNotice. Also served by getAgentsStoreNotice. */
+			agentsStoreNotice: AgentsStoreNotice;
 			cliToast: {
 				taskId: string | null;
 				projectId: string | null;

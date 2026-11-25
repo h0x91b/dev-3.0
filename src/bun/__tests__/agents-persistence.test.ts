@@ -19,10 +19,6 @@ import { getAllAgents } from "../agents";
 beforeEach(() => {
 	rmSync(TEST_HOME, { recursive: true, force: true });
 	mkdirSync(TEST_HOME, { recursive: true });
-	(globalThis as any).Bun.write = vi.fn(async (path: string, data: string) => {
-		writeFileSync(path, data);
-		return data.length;
-	});
 });
 
 afterEach(() => {
