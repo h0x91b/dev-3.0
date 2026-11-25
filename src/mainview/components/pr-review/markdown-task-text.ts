@@ -132,9 +132,10 @@ export function remarkHtmlAsText() {
 	return walk;
 }
 
-/** `my\_file.py`: every `\` is an author's escape before `_`, not a Windows separator. */
+/** `my\_file.py`, `src/my\_file.py`: a `\_` is an author's escape, not a Windows separator (`build\_a\_b` is one). */
 function isMarkdownEscapedPath(raw: string): boolean {
-	return raw.includes("\\_") && !/^[A-Za-z]:|^\\\\|\\(?!_)/.test(raw);
+	if (!raw.includes("\\_") || /^[A-Za-z]:|^\\\\|\\(?!_)/.test(raw)) return false;
+	return raw.includes("/") || raw.split("\\_").length === 2;
 }
 
 /**

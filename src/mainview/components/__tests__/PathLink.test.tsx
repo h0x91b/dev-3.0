@@ -36,6 +36,7 @@ const ON_DISK: Record<string, { path: string; kind: "file" | "directory" }> = {
 	"C:\\Users\\me\\.claude\\x.md": { path: "C:\\Users\\me\\.claude\\x.md", kind: "file" },
 	"src\\_gen\\a.ts": { path: "C:\\repo\\src\\_gen\\a.ts", kind: "file" },
 	"src/my_file.py": { path: "/repo/src/my_file.py", kind: "file" },
+	"build\\_out\\_gen.ts": { path: "C:\\repo\\build\\_out\\_gen.ts", kind: "file" },
 };
 
 const wrap = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nProvider>);
@@ -192,6 +193,12 @@ describe("TaskDescriptionMarkdown path links", () => {
 		await screen.findByRole("button", { name: /src\/my_file\.py/ });
 		expect(container.textContent).toContain("Rename my_file.py and src/my_file.py");
 		expect(container.textContent).not.toContain("\\");
+	});
+
+	it("keeps a Windows path whose only separators come before an underscore", async () => {
+		const { container } = wrap(<TaskDescriptionMarkdown body={"Built build\\_out\\_gen.ts"} projectId="p1" taskId="t1" />);
+		await screen.findByRole("button", { name: /_gen\.ts/ });
+		expect(container.textContent).toContain("build\\_out\\_gen.ts");
 	});
 
 	it("links a dunder file name that markdown would otherwise read as emphasis", async () => {
