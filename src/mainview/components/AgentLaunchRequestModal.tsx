@@ -58,6 +58,19 @@ interface AgentLaunchRequestModalProps {
 	onRespond: (approved: boolean, launch?: AgentLaunchChoice) => void;
 }
 
+/** Says why the dialog is missing data and offers a retry that does not wait for a reconnect. */
+function LoadFailedNote({ message, onRetry }: { message: string; onRetry: () => void }) {
+	const t = useT();
+	return (
+		<p data-testid="agent-launch-load-failed" className="text-fg-3 text-xs">
+			{message}{" "}
+			<button type="button" data-testid="agent-launch-load-retry" onClick={onRetry} className="text-accent hover:text-accent-emphasis font-medium">
+				{t("agentLaunch.loadRetry")}
+			</button>
+		</p>
+	);
+}
+
 /**
  * An agent asked to set another task running. Identity treatment matches every
  * other agent-initiated dialog (accent border, AI badge, Decline autofocused),
@@ -85,14 +98,23 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
 
 	// Over a flapping remote socket either read can reject; a one-shot load would
-	// leave the dialog waiting forever, so it retries on every reconnect until it lands.
+	// leave the dialog waiting forever. It retries on every reconnect and on Retry.
 	const [loadFailed, setLoadFailed] = useState(false);
+	const retryLoadRef = useRef<() => void>(() => {});
 	useEffect(() => {
 		let cancelled = false;
 		let loaded = false;
+		let availabilityLoaded = false;
 		function load() {
+			if (!availabilityLoaded) {
+				api.request.checkAgentAvailability().then((result) => {
+					if (cancelled) return;
+					availabilityLoaded = true;
+					setAgentAvailability(result);
+				}).catch(() => {});
+			}
 			if (loaded) return;
-			api.request.checkAgentAvailability().then((result) => { if (!cancelled) setAgentAvailability(result); }).catch(() => {});
+			setLoadFailed(false);
 			Promise.all([
 				api.request.getAgents(),
 				api.request.getGlobalSettings(),
@@ -112,6 +134,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 				if (!cancelled && !loaded) setLoadFailed(true);
 			});
 		}
+		retryLoadRef.current = load;
 		load();
 		const onRpcStatus = (e: Event) => {
 			if ((e as CustomEvent<{ state?: string }>).detail?.state === "connected") load();
@@ -119,6 +142,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 		window.addEventListener(RPC_STATUS_EVENT, onRpcStatus);
 		return () => {
 			cancelled = true;
+			retryLoadRef.current = () => {};
 			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
 		};
 	}, []);
@@ -345,7 +369,8 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						</p>
 					) : request.resume ? (
 						<div className="space-y-2" data-testid="agent-launch-resume-panes">
-							<p className="text-fg-3 text-xs">{t(request.resume.panes.some(isClaudePane) ? "agentLaunch.resumeNoteAccount" : "agentLaunch.resumeNote")}</p>
+							{/* No picker appears below once the account list failed, so do not promise one. */}
+							<p className="text-fg-3 text-xs">{t(request.resume.panes.some(isClaudePane) && !loadFailed ? "agentLaunch.resumeNoteAccount" : "agentLaunch.resumeNote")}</p>
 							<ul className="space-y-1.5">
 								{request.resume.panes.map((pane, index) => {
 									const agent = agents.find((a) => a.id === pane.agentId);
@@ -372,7 +397,10 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 								taskId={request.taskId}
 							/>
 							{loadFailed && request.resume.panes.some(isClaudePane) ? (
-								<p data-testid="agent-launch-load-failed" className="text-fg-3 text-xs">{t("agentLaunch.resumeAccountsUnavailable")}</p>
+								<LoadFailedNote
+									message={t(resumeAccount !== undefined ? "agentLaunch.resumeAccountsUnavailableRequested" : "agentLaunch.resumeAccountsUnavailable")}
+									onRetry={() => retryLoadRef.current()}
+								/>
 							) : null}
 						</div>
 					) : globalSettings ? (
@@ -457,7 +485,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					) : (
 						<>
 							<AgentPickerSkeleton />
-							{loadFailed ? <p data-testid="agent-launch-load-failed" className="text-fg-3 text-xs">{t("agentLaunch.agentsUnavailable")}</p> : null}
+							{loadFailed ? <LoadFailedNote message={t("agentLaunch.agentsUnavailable")} onRetry={() => retryLoadRef.current()} /> : null}
 						</>
 					)}
 
