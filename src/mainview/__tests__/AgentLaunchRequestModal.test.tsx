@@ -64,6 +64,7 @@ vi.mock("../components/AgentAccountIndicator", () => ({
 
 import AgentLaunchRequestModal from "../components/AgentLaunchRequestModal";
 import { api } from "../rpc";
+import { RPC_STATUS_EVENT } from "../diagnostics";
 import { setDialogKeyboardGuardClock } from "../utils/dialog-keyboard-guard";
 
 function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchRequest {
@@ -92,15 +93,17 @@ function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchReques
 
 function renderModal(request = makeRequest()) {
 	const onRespond = vi.fn();
-	render(
+	const { unmount } = render(
 		<I18nProvider>
 			<AgentLaunchRequestModal request={request} onRespond={onRespond} />
 		</I18nProvider>,
 	);
-	return { onRespond };
+	return { onRespond, unmount };
 }
 
 describe("AgentLaunchRequestModal", () => {
+	beforeEach(() => vi.clearAllMocks());
+
 	it("shows an extra-agent request without task priority editing or variants", async () => {
 		const user = userEvent.setup();
 		const { onRespond } = renderModal(makeRequest({ spawn: { choice: { agentId: "builtin-claude", configId: "claude-plan", accountId: null }, prompt: "Review this task", handoff: true } }));
@@ -164,6 +167,84 @@ describe("AgentLaunchRequestModal", () => {
 		await waitFor(() => expect(accept).toBeEnabled());
 		await user.click(accept);
 		expect(onRespond).toHaveBeenCalledWith(true, { variants: [], resumeAccountId: null });
+	});
+
+	it("lets a resume through when the agent list never loads, keeping the saved account and saying why", async () => {
+		// A remote socket that drops mid-request rejects both reads; the dialog must not wait forever.
+		vi.mocked(api.request.getAgents).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		vi.mocked(api.request.getGlobalSettings).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(claudeResume());
+		const accept = await screen.findByTestId("agent-launch-accept");
+		await waitFor(() => expect(accept).toBeEnabled());
+		expect(await screen.findByTestId("agent-launch-load-failed")).toHaveTextContent("Couldn’t load the account list");
+		expect(screen.queryByTestId("account-pill")).not.toBeInTheDocument();
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, undefined);
+	});
+
+	it("retries a failed agent list when the connection comes back", async () => {
+		vi.mocked(api.request.getAgents).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		renderModal();
+		expect(await screen.findByTestId("agent-launch-load-failed")).toBeInTheDocument();
+		const accept = screen.getByTestId("agent-launch-accept");
+		expect(accept).toBeDisabled();
+		window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+		await waitFor(() => expect(accept).toBeEnabled());
+		expect(screen.queryByTestId("agent-launch-load-failed")).not.toBeInTheDocument();
+		expect(screen.getByTestId("agent-config-picker")).toBeInTheDocument();
+	});
+
+	it("names the requested account, not the saved one, when the list fails for a resume that asked for one", async () => {
+		vi.mocked(api.request.getAgents).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(claudeResume({ accountId: "acct-OTHER" }));
+		expect(await screen.findByTestId("agent-launch-load-failed")).toHaveTextContent("Resume uses the account this request asked for");
+		expect(screen.queryByText(/saved account/)).not.toBeInTheDocument();
+		// No picker renders below, so the note above must not promise one.
+		expect(screen.queryByText(/can move to another account below/)).not.toBeInTheDocument();
+		await user.click(screen.getByTestId("agent-launch-accept"));
+		expect(onRespond).toHaveBeenCalledWith(true, { variants: [], resumeAccountId: "acct-OTHER" });
+	});
+
+	it("recovers a failed launch through Retry without waiting for a reconnect", async () => {
+		vi.mocked(api.request.getGlobalSettings).mockRejectedValueOnce(new Error("handler threw"));
+		const user = userEvent.setup();
+		renderModal();
+		expect(await screen.findByTestId("agent-launch-load-failed")).toHaveTextContent("Couldn’t load the agent list.");
+		const accept = screen.getByTestId("agent-launch-accept");
+		expect(accept).toBeDisabled();
+		await user.click(screen.getByTestId("agent-launch-load-retry"));
+		await waitFor(() => expect(accept).toBeEnabled());
+		expect(screen.queryByTestId("agent-launch-load-failed")).not.toBeInTheDocument();
+	});
+
+	it("enables a session action while its reads are still pending", async () => {
+		vi.mocked(api.request.getAgents).mockReturnValueOnce(new Promise(() => {}));
+		vi.mocked(api.request.getGlobalSettings).mockReturnValueOnce(new Promise(() => {}));
+		renderModal(makeRequest({ canAddVariants: false, sessionAction: { kind: "hibernate", paneCount: 1 } }));
+		expect(await screen.findByTestId("agent-launch-accept")).toBeEnabled();
+	});
+
+	it("retries agent availability with the load when only that read failed", async () => {
+		vi.mocked(api.request.checkAgentAvailability).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		renderModal();
+		const accept = screen.getByTestId("agent-launch-accept");
+		await waitFor(() => expect(accept).toBeEnabled());
+		expect(api.request.checkAgentAvailability).toHaveBeenCalledTimes(1);
+		window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+		await waitFor(() => expect(api.request.checkAgentAvailability).toHaveBeenCalledTimes(2));
+		// Agents already landed, so only the missing read goes out again.
+		expect(api.request.getAgents).toHaveBeenCalledTimes(1);
+	});
+
+	it("stops retrying once the dialog is gone", async () => {
+		vi.mocked(api.request.getAgents).mockRejectedValueOnce(new Error("RPC connection closed (code 1006)"));
+		const { unmount } = renderModal();
+		expect(await screen.findByTestId("agent-launch-load-failed")).toBeInTheDocument();
+		unmount();
+		window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+		expect(api.request.getAgents).toHaveBeenCalledTimes(1);
 	});
 
 	it("offers no account for a resume with no Claude pane", async () => {
