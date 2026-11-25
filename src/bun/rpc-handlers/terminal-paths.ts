@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
+import * as nodePath from "node:path";
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
@@ -74,9 +75,15 @@ async function projectRoots(): Promise<string[]> {
 	}
 }
 
-/** `separator` is the host's (a backslash on Windows); a parameter only so tests can cover both. */
-export function isUnder(absPath: string, root: string, separator: string = sep): boolean {
-	return absPath === root || absPath.startsWith(root.endsWith(separator) ? root : `${root}${separator}`);
+/** The host's path module by default; a parameter only so tests can cover Windows and POSIX alike. */
+type PathApi = Pick<typeof nodePath, "resolve" | "sep">;
+
+/** Windows paths compare case-insensitively and in either slash direction: `c:/x` is under `C:\X`. */
+export function isUnder(absPath: string, root: string, pathApi: PathApi = nodePath): boolean {
+	const fold = (p: string) => (pathApi.sep === "\\" ? pathApi.resolve(p).toLowerCase() : pathApi.resolve(p));
+	const path = fold(absPath);
+	const base = fold(root);
+	return path === base || path.startsWith(base.endsWith(pathApi.sep) ? base : `${base}${pathApi.sep}`);
 }
 
 /**

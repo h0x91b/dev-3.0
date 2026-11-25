@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 
 const tmp = vi.hoisted(() => {
 	const { mkdtempSync } = require("node:fs") as typeof import("node:fs");
@@ -454,10 +454,24 @@ describe("createFileLink", () => {
 
 describe("isUnder", () => {
 	it("matches below a root with the host's separator, Windows included", () => {
-		expect(isUnder("C:\\Users\\me\\wt\\a.png", "C:\\Users\\me", "\\")).toBe(true);
-		expect(isUnder("C:\\Users\\meow\\a.png", "C:\\Users\\me", "\\")).toBe(false);
-		expect(isUnder("/home/me/wt/a.png", "/home/me", "/")).toBe(true);
-		expect(isUnder("/home/meow/a.png", "/home/me", "/")).toBe(false);
+		expect(isUnder("C:\\Users\\me\\wt\\a.png", "C:\\Users\\me", win32)).toBe(true);
+		expect(isUnder("C:\\Users\\meow\\a.png", "C:\\Users\\me", win32)).toBe(false);
+		expect(isUnder("/home/me/wt/a.png", "/home/me", posix)).toBe(true);
+		expect(isUnder("/home/meow/a.png", "/home/me", posix)).toBe(false);
+	});
+
+	it("ignores case and slash direction on Windows only", () => {
+		expect(isUnder("c:\\users\\me\\wt\\a.png", "C:\\Users\\Me", win32)).toBe(true);
+		expect(isUnder("C:\\Users\\me\\proj\\a.md", "C:/Users/me/proj", win32)).toBe(true);
+		expect(isUnder("C:\\Users\\me\\proj", "c:/users/me/proj/", win32)).toBe(true);
+		expect(isUnder("C:\\Users\\me\\project2\\a.md", "C:/Users/me/proj", win32)).toBe(false);
+		expect(isUnder("D:\\Users\\me\\a.md", "C:\\Users\\me", win32)).toBe(false);
+		expect(isUnder("/home/Me/a.md", "/home/me", posix)).toBe(false);
+	});
+
+	it("never lets a dot-dot segment climb out of the root", () => {
+		expect(isUnder("C:\\Users\\me\\..\\other\\a.md", "C:\\Users\\me", win32)).toBe(false);
+		expect(isUnder("/home/me/../other/a.md", "/home/me", posix)).toBe(false);
 	});
 });
 
