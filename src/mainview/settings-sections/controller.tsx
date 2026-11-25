@@ -766,6 +766,13 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 		[persistSettingChange],
 	);
 
+	const handleStatusLineShowAccountToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ statusLineShowAccount: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const handleLeanProtocolToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ leanAgentProtocol: enabled });
@@ -1054,6 +1061,7 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 		handlePxpipeProxyToggle,
 		handleQuestionsSoundToggle,
 		handleRateLimitTrackingToggle,
+		handleStatusLineShowAccountToggle,
 		handleRemotePortChange,
 		handleRemoteSilentUpdateToggle,
 		handleRemoteTunnelChange,

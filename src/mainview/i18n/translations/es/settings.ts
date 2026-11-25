@@ -422,6 +422,8 @@ const settings = {
 	"settings.logRetentionChangedElsewhere": "El periodo de conservación cambió en otro lugar. Elige de nuevo.",
 	"settings.rateLimitTracking": "Seguimiento de límites de agentes",
 	"settings.rateLimitTrackingDesc": "Muestra en la cabecera el uso en vivo de los límites de Claude/Codex. Los datos de Claude se capturan enrutando el statusLine de la sesión a través de dev3 — tu propio statusLine sigue funcionando, dev3 solo añade su segmento.",
+	"settings.statusLineShowAccount": "Mostrar la cuenta en el statusline",
+	"settings.statusLineShowAccountDesc": "Empieza el segmento de dev3 en el statusline con la cuenta de Claude de la sesión, p. ej. work · 7d 30%. Usa la etiqueta de la cuenta, o su email si no tiene. Requiere el seguimiento de límites.",
 	"settings.leanAgentProtocol": "Protocolo de agente reducido",
 	"settings.leanAgentProtocolDesc": "Inyecta un protocolo corto al lanzar el agente; el texto completo queda en disco para que el agente lo lea.",
 	"settings.leanAgentProtocolEnvHint": "Activado a la fuerza por DEV3_LEAN_PROTOCOL=1 en el entorno.",

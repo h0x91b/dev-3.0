@@ -327,6 +327,9 @@ export interface GlobalSettings {
 	 * injection and the indicator.
 	 */
 	agentRateLimitTracking?: boolean;
+	/** Prefix dev3's Claude statusLine segment with the session's account label (email
+	 *  when it has none). Default off; needs `agentRateLimitTracking`, which injects the wrapper. */
+	statusLineShowAccount?: boolean;
 	/**
 	 * Harnesses whose default for new launches is "Auto" — the usage-balanced
 	 * router — instead of the registry's specific default account. The registry

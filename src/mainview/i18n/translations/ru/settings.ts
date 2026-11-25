@@ -438,6 +438,8 @@ const settings = {
 	"settings.logRetentionChangedElsewhere": "Срок хранения изменился в другом месте. Выберите заново.",
 	"settings.rateLimitTracking": "Отслеживание лимитов агентов",
 	"settings.rateLimitTrackingDesc": "Показывает в шапке живое использование лимитов Claude/Codex. Данные Claude собираются через statusLine сессии, маршрутизируемый через dev3 — ваш собственный statusLine продолжает работать, dev3 лишь дописывает свой сегмент.",
+	"settings.statusLineShowAccount": "Показывать аккаунт в statusline",
+	"settings.statusLineShowAccountDesc": "Начинать сегмент dev3 в statusline с аккаунта Claude, под которым идёт сессия, например work · 7d 30%. Берётся метка аккаунта, а если её нет — email. Нужен учёт лимитов.",
 	"settings.leanAgentProtocol": "Короткий протокол агента",
 	"settings.leanAgentProtocolDesc": "Вставлять короткий протокол при запуске агента; полный текст остаётся на диске, агент прочитает его сам.",
 	"settings.leanAgentProtocolEnvHint": "Включено принудительно через DEV3_LEAN_PROTOCOL=1 в окружении.",

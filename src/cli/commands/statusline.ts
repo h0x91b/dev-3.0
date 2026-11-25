@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { parseClaudeIdentity } from "../../shared/agent-accounts";
 import { claudeConfigLocation, managedClaudeAccountIdForConfigDir, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import { resolveDev3Home } from "../../shared/dev3-home";
 import { formatStatusLineSegment, parseClaudeStatusLinePayload } from "../../shared/rate-limits";
@@ -139,6 +140,36 @@ export function claudeDumpOwner(
 	return accountId ? { accountId, configDir: null } : { accountId: null, configDir: dir };
 }
 
+function readJsonFile(path: string): unknown {
+	try {
+		return JSON.parse(readFileSync(path, "utf-8"));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The name `--account` puts before dev3's segment: a managed account's label from
+ * the registry, else the email of the login Claude runs on. Control characters are
+ * dropped so a hand-edited label cannot break the line.
+ */
+export function statusLineAccountLabel(
+	env: Record<string, string | undefined>,
+	home: string,
+	cwd: string,
+	dev3Home: string,
+): string | null {
+	const { accountId } = claudeDumpOwner(env, home, cwd, dev3Home);
+	const registry = accountId ? readJsonFile(join(dev3Home, "agent-accounts", "accounts.json")) as
+		{ claude?: { accounts?: Array<{ id?: unknown; label?: unknown }> } } | null : null;
+	const label = registry?.claude?.accounts?.find((a) => a?.id === accountId)?.label;
+	const name = typeof label === "string" && label.trim()
+		? label
+		: parseClaudeIdentity(readJsonFile(claudeConfigLocation(env, home, cwd).claudeJson))?.email;
+	const clean = name?.replace(/[\x00-\x1f\x7f]/g, "").trim();
+	return clean || null;
+}
+
 /**
  * Where a statusLine dump for `accountId` is written. A managed account writes
  * ONLY its own per-account file; a project-pinned `CLAUDE_CONFIG_DIR` writes one
@@ -192,7 +223,7 @@ function dumpPayload(raw: string): void {
 	}
 }
 
-export async function handleStatusLine(): Promise<void> {
+export async function handleStatusLine(options: { account?: boolean } = {}): Promise<void> {
 	if (process.stdin.isTTY) {
 		process.stdout.write("dev3 statusline is an internal Claude Code statusLine wrapper; it expects the statusLine JSON on stdin.\n");
 		return;
@@ -214,7 +245,9 @@ export async function handleStatusLine(): Promise<void> {
 	const originalOut = original ? runOriginalStatusLine(original, raw, root?.workspace?.current_dir ?? projectDir) : "";
 
 	const snapshot = parseClaudeStatusLinePayload(payload, Date.now());
-	const segment = formatStatusLineSegment(snapshot, Date.now());
+	const usage = formatStatusLineSegment(snapshot, Date.now());
+	const account = options.account ? statusLineAccountLabel(process.env, homedir(), process.cwd(), resolveDev3Home()) : null;
+	const segment = [account, usage].filter(Boolean).join(" · ");
 
 	const combined = originalOut && segment ? `${originalOut} ${segment}` : originalOut || segment;
 	if (combined) process.stdout.write(`${combined}\n`);

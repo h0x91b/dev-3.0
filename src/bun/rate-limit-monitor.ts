@@ -111,12 +111,18 @@ const kimiWarned = new Set<string>();
  * skip-permissions` or a preset's `--dangerously-skip-permissions`), which would
  * otherwise trigger a one-time confirmation prompt on startup. When rate-limit
  * tracking is on, statusLine is also routed through `dev3 statusline`. With
- * `awsSsoRefresh`, an expired AWS SSO session opens the browser login itself.
+ * `awsSsoRefresh`, an expired AWS SSO session opens the browser login itself;
+ * `showAccount` makes the wrapper prefix its segment with the account label.
  */
-export function buildClaudeManagedSettings(dev3Bin: string, includeStatusLine: boolean, awsSsoRefresh = false): Record<string, unknown> {
+export function buildClaudeManagedSettings(
+	dev3Bin: string,
+	includeStatusLine: boolean,
+	awsSsoRefresh = false,
+	showAccount = false,
+): Record<string, unknown> {
 	const settings: Record<string, unknown> = { skipDangerousModePermissionPrompt: true };
 	if (includeStatusLine) {
-		settings.statusLine = { type: "command", command: `"${dev3Bin}" statusline` };
+		settings.statusLine = { type: "command", command: `"${dev3Bin}" statusline${showAccount ? " --account" : ""}` };
 	}
 	if (awsSsoRefresh) settings.awsAuthRefresh = AWS_SSO_REFRESH_COMMAND;
 	return settings;
@@ -129,12 +135,12 @@ export function buildClaudeManagedSettings(dev3Bin: string, includeStatusLine: b
  * `awsSsoRefresh`. Returns null when writing fails — callers then simply skip
  * `--settings` injection.
  */
-export function ensureClaudeStatusLineSettings(includeStatusLine = true, awsSsoRefresh = false): string | null {
+export function ensureClaudeStatusLineSettings(includeStatusLine = true, awsSsoRefresh = false, showAccount = false): string | null {
 	const path = awsSsoRefresh ? CLAUDE_BEDROCK_SSO_SETTINGS_PATH : CLAUDE_STATUSLINE_SETTINGS_PATH;
 	try {
 		mkdirSync(RATE_LIMITS_DIR, { recursive: true });
 		const dev3Bin = join(homedir(), ".dev3.0", "bin", "dev3");
-		const desired = JSON.stringify(buildClaudeManagedSettings(dev3Bin, includeStatusLine, awsSsoRefresh));
+		const desired = JSON.stringify(buildClaudeManagedSettings(dev3Bin, includeStatusLine, awsSsoRefresh, showAccount));
 		let current = "";
 		try {
 			current = readFileSync(path, "utf-8");

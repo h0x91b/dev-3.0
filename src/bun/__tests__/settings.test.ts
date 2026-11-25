@@ -499,6 +499,7 @@ describe("saveSettings", () => {
 			agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{home}/.claude-projects/{projectName}" },
 			focusMode: true,
 			agentRateLimitTracking: false,
+			statusLineShowAccount: true,
 			autoAccountDefault: { claude: true },
 			autoAccountExclusions: ["system:claude"],
 			watchByDefault: true,

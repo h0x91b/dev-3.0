@@ -267,6 +267,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		focusMode: d.focusMode === true ? true : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,
+		statusLineShowAccount: d.statusLineShowAccount === true ? true : undefined,
 		autoAccountDefault: normalizeAutoAccountDefault(d.autoAccountDefault),
 		autoAccountExclusions: normalizeAutoAccountExclusions(d.autoAccountExclusions),
 		// Boolean preference — both true (watch) and false (don't watch) are

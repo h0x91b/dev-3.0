@@ -819,7 +819,7 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
  *  on. Only Claude's adapter reads the option — other agents ignore it. */
 function applyStatusLineOption(
 	options: CommandOptions | undefined,
-	settings: { agentRateLimitTracking?: boolean },
+	settings: { agentRateLimitTracking?: boolean; statusLineShowAccount?: boolean },
 	bedrockProfile: { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string },
 	launchEnv: Record<string, string>,
 	worktreePath: string | undefined,
@@ -829,7 +829,7 @@ function applyStatusLineOption(
 	// awsAuthRefresh: flag settings outrank every settings file, so ours would shadow it.
 	const awsSsoRefresh = !!bedrockProfile.resolvedBedrockProfile && !bedrockProfile.bedrockProfileMissing
 		&& !claudeSettingsSetAwsAuthRefresh(launchEnv, worktreePath);
-	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine, awsSsoRefresh);
+	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine, awsSsoRefresh, settings.statusLineShowAccount === true);
 	if (!settingsFile) return options;
 	return { ...options, statuslineSettingsFile: settingsFile };
 }
