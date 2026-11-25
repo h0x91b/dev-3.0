@@ -1,6 +1,6 @@
 import { findRefsInText, refUri } from "../../../shared/task-refs";
 import { findPathCandidates } from "../../../shared/path-candidates";
-import { findPathRefsInText, parsePathRefUri, pathRefUri } from "../../../shared/path-refs";
+import { codeSpans, findPathRefsInText, linesOutsideFences, parsePathRefUri, pathRefUri } from "../../../shared/path-refs";
 
 /**
  * Remark plugins for agent-written plain text rendered as Markdown (task
@@ -130,4 +130,28 @@ export function remarkHtmlAsText() {
 		});
 	};
 	return walk;
+}
+
+/**
+ * Markdown source with `_` escaped inside path candidates in prose, so
+ * `src/__init__.py` stays one path instead of `src/` + bold `init` + `.py`.
+ * Code, fenced blocks and `<...>` autolinks keep their text as written.
+ */
+export function escapePathEmphasis(body: string): string {
+	if (!body.includes("_")) return body;
+	return linesOutsideFences(body).map(({ line, code }) => {
+		if (code || !line.includes("_")) return line;
+		const spans = codeSpans(line);
+		let out = "";
+		let cursor = 0;
+		for (const candidate of findPathCandidates(line)) {
+			if (!candidate.raw.includes("_") || candidate.raw.includes("\\")) continue;
+			if (spans.some((span) => candidate.start >= span.start && candidate.start < span.end)) continue;
+			const before = line.lastIndexOf("<", candidate.start);
+			if (before >= 0 && line.indexOf(">", before) > candidate.end) continue;
+			out += line.slice(cursor, candidate.start) + candidate.raw.replaceAll("_", "\\_");
+			cursor = candidate.end + 1;
+		}
+		return cursor === 0 ? line : out + line.slice(cursor);
+	}).join("\n");
 }

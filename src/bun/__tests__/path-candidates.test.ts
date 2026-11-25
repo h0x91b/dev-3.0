@@ -19,6 +19,16 @@ describe("findPathCandidates on every platform's spelling", () => {
 		expect(paths("open https://foo.com/bar/baz.html now").some((p) => p.startsWith("s:"))).toBe(false);
 	});
 
+	it("does not take a UNC share's second backslash as a rooted path", () => {
+		expect(paths("share \\\\server\\docs\\a.md").some((p) => p.startsWith("\\server"))).toBe(false);
+	});
+
+	it("stays fast on a long blob with no separator", () => {
+		const started = performance.now();
+		findPathCandidates(`${"a".repeat(200_000)}\n${"b/".repeat(3000)}`);
+		expect(performance.now() - started).toBeLessThan(200);
+	});
+
 	it("keeps finding POSIX paths", () => {
 		expect(paths("see /Users/me/a.ts, ~/notes/todo.md and src/x.ts")).toEqual(["/Users/me/a.ts", "~/notes/todo.md", "src/x.ts"]);
 	});

@@ -19,13 +19,15 @@ export interface PathCandidate {
 // as POSIX ones. Alternatives: drive-qualified, rooted (/, ~/, ./, ../), relative
 // with a separator, and bare filenames with an alphabetic extension.
 const PATH_CHARS = "\\w.@%+,=-";
-const SEGMENT = `[${PATH_CHARS}]+`;
+// Bounded runs keep the scan linear: an unbounded run before a required
+// separator backtracks quadratically on a long blob with no separator.
+const SEGMENT = `[${PATH_CHARS}]{1,255}`;
 const SEP = "[\\\\/]";
 const PATH_REGEX = new RegExp(
 	`(?<![\\w])[A-Za-z]:${SEP}(?:${SEGMENT}${SEP})*${SEGMENT}${SEP}?` +
 		`|(?:~|\\.{1,2})?${SEP}(?:${SEGMENT}${SEP})*${SEGMENT}${SEP}?` +
 		`|(?:${SEGMENT}${SEP})+${SEGMENT}${SEP}?` +
-		`|[\\w@%+-][\\w.@%+-]*\\.[A-Za-z][A-Za-z0-9]{0,9}`,
+		`|[\\w@%+-][\\w.@%+-]{0,254}\\.[A-Za-z][A-Za-z0-9]{0,9}`,
 	"g",
 );
 
@@ -34,16 +36,29 @@ const LINE_COL_SUFFIX = /^:(\d+)(?::\d+)?/;
 const TRAILING_PUNCTUATION = /[.,;:!?'"`)\]}>]+$/;
 const MIN_CANDIDATE_LEN = 3;
 
-/** Find file-path-looking tokens in one line of text. */
+/** Lines longer than this are not scanned: no path sits alone in a minified blob. */
+const MAX_LINE_LEN = 4096;
+
+/** Find file-path-looking tokens in text, line by line; offsets are into `text`. */
 export function findPathCandidates(text: string): PathCandidate[] {
 	const candidates: PathCandidate[] = [];
+	let offset = 0;
+	for (const line of text.split("\n")) {
+		if (line.length <= MAX_LINE_LEN) scanLine(line, offset, candidates);
+		offset += line.length + 1;
+	}
+	return candidates;
+}
+
+function scanLine(text: string, offset: number, candidates: PathCandidate[]): void {
 	PATH_REGEX.lastIndex = 0;
 	let match: RegExpExecArray | null;
 	while ((match = PATH_REGEX.exec(text)) !== null) {
 		let raw = match[0];
 		const before = match.index > 0 ? text[match.index - 1] : "";
-		// Skip URL tails: "https://foo.com/bar" would otherwise match at "//foo…".
-		if (before === ":" || before === "/") continue;
+		// Skip URL tails ("https://foo.com/bar" matching at "//foo…") and a UNC
+		// share's second backslash: neither names a path on its own.
+		if (before === ":" || before === "/" || before === "\\") continue;
 		const suffix = LINE_COL_SUFFIX.exec(text.slice(match.index + raw.length));
 		if (suffix) raw += suffix[0];
 		let cleanPath = suffix ? raw.slice(0, raw.length - suffix[0].length) : raw;
@@ -57,11 +72,10 @@ export function findPathCandidates(text: string): PathCandidate[] {
 			raw,
 			cleanPath,
 			line: suffix ? Number.parseInt(suffix[1], 10) : undefined,
-			start: match.index,
-			end: match.index + raw.length - 1,
+			start: offset + match.index,
+			end: offset + match.index + raw.length - 1,
 		});
 	}
-	return candidates;
 }
 
 /** An absolute or home path on any platform: `/x`, `~/x`, `~\x`, `C:\x`, `C:/x`, `\\server\share`. */

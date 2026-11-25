@@ -9,7 +9,7 @@ import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_CONTENT_TYPES, FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt, previewMediaKind } from "../../shared/file-link-types";
 import { parsePathRefUri } from "../../shared/path-refs";
-import { resolvePathRefIn } from "../../shared/path-ref-resolve";
+import { resolvePathRefIn } from "../path-ref-resolve";
 import { allProjectWorktreesRoots } from "../../shared/project-storage";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
@@ -257,7 +257,9 @@ async function resolveTerminalPaths(params: {
 			resolved[raw] = absolute ? await statPathKind(absolute, roots) : null;
 			continue;
 		}
-		const expanded = raw === "~" || raw.startsWith("~/") || raw.startsWith("~\\") ? join(homedir(), raw.slice(2)) : raw;
+		// `~\x` is a home path on Windows only; elsewhere a backslash is a filename character.
+		const homeRelative = raw === "~" || raw.startsWith("~/") || (process.platform === "win32" && raw.startsWith("~\\"));
+		const expanded = homeRelative ? join(homedir(), raw.slice(2)) : raw;
 		if (isAbsolute(expanded)) {
 			resolved[raw] = await statPathKind(resolvePath(expanded), roots);
 			continue;

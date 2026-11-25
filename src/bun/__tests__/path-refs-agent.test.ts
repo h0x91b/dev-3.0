@@ -13,16 +13,24 @@ vi.mock("../data", () => ({
 	},
 }));
 
-import { absolutizeSenderPaths, withAbsolutePaths } from "../path-refs-agent";
+import { absolutizeSenderPaths, qualifyWriterPaths, withAbsolutePaths } from "../path-refs-agent";
 
 let root: string;
+let readerRoot: string;
 beforeAll(() => {
 	root = mkdtempSync(join(tmpdir(), "dev3-path-refs-agent-"));
 	mkdirSync(join(root, "todo"));
 	writeFileSync(join(root, "todo", "x.md"), "x\n");
+	writeFileSync(join(root, "README.md"), "writer\n");
+	readerRoot = mkdtempSync(join(tmpdir(), "dev3-path-refs-reader-"));
+	writeFileSync(join(readerRoot, "README.md"), "reader\n");
 	projects.push({ id: "a1c9fe4e-0000-4000-8000-000000000001", name: "Sender", path: root });
+	projects.push({ id: "b2d0aa11-0000-4000-8000-000000000002", name: "Reader", path: readerRoot });
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => {
+	rmSync(root, { recursive: true, force: true });
+	rmSync(readerRoot, { recursive: true, force: true });
+});
 
 describe("absolutizeSenderPaths", () => {
 	it("makes a sender's existing relative path absolute for the receiver", async () => {
@@ -39,5 +47,18 @@ describe("absolutizeSenderPaths", () => {
 describe("withAbsolutePaths", () => {
 	it("annotates a token with the host path it names", async () => {
 		expect(await withAbsolutePaths("brief path:a1c9fe4e/todo/x.md")).toBe(`brief path:a1c9fe4e/todo/x.md (${join(root, "todo", "x.md")})`);
+	});
+});
+
+describe("qualifyWriterPaths", () => {
+	const writer = "a1c9fe4e-0000-4000-8000-000000000001";
+	const reader = "b2d0aa11-0000-4000-8000-000000000002";
+
+	it("leaves a path both boards hold as written, and converts one only the writer holds", async () => {
+		expect(await qualifyWriterPaths("see README.md and todo/x.md", writer, reader)).toBe("see README.md and path:a1c9fe4e/todo/x.md");
+	});
+
+	it("drops the absolute path an agent copied back from dev3's output", async () => {
+		expect(await qualifyWriterPaths("brief path:a1c9fe4e/todo/x.md (/Users/me/todo/x.md)", reader, reader)).toBe("brief path:a1c9fe4e/todo/x.md");
 	});
 });

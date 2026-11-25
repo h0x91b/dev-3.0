@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { claudeTranscriptDir } from "../shared/conversation-search-core";
 import { withAbsolutePaths } from "./path-refs-agent";
+import { LAUNCH_ANNOTATION_MAX_ADDED_CHARS } from "../shared/path-refs";
 import { claudeConfigDirHasSession } from "./agent-transcripts";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project, ProtocolMode } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
@@ -592,7 +593,7 @@ export async function resolveAgentCommand(
 
 	const protocol = options?.skipSystemPrompt ? undefined : launchProtocol(adapter, options?.protocolMode ?? "worktree", options?.leanProtocol);
 	// The launch prompt is the first place an agent reads its description: tokens carry their path.
-	const described = { ...ctx, taskDescription: await withAbsolutePaths(ctx.taskDescription) };
+	const described = { ...ctx, taskDescription: await withAbsolutePaths(ctx.taskDescription, LAUNCH_ANNOTATION_MAX_ADDED_CHARS) };
 	const launchCtx = !options?.skipSystemPrompt && !adapter.skillFamily && options?.protocolMode === "shared-folder"
 		? { ...described, taskDescription: withSharedFolderNotice(described.taskDescription) }
 		: described;

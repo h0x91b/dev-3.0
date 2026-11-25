@@ -1,4 +1,5 @@
 import type { Task } from "../../shared/types";
+import { withAbsolutePaths } from "../path-refs";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -79,15 +80,15 @@ async function showOverview(
 		process.stdout.write(
 			"(user-edited — the version below is what the user sees; agent edits to the AI overview are kept but hidden)\n\n",
 		);
-		process.stdout.write(`${userOverview}\n`);
+		process.stdout.write(`${withAbsolutePaths(userOverview)}\n`);
 		if (aiOverview && aiOverview !== userOverview) {
-			process.stdout.write(`\n--- AI overview (currently hidden by user edit) ---\n${aiOverview}\n`);
+			process.stdout.write(`\n--- AI overview (currently hidden by user edit) ---\n${withAbsolutePaths(aiOverview)}\n`);
 		}
 		return;
 	}
 
 	if (aiOverview) {
-		process.stdout.write(`${aiOverview}\n`);
+		process.stdout.write(`${withAbsolutePaths(aiOverview)}\n`);
 		return;
 	}
 
@@ -95,7 +96,7 @@ async function showOverview(
 	// can see what the task is actually about and write a proper overview.
 	process.stdout.write("(no overview set — run `dev3 overview set \"...\"` to add one)\n");
 	if (data.description) {
-		process.stdout.write(`\n--- description ---\n${data.description}\n`);
+		process.stdout.write(`\n--- description ---\n${withAbsolutePaths(data.description)}\n`);
 	}
 }
 

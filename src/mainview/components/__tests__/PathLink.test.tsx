@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "../../i18n";
 import { TaskRefText, splitTaskText } from "../TaskRefText";
-import { TaskDescriptionMarkdown } from "../pr-review/markdown";
+import { CommentMarkdown, TaskDescriptionMarkdown } from "../pr-review/markdown";
 import { parsePathLinkUrl, pathLinkUrl } from "../pr-review/markdown-task-text";
 import { clearTextPathCache, pathLinkLabel } from "../../text-path-links";
 import { OPEN_FILE_PREVIEW_EVENT } from "../../terminal-path-open";
@@ -30,6 +30,9 @@ const ON_DISK: Record<string, { path: string; kind: "file" | "directory" }> = {
 	"/home/me/notes/plan.md": { path: "/home/me/notes/plan.md", kind: "file" },
 	"docs/api/": { path: "/repo/docs/api", kind: "directory" },
 	"path:a1c9fe4e/todo/x.md": { path: "/other/todo/x.md", kind: "file" },
+	"C:\\Users\\me\\plan.md": { path: "C:\\Users\\me\\plan.md", kind: "file" },
+	"C:/Users/me/plan.md": { path: "C:\\Users\\me\\plan.md", kind: "file" },
+	"src/__init__.py": { path: "/repo/src/__init__.py", kind: "file" },
 };
 
 const wrap = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nProvider>);
@@ -165,6 +168,22 @@ describe("TaskDescriptionMarkdown path links", () => {
 		expect(resolveTerminalPaths.mock.calls.flatMap(([arg]) => arg.paths)).toEqual(
 			expect.arrayContaining(["todo/brief.md", "src/app.ts", "/home/me/notes/plan.md", "nope/x.md"]),
 		);
+	});
+
+	it("links Windows drive paths with either separator", async () => {
+		wrap(<TaskDescriptionMarkdown body={"Plan: C:\\Users\\me\\plan.md or C:/Users/me/plan.md"} projectId="p1" taskId="t1" />);
+		await waitFor(() => expect(screen.getAllByRole("button", { name: /plan\.md/ })).toHaveLength(2));
+	});
+
+	it("links a dunder file name that markdown would otherwise read as emphasis", async () => {
+		wrap(<TaskDescriptionMarkdown body={"Edit src/__init__.py now"} projectId="p1" taskId="t1" />);
+		await screen.findByRole("button", { name: /src\/__init__\.py/ });
+	});
+
+	it("labels a token by its real path, whatever text an author wrapped it in", async () => {
+		wrap(<CommentMarkdown body={"[setup docs](path:a1c9fe4e/todo/x.md)"} />);
+		const chip = await screen.findByRole("button", { name: /\/other\/todo\/x\.md/ });
+		expect(chip.querySelector('[aria-hidden="true"]')?.textContent).toBe("todo/x.md");
 	});
 
 	it("leaves a fenced code block alone", async () => {

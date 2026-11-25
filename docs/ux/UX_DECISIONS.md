@@ -773,4 +773,4 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 
 2026-11-24 — Video in the image viewer gets its own transport (frame step, speed, marker scrubber); timeline comments are `video-time` review anchors. Why: native scrubbers cannot carry markers. Dropped on purpose: volume level (mute only), PiP, OS fullscreen (viewer `f` covers it). Yaml `task_image_viewer`.
 
-2026-11-24 - A file path in task text (description, note, overview, traffic body) is a chip only when it exists on disk; click opens the file preview at its line, hover shows the full path; table cells and sidebar rows stay plain (bible §10). Why: decisions/2026/11/24/file-path-links-in-task-text.md.
+2026-11-24 - A file path in task text, or a `path:<proj>/<path>` token, is a chip only if the file exists; click opens the preview at its line; list rows stay plain (bible §10). Why: decisions/2026/11/24/file-path-links-in-task-text.md.

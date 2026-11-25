@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { posix, win32 } from "node:path";
-import { annotatePathRefs, findPathRefsInText, formatPathRef, parsePathRefUri, projectRelative, qualifyPathsFor } from "../../shared/path-refs";
-import { resolvePathRefIn, underRoot } from "../../shared/path-ref-resolve";
+import { annotatePathRefs, findPathRefsInText, formatPathRef, LAUNCH_ANNOTATION_MAX_ADDED_CHARS, parsePathRefUri, projectRelative, qualifyPathsFor, stripPathAnnotations } from "../../shared/path-refs";
+import { resolvePathRefIn, underRoot } from "../path-ref-resolve";
 
 const WRITER = "a1c9fe4e-0000-4000-8000-000000000001";
 const READER = "b2d0aa11-0000-4000-8000-000000000002";
@@ -18,6 +18,12 @@ describe("path token grammar", () => {
 
 	it("drops sentence punctuation from a bare token", () => {
 		expect(findPathRefsInText("brief at path:a1c9fe4e/todo/x.md.")[0]!.raw).toBe("path:a1c9fe4e/todo/x.md");
+	});
+
+	it("reads a trailing directory slash as the directory, not an empty segment", () => {
+		const [found] = findPathRefsInText("see path:a1c9fe4e/docs/.");
+		expect(found!.ref).toEqual({ project: "a1c9fe4e", path: "docs" });
+		expect(parsePathRefUri("path:a1c9fe4e/docs//x.md")).toBeNull();
 	});
 
 	it("refuses a token that climbs out of its project", () => {
@@ -59,12 +65,52 @@ describe("qualifyPathsFor", () => {
 	});
 });
 
+describe("qualifyPathsFor and code", () => {
+	const exists = (p: string) => p === "src/app.test.ts" || p === "todo/x.md";
+
+	it("keeps a command in inline code runnable, but converts a span that is one whole path", () => {
+		expect(qualifyPathsFor("run `bun test src/app.test.ts` then read `todo/x.md`", WRITER, READER, exists))
+			.toBe("run `bun test src/app.test.ts` then read `path:a1c9fe4e/todo/x.md`");
+	});
+
+	it("skips indented fences and only closes on a bare fence line", () => {
+		const text = "- step:\n    ```sh\n    cat todo/x.md\n    ```js\n    cat todo/x.md\n    ```\nthen todo/x.md";
+		expect(qualifyPathsFor(text, WRITER, READER, exists)).toBe(text.replace(/then todo\/x\.md$/, "then path:a1c9fe4e/todo/x.md"));
+	});
+
+	it("keeps a :col tail as written", () => {
+		expect(qualifyPathsFor("at todo/x.md:12:5", WRITER, READER, exists)).toBe("at path:a1c9fe4e/todo/x.md:12:5");
+	});
+});
+
 describe("annotatePathRefs", () => {
 	it("adds the absolute path once, and skips a token that names nothing", () => {
 		const resolve = (ref: { path: string }) => (ref.path === "todo/x.md" ? "/r/todo/x.md" : null);
 		const once = annotatePathRefs("read path:a1c9fe4e/todo/x.md:2 and path:a1c9fe4e/gone.md", resolve);
 		expect(once).toBe("read path:a1c9fe4e/todo/x.md:2 (/r/todo/x.md:2) and path:a1c9fe4e/gone.md");
 		expect(annotatePathRefs(once, resolve)).toBe(once);
+	});
+
+	it("replaces a stale annotation instead of stacking a second one", () => {
+		expect(annotatePathRefs("read path:a1c9fe4e/todo/x.md (/old/todo/x.md) now", () => "/new/todo/x.md"))
+			.toBe("read path:a1c9fe4e/todo/x.md (/new/todo/x.md) now");
+	});
+
+	it("leaves fenced code untouched, so a command in it still runs", () => {
+		const text = "```\ncat path:a1c9fe4e/todo/x.md\n```";
+		expect(annotatePathRefs(text, () => "/r/todo/x.md")).toBe(text);
+	});
+
+	it("stops adding paths at its character budget", () => {
+		const text = Array.from({ length: 20 }, (_, i) => `path:a1c9fe4e/f${i}.md`).join(" ");
+		const out = annotatePathRefs(text, () => `/${"x".repeat(100)}`, LAUNCH_ANNOTATION_MAX_ADDED_CHARS);
+		expect(out.length - text.length).toBeLessThanOrEqual(LAUNCH_ANNOTATION_MAX_ADDED_CHARS);
+		expect(out.length).toBeGreaterThan(text.length);
+	});
+
+	it("is undone by stripPathAnnotations, in prose and after a code span", () => {
+		const text = "a path:a1c9fe4e/todo/x.md:2 and `path:a1c9fe4e/todo/x.md` and (not this)";
+		expect(stripPathAnnotations(annotatePathRefs(text, () => "C:\\r\\todo\\x.md"))).toBe(text);
 	});
 
 	it("puts the path after a code span, not inside it", () => {

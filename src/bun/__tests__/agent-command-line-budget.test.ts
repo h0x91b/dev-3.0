@@ -115,6 +115,15 @@ vi.mock("../agent-system-prompt-file", async () => {
 	return { ...actual, ensureAgentSystemPromptFile: () => null };
 });
 
+// Path tokens gain their absolute path in the launch prompt. A worst-case resolver
+// (a long Windows path for every token) shows the capped annotation still fits.
+vi.mock("../path-refs-agent", async () => {
+	const refs = await vi.importActual<typeof import("../../shared/path-refs")>("../../shared/path-refs");
+	return {
+		withAbsolutePaths: async (text: string, maxAdded?: number) => refs.annotatePathRefs(text, () => `C:\\Users\\${"x".repeat(180)}\\file.md`, maxAdded),
+	};
+});
+
 describe("the whole Windows command line fits", () => {
 	for (const command of AGENT_COMMANDS) {
 		for (const protocolMode of ["worktree", "shared-folder"] as const) {
@@ -130,6 +139,20 @@ describe("the whole Windows command line fits", () => {
 			});
 		}
 	}
+
+	it.each(AGENT_COMMANDS)("%s fits a full-size task dense with path tokens", async (command) => {
+		asPlatform("win32");
+		__setCodexProfileV2Override(false);
+		try {
+			const tokens = Array.from({ length: 40 }, (_, i) => `path:a1c9fe4e/docs/f${i}.md`).join(" ");
+			const base = fullSizeContext();
+			const taskDescription = `${base.taskDescription.slice(0, base.taskDescription.length - tokens.length - 1)} ${tokens}`;
+			const cmd = await resolveAgentCommand(agent(command), undefined, { ...base, taskDescription });
+			expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
+		} finally {
+			__setCodexProfileV2Override(null);
+		}
+	});
 
 	it.each(["codex", "agent", "opencode"])("cleanup leaves room for a user brief on Windows: %s", async (command) => {
 		asPlatform("win32");

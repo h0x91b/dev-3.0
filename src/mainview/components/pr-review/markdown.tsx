@@ -11,8 +11,8 @@ import {
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { MarkdownImage, MarkdownImageProvider } from "./markdown-images";
 import { createSourceLineComponents } from "./markdown-source-lines";
-import { isRelativeUrl, remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
-import { parsePathLinkUrl, remarkBarePathLinks, remarkBareTaskRefs, remarkHtmlAsText } from "./markdown-task-text";
+import { isDrivePath, isRelativeUrl, remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
+import { escapePathEmphasis, parsePathLinkUrl, remarkBarePathLinks, remarkBareTaskRefs, remarkHtmlAsText } from "./markdown-task-text";
 import { pathLinkLabel } from "../../text-path-links";
 import { parseRefUri } from "../../../shared/task-refs";
 import { parsePathRefUri, pathRefUri } from "../../../shared/path-refs";
@@ -174,12 +174,10 @@ export function MarkdownContent({
 			const pathRef = target ? parsePathRefUri(target) : null;
 			if (pathRef) {
 				const { line, ...file } = pathRef;
-				// An author's own link text stays; the token itself (bare or in code) shows its path.
-				const text = typeof children === "string" ? children : undefined;
-				const label = text === undefined || parsePathRefUri(text) ? `${file.path}${line ? `:${line}` : ""}` : undefined;
-				return <PathLink path={pathRefUri(file)} line={line} label={label}>{children}</PathLink>;
+				// Always the real path: link text from an untrusted author must not disguise the file.
+				return <PathLink path={pathRefUri(file)} line={line} label={`${file.path}${line ? `:${line}` : ""}`}>{children}</PathLink>;
 			}
-			if (taskText && target && isRelativeUrl(target) && !target.startsWith("#")) {
+			if (taskText && target && (isRelativeUrl(target) || isDrivePath(target)) && !target.startsWith("#")) {
 				const { path, line } = parsePathLinkUrl(target);
 				const text = typeof children === "string" ? children : undefined;
 				const label = text ? pathLinkLabel(text) : undefined;
@@ -288,7 +286,7 @@ export function TaskDescriptionMarkdown({ body, projectId, taskId }: { body: str
 				className="dev3-pr-md dev3-task-desc-md min-w-0 text-sm leading-relaxed text-fg-2"
 				data-testid="task-description-markdown"
 			>
-				<MarkdownContent body={body} rendererConfig={rendererConfig} taskText />
+				<MarkdownContent body={escapePathEmphasis(body)} rendererConfig={rendererConfig} taskText />
 			</div>
 		</TaskRefScopeContext.Provider>
 	);

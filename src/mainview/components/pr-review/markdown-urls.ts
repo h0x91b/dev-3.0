@@ -27,6 +27,11 @@ function isAppRef(url: string): boolean {
 	return parseRefUri(url) !== null || parsePathRefUri(url) !== null;
 }
 
+/** A Windows drive path (`C:\\x`, `C:/x`): a local file, though `C:` parses as a URL scheme. */
+export function isDrivePath(url: string): boolean {
+	return /^[A-Za-z]:[\\/]/.test(url);
+}
+
 /** True for a markdown URL naming a path in the checkout rather than a location the webview can fetch. */
 export function isRelativeUrl(url: string): boolean {
 	return Boolean(url) && !url.startsWith("//") && !/^[a-z][a-z0-9+.-]*:/i.test(url);
@@ -58,7 +63,7 @@ export function unprotect(url: string | undefined): string | undefined {
 	} catch {
 		return undefined;
 	}
-	return isRelativeUrl(relative) ? relative : undefined;
+	return isRelativeUrl(relative) || isDrivePath(relative) ? relative : undefined;
 }
 
 /**
@@ -111,5 +116,5 @@ export function remarkProtectRelativeUrls() {
 
 /** In-page anchors survive hardening as they are, so they need no token. */
 function isProtectable(url: string, isLink: boolean): boolean {
-	return (!url.startsWith("#") && isRelativeUrl(url)) || (isLink && isAppRef(url));
+	return (!url.startsWith("#") && isRelativeUrl(url)) || (isLink && (isAppRef(url) || isDrivePath(url)));
 }

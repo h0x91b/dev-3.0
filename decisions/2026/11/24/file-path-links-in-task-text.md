@@ -8,6 +8,8 @@ Agents name files in task descriptions, notes and overviews ("Brief: todo/x.md",
 
 - **Detection reuses the terminal's.** `findPathCandidates` (`terminal-file-links.ts`) finds candidates. `resolveTerminalPaths` checks them on disk against the task's worktree and the project root, with the same allowed-roots gate and the same unique-suffix fallback. A candidate that names nothing stays plain text, so prose never gets a dead link.
 - **Every platform's spelling.** The detector moved to `src/shared/path-candidates.ts` (the server needs it too) and accepts either separator: drive paths (`C:\x`, `C:/x`), `.\x`, `todo\x.md`. The resolver already uses the host's `isAbsolute` and separator. Its unique-suffix fallback reads `git ls-files`, which prints `/` on every OS, so on Windows a backslash candidate is looked up with `/` (`suffixLookupPath`). On macOS and Linux a backslash is a legal filename character, so it is left as written and such a candidate normally names nothing. The terminal gains the same Windows detection.
+- **Linear scan.** Segment runs are bounded (`{1,255}`) and a line over 4 096 characters is not scanned. An unbounded run before a required separator backtracked quadratically: 100 KB with no separator took 8 s.
+- **Markdown emphasis.** Before the description markdown is parsed, `_` inside a prose path candidate is escaped (`escapePathEmphasis`), so `src/__init__.py` is not split into bold `init`. A Windows drive path is a path link there too, although `C:` parses as a URL scheme (`isDrivePath`).
 - **One RPC per scope.** `text-path-links.ts` batches every candidate rendered in one tick into one call per project/task pair and caches answers for 15 s.
 - **Surfaces.** `TaskRefText` (notes, overview, traffic, terminal preview) and the task description markdown. In markdown, a bare path, an inline code span that is one whole path, and a relative link (`[brief](todo/x.md)`) all link. Fenced code stays plain. Dense list rows (board table cells, the Active Tasks sidebar) pass `pathLinks={false}`, because every row would cost its own RPC.
 - **Click** goes through `activateTerminalPath`, so it honours the terminal's open mode: the in-app preview by default and always in the browser. A `:line` suffix scrolls the preview to that line. In markdown the line rides as `#L<n>`, because `a.ts:12` would parse as a URL scheme.
@@ -20,7 +22,8 @@ A path into another project is a `path:` token: `cross-project-path-tokens`.
 ## 3. Risks
 
 - A word that happens to match a file name (`README.md`) links, the same as in the terminal. The unique-suffix rule keeps an ambiguous name unlinked.
-- A file created after the text rendered stays plain until the 15 s cache entry expires.
+- A file created after the text rendered stays plain until the 15 s cache entry expires. The cache keeps at most 2 000 entries.
+- On Windows the roots gate compares paths case-sensitively (`isUnder`, unchanged here), so a lowercase `c:\...` or a project stored with `/` may fail to link. It fails closed. Not verified on a Windows host: no CI job runs there.
 - Starting a drag selection on a chip clicks it, as on any button.
 
 ## 4. Alternatives considered

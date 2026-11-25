@@ -9,6 +9,8 @@ import { isRootedPathText, pathBaseName } from "../shared/path-candidates";
  */
 
 const TTL_MS = 15_000;
+/** Entries kept at most: a long-lived tab renders many distinct paths. */
+const CACHE_MAX = 2_000;
 /** Mirrors the backend's per-call cap (`RESOLVE_TERMINAL_PATHS_MAX`). */
 const BATCH_MAX = 64;
 
@@ -72,6 +74,11 @@ export function resolveTextPath(path: string, projectId?: string, taskId?: strin
 			queueMicrotask(flush);
 		}
 	});
+	if (cache.size >= CACHE_MAX) {
+		const now = Date.now();
+		for (const [stale, entry] of cache) if (now - entry.at >= TTL_MS) cache.delete(stale);
+		if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
+	}
 	cache.set(key, { at: Date.now(), promise });
 	return promise;
 }

@@ -1,34 +1,61 @@
 import { existsSync } from "node:fs";
 import * as data from "./data";
-import { annotatePathRefs, qualifyPathsFor, rewriteRelativePaths } from "../shared/path-refs";
-import { resolvePathRefIn, underRoot } from "../shared/path-ref-resolve";
+import { createLogger } from "./logger";
+import { findPathRefsInText, qualifyPathsFor, rewriteRelativePaths, stripPathAnnotations } from "../shared/path-refs";
+import { annotateWithProjects, underRoot } from "./path-ref-resolve";
+
+const log = createLogger("path-refs");
+
+/** Distinct relative paths checked on disk per text, as `resolveTerminalPaths` caps its batch. */
+const MAX_PATH_CHECKS = 64;
 
 /** Text an agent will read: each `path:` token gains the absolute path it names on this machine. */
-export async function withAbsolutePaths(text: string): Promise<string> {
-	if (!text.includes("path:")) return text;
-	const projects = await data.loadProjects();
-	return annotatePathRefs(text, (ref) => {
-		const absolute = resolvePathRefIn(projects, ref);
-		return absolute && existsSync(absolute) ? absolute : null;
-	});
-}
-
-/** {@link qualifyPathsFor} against the writer project's root on disk. */
-export async function qualifyWriterPaths(text: string, writerProjectId: string | undefined, readerProjectId: string | undefined): Promise<string> {
-	if (!text || !writerProjectId || writerProjectId === readerProjectId) return text;
-	let root: string | null = null;
+export async function withAbsolutePaths(text: string, maxAdded?: number): Promise<string> {
+	if (!text || findPathRefsInText(text).length === 0) return text;
 	try {
-		const writer = await data.getProject(writerProjectId);
-		root = writer.kind === "virtual" ? null : writer.path;
-	} catch {
+		return annotateWithProjects(text, await data.loadProjects(), maxAdded);
+	} catch (err) {
+		log.warn("path annotation skipped", { error: String(err) });
 		return text;
 	}
-	if (!root) return text;
-	const projectRoot = root;
-	return qualifyPathsFor(text, writerProjectId, readerProjectId, (relative) => {
-		const absolute = underRoot(projectRoot, relative);
-		return !!absolute && existsSync(absolute);
-	});
+}
+
+async function projectRoot(projectId: string | undefined): Promise<string | null> {
+	if (!projectId) return null;
+	try {
+		const project = await data.getProject(projectId);
+		return project.kind === "virtual" || !project.path ? null : project.path;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Whether a relative path names the writer's file and not the reader's: a path
+ * both boards hold (`README.md`) is ambiguous and stays as written. Memoized and capped.
+ */
+function writerOnly(writerRoot: string, readerRoot: string | null): (relative: string) => boolean {
+	const seen = new Map<string, boolean>();
+	return (relative) => {
+		const known = seen.get(relative);
+		if (known !== undefined) return known;
+		if (seen.size >= MAX_PATH_CHECKS) return false;
+		const onWriter = underRoot(writerRoot, relative);
+		const onReader = readerRoot ? underRoot(readerRoot, relative) : null;
+		const result = !!onWriter && existsSync(onWriter) && !(onReader && existsSync(onReader));
+		seen.set(relative, result);
+		return result;
+	};
+}
+
+/** {@link qualifyPathsFor} against the writer and reader project roots on disk; drops agent annotations first. */
+export async function qualifyWriterPaths(text: string, writerProjectId: string | undefined, readerProjectId: string | undefined): Promise<string> {
+	const stripped = stripPathAnnotations(text);
+	if (!stripped || !writerProjectId || writerProjectId === readerProjectId) return stripped;
+	const writerRoot = await projectRoot(writerProjectId);
+	if (!writerRoot) return stripped;
+	const exists = writerOnly(writerRoot, await projectRoot(readerProjectId));
+	return qualifyPathsFor(stripped, writerProjectId, readerProjectId, exists);
 }
 
 /**
@@ -45,22 +72,19 @@ export async function qualifyEditedWriterPaths(text: string, previous: string | 
 
 /**
  * A message from another board, as its receiving agent reads it: a relative path
- * that exists on the sender's project becomes absolute, and a `path:` token gains
- * its absolute path. Same machine, read once, so no portable token is needed.
+ * only the sender's project holds becomes absolute, and a `path:` token gains its
+ * absolute path. Same machine, read once, so no portable token is needed.
  */
 export async function absolutizeSenderPaths(text: string, senderProjectId: string | undefined, receiverProjectId: string): Promise<string> {
 	let out = text;
 	if (senderProjectId && senderProjectId !== receiverProjectId) {
-		try {
-			const sender = await data.getProject(senderProjectId);
-			if (sender.kind !== "virtual" && sender.path) {
-				out = rewriteRelativePaths(out, (relative, line) => {
-					const absolute = underRoot(sender.path, relative);
-					return absolute && existsSync(absolute) ? `${absolute}${line ? `:${line}` : ""}` : null;
-				});
-			}
-		} catch {
-			// unknown sender project: its paths stay as written
+		const senderRoot = await projectRoot(senderProjectId);
+		if (senderRoot) {
+			const exists = writerOnly(senderRoot, await projectRoot(receiverProjectId));
+			out = rewriteRelativePaths(out, (relative, line) => {
+				if (!exists(relative)) return null;
+				return `${underRoot(senderRoot, relative)}${line ? `:${line}` : ""}`;
+			});
 		}
 	}
 	return withAbsolutePaths(out);
