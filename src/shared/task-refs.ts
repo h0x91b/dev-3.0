@@ -217,16 +217,15 @@ export function qualifyEditedRefsFor(text: string, previous: string | null | und
 }
 
 /**
- * A moved task's refs to itself, as {@link qualifyRefsFor} left them (`seq:<old project>/<old seq>`),
+ * A moved task's refs to itself (`seq:<old project>/<old seq>`, by id prefix or name),
  * renamed to its new seq on its new board, bare; brackets are kept.
  */
-export function renumberSelfRefs(text: string, oldProjectId: string, oldSeq: number, newSeq: number): string {
-	const oldProject = projectRefQualifier(oldProjectId);
+export function renumberSelfRefs(text: string, oldProject: { id: string; name?: string }, oldSeq: number, newSeq: number): string {
 	let out = "";
 	let cursor = 0;
 	for (const { ref, raw, start, end } of findRefsInText(text)) {
 		// `seq:7 --project P` takes P from the flag; rewriting only `seq:7` would detach it.
-		if (ref.kind !== "task" || ref.number !== oldSeq || ref.project !== oldProject || !raw.includes("/")) continue;
+		if (ref.kind !== "task" || ref.number !== oldSeq || !ref.project || !projectMatchesQualifier(oldProject, ref.project) || !raw.includes("/")) continue;
 		const renamed: TaskPrRef = { kind: "task", number: newSeq };
 		out += text.slice(cursor, start) + (raw.startsWith("<") ? formatRef(renamed) : refUri(renamed));
 		cursor = end;

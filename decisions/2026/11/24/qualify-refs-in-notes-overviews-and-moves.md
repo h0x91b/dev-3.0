@@ -7,7 +7,7 @@
 ## 2. Decision
 
 - `dev3 note add` and `dev3 overview set` send `sourceTaskId` from the CLI context, as `task update` does. `note.add` runs `qualifyRefsFor`, as `task create` does for new text, and `overview.set` runs `qualifyEditedRefsFor` against the old overview (`src/bun/cli-socket/board-metadata-commands.ts`). `writerProjectIdFor` (`task-resolution.ts`) skips the board scan when a task writes to itself, or, for a note, when the writer is on the same board.
-- `data.moveTaskToProject` qualifies the title, custom title, description, both overviews and every note against the source project. A ref to the moved task itself becomes its new seq, bare (`renumberSelfRefs` in `src/shared/task-refs.ts`). A `seq:N --project P` ref is left as written, because its project comes from the flag. The history log keeps the text as it was.
+- `data.moveTaskToProject` qualifies the title, custom title, description, both overviews and every note against the source project. A ref to the moved task itself becomes its new seq, bare (`renumberSelfRefs` in `src/shared/task-refs.ts`). It matches the source project by id prefix or by name (`projectMatchesQualifier`), so a hand-written `seq:<project-name>/7` follows the task too. A `seq:N --project P` ref is left as written, because its project comes from the flag. The history log keeps the text as it was.
 
 ## 3. Risks
 

@@ -1289,7 +1289,7 @@ export async function moveTaskToProject(
 			// Bare refs in the task's text named the source board's tasks, except its refs to
 			// itself, which follow it to its new seq; plain paths named the source's files.
 			const seq = nextSeq(targetTasks);
-			const retargetTitle = (text: string) => renumberSelfRefs(qualifyRefsFor(text, sourceProject.id, targetProject.id), sourceProject.id, source.seq, seq);
+			const retargetTitle = (text: string) => renumberSelfRefs(qualifyRefsFor(text, sourceProject.id, targetProject.id), sourceProject, source.seq, seq);
 			const sourceRoot = sourceProject.kind !== "virtual" ? sourceProject.path : "";
 			const targetRoot = targetProject.kind !== "virtual" && targetProject.path ? targetProject.path : null;
 			// One memo per move: the disk checks run under both locks, so their cap is per move.
