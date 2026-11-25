@@ -30,6 +30,7 @@ vi.mock("../../preparation-runtime", () => ({
 vi.mock("../../agent-graceful-exit", () => ({ requestGracefulAgentExit: vi.fn(async () => ({ kind: "skipped" })) }));
 vi.mock("../../pty-server", () => ({ destroySession: vi.fn(), destroyNativeTaskSession: vi.fn(async () => undefined) }));
 vi.mock("../../worktree-reaper", () => ({ reapWorktreeProcesses: vi.fn(async () => undefined) }));
+vi.mock("../../out-of-tree-state", () => ({ reclaimOutOfTreeState: vi.fn() }));
 vi.mock("../../worktree-trust", () => ({ forgetWorktreeTrust: vi.fn(async () => undefined) }));
 vi.mock("../../settings", () => ({ loadSettings: vi.fn(async () => ({})), loadSettingsSync: vi.fn(() => ({})) }));
 vi.mock("../../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/zsh") }));
@@ -62,6 +63,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 
 import * as data from "../../data";
 import { tmux } from "../../tmux";
+import { reclaimOutOfTreeState } from "../../out-of-tree-state";
 import { createWorktree, _resetFetchState } from "../../git";
 import { executeLifecycleEffect } from "../executor";
 import { transition } from "../machine";
@@ -142,6 +144,7 @@ describe("preparation-failure cleanup judges the folder before destroying it", (
 		expect(existsSync(join(wt.worktreePath, "notes.txt"))).toBe(true);
 		expect(g(`git rev-parse ${OWN}`, repo.local).trim()).toBe(sha);
 		expect(tmux.spawnAttachedSession).not.toHaveBeenCalled(); // no cleanup script ran in it
+		expect(reclaimOutOfTreeState).not.toHaveBeenCalled();
 		expect(persistedError()).toContain("uncommitted or untracked files");
 	});
 
@@ -149,6 +152,7 @@ describe("preparation-failure cleanup judges the folder before destroying it", (
 		const wt = await createWorktree(project(), task());
 		await run(FAILURES[0]![1]);
 		expect(existsSync(wt.worktreePath)).toBe(false);
+		expect(reclaimOutOfTreeState).toHaveBeenCalledWith(wt.worktreePath);
 		expect(g(`git branch --list ${OWN}`, repo.local).trim()).toBe("");
 		expect(tmux.spawnAttachedSession).toHaveBeenCalled();
 	});
