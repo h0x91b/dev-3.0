@@ -34,6 +34,7 @@ graph, no prototype imports, no tmux). It changes no production code.
 | `version-skew.ts` | `evaluateHelloAtVersion` (the frozen boundary generalised by the host's own version) + the compact verdict matrix. |
 | `session-record.ts` | Small discovery record a running staged host publishes (image tag, protocol version, host/shell PID, pane id, endpoint — token-free). |
 | `staged-host-runtime.ts` | Detached host launched from an immutable image; owns one `Bun.Terminal` shell, answers hello at its image's protocol version. |
+| `prune.ts` | Retention for the packaged staging root: deletes old, unused images and stale scratch directories; never follows symlinks. |
 | `lab.ts` | Stage the two standard images, launch a detached host from an image, and a versioned lab client speaking an arbitrary protocol version. |
 
 ## On-disk layout

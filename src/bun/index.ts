@@ -723,6 +723,14 @@ setTimeout(() => {
 		.catch((err) => log.warn("Model proxy autostart could not be scheduled", { error: String(err) }));
 }, 1500);
 
+// Drop staged native host images nothing uses any more. Detached and delayed:
+// it reads session records and deletes directories, neither of which may hold up boot.
+setTimeout(() => {
+	import("./native-host-runtime")
+		.then(({ pruneStagedHostImages }) => pruneStagedHostImages())
+		.catch((err) => log.warn("Native host image prune could not be scheduled", { error: String(err) }));
+}, 5_000);
+
 // Report processes earlier versions leaked out of finished task worktrees. Detect
 // only, never kill: ending a user's process needs a click (PRODUCT_UX_BIBLE §12.6).
 // Detached so a slow lsof cannot delay the window, and delayed so it does not

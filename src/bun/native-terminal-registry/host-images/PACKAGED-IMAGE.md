@@ -50,6 +50,9 @@ Failures are typed `ManifestError` codes — no clock is read anywhere.
 
 The staging root is `hostImagesRootDir()` (`../paths.ts`): an additive
 `~/.dev3.0/native-host-images/`, overridable with `DEV3_NATIVE_HOST_IMAGES_DIR`.
+`prune.ts` removes stale images from it (2 newest and anything used in the last
+7 days stay, as does any image a live session runs from); see
+`decisions/2026/11/25/prune-staged-native-host-images.md`.
 
 ## Build + verification path
 
