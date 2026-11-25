@@ -11,6 +11,8 @@ import {
 
 const BUNDLED = "/Applications/dev-3.0.app/Contents/Resources/app/tmux/tmux";
 const SHIM = "/Users/u/.dev3.0/bin/tmux";
+const MIRRORS = "/Users/u/.dev3.0/tmux-host";
+const MIRRORED = (key: number) => `${MIRRORS}/${key}/dev-3.0.app/Contents/Resources/app/tmux/tmux`;
 const OPTS = { binary: BUNDLED, socket: "dev3", configFile: "/tmp/dev3-tmux.conf", cwd: "/Users/u/.dev3.0", env: { PATH: "/bin" } };
 
 type Probe = "alive" | "absent" | "timeout" | "weird";
@@ -25,6 +27,15 @@ function fakeDeps(over: {
 	writeThrows?: boolean;
 	platform?: NodeJS.Platform;
 	fileLimits?: { soft: number; hard: number | null } | null;
+	/** Inodes by path; a path not listed has none. */
+	inodes?: Record<string, number>;
+	linkThrows?: boolean;
+	/** Entries of the mirror root; `inUse` puts the name, as an inode, in a running tmux's program text. */
+	mirrors?: Record<string, { ageMs: number; inUse: boolean }>;
+	/** Mirror keys whose build finished (their completion marker exists). */
+	completeMirrors?: number[];
+	tmuxScanFails?: boolean;
+	removeThrows?: string;
 } = {}) {
 	const probes = [...(over.probes ?? ["absent", "alive"])];
 	const calls: string[][] = [];
@@ -32,12 +43,20 @@ function fakeDeps(over: {
 	const files = new Map<string, string>();
 	const removed: string[] = [];
 	const signals: [number, string][] = [];
-	let clock = 0;
+	const links: [string, string][] = [];
+	const deferred: (() => void)[] = [];
+	const inodes = new Map(Object.entries(over.inodes ?? {}));
+	let clock = 1_000_000_000;
 	const deps: LaunchdServerDeps = {
 		platform: over.platform ?? "darwin",
 		uid: 502,
 		spawnSync: (cmd, opts) => {
 			calls.push(cmd);
+			if (cmd[0] === "/usr/sbin/lsof") {
+				if (over.tmuxScanFails) return { exitCode: null, exitedDueToTimeout: true };
+				const inUse = Object.entries(over.mirrors ?? {}).filter(([, m]) => m.inUse).map(([name]) => `ftxt\ni${name}\n`);
+				return { exitCode: 0, stdout: new TextEncoder().encode(`p4242\n${inUse.join("")}ftxt\ni9\n`) };
+			}
 			if (cmd[0] === "launchctl") {
 				timeouts.push(opts?.timeout);
 				if (cmd[1] === "print") {
@@ -59,16 +78,36 @@ function fakeDeps(over: {
 			if (over.writeThrows) throw new Error("EEXIST");
 			files.set(path, contents);
 		},
-		removeDir: (path) => removed.push(path),
+		removeDir: (path) => {
+			if (path === over.removeThrows) throw new Error("EACCES");
+			removed.push(path);
+		},
 		sleep: (ms) => { clock += ms; },
 		now: () => clock,
 		signal: (pid, signal) => signals.push([pid, signal]),
 		fileLimits: () => over.fileLimits === undefined ? { soft: 1050880, hard: null } : over.fileLimits,
 		realpath: (path) => (path === SHIM ? BUNDLED : path.startsWith("/") ? path : null),
-		pathExists: () => true,
+		pathExists: (path) =>
+			path.endsWith("/complete")
+				? files.has(path) || (over.completeMirrors ?? []).some((key) => path === `${MIRRORS}/${key}/complete`)
+				: true,
+		inode: (path) => inodes.get(path) ?? null,
+		mirrorRoot: () => MIRRORS,
+		linkTree: (src, dst) => {
+			if (over.linkThrows) throw new Error("EXDEV: cross-device link not permitted");
+			links.push([src, dst]);
+			inodes.set(dst + "/Contents/Resources/app/tmux/tmux", inodes.get(BUNDLED)!);
+		},
+		listDir: (path) => (path === MIRRORS ? Object.keys(over.mirrors ?? {}) : []),
+		mtimeMs: (path) => {
+			const mirror = over.mirrors?.[path.slice(MIRRORS.length + 1)];
+			return mirror ? clock - mirror.ageMs : null;
+		},
+		defer: (task) => deferred.push(task),
 	};
 	const launchctl = () => calls.filter((c) => c[0] === "launchctl").map((c) => c.slice(0, 2).join(" "));
-	return { deps, calls, timeouts, files, removed, signals, launchctl };
+	const runDeferred = () => deferred.splice(0).forEach((task) => task());
+	return { deps, calls, timeouts, files, removed, signals, links, deferred, runDeferred, launchctl };
 }
 
 describe("usesLaunchdServer", () => {
@@ -199,6 +238,87 @@ describe("ensureLaunchdServer", () => {
 	});
 });
 
+describe("ensureLaunchdServer bundle mirror", () => {
+	const plistOf = (f: ReturnType<typeof fakeDeps>) => [...f.files.entries()].find(([path]) => path.endsWith(".plist"))![1];
+
+	it("runs the server from a hardlink tree of the whole bundle, keyed by the tmux inode", () => {
+		const f = fakeDeps({ inodes: { [BUNDLED]: 42 } });
+		expect(ensureLaunchdServer({ ...OPTS, binary: SHIM }, f.deps)).toBe("started");
+		expect(f.links).toEqual([["/Applications/dev-3.0.app", `${MIRRORS}/42/dev-3.0.app`]]);
+		expect(f.files.has(`${MIRRORS}/42/complete`)).toBe(true);
+		expect(plistOf(f)).toContain(`<string>${MIRRORED(42)}</string>`);
+		expect(plistOf(f)).not.toContain(`<string>${BUNDLED}</string>`);
+	});
+
+	it("reuses a finished mirror of the same tmux instead of relinking it", () => {
+		const f = fakeDeps({ inodes: { [BUNDLED]: 42, [MIRRORED(42)]: 42 }, completeMirrors: [42] });
+		expect(ensureLaunchdServer(OPTS, f.deps)).toBe("started");
+		expect(f.links).toEqual([]);
+		expect(plistOf(f)).toContain(`<string>${MIRRORED(42)}</string>`);
+	});
+
+	// readdir order links tmux long before Info.plist, so tmux alone does not prove a finished build.
+	it.each([
+		["a wrong tmux", { [BUNDLED]: 42, [MIRRORED(42)]: 7 }],
+		["the right tmux but no completion marker", { [BUNDLED]: 42, [MIRRORED(42)]: 42 }],
+	])("rebuilds an interrupted mirror holding %s", (_name, inodes) => {
+		const f = fakeDeps({ inodes });
+		expect(ensureLaunchdServer(OPTS, f.deps)).toBe("started");
+		expect(f.removed[0]).toBe(`${MIRRORS}/42`);
+		expect(f.links).toHaveLength(1);
+		expect(plistOf(f)).toContain(`<string>${MIRRORED(42)}</string>`);
+	});
+
+	it("runs from the bundle itself when no mirror can be built (another volume)", () => {
+		const f = fakeDeps({ inodes: { [BUNDLED]: 42 }, linkThrows: true });
+		expect(ensureLaunchdServer(OPTS, f.deps)).toBe("started");
+		expect(plistOf(f)).toContain(`<string>${BUNDLED}</string>`);
+		expect(f.removed).toContain(`${MIRRORS}/42`);
+	});
+
+	const OLD_MIRRORS = {
+		"42": { ageMs: 86_400_000, inUse: true },
+		"7": { ageMs: 86_400_000, inUse: false },
+		"8": { ageMs: 86_400_000, inUse: true },
+		"9": { ageMs: 60_000, inUse: false },
+		stray: { ageMs: 86_400_000, inUse: false },
+	};
+	const pruned = (f: ReturnType<typeof fakeDeps>) => f.removed.filter((p) => p.startsWith(MIRRORS) && p !== `${MIRRORS}/42`);
+
+	it("prunes after the start, with one tmux scan: old mirrors no tmux runs go, in-use, young and foreign entries stay", () => {
+		const f = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: OLD_MIRRORS });
+		expect(ensureLaunchdServer(OPTS, f.deps)).toBe("started");
+		expect(pruned(f)).toEqual([]);
+		expect(f.calls.some((c) => c[0] === "/usr/sbin/lsof")).toBe(false);
+		f.runDeferred();
+		expect(pruned(f)).toEqual([`${MIRRORS}/7`]);
+		expect(f.calls.filter((c) => c[0] === "/usr/sbin/lsof")).toEqual([["/usr/sbin/lsof", "-c", "tmux", "-a", "-d", "txt", "-Fi"]]);
+	});
+
+	it("keeps every mirror when the tmux scan fails, and never throws out of the deferred prune", () => {
+		const failed = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: OLD_MIRRORS, tmuxScanFails: true });
+		ensureLaunchdServer(OPTS, failed.deps);
+		failed.runDeferred();
+		expect(pruned(failed)).toEqual([]);
+
+		const throwing = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: OLD_MIRRORS, removeThrows: `${MIRRORS}/7` });
+		ensureLaunchdServer(OPTS, throwing.deps);
+		expect(() => throwing.runDeferred()).not.toThrow();
+	});
+
+	it("skips the scan without old mirrors, and leaves every mirror alone when the server runs from the bundle", () => {
+		const young = fakeDeps({ inodes: { [BUNDLED]: 42 }, mirrors: { "9": { ageMs: 60_000, inUse: false } } });
+		ensureLaunchdServer(OPTS, young.deps);
+		young.runDeferred();
+		expect(young.calls.some((c) => c[0] === "/usr/sbin/lsof")).toBe(false);
+
+		const unmirrored = fakeDeps({ inodes: { [BUNDLED]: 42 }, linkThrows: true, mirrors: { "7": { ageMs: 86_400_000, inUse: false } } });
+		ensureLaunchdServer(OPTS, unmirrored.deps);
+		expect(unmirrored.deferred).toHaveLength(0);
+		expect(unmirrored.removed).not.toContain(`${MIRRORS}/7`);
+	});
+});
+
 describe("predatesLaunchdServer", () => {
 	function deps(server: { exitCode: number; pid?: string }, job: { exitCode: number; out?: string }): LaunchdServerDeps {
 		const enc = (text: string) => new TextEncoder().encode(text);
@@ -227,11 +347,17 @@ describe("predatesLaunchdServer", () => {
 
 describe("staleServerBinary", () => {
 	const enc = (text: string) => new TextEncoder().encode(text);
-	const LSOF = (path: string) => `p16123\nftxt\nn${path}\nftxt\nn/usr/lib/dyld\n`;
-	function deps(server: { exitCode: number; pid?: string }, lsof: { exitCode: number; out?: string }, existing: string[] = []) {
+	const LSOF = (path: string, inode = 100, links: number | null = 1) =>
+		`p16123\nftxt\ni${inode}\n${links === null ? "" : `k${links}\n`}n${path}\nftxt\ni9\nk1\nn/usr/lib/dyld\n`;
+	function deps(
+		server: { exitCode: number; pid?: string },
+		lsof: { exitCode: number; out?: string },
+		existing: string[] = [],
+		inodes: Record<string, number> = {},
+	) {
 		const calls: string[][] = [];
 		const d: LaunchdServerDeps = {
-			...fakeDeps().deps,
+			...fakeDeps({ inodes }).deps,
 			spawnSync: (cmd) => {
 				calls.push(cmd);
 				return cmd[0] === "/usr/sbin/lsof"
@@ -245,18 +371,36 @@ describe("staleServerBinary", () => {
 	const OLD = "/Users/u/dev3-app-backup.app/Contents/Resources/app/tmux/tmux";
 	const SERVER = { exitCode: 0, pid: "16123" };
 
-	// The updater, brew and a DMG reinstall put the new bundle at the old path, and tccd
-	// judges the file at that path: access survives, so a restart would only kill agents.
-	it("reads the executable from lsof and stays quiet when an update replaced this app's own tmux at the same path", () => {
-		const { d, calls } = deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED]);
+	// The updater, brew and a DMG reinstall put a new bundle at the old path; what matters is whether
+	// the server's own file still has a link, which lsof reports as its link count.
+	it("reads the executable, inode and link count from lsof and stays quiet for this app's own tmux, via the shim too", () => {
+		const { d, calls } = deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED], { [BUNDLED]: 100 });
 		expect(staleServerBinary(OPTS, d)).toBeNull();
-		expect(calls[1]).toEqual(["/usr/sbin/lsof", "-a", "-p", "16123", "-d", "txt", "-Fn"]);
-		// Compared against the shim's resolved bundle path too.
+		expect(calls[1]).toEqual(["/usr/sbin/lsof", "-a", "-p", "16123", "-d", "txt", "-Fikn"]);
 		expect(staleServerBinary({ ...OPTS, binary: SHIM }, deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED]).d)).toBeNull();
 	});
 
+	// macOS 27: tccd denies a server whose file is gone even when an update put a new tmux at the same path.
+	it("reports this app's own tmux once it has no links (k0), or without a link count, once its path holds another inode", () => {
+		const stale = (links: number | null, onDisk: number) =>
+			staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED, 100, links) }, [BUNDLED], { [BUNDLED]: onDisk }).d);
+		expect(stale(0, 200)).toBe("deleted");
+		expect(stale(null, 200)).toBe("deleted");
+		expect(stale(null, 100)).toBeNull();
+		// A file that keeps a link elsewhere is not gone, even if its reported path was replaced.
+		expect(stale(1, 200)).toBeNull();
+	});
+
+	// lsof names a hardlinked file by the link last looked up; once the bundle is gone it prints the bare basename.
+	it("recognises a mirror-hosted server by its inode dir whatever path lsof names, and reports a deleted mirror", () => {
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(MIRRORED(7), 7) }, [MIRRORED(7), `${MIRRORS}/7`]).d)).toBeNull();
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF("/tmux", 7) }, [`${MIRRORS}/7`]).d)).toBeNull();
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF("/tmux", 7) }).d)).toBeNull();
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(MIRRORED(7), 7, 0) }).d)).toBe("deleted");
+	});
+
 	it("reports an executable with nothing left at its path, or in another still present dev3 bundle", () => {
-		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD) }).d)).toBe("deleted");
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD, 100, null) }).d)).toBe("deleted");
 		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD) }, [OLD]).d)).toBe("elsewhere");
 	});
 

@@ -14,6 +14,9 @@ import type { ParsedArgs } from "../args";
 import { isExecutableFile } from "../../bun/executable";
 import { compressAllDiffSnapshots, measurePlainDiffSnapshots } from "../../bun/diff-snapshots";
 import { checkRepositoryAccess, type RepoAccessDeps } from "./doctor-repo-access";
+import { checkTmuxServer, type TmuxServerDeps } from "./doctor-tmux-server";
+import { resolveDev3Home } from "../../shared/dev3-home";
+import { TMUX_MIRROR_DIR } from "../../shared/tmux-server-executable";
 import { BUNDLE_RETENTION_DAYS, collectMediaReport, MEDIA_PRUNE_MIN_BYTES, MEDIA_RETENTION_DAYS, mediaPruneSelects, pruneMedia, type MediaPruneOutcome, type MediaReport } from "./doctor-media";
 import { collectNativeProcesses, realProcessInventoryDeps, renderNativeProcesses } from "./doctor-processes";
 import {
@@ -66,6 +69,8 @@ export interface DoctorDeps {
 	socketPath: () => string | null;
 	/** Probes for the `repository access` check; absent → the check is skipped. */
 	repoAccess?: RepoAccessDeps;
+	/** Probes for the `tmux server` check; absent → the check is skipped. */
+	tmuxServer?: TmuxServerDeps;
 }
 
 export function realDoctorDeps(): DoctorDeps {
@@ -104,6 +109,7 @@ export function realDoctorDeps(): DoctorDeps {
 		},
 		socketPath: () => resolveSocketPath(),
 		repoAccess: realRepoAccessDeps(),
+		tmuxServer: realTmuxServerDeps(),
 	};
 }
 
@@ -150,6 +156,36 @@ function realRepoAccessDeps(): RepoAccessDeps | undefined {
 				return null;
 			}
 		},
+	};
+}
+
+function realTmuxServerDeps(): TmuxServerDeps | undefined {
+	const repo = realRepoAccessDeps();
+	if (!repo) return undefined;
+	const dev3Home = resolveDev3Home();
+	return {
+		...repo,
+		lsofExecutable: (pid) => {
+			const res = spawnSync("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "txt", "-Fikn"], { encoding: "utf-8", timeout: 5_000 });
+			return res.status === 0 ? res.stdout : null;
+		},
+		inode: (path) => {
+			try {
+				return statSync(path).ino;
+			} catch {
+				return null;
+			}
+		},
+		projectPaths: () => {
+			try {
+				const projects: unknown = JSON.parse(readFileSync(join(dev3Home, "projects.json"), "utf-8"));
+				if (!Array.isArray(projects)) return [];
+				return projects.filter((p) => !p?.deleted).map((p) => p?.path).filter((p): p is string => typeof p === "string");
+			} catch {
+				return [];
+			}
+		},
+		mirrorRoot: join(dev3Home, TMUX_MIRROR_DIR),
 	};
 }
 
@@ -463,6 +499,8 @@ export function collectChecks(deps: DoctorDeps): CheckResult[] {
 	results.push(...checkHomebrew(deps, app.appVersion, Boolean(app.bundlePath)));
 	const repoAccess = deps.repoAccess ? checkRepositoryAccess(deps.repoAccess) : null;
 	if (repoAccess) results.push(repoAccess);
+	const tmuxServer = deps.tmuxServer ? checkTmuxServer(deps.tmuxServer) : null;
+	if (tmuxServer) results.push(tmuxServer);
 	return results;
 }
 

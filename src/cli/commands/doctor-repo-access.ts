@@ -23,7 +23,7 @@ export interface RepoAccessDeps {
 export type RepoAccessCause = "ok" | "missing" | "denied" | "filesystem" | "unknown";
 
 const LABEL = "repository access";
-const DOCS_URL = "https://github.com/h0x91b/dev-3.0/blob/main/docs/troubleshooting.md#task-terminals-lose-access-to-desktop-or-documents-on-macos";
+export const DOCS_URL = "https://github.com/h0x91b/dev-3.0/blob/main/docs/troubleshooting.md#task-terminals-lose-access-to-desktop-or-documents-on-macos";
 
 /** Folders macOS guards per program (Apple Platform Security: "Controlling app access to files in macOS"). */
 export function macPrivacyFolder(path: string, home: string): string | null {
@@ -46,14 +46,16 @@ export function classifyAccessError(code: string | null): RepoAccessCause {
 }
 
 /** The process that hosts this terminal: the tmux server, the native terminal host, or the app itself. */
-export function findTerminalHost(deps: Pick<RepoAccessDeps, "pid" | "processInfo">): { kind: "tmux" | "native" | "app"; path: string } | null {
+export function findTerminalHost(
+	deps: Pick<RepoAccessDeps, "pid" | "processInfo">,
+): { kind: "tmux" | "native" | "app"; path: string; pid: number } | null {
 	let pid = deps.pid;
 	for (let hops = 0; hops < 64 && pid > 1; hops++) {
 		const info = deps.processInfo(pid);
 		if (!info) return null;
-		if (/(^|\/)tmux$/.test(info.path)) return { kind: "tmux", path: info.path };
-		if (/dev3-terminal-host/.test(info.path)) return { kind: "native", path: info.path };
-		if (/\.app\/Contents\/MacOS\//.test(info.path) && /dev-3\.0/.test(info.path)) return { kind: "app", path: info.path };
+		if (/(^|\/)tmux$/.test(info.path)) return { kind: "tmux", path: info.path, pid };
+		if (/dev3-terminal-host/.test(info.path)) return { kind: "native", path: info.path, pid };
+		if (/\.app\/Contents\/MacOS\//.test(info.path) && /dev-3\.0/.test(info.path)) return { kind: "app", path: info.path, pid };
 		pid = info.ppid;
 	}
 	return null;

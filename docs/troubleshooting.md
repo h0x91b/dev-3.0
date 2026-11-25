@@ -131,7 +131,10 @@ Technical Support describes the same weak link for helpers that daemonize
 
 **Fixed for the bundled tmux:** dev-3.0 now starts that server as a per-user launchd job, which
 macOS treats as its own responsible process and credits to the dev-3.0 app, so the app's existing
-grants keep working after restarts and updates. A server started by an older version keeps the old
+grants keep working after restarts and updates. The job runs a hardlinked copy of the app under
+`~/.dev3.0/tmux-host/<number>/`, which an update never deletes: macOS 27 denies a server whose own
+file an update removed. A server still running a deleted tmux gets a "Restart terminals" notice at
+launch. A server started by an older version keeps the old
 behaviour until it exits — dev-3.0 shows a warning toast at launch while one is running. It exits
 on its own once no task has a terminal open, at your next log-out, or at once if you run
 `tmux -L dev3 kill-server` and accept losing every running task terminal. Homebrew, PATH and custom tmux binaries still start the old way,
@@ -141,7 +144,9 @@ server you cannot restart yet, the Full Disk Access workaround below still appli
 **Check first:** run `dev3 doctor` inside the failing task terminal. Its `repository access` line
 tells a deleted repository, a file-permission problem and an `Operation not permitted` denial
 apart — Git prints `not a git repository` for all three. For a denial it lists the possible causes
-and names the binary that hosts the terminal.
+and names the binary that hosts the terminal. Its `tmux server` line names the server's pid, says
+whether the file it runs is still on disk or is the update-proof copy, and lists a project folder in
+`~/Documents`, `~/Desktop` or similar from that terminal.
 
 ### 1. Find the tmux binary that is actually running
 
@@ -164,6 +169,7 @@ rather than granting access to an unrelated program. Typical locations:
 | Install | tmux binary |
 |---|---|
 | App in `/Applications` (DMG, in-app updates, Homebrew cask) | `/Applications/dev-3.0.app/Contents/Resources/app/tmux/tmux` |
+| Server started by this version | `~/.dev3.0/tmux-host/<number>/dev-3.0.app/Contents/Resources/app/tmux/tmux`, a hardlinked copy of the app; grant the `/Applications` path, which macOS credits to the same app |
 | App moved elsewhere (e.g. `~/Applications`) | `<that folder>/dev-3.0.app/Contents/Resources/app/tmux/tmux` |
 | Homebrew CLI formula (macOS) | `tmux/tmux` inside the formula's `libexec` (a versioned `Cellar` path) |
 | Homebrew `tmux@3.6` keg (older installs) | `/opt/homebrew/opt/tmux@3.6/bin/tmux` |

@@ -1,5 +1,8 @@
 # A same-path update keeps the tmux server's folder access
 
+> Superseded on 2026-11-24 by `decisions/2026/11/24/tmux-server-runs-from-a-hardlink-mirror.md`: on macOS 27 the
+> path fallback did not hold, so the server now runs from a hardlink mirror and a `k0` executable is `deleted` again.
+
 ## Context
 
 `decisions/2026/10/26/tmux-server-as-launchd-job.md` treated a server whose tmux file was replaced at the

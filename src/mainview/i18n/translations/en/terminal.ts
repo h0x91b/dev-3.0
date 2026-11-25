@@ -305,7 +305,7 @@ const terminal = {
 	"terminal.pathLinkFolderBrowser": "Folders can't be opened from the browser — use the desktop app.",
 	"terminal.pathLinkOpenFailed": "Couldn't open path: {error}",
 	"terminal.legacyTmuxServer": "Task terminals still run on a tmux server from an earlier dev-3.0 run, so they can lose access to Documents or Desktop. They switch to the fixed setup when that server restarts: close every task terminal, or log out.",
-	"terminal.staleTmuxServerDeleted": "Task terminals run on a tmux server whose dev-3.0 copy was deleted, so they will lose access to Documents, Desktop and Full Disk Access the next time macOS rechecks it. Restart terminals once no agent is mid-turn.",
+	"terminal.staleTmuxServerDeleted": "Task terminals run on a tmux server whose dev-3.0 copy was deleted or replaced by an update, so macOS can cut their access to Documents, Desktop and Full Disk Access at its next check. Restart terminals once no agent is mid-turn.",
 	"terminal.staleTmuxServerElsewhere": "Task terminals run on a tmux server from another dev-3.0 copy. They lose access to Documents and Desktop once that copy is deleted. Restart terminals to move them to this one.",
 	"terminal.staleTmuxServerIncompatible": "Task terminals run on a tmux server from a tmux version this dev-3.0 can't drive, so new terminals may fail to open. Restart terminals once no agent is mid-turn.",
 	"terminal.restartTerminals": "Restart terminals",
