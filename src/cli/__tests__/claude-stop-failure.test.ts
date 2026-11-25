@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("parseClaudeStopFailurePayload", () => {
-	it("reads the shipped schema's error/error_details pair", () => {
+	it("reads both the shipped error/error_details and the documented stop_reason/error_message pairs", () => {
 		expect(parseClaudeStopFailurePayload(JSON.stringify({
 			hook_event_name: "StopFailure",
 			error: "rate_limit",
@@ -55,11 +55,9 @@ describe("parseClaudeStopFailurePayload", () => {
 			errorDetails: "429",
 			lastAssistantMessage: LIMIT_MESSAGE,
 		});
-	});
 
-	// The docs print stop_reason/error_message while the shipped zod schema uses
-	// error/error_details. Betting on one spelling would drop every event.
-	it("also reads the documented stop_reason/error_message pair", () => {
+		// The docs print stop_reason/error_message while the shipped zod schema uses
+		// error/error_details. Betting on one spelling would drop every event.
 		expect(parseClaudeStopFailurePayload(JSON.stringify({
 			hook_event_name: "StopFailure",
 			stop_reason: "billing_error",
@@ -67,26 +65,20 @@ describe("parseClaudeStopFailurePayload", () => {
 		}))).toEqual({ error: "billing_error", errorDetails: "payment required" });
 	});
 
-	it("degrades an unrecognized error to unknown instead of dropping the event", () => {
+	it("degrades an unrecognized error to unknown, and ignores other events and malformed input", () => {
 		expect(parseClaudeStopFailurePayload(JSON.stringify({
 			hook_event_name: "StopFailure",
 			error: "some_future_error",
 		}))).toEqual({ error: "unknown" });
-	});
-
-	it("ignores other events and malformed input", () => {
 		expect(parseClaudeStopFailurePayload(JSON.stringify({ hook_event_name: "Stop" }))).toBeNull();
 		expect(parseClaudeStopFailurePayload("not-json")).toBeNull();
 	});
 });
 
 describe("describeClaudeStopFailure", () => {
-	it("prefers Claude's own limit sentence — it is the only place the reset time appears", () => {
+	it("prefers Claude's own limit sentence (the only place the reset time appears), else a per-error line", () => {
 		expect(describeClaudeStopFailure({ error: "rate_limit", lastAssistantMessage: LIMIT_MESSAGE }))
 			.toBe("You've hit your session limit · resets 3:40pm (Asia/Jerusalem)");
-	});
-
-	it("falls back to a per-error line when the last message is an ordinary reply", () => {
 		expect(describeClaudeStopFailure({ error: "rate_limit", lastAssistantMessage: "Done, tests are green." }))
 			.toBe("Usage limit reached — the agent stopped mid-task");
 		expect(describeClaudeStopFailure({ error: "authentication_failed" }))

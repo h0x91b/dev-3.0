@@ -124,6 +124,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("Agent is Working");
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 			expect(stdoutOutput).toMatch(/Protocol:\s+worktree/);
+			expect(stdoutOutput, "no customTitle, no user-edited marker").not.toContain("user-edited");
 		});
 
 		it("tells the agent when the user owns completion, in --brief too", async () => {
@@ -204,20 +205,6 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("user-edited");
 		});
 
-		it("does not mark the title as user-edited when customTitle is absent", async () => {
-			mockDetect.mockReturnValue({
-				projectId: "proj-001",
-				taskId: FAKE_TASK.id,
-				socketPath: SOCKET,
-			});
-			mockSend.mockResolvedValue(okResp(FAKE_TASK));
-			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
-
-			await handleCurrent(SOCKET);
-
-			expect(stdoutOutput).not.toContain("user-edited");
-		});
-
 		// Re-opened #583 — a customTitle set by a previous agent (no user edit)
 		// must NOT show the "user-edited" marker, otherwise the next agent
 		// believes the title is sacred and never renames it again.
@@ -253,36 +240,14 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("Description:");
 			expect(stdoutOutput).toContain("Add JWT auth");
-		});
+			expect(stdoutOutput, "short project id when the project is not in the files").toContain("proj-001");
 
-		it("hides the description body in --brief mode but keeps other fields", async () => {
-			mockDetect.mockReturnValue({
-				projectId: "proj-001",
-				taskId: FAKE_TASK.id,
-				socketPath: SOCKET,
-			});
-			mockSend.mockResolvedValue(okResp(FAKE_TASK));
-			mockReadProject.mockReturnValue(null);
-
+			// --brief hides the description body but keeps other fields.
+			stdoutOutput = "";
 			await handleCurrent(SOCKET, { brief: true });
-
 			expect(stdoutOutput).toContain("Implement auth");
 			expect(stdoutOutput).toContain("hidden (--brief)");
 			expect(stdoutOutput).not.toContain("Add JWT auth to the API endpoints");
-		});
-
-		it("uses short project ID when project not found in files", async () => {
-			mockDetect.mockReturnValue({
-				projectId: "proj-001",
-				taskId: FAKE_TASK.id,
-				socketPath: SOCKET,
-			});
-			mockSend.mockResolvedValue(okResp(FAKE_TASK));
-			mockReadProject.mockReturnValue(null);
-
-			await handleCurrent(SOCKET);
-
-			expect(stdoutOutput).toContain("proj-001");
 		});
 
 		it("prints custom columns online (regression #vent: cast dropped customColumns)", async () => {
@@ -308,7 +273,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("Deploy");
 		});
 
-		it("falls back to offline mode when socket request fails", async () => {
+		it("falls back to offline mode when the socket request fails or the server returns an error", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",
 				taskId: FAKE_TASK.id,
@@ -327,14 +292,9 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("(offline)");
 			expect(stdoutOutput).toContain("Implement auth");
-		});
 
-		it("falls back to offline mode when server returns error", async () => {
-			mockDetect.mockReturnValue({
-				projectId: "proj-001",
-				taskId: FAKE_TASK.id,
-				socketPath: SOCKET,
-			});
+			// A server error falls back too, without crashing on minimal info.
+			stdoutOutput = "";
 			mockSend.mockResolvedValue({ id: "test", ok: false, error: "not found" });
 			mockReadProject.mockReturnValue(null);
 			mockReadTask.mockReturnValue(null);
@@ -394,7 +354,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).not.toContain("dev3/task-aaaaaaaa");
 		});
 
-		it("falls back to the stored branch when the worktree git read fails", async () => {
+		it("falls back to the stored branch when the worktree git read fails or HEAD is detached", async () => {
 			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: "" });
 			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
 			mockReadTask.mockReturnValue({
@@ -408,25 +368,12 @@ describe("handleCurrent", () => {
 			mockSpawnSync.mockReturnValue({ status: 128, stdout: "", stderr: "not a git repository" } as ReturnType<typeof spawnSync>);
 
 			await handleCurrent(null);
-
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
-		});
 
-		it("ignores a detached HEAD and shows the stored branch", async () => {
-			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: "" });
-			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
-			mockReadTask.mockReturnValue({
-				id: FAKE_TASK.id,
-				seq: 7,
-				title: "Implement auth",
-				status: "in-progress",
-				branchName: "dev3/task-aaaaaaaa",
-				worktreePath: "/tmp/wt",
-			});
+			// A detached HEAD is ignored the same way.
+			stdoutOutput = "";
 			mockSpawnSync.mockReturnValue({ status: 0, stdout: "HEAD\n", stderr: "" } as ReturnType<typeof spawnSync>);
-
 			await handleCurrent(null);
-
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
@@ -466,7 +413,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("(offline)");
 		});
 
-		it("shows description in offline mode when available", async () => {
+		it("shows the description offline, and hides it with --brief", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",
 				taskId: FAKE_TASK.id,
@@ -484,6 +431,11 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("Description:");
 			expect(stdoutOutput).toContain("longer description");
+
+			stdoutOutput = "";
+			await handleCurrent(null, { brief: true });
+			expect(stdoutOutput).toContain("hidden (--brief)");
+			expect(stdoutOutput).not.toContain("longer description of the auth task");
 		});
 
 		it("prints the project's custom columns offline (regression: used to only try online)", async () => {
@@ -508,26 +460,6 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("deadbeef");
 			expect(stdoutOutput).toContain("Deploy");
 			expect(stdoutOutput).toContain("when ready to ship");
-		});
-
-		it("hides description in offline --brief mode", async () => {
-			mockDetect.mockReturnValue({
-				projectId: "proj-001",
-				taskId: FAKE_TASK.id,
-				socketPath: "",
-			});
-			mockReadProject.mockReturnValue(null);
-			mockReadTask.mockReturnValue({
-				id: FAKE_TASK.id,
-				title: "Auth task",
-				description: "This is a longer description of the auth task",
-				status: "todo",
-			});
-
-			await handleCurrent(null, { brief: true });
-
-			expect(stdoutOutput).toContain("hidden (--brief)");
-			expect(stdoutOutput).not.toContain("longer description of the auth task");
 		});
 	});
 });

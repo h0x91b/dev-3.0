@@ -69,48 +69,27 @@ describe("handleClaudePrompt", () => {
 		expect(JSON.stringify(params)).not.toContain("transcript");
 	});
 
-	it("names the pane its conversation runs in, so that pane's resume pointer can follow it", async () => {
+	it("names the tmux or native pane and the pinned session dir, but never for a nested `claude -p` run", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: { outcome: "recorded" } });
 
 		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, { TMUX_PANE: "%7", CLAUDE_CODE_ENTRYPOINT: "cli" });
-
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "session-1", paneId: "%7" });
-	});
 
-	it("registers the native pane and project-pinned session directory", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, {
 			DEV3_PANE_ID: "pane-1", CLAUDE_CONFIG_DIR: "/fixture/pinned", CLAUDE_CODE_ENTRYPOINT: "cli",
 		});
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ paneId: "pane-1", sessionStateDirectory: "/fixture/pinned/sessions" });
-	});
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "pane-1", sessionStateDirectory: "/fixture/pinned/sessions" });
 
-	it("does not claim the pane for a `claude -p` run from inside it", async () => {
 		// The nested run inherits $TMUX_PANE; letting it report would point the
 		// pane at a throwaway conversation.
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: { outcome: "recorded" } });
-
 		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, { TMUX_PANE: "%7", CLAUDE_CODE_ENTRYPOINT: "sdk-cli" });
-
-		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("paneId");
+		expect(mockSend.mock.calls[2]![2]).not.toHaveProperty("paneId");
 	});
 
-	it("stays silent on another hook event", async () => {
+	it("sends nothing for another hook event, an empty prompt, outside a worktree, or unparseable input", async () => {
 		await handleClaudePrompt(JSON.stringify({ ...PAYLOAD, hook_event_name: "Stop" }), SOCKET, CONTEXT);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("sends nothing for an empty prompt", async () => {
 		await handleClaudePrompt(JSON.stringify({ ...PAYLOAD, prompt: "  " }), SOCKET, CONTEXT);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("does nothing outside a task worktree", async () => {
 		await handleClaudePrompt(JSON.stringify(PAYLOAD), SOCKET, null);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("swallows unparseable input rather than failing the prompt", async () => {
 		await expect(handleClaudePrompt("not json", SOCKET, CONTEXT)).resolves.toBeUndefined();
 		expect(mockSend).not.toHaveBeenCalled();
 	});

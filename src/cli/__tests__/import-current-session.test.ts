@@ -44,27 +44,22 @@ afterEach(() => {
 });
 
 describe("projectOwningCwd", () => {
-	it("matches the project directory itself", () => {
+	it("matches the project directory itself and any subdirectory the agent was started from", () => {
 		seedProjects([{ id: "p1", name: "App", path: "/code/app" }]);
 		expect(projectOwningCwd("/code/app")?.id).toBe("p1");
-	});
-
-	it("matches a subdirectory the agent was started from", () => {
-		seedProjects([{ id: "p1", name: "App", path: "/code/app" }]);
 		expect(projectOwningCwd("/code/app/packages/api")?.id).toBe("p1");
 	});
 
-	it("refuses a sibling that merely shares a name prefix", () => {
+	it("refuses a sibling sharing a name prefix, the project's parent, and anything with no project registered", () => {
 		// The real near-miss: `…/app` must not claim `…/app-scratch`.
 		seedProjects([{ id: "p1", name: "App", path: "/code/app" }]);
 		expect(projectOwningCwd("/code/app-scratch")).toBeNull();
-	});
-
-	it("refuses the parent of the project", () => {
 		// Measured on a real board: the project is `…/playground/dev-3.0` while
 		// conversations ran in `…/playground`. Those belong to no project.
 		seedProjects([{ id: "p1", name: "App", path: "/code/playground/dev-3.0" }]);
 		expect(projectOwningCwd("/code/playground")).toBeNull();
+		seedProjects([]);
+		expect(projectOwningCwd("/code/app")).toBeNull();
 	});
 
 	it("prefers the deepest project when two nest", () => {
@@ -126,16 +121,13 @@ describe("projectOwningCwd", () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
-
-	it("returns null when no project is registered", () => {
-		seedProjects([]);
-		expect(projectOwningCwd("/code/app")).toBeNull();
-	});
 });
 
 describe("projectPathCandidates", () => {
 	it("drops a trailing slash, which the encoder would turn into a trailing dash", () => {
 		expect(projectPathCandidates("/code/app/").map((c) => c.path)).toEqual(["/code/app"]);
+		// A path that is not on this machine has exactly one spelling.
+		expect(projectPathCandidates("/code/app")).toEqual([{ path: "/code/app", encoded: "-code-app" }]);
 	});
 
 	it("offers the physical path alongside the stored one for a symlinked checkout", () => {
@@ -153,10 +145,6 @@ describe("projectPathCandidates", () => {
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
-	});
-
-	it("offers exactly one spelling for a path that is not on this machine", () => {
-		expect(projectPathCandidates("/code/app")).toEqual([{ path: "/code/app", encoded: "-code-app" }]);
 	});
 });
 
@@ -211,10 +199,8 @@ describe("resolveImportTarget", () => {
 		expect(() => resolveImportTarget(worktree)).toThrow("EXIT_20");
 		expect(stderr).toContain("already the task");
 		expect(stderr).not.toContain("Add project");
-	});
 
-	it("tells a virtual board that it has no repository to import into", () => {
-		seedProjects([{ id: "p1", name: "App", path: "/code/app" }]);
+		// A virtual board is told it has no repository to import into.
 		expect(() => resolveImportTarget(`${resolveDev3Home()}/ops/notes/abcd1234`)).toThrow("EXIT_20");
 		expect(stderr).toContain("no repository");
 		expect(stderr).not.toContain("Add project");

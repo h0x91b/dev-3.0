@@ -63,56 +63,34 @@ afterEach(() => {
 });
 
 describe("--reason on approval-gated commands", () => {
-	it("task hibernate forwards the reason", async () => {
+	it("task hibernate and wake forward the trimmed reason", async () => {
 		mockSend.mockResolvedValue(ok({ outcome: "hibernated", taskId: OTHER_ID, seq: 12, freedRssBytes: null }));
 		await handleTask("hibernate", args([OTHER_ID], { reason: `  ${REASON}  ` }), SOCKET, CTX);
 		expect(paramsOf("task.hibernate")).toEqual({ taskId: OTHER_ID, projectId: "proj-001", sourceTaskId: OWN_ID, reason: REASON });
-	});
-
-	it("task wake forwards the reason", async () => {
 		mockSend.mockResolvedValue(ok({ outcome: "woke-shell", taskId: OTHER_ID, seq: 12, backend: "tmux" }));
 		await handleTask("wake", args([OTHER_ID], { shell: "true", reason: REASON }), SOCKET, CTX);
 		expect(paramsOf("task.wake")).toMatchObject({ taskId: OTHER_ID, mode: "shell", reason: REASON });
 	});
 
-	it("completing another task sends the reason and names the asking task", async () => {
-		mockSend.mockResolvedValue(ok({ approved: true, task: { id: OTHER_ID, status: "completed" } }));
-		await handleTask("move", args([OTHER_ID], { status: "completed", reason: REASON }), SOCKET, CTX);
-		expect(paramsOf("task.requestCompletion")).toEqual({ taskId: OTHER_ID, projectId: "proj-001", reason: REASON, sourceTaskId: OWN_ID });
-	});
-
-	it("a completion without a reason sends no reason, only the asking task", async () => {
+	it("moving another task to completed/cancelled/todo sends the reason and names the asking task", async () => {
+		for (const [status, method] of [["completed", "task.requestCompletion"], ["cancelled", "task.requestCancellation"], ["todo", "task.requestReset"]]) {
+			mockSend.mockReset();
+			mockSend.mockResolvedValue(ok({ approved: true, task: { id: OTHER_ID, status } }));
+			await handleTask("move", args([OTHER_ID], { status, reason: REASON }), SOCKET, CTX);
+			expect(paramsOf(method), status).toMatchObject({ taskId: OTHER_ID, projectId: "proj-001", reason: REASON, sourceTaskId: OWN_ID });
+		}
+		mockSend.mockReset();
 		mockSend.mockResolvedValue(ok({ approved: true, task: { id: OTHER_ID, status: "completed" } }));
 		await handleTask("move", args([OTHER_ID], { status: "completed" }), SOCKET, CTX);
 		expect(paramsOf("task.requestCompletion")).toEqual({ taskId: OTHER_ID, projectId: "proj-001", sourceTaskId: OWN_ID });
 	});
 
-	it.each(["cancelled", "todo"])("--status %s forwards the reason", async (status) => {
-		mockSend.mockResolvedValue(ok({ approved: true, task: { id: OTHER_ID, status } }));
-		await handleTask("move", args([OTHER_ID], { status, reason: REASON }), SOCKET, CTX);
-		const method = status === "cancelled" ? "task.requestCancellation" : "task.requestReset";
-		expect(paramsOf(method)).toMatchObject({ reason: REASON, sourceTaskId: OWN_ID });
-	});
-
-	it("starting another task forwards the reason with the launch", async () => {
+	it("launches forward the reason: in-progress move, create --scratch --run, agent spawn and resume", async () => {
 		mockSend.mockResolvedValue(ok({ approved: false }));
 		await exitCode(handleTask("move", args([OTHER_ID], { status: "in-progress", reason: REASON }), SOCKET, CTX));
 		expect(paramsOf("task.move")).toMatchObject({ taskId: OTHER_ID, newStatus: "in-progress", sourceTaskId: OWN_ID, reason: REASON });
-	});
-
-	it("task create --scratch --run forwards the reason", async () => {
-		mockSend.mockResolvedValue(ok({ approved: false }));
 		await exitCode(handleTask("create", args([], { scratch: "true", run: "true", reason: REASON }), SOCKET, CTX));
 		expect(paramsOf("task.createScratchAndRun")).toMatchObject({ sourceTaskId: OWN_ID, reason: REASON });
-	});
-
-	it("refuses --reason on a plain task create", async () => {
-		expect(await exitCode(handleTask("create", args(["Some title"], { reason: REASON }), SOCKET, CTX))).toBe(USAGE_EXIT);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("agent spawn and agent resume forward the reason", async () => {
-		mockSend.mockResolvedValue(ok({ approved: false }));
 		await exitCode(handleAgent("spawn", args([], { task: OTHER_ID, reason: REASON }), SOCKET, CTX));
 		expect(paramsOf("agent.spawn")).toMatchObject({ taskId: OTHER_ID, reason: REASON });
 		mockSend.mockResolvedValue(ok({ outcome: "declined", taskId: OTHER_ID, seq: 12 }));
@@ -120,13 +98,12 @@ describe("--reason on approval-gated commands", () => {
 		expect(paramsOf("agent.resume")).toMatchObject({ taskId: OTHER_ID, reason: REASON });
 	});
 
-	it.each([
-		["valueless", "true"],
-		["blank", "   "],
-		["over the cap", "x".repeat(APPROVAL_REASON_MAX_LENGTH + 1)],
-	])("refuses a %s reason before asking the app", async (_label, reason) => {
-		expect(await exitCode(handleTask("hibernate", args([OTHER_ID], { reason }), SOCKET, CTX))).toBe(USAGE_EXIT);
-		expect(await exitCode(handleTask("move", args([OTHER_ID], { status: "completed", reason }), SOCKET, CTX))).toBe(USAGE_EXIT);
+	it("refuses a plain create's reason and a valueless, blank or over-cap reason before asking the app", async () => {
+		expect(await exitCode(handleTask("create", args(["Some title"], { reason: REASON }), SOCKET, CTX))).toBe(USAGE_EXIT);
+		for (const reason of ["true", "   ", "x".repeat(APPROVAL_REASON_MAX_LENGTH + 1)]) {
+			expect(await exitCode(handleTask("hibernate", args([OTHER_ID], { reason }), SOCKET, CTX)), reason.slice(0, 8)).toBe(USAGE_EXIT);
+			expect(await exitCode(handleTask("move", args([OTHER_ID], { status: "completed", reason }), SOCKET, CTX)), reason.slice(0, 8)).toBe(USAGE_EXIT);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

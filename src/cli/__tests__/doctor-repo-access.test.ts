@@ -30,19 +30,19 @@ function deps(overrides: Partial<RepoAccessDeps> = {}, gitDirError: string | nul
 }
 
 describe("repository access check", () => {
-	it("is skipped outside a git checkout", () => {
+	it("is skipped outside a git checkout and passes when the git directory is readable", () => {
 		expect(checkRepositoryAccess(deps({ readDotGit: () => null }))).toBeNull();
-	});
-
-	it("passes when the worktree's git directory is readable", () => {
 		expect(checkRepositoryAccess(deps())?.status).toBe("ok");
 	});
 
-	it("reports a deleted project repository as missing, not as a permission problem", () => {
-		const result = checkRepositoryAccess(deps({}, "ENOENT"));
-		expect(result?.status).toBe("fail");
-		expect(result?.detail).toContain("does not exist");
-		expect(result?.detail).not.toContain("privacy");
+	it("reports a deleted repository as missing and EACCES as a file-permission problem, neither as privacy", () => {
+		const missing = checkRepositoryAccess(deps({}, "ENOENT"));
+		expect(missing?.status).toBe("fail");
+		expect(missing?.detail).toContain("does not exist");
+		expect(missing?.detail).not.toContain("privacy");
+		const eacces = checkRepositoryAccess(deps({}, "EACCES"));
+		expect(eacces?.status).toBe("fail");
+		expect(eacces?.detail).toContain("EACCES");
 	});
 
 	it("reports EPERM on a Desktop repo as access denied, listing privacy protection as one possible cause", () => {
@@ -57,13 +57,15 @@ describe("repository access check", () => {
 		expect(hints).toContain("sandbox");
 	});
 
-	it("names the native terminal host when there is no tmux", () => {
+	it("names the native terminal host when there is no tmux, and finds no host outside dev3", () => {
 		const tree = { 500: { ppid: 400, path: "/bin/zsh" }, 400: { ppid: 1, path: HOST } };
 		const result = checkRepositoryAccess(deps({ processInfo: (pid) => tree[pid as 500 | 400] ?? null }, "EPERM"));
 		expect(result?.detail).toContain(`native terminal host ${HOST}`);
+		const bare = { 500: { ppid: 1, path: "/bin/zsh" } };
+		expect(findTerminalHost({ pid: 500, processInfo: (pid) => bare[pid as 500] ?? null })).toBeNull();
 	});
 
-	it("does not suggest privacy protection for EPERM outside protected folders", () => {
+	it("does not suggest privacy protection for EPERM outside protected folders or on Linux", () => {
 		const gitDir = `${HOME}/src/app/.git/worktrees/w`;
 		const result = checkRepositoryAccess(
 			deps({ readDotGit: (p) => (p === `${WORKTREE}/.git` ? `gitdir: ${gitDir}` : null), probeDir: (p) => (p === gitDir ? "EPERM" : null) }),
@@ -72,18 +74,10 @@ describe("repository access check", () => {
 		const hints = result?.hints?.join("\n") ?? "";
 		expect(hints).toContain("sandbox");
 		expect(hints).not.toContain("Full Disk Access");
-	});
 
-	it("does not suggest privacy protection on Linux even under ~/Desktop", () => {
-		const hints = checkRepositoryAccess(deps({ platform: "linux" }, "EPERM"))?.hints?.join("\n") ?? "";
-		expect(hints).not.toContain("Full Disk Access");
+		const linuxHints = checkRepositoryAccess(deps({ platform: "linux" }, "EPERM"))?.hints?.join("\n") ?? "";
+		expect(linuxHints).not.toContain("Full Disk Access");
 		expect(classifyAccessError("EPERM")).toBe("denied");
-	});
-
-	it("reports POSIX permission denial (EACCES) as a file-permission problem", () => {
-		const result = checkRepositoryAccess(deps({}, "EACCES"));
-		expect(result?.status).toBe("fail");
-		expect(result?.detail).toContain("EACCES");
 	});
 
 	it("classifies a .git that cannot even be stat-ed under a protected folder", () => {
@@ -98,13 +92,6 @@ describe("repository access check", () => {
 			}),
 		);
 		expect(result?.hints?.join("\n")).toContain("~/Documents");
-	});
-});
-
-describe("findTerminalHost", () => {
-	it("returns null when no dev3 host is in the process chain", () => {
-		const tree = { 500: { ppid: 1, path: "/bin/zsh" } };
-		expect(findTerminalHost({ pid: 500, processInfo: (pid) => tree[pid as 500] ?? null })).toBeNull();
 	});
 });
 

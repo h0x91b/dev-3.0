@@ -105,7 +105,7 @@ afterEach(() => {
 });
 
 describe("dev-server status", () => {
-	it("defaults to status when no subcommand is provided", async () => {
+	it("defaults to status for the context task (or a positional task id) and prints a plain running server", async () => {
 		mockSend.mockResolvedValue(okResp(STATUS));
 
 		await handleDevServer(undefined, { positional: [], flags: {} }, SOCKET, CTX);
@@ -119,14 +119,15 @@ describe("dev-server status", () => {
 		expect(stdoutOutput).toContain("DEV3_PORT0=50001");
 		expect(stdoutOutput).toContain("DEV3_PORT2=55937");
 		expect(stdoutOutput).toContain("5173 (bun pid 81298)");
-	});
-
-	it("uses explicit task ID when provided", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
+		// Optional lines stay out when there is nothing to show.
+		expect(stdoutOutput).not.toContain("WARNING: port");
+		expect(stdoutOutput).not.toContain("Published Ports:");
+		expect(stdoutOutput).not.toContain("Extra Env:");
+		expect(stdoutOutput).not.toContain("Script Args:");
 
 		await handleDevServer("status", { positional: ["bbbbbbbb"], flags: {} }, SOCKET, CTX);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.status", {
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "devServer.status", {
 			taskId: "bbbbbbbb",
 			projectId: CTX.projectId,
 		}, { retryEmptyResponse: true });
@@ -134,36 +135,32 @@ describe("dev-server status", () => {
 
 	// Regression: --task was never read, so the command silently answered for the
 	// task the shell sits in — wrong ports handed to a linked task, no error.
-	it.each(["status", "start", "stop", "restart"] as const)("%s targets --task over the context task", async (action) => {
-		mockSend.mockResolvedValue(okResp(STATUS));
+	it("every subcommand targets --task over the context task", async () => {
+		for (const action of ["status", "start", "stop", "restart", "logs"] as const) {
+			mockSend.mockReset();
+			mockSend.mockResolvedValue(okResp(withServer({ logPath: "/nonexistent/dev-server.log" })));
 
-		await handleDevServer(action, parseArgs(["--task", "bbbbbbbb"]), SOCKET, CTX);
+			await handleDevServer(action, parseArgs(["--task", "bbbbbbbb"]), SOCKET, CTX);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, `devServer.${action}`, {
-			taskId: "bbbbbbbb",
-			projectId: CTX.projectId,
-		}, { retryEmptyResponse: true });
-	});
-
-	it("logs targets --task over the context task", async () => {
-		mockSend.mockResolvedValue(okResp(withServer({ logPath: "/nonexistent/dev-server.log" })));
-
-		await handleDevServer("logs", parseArgs(["--task", "bbbbbbbb"]), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.status", {
-			taskId: "bbbbbbbb",
-			projectId: CTX.projectId,
-		}, { retryEmptyResponse: true });
+			const method = action === "logs" ? "devServer.status" : `devServer.${action}`;
+			expect(mockSend, action).toHaveBeenCalledWith(SOCKET, method, {
+				taskId: "bbbbbbbb",
+				projectId: CTX.projectId,
+			}, { retryEmptyResponse: true });
+		}
 	});
 
 	// Regression: a hex positional next to a task flag became a second task and
 	// exited 3; before --task existed, `--id X abcdef` meant server `abcdef`.
-	it.each(["--task", "--id"])("treats a hex positional after %s as the server name", async (flag) => {
+	it("treats a hex positional after --task or --id as the server name", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ name: "abcdef" })));
+		for (const flag of ["--task", "--id"]) {
+			mockSend.mockClear();
 
-		await handleDevServer("stop", parseArgs([flag, "bbbbbbbb", "abcdef"]), SOCKET, CTX);
+			await handleDevServer("stop", parseArgs([flag, "bbbbbbbb", "abcdef"]), SOCKET, CTX);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.stop", expect.objectContaining({ taskId: "bbbbbbbb", server: "abcdef" }), { retryEmptyResponse: true });
+			expect(mockSend, flag).toHaveBeenCalledWith(SOCKET, "devServer.stop", expect.objectContaining({ taskId: "bbbbbbbb", server: "abcdef" }), { retryEmptyResponse: true });
+		}
 	});
 
 	// Regression: `dev3 dev-server status` used to crash with
@@ -179,7 +176,7 @@ describe("dev-server status", () => {
 			hasDevScript: true,
 			worktreePath: "/tmp/worktrees/proj/aaaaaaaa/worktree",
 			tmuxSocket: "dev3",
-		backend: "tmux" as const,
+			backend: "tmux" as const,
 			taskSessionName: "dev3-aaaaaaaa",
 			devSessionName: "dev3-dev-aaaaaaaa",
 			viewerPaneId: null,
@@ -236,45 +233,38 @@ describe("dev-server status", () => {
 });
 
 describe("dev-server start/stop/restart", () => {
-	it("starts the dev server from context", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
+	it("starts (without polling unless --wait), restarts, and stops with an explicit --project override", async () => {
+		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
 		await handleDevServer("start", { positional: [], flags: {} }, SOCKET, CTX);
-
+		expect(mockSend).toHaveBeenCalledTimes(1);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 		}, { retryEmptyResponse: true });
 		expect(stdoutOutput).toContain("Started dev server");
-	});
+		expect(stdoutOutput).not.toContain("Waiting for the dev server");
 
-	it("stops the dev server with an explicit --project override", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+		await handleDevServer("restart", { positional: [], flags: {} }, SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "devServer.restart", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+		}, { retryEmptyResponse: true });
+		expect(stdoutOutput).toContain("Restarted dev server");
+
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp(withServer(
 			{ running: false, viewerPaneId: null, panePids: [], resourceUsage: undefined },
 			{ running: false, assignedPorts: [], ports: [] },
 		)));
-
 		await handleDevServer("stop", { positional: ["aaaaaaaa"], flags: { project: "other-proj" } }, SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.stop", {
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "devServer.stop", {
 			taskId: CTX.taskId,
 			projectId: "other-proj",
 		}, { retryEmptyResponse: true });
 		expect(stdoutOutput).toContain("Stopped dev server");
 		expect(stdoutOutput).toContain("stopped");
 		expect(stdoutOutput).toContain("(none detected)");
-	});
-
-	it("restarts the dev server", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("restart", { positional: [], flags: {} }, SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
-			taskId: CTX.taskId,
-			projectId: CTX.projectId,
-		}, { retryEmptyResponse: true });
-		expect(stdoutOutput).toContain("Restarted dev server");
 	});
 });
 
@@ -305,22 +295,6 @@ describe("dev-server port conflicts", () => {
 
 		expect(stdoutOutput).toContain("Published Ports:");
 		expect(stdoutOutput).toContain("10569 (com.docker.backend pid 1380)");
-		expect(stdoutOutput).not.toContain("WARNING: port");
-	});
-
-	it("omits the Published Ports line when nothing was published", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
-
-		expect(stdoutOutput).not.toContain("Published Ports:");
-	});
-
-	it("prints no warnings when there are no conflicts", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
-
 		expect(stdoutOutput).not.toContain("WARNING: port");
 	});
 });
@@ -427,14 +401,25 @@ describe("dev-server start --wait", () => {
 		expect(stdoutOutput).toContain("Ready: listening on 50001");
 	});
 
-	it("names the squatting process when the timeout elapses on a conflicted port", async () => {
+	it("exits with an error when the timeout elapses before a port appears, naming a squatter if any", async () => {
 		vi.useFakeTimers();
+		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
+
+		let promise = handleDevServer(
+			"restart",
+			{ positional: [], flags: { wait: "true", timeout: "1" } },
+			SOCKET,
+			CTX,
+		).catch((err: Error) => err);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(String(await promise)).toContain("EXIT_1");
+		expect(stderrOutput).toContain("did not open a port within 1s");
+
 		mockSend.mockResolvedValue(okResp(withServer({
 			devPorts: [],
 			portConflicts: [{ port: 50001, pid: 999, processName: "node" }],
 		})));
-
-		const promise = handleDevServer(
+		promise = handleDevServer(
 			"start",
 			{ positional: [], flags: { wait: "true", timeout: "1" } },
 			SOCKET,
@@ -442,28 +427,7 @@ describe("dev-server start --wait", () => {
 		).catch((err: Error) => err);
 		await vi.advanceTimersByTimeAsync(5000);
 		await promise;
-
 		expect(stderrOutput).toContain("50001 held by node (pid 999)");
-	});
-
-	it("exits with an error when the timeout elapses before a port appears", async () => {
-		vi.useFakeTimers();
-		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "devServer.restart") return okResp(withServer({ devPorts: [] }));
-			return okResp(withServer({ devPorts: [] }));
-		});
-
-		const promise = handleDevServer(
-			"restart",
-			{ positional: [], flags: { wait: "true", timeout: "1" } },
-			SOCKET,
-			CTX,
-		).catch((err: Error) => err);
-		await vi.advanceTimersByTimeAsync(5000);
-		const err = await promise;
-
-		expect(String(err)).toContain("EXIT_1");
-		expect(stderrOutput).toContain("did not open a port within 1s");
 	});
 
 	it("exits with an error when the dev server dies while waiting", async () => {
@@ -476,24 +440,6 @@ describe("dev-server start --wait", () => {
 			handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX),
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("exited before opening a port");
-	});
-
-	it("rejects an invalid --timeout value", async () => {
-		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
-
-		await expect(
-			handleDevServer("start", { positional: [], flags: { wait: "true", timeout: "zero" } }, SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Invalid --timeout value");
-	});
-
-	it("does not poll when --wait is not passed", async () => {
-		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
-
-		await handleDevServer("start", { positional: [], flags: {} }, SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledTimes(1);
-		expect(stdoutOutput).not.toContain("Waiting for the dev server");
 	});
 });
 
@@ -559,7 +505,7 @@ describe("dev-server instance failover", () => {
 		expect(stdoutOutput).toContain("Restarted dev server");
 	});
 
-	it("rethrows the original transport error when no other live instance exists", async () => {
+	it("rethrows the transport error with no other live instance, and never fails over on a server error response", async () => {
 		mockSend.mockRejectedValue(appNotRunningError());
 		mockDiscoverExcluding.mockReturnValue(null);
 
@@ -567,9 +513,8 @@ describe("dev-server instance failover", () => {
 			handleDevServer("stop", { positional: [], flags: {} }, SOCKET, CTX),
 		).rejects.toThrow("APP_NOT_RUNNING");
 		expect(mockSend).toHaveBeenCalledTimes(1);
-	});
 
-	it("does not fail over on a regular server error response", async () => {
+		mockDiscoverExcluding.mockClear();
 		mockSend.mockResolvedValue({ id: "test-id", ok: false, error: "No dev script configured" });
 
 		await expect(
@@ -596,48 +541,36 @@ describe("dev-server instance failover", () => {
 });
 
 describe("dev-server errors", () => {
-	it("exits with usage error when no task ID and no context", async () => {
-		await expect(
-			handleDevServer("start", { positional: [], flags: {} }, SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Usage: dev3 dev-server start");
-	});
-
-	it("exits on server error", async () => {
+	it("exits with usage, server and timeout errors", async () => {
 		mockSend.mockResolvedValue({ id: "test-id", ok: false, error: "No dev script configured" });
+		const cases: Array<{ sub: string; flags: Record<string, string>; ctx: CliContext | null; exit: string; message: string }> = [
+			{ sub: "start", flags: {}, ctx: null, exit: "EXIT_3", message: "Usage: dev3 dev-server start" },
+			{ sub: "start", flags: {}, ctx: CTX, exit: "EXIT_1", message: "No dev script configured" },
+			{ sub: "explode", flags: {}, ctx: CTX, exit: "EXIT_3", message: "Unknown subcommand: dev-server explode" },
+			{ sub: "start", flags: { wait: "true", timeout: "zero" }, ctx: CTX, exit: "EXIT_3", message: "Invalid --timeout value" },
+		];
+		for (const { sub, flags, ctx, exit, message } of cases) {
+			stderrOutput = "";
+			if (sub === "start" && flags.timeout) mockSend.mockResolvedValue(okResp(withServer({ devPorts: [] })));
 
-		await expect(
-			handleDevServer("start", { positional: [], flags: {} }, SOCKET, CTX),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("No dev script configured");
-	});
-
-	it("exits on unknown subcommand", async () => {
-		await expect(
-			handleDevServer("explode", { positional: [], flags: {} }, SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Unknown subcommand: dev-server explode");
+			await expect(handleDevServer(sub, { positional: [], flags }, SOCKET, ctx), message).rejects.toThrow(exit);
+			expect(stderrOutput).toContain(message);
+		}
 	});
 });
 
 describe("dev-server --env", () => {
-	it("passes every --env pair to devServer.start", async () => {
+	it("passes every --env pair to devServer.start and devServer.restart", async () => {
 		mockSend.mockResolvedValue(okResp(STATUS));
 
 		await handleDevServer("start", parseArgs(["--env", "DEV3_QA_SCOPE=seeded", "--env", "DEBUG=1"]), SOCKET, CTX);
+		await handleDevServer("restart", parseArgs(["--env", "DEV3_QA_SCOPE=virgin"]), SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 			env: { DEV3_QA_SCOPE: "seeded", DEBUG: "1" },
 		}, { retryEmptyResponse: true });
-	});
-
-	it("passes --env to devServer.restart too", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("restart", parseArgs(["--env", "DEV3_QA_SCOPE=virgin"]), SOCKET, CTX);
-
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
@@ -645,74 +578,54 @@ describe("dev-server --env", () => {
 		}, { retryEmptyResponse: true });
 	});
 
-	it("sends no env key at all when --env is absent, so a restart reuses the last set", async () => {
+	// Without --clear-env, dropping a remembered variable took a stop and a fresh start.
+	it("sends no env key without --env (restart reuses the last set), and an empty env for --clear-env", async () => {
 		mockSend.mockResolvedValue(okResp(STATUS));
 
 		await handleDevServer("restart", parseArgs([]), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "devServer.restart", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 		}, { retryEmptyResponse: true });
-	});
-
-	// Without it, dropping a remembered variable took a stop and a fresh start.
-	it("--clear-env sends an empty env, so a restart runs with none", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
 
 		await handleDevServer("restart", parseArgs(["--clear-env"]), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "devServer.restart", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 			env: {},
 		}, { retryEmptyResponse: true });
 	});
 
-	it("refuses --clear-env together with --env, which already replaces", async () => {
-		await expect(
-			handleDevServer("restart", parseArgs(["--clear-env", "--env", "A=1"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
+	it("exits 3 for --clear-env with --env, and for --clear-env or --env on stop", async () => {
+		const cases: Array<[string, string[], string]> = [
+			["restart", ["--clear-env", "--env", "A=1"], ""],
+			["stop", ["--clear-env"], "--clear-env"],
+			["stop", ["--env", "A=1"], "takes no --env"],
+		];
+		for (const [sub, argv, message] of cases) {
+			stderrOutput = "";
 
-	it("rejects --clear-env on stop", async () => {
-		await expect(
-			handleDevServer("stop", parseArgs(["--clear-env"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--clear-env");
+			await expect(handleDevServer(sub, parseArgs(argv), SOCKET, CTX), argv.join(" ")).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain(message);
+		}
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	// The one thing the CLI must never be able to do: move the server off the
 	// port `--wait` is about to poll.
-	it("refuses to override an assigned port and starts nothing", async () => {
-		await expect(
-			handleDevServer("start", parseArgs(["--env", "DEV3_PORT0=1"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_21");
+	it("refuses an assigned-port override, a malformed pair, and a bare --env with exit 21, starting nothing", async () => {
+		const cases: Array<[string[], string]> = [
+			[["--env", "DEV3_PORT0=1"], "DEV3_PORT0"],
+			[["--env", "DEV3_QA_SCOPE"], "expected KEY=VALUE"],
+			[["--env"], "--env needs a KEY=VALUE argument"],
+		];
+		for (const [argv, message] of cases) {
+			stderrOutput = "";
+
+			await expect(handleDevServer("start", parseArgs(argv), SOCKET, CTX), argv.join(" ")).rejects.toThrow("EXIT_21");
+			expect(stderrOutput).toContain(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("DEV3_PORT0");
-	});
-
-	it("refuses a malformed pair and starts nothing", async () => {
-		await expect(
-			handleDevServer("start", parseArgs(["--env", "DEV3_QA_SCOPE"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_21");
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("expected KEY=VALUE");
-	});
-
-	it("refuses a bare --env with no argument", async () => {
-		await expect(
-			handleDevServer("start", parseArgs(["--env"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_21");
-		expect(stderrOutput).toContain("--env needs a KEY=VALUE argument");
-	});
-
-	it("rejects --env on stop and status, which have no run to configure", async () => {
-		await expect(
-			handleDevServer("stop", parseArgs(["--env", "A=1"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("takes no --env");
 	});
 
 	// Names only: a value can be a token, and this output lands in transcripts.
@@ -725,22 +638,18 @@ describe("dev-server --env", () => {
 		expect(stdoutOutput).toContain("DEV3_QA_SCOPE, SECRET_TOKEN");
 	});
 
-	it("omits the Extra Env line for an ordinary start", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("status", parseArgs([]), SOCKET, CTX);
-
-		expect(stdoutOutput).not.toContain("Extra Env:");
-	});
-
-	// --wait polls status every 500ms; re-sending a possibly-secret value on each
-	// poll is pointless, so the env goes with the start request only.
-	it("does not repeat the env on the --wait status polls", async () => {
+	// --wait polls status every 500ms; re-sending a possibly-secret value (or the
+	// script args) on each poll is pointless, so they go with the start request only.
+	it("does not repeat the env or the script args on the --wait status polls", async () => {
 		// Ready on an assigned port right away, so the wait returns on its first poll.
-		mockSend.mockResolvedValue(okResp(withServer({ devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] })));
+		mockSend.mockResolvedValue(okResp(withServer({
+			scriptArgs: ["--x"],
+			devPorts: [{ port: 50001, pid: 81298, processName: "bun" }],
+		})));
 
-		await handleDevServer("start", parseArgs(["--wait", "--env", "SECRET_TOKEN=abc"]), SOCKET, CTX);
+		await handleDevServer("start", parseArgs(["--wait", "--env", "SECRET_TOKEN=abc", "--", "--x"]), SOCKET, CTX);
 
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ env: { SECRET_TOKEN: "abc" }, args: ["--x"] });
 		const statusCall = mockSend.mock.calls.find(([, method]) => method === "devServer.status");
 		expect(statusCall).toBeDefined();
 		expect(statusCall?.[2]).toEqual({ taskId: CTX.taskId, projectId: CTX.projectId });
@@ -772,37 +681,25 @@ describe("dev-server with several declared servers", () => {
 		],
 	};
 
-	it("sends a plain server name as the server, keeping the task from context", async () => {
-		mockSend.mockResolvedValue(okResp(MULTI));
-
-		await handleDevServer("start", { positional: ["api"], flags: {} }, SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
-			taskId: CTX.taskId,
-			projectId: CTX.projectId,
-			server: "api",
-		}, { retryEmptyResponse: true });
-	});
-
 	// The positional has meant a task id since this command existed.
-	it("still reads a task-shaped positional as the task, and a second one as the server", async () => {
+	it("reads a plain name as the server, a task-shaped positional as the task, and --server as an unambiguous name", async () => {
 		mockSend.mockResolvedValue(okResp(MULTI));
+		const cases: Array<[{ positional: string[]; flags: Record<string, string> }, string]> = [
+			[{ positional: ["api"], flags: {} }, "api"],
+			[{ positional: ["aaaaaaaa", "api"], flags: {} }, "api"],
+			[{ positional: [], flags: { server: "abcdef" } }, "abcdef"],
+		];
+		for (const [parsed, server] of cases) {
+			mockSend.mockClear();
 
-		await handleDevServer("start", { positional: ["aaaaaaaa", "api"], flags: {} }, SOCKET, CTX);
+			await handleDevServer("start", parsed, SOCKET, CTX);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
-			taskId: CTX.taskId,
-			projectId: CTX.projectId,
-			server: "api",
-		}, { retryEmptyResponse: true });
-	});
-
-	it("--server settles a name that could be read as a task id", async () => {
-		mockSend.mockResolvedValue(okResp(MULTI));
-
-		await handleDevServer("start", { positional: [], flags: { server: "abcdef" } }, SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", expect.objectContaining({ server: "abcdef" }), expect.anything());
+			expect(mockSend, JSON.stringify(parsed)).toHaveBeenCalledWith(SOCKET, "devServer.start", {
+				taskId: CTX.taskId,
+				projectId: CTX.projectId,
+				server,
+			}, { retryEmptyResponse: true });
+		}
 	});
 
 	it("--all asks for every server", async () => {
@@ -817,11 +714,17 @@ describe("dev-server with several declared servers", () => {
 		}, { retryEmptyResponse: true });
 	});
 
-	it("refuses a name together with --all", async () => {
+	it("refuses --all together with a name or with script args, sending nothing", async () => {
 		await expect(
 			handleDevServer("start", { positional: ["api"], flags: { all: "true" } }, SOCKET, CTX),
 		).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("either a server name or --all");
+
+		await expect(
+			handleDevServer("start", parseArgs(["--all", "--", "--x"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("name it instead of using --all");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("prints one block per server, and the count instead of one state", async () => {
@@ -883,7 +786,7 @@ describe("dev-server logs", () => {
 	const LOG_PATH = join(LOG_ROOT, "dev-server.log");
 	const API_LOG = join(LOG_ROOT, "dev-server-api.log");
 
-	it("prints the tail of the captured output", async () => {
+	it("prints the tail of the captured output, or says nothing is captured yet when the file is not there", async () => {
 		writeFileSync(LOG_PATH, "one\ntwo\nthree\n", "utf8");
 		mockSend.mockResolvedValue(okResp(withServer({ logPath: LOG_PATH })));
 
@@ -892,9 +795,7 @@ describe("dev-server logs", () => {
 		expect(stdoutOutput).toContain(LOG_PATH);
 		expect(stdoutOutput).toContain("two\nthree");
 		expect(stdoutOutput).not.toContain("one\n");
-	});
 
-	it("says nothing is captured yet instead of failing, when the file is not there", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ logPath: join(LOG_ROOT, "absent.log") })));
 
 		await handleDevServer("logs", parseArgs([]), SOCKET, CTX);
@@ -903,16 +804,12 @@ describe("dev-server logs", () => {
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
-	it("refuses a --lines beyond the cap rather than pasting a whole log", async () => {
+	it("refuses a --lines beyond the cap, and reports a task with no worktree as having no log", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ logPath: LOG_PATH })));
-
 		await expect(handleDevServer("logs", parseArgs(["--lines", "99999"]), SOCKET, CTX))
 			.rejects.toThrow(/EXIT_/);
-	});
 
-	it("reports a task with no worktree as having no log at all", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ logPath: null })));
-
 		await expect(handleDevServer("logs", parseArgs([]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
 		expect(stderrOutput).toContain("no worktree");
 	});
@@ -952,55 +849,40 @@ describe("dev-server logs", () => {
 describe("dev-server script args after --", () => {
 	const startParams = { taskId: CTX.taskId, projectId: CTX.projectId };
 
-	it("sends the args verbatim on start", async () => {
+	it("sends the args verbatim on start, together with a named server", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ scriptArgs: ["--own-db", "a b"] })));
-
 		await handleDevServer("start", parseArgs(["--", "--own-db", "a b"]), SOCKET, CTX);
-
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
 			...startParams,
 			args: ["--own-db", "a b"],
 		}, { retryEmptyResponse: true });
+
+		mockSend.mockResolvedValue(okResp(withServer({ name: "api", isDefault: false, scriptArgs: ["--verbose"] })));
+		await handleDevServer("start", parseArgs(["api", "--", "--verbose"]), SOCKET, CTX);
+		expect(mockSend.mock.calls[1][2]).toEqual({ ...startParams, server: "api", args: ["--verbose"] });
 	});
 
-	it("sends no args on restart without --, so the last ones are reused", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("restart", parseArgs([]), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).not.toHaveProperty("args");
-	});
-
-	it("sends an empty list for a bare `restart --`, which clears them", async () => {
+	it("sends no args on restart without -- (last ones reused), and an empty list for a bare `restart --`", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ scriptArgs: [] })));
 
+		await handleDevServer("restart", parseArgs([]), SOCKET, CTX);
+		expect(mockSend.mock.calls[0][2]).not.toHaveProperty("args");
+
 		await handleDevServer("restart", parseArgs(["--"]), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).toEqual({ ...startParams, args: [] });
+		expect(mockSend.mock.calls[1][2]).toEqual({ ...startParams, args: [] });
 	});
 
-	it("names one server together with the args", async () => {
-		mockSend.mockResolvedValue(okResp(withServer({ name: "api", isDefault: false, scriptArgs: ["--verbose"] })));
+	it("refuses args on stop, status and logs", async () => {
+		for (const subcommand of ["stop", "status", "logs"]) {
+			stderrOutput = "";
 
-		await handleDevServer("start", parseArgs(["api", "--", "--verbose"]), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).toEqual({ ...startParams, server: "api", args: ["--verbose"] });
-	});
-
-	it("refuses --all together with args and sends nothing", async () => {
-		await expect(
-			handleDevServer("start", parseArgs(["--all", "--", "--x"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
+			await expect(
+				handleDevServer(subcommand, parseArgs(["--", "--x"]), SOCKET, CTX),
+				subcommand,
+			).rejects.toThrow("EXIT_3");
+			expect(stderrOutput, subcommand).toContain("takes no script arguments");
+		}
 		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("name it instead of using --all");
-	});
-
-	it.each(["stop", "status", "logs"])("refuses args on %s", async (subcommand) => {
-		await expect(
-			handleDevServer(subcommand, parseArgs(["--", "--x"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("takes no script arguments");
 	});
 
 	it("prints the args in full with shell quoting", async () => {
@@ -1012,14 +894,6 @@ describe("dev-server script args after --", () => {
 		expect(stdoutOutput).toContain(`--own-db 'a b' 'it'\\''s'`);
 	});
 
-	it("omits the Script Args line when there are none", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
-
-		await handleDevServer("status", parseArgs([]), SOCKET, CTX);
-
-		expect(stdoutOutput).not.toContain("Script Args:");
-	});
-
 	it("fails when an older app answers without scriptArgs, because it ignored the args", async () => {
 		const { scriptArgs: _dropped, ...legacy } = STATUS.servers[0];
 		mockSend.mockResolvedValue(okResp({ ...STATUS, servers: [legacy] }));
@@ -1029,36 +903,18 @@ describe("dev-server script args after --", () => {
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("older than this CLI");
 	});
-
-	it("does not repeat the args on the --wait status polls", async () => {
-		mockSend.mockResolvedValue(okResp(withServer({
-			scriptArgs: ["--x"],
-			devPorts: [{ port: 50001, pid: 81298, processName: "bun" }],
-		})));
-
-		await handleDevServer("start", parseArgs(["--wait", "--", "--x"]), SOCKET, CTX);
-
-		const statusCall = mockSend.mock.calls.find(([, method]) => method === "devServer.status");
-		expect(statusCall?.[2]).toEqual(startParams);
-	});
 });
 
 // The generic parser gives the next bare word to any flag as its value.
 describe("dev-server value-less flags", () => {
-	it("start --wait api starts api, not the default server", async () => {
+	it("start --wait api starts api, and restart --clear-env api restarts api with no env", async () => {
 		mockSend.mockResolvedValue(okResp(withServer({ name: "api", devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] })));
 
 		await handleDevServer("start", parseArgs(["--wait", "api"]), SOCKET, CTX);
-
 		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ server: "api" });
-	});
-
-	it("restart --clear-env api restarts api with no env", async () => {
-		mockSend.mockResolvedValue(okResp(STATUS));
 
 		await handleDevServer("restart", parseArgs(["--clear-env", "api"]), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "devServer.restart", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 			server: "api",

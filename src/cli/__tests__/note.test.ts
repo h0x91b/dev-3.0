@@ -94,10 +94,17 @@ afterEach(() => {
 	exitSpy.mockRestore();
 });
 
+const DELETED = { ...FAKE_TASK, notes: [] };
+
+/** The params of the last request — what every targeting assertion reads. */
+function lastParams(): Record<string, unknown> {
+	return mockSend.mock.calls[mockSend.mock.calls.length - 1]![2]! as Record<string, unknown>;
+}
+
 // ─── note add ─────────────────────────────────────────────────────────────────
 
 describe("note add", () => {
-	it("adds note with positional content", async () => {
+	it("adds a positional note to the context task with source ai, printing its short id, source and task", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleNote("add", args(["Found a race condition"]), SOCKET, CTX);
@@ -110,18 +117,22 @@ describe("note add", () => {
 		});
 		expect(stdoutOutput).toContain("Added note");
 		expect(stdoutOutput).toContain("nnnnnnnn");
+		expect(stdoutOutput).toContain("[ai]");
+		expect(stdoutOutput).toContain("aaaaaaaa"); // task short ID
 	});
 
-	it("adds note with --content flag", async () => {
+	it("takes the content from --content too, and preserves newlines", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleNote("add", args([], { content: "Note via flag" }), SOCKET, CTX);
+		expect(lastParams().content).toBe("Note via flag");
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.content).toBe("Note via flag");
+		const multiline = "Line 1\nLine 2\nLine 3";
+		await handleNote("add", args([multiline]), SOCKET, CTX);
+		expect(lastParams().content).toBe(multiline);
 	});
 
-	it("reads --content - from stdin without altering Markdown", async () => {
+	it("reads --content - from stdin without altering Markdown, honouring --source user", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 		const markdown = 'Decision:\n\n- Keep "quoted" Markdown.';
 		mockReadStdin.mockResolvedValue(markdown);
@@ -129,140 +140,107 @@ describe("note add", () => {
 		await handleNote("add", args([], { content: "-", source: "user" }), SOCKET, CTX);
 
 		expect(mockReadStdin).toHaveBeenCalledOnce();
-		expect(mockSend.mock.calls[0]![2]!.content).toBe(markdown);
+		expect(lastParams().content).toBe(markdown);
+		expect(lastParams().source).toBe("user");
 	});
 
-	it("refuses positional text together with --content instead of dropping one", async () => {
-		await expect(
-			handleNote("add", args(["short"], { content: "the long report" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-
-		expect(stderrOutput).toContain("given twice");
+	it("refuses missing, blank, doubled or split content and an invalid --source, before any request", async () => {
+		const cases: Array<[string, string[], Record<string, string>, string?]> = [
+			["no content", [], {}, "Content is required"],
+			["whitespace-only positional", ["   "], {}, "Content"],
+			["whitespace-only --content", [], { content: "   " }],
+			["bare --content (would save \"true\")", [], { content: "true" }],
+			["positional together with --content", ["short"], { content: "the long report" }, "given twice"],
+			["unquoted words", ["only", "the", "first"], {}, "3 separate text arguments"],
+			["invalid --source", ["note"], { source: "bot" }, "Invalid --source"],
+		];
+		for (const [name, positional, flags, message] of cases) {
+			stderrOutput = "";
+			await expect(handleNote("add", args(positional, flags), SOCKET, CTX), name).rejects.toThrow("EXIT_3");
+			if (message) expect(stderrOutput, name).toContain(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(mockReadStdin).not.toHaveBeenCalled();
 	});
+});
 
-	it("refuses unquoted words that would each become a separate argument", async () => {
-		await expect(handleNote("add", args(["only", "the", "first"]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+// ─── targeting: context, --task, --task-id, --project ────────────────────────
+// Every subcommand resolves its task the same way: context by default, --task /
+// --task-id (or a positional for `list`) override it, --project overrides the project.
 
-		expect(stderrOutput).toContain("3 separate text arguments");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses a bare --content rather than saving the word \"true\"", async () => {
-		await expect(handleNote("add", args([], { content: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("defaults source to ai", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleNote("add", args(["test"]), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.source).toBe("ai");
-	});
-
-	it("accepts --source user", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleNote("add", args(["user note"], { source: "user" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.source).toBe("user");
-	});
-
-	it("rejects invalid --source", async () => {
-		await expect(
-			handleNote("add", args(["note"], { source: "bot" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Invalid --source");
-	});
-
-	it("auto-detects taskId and projectId from context", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleNote("add", args(["test note"]), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe(CTX.taskId);
-		expect(params.projectId).toBe(CTX.projectId);
-	});
-
-	it("--project flag overrides context", async () => {
+describe("note task targeting", () => {
+	it("add: --project overrides context, --task overrides context, and --task / --task-id work without context", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleNote("add", args(["test"], { project: "other-proj" }), SOCKET, CTX);
+		expect(lastParams()).toMatchObject({ taskId: CTX.taskId, projectId: "other-proj" });
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe("other-proj");
+		await handleNote("add", args(["cross-task note"], { task: "different-id" }), SOCKET, CTX);
+		expect(lastParams().taskId).toBe("different-id");
+
+		await handleNote("add", args(["test"], { task: "bbbbbbbb", project: "proj-001" }), SOCKET, null);
+		expect(lastParams().taskId).toBe("bbbbbbbb");
+
+		await handleNote("add", args(["test"], { "task-id": "cccccccc", project: "proj-001" }), SOCKET, null);
+		expect(lastParams().taskId).toBe("cccccccc");
 	});
 
-	it("uses --task flag when no context", async () => {
+	it("list: a positional, --task-id or --task picks the task, and --project overrides context", async () => {
+		mockSend.mockResolvedValue(okResp([]));
+
+		await handleNote("list", args(["bbbbbbbb"]), SOCKET, null);
+		expect(lastParams().taskId).toBe("bbbbbbbb");
+
+		await handleNote("list", args([], { "task-id": "cccccccc" }), SOCKET, null);
+		expect(lastParams().taskId).toBe("cccccccc");
+
+		await handleNote("list", args([], { task: "different-id" }), SOCKET, CTX);
+		expect(lastParams().taskId).toBe("different-id");
+
+		await handleNote("list", args([], { project: "other-proj" }), SOCKET, CTX);
+		expect(lastParams().projectId).toBe("other-proj");
+	});
+
+	it("delete: --task / --task-id work without context, --task overrides context, and --project overrides context", async () => {
+		mockSend.mockResolvedValue(okResp(DELETED));
+
+		await handleNote("delete", args(["nnnnnnnn"], { task: "bbbbbbbb", project: "proj-001" }), SOCKET, null);
+		expect(lastParams().taskId).toBe("bbbbbbbb");
+
+		await handleNote("delete", args(["nnnnnnnn"], { "task-id": "cccccccc", project: "proj-001" }), SOCKET, null);
+		expect(lastParams().taskId).toBe("cccccccc");
+
+		await handleNote("delete", args(["nnnnnnnn"], { task: "different-id" }), SOCKET, CTX);
+		expect(lastParams().taskId).toBe("different-id");
+
+		await handleNote("delete", args(["nnnnnnnn"], { project: "other" }), SOCKET, CTX);
+		expect(lastParams().projectId).toBe("other");
+	});
+
+	// Same bug as task commands: `tasks list` shows 8-char IDs, but passing a
+	// short ID via --task to note commands sent it as-is to the server, which
+	// can't resolve it. The CLI expands short IDs to full UUIDs.
+	it("resolves an 8-char task id to the full UUID on add (--task), list (positional) and delete (--task)", async () => {
+		const shortId = FAKE_TASK.id.slice(0, 8); // "aaaaaaaa"
+
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleNote("add", args(["test note"], { task: shortId }), SOCKET, CTX);
+		expect(lastParams().taskId, "add").toBe(FAKE_TASK.id);
 
-		await handleNote(
-			"add",
-			args(["test"], { task: "bbbbbbbb", project: "proj-001" }),
-			SOCKET,
-			null,
-		);
+		mockSend.mockResolvedValue(okResp([]));
+		await handleNote("list", args([shortId]), SOCKET, CTX);
+		expect(lastParams().taskId, "list").toBe(FAKE_TASK.id);
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-	});
-
-	it("uses --task-id flag when no context", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleNote(
-			"add",
-			args(["test"], { "task-id": "cccccccc", project: "proj-001" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc");
-	});
-
-	it("exits when no content", async () => {
-		await expect(
-			handleNote("add", args(), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Content is required");
-	});
-
-	it("exits when no taskId and no context", async () => {
-		await expect(
-			handleNote("add", args(["content"]), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-	});
-
-	it("exits on server error", async () => {
-		mockSend.mockResolvedValue(errResp("Task not found"));
-
-		await expect(
-			handleNote("add", args(["test"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Task not found");
-	});
-
-	it("prints note short ID and source in output", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleNote("add", args(["test"]), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("[ai]");
-		expect(stdoutOutput).toContain("aaaaaaaa"); // task short ID
+		mockSend.mockResolvedValue(okResp(DELETED));
+		await handleNote("delete", args(["nnnnnnnn"], { task: shortId }), SOCKET, CTX);
+		expect(lastParams().taskId, "delete").toBe(FAKE_TASK.id);
 	});
 });
 
 // ─── note list ────────────────────────────────────────────────────────────────
 
 describe("note list", () => {
-	it("lists notes from context task", async () => {
+	it("lists notes from the context task, or says there are none", async () => {
 		mockSend.mockResolvedValue(okResp([FAKE_NOTE]));
 
 		await handleNote("list", args(), SOCKET, CTX);
@@ -274,79 +252,21 @@ describe("note list", () => {
 		expect(stdoutOutput).toContain("nnnnnnnn");
 		expect(stdoutOutput).toContain("ai");
 		expect(stdoutOutput).toContain("Found a race condition");
-	});
 
-	it("shows empty message when no notes", async () => {
 		mockSend.mockResolvedValue(okResp([]));
-
 		await handleNote("list", args(), SOCKET, CTX);
-
 		expect(stdoutOutput).toContain("No notes");
 	});
 
-	it("accepts explicit task ID as positional arg", async () => {
-		mockSend.mockResolvedValue(okResp([]));
-
-		await handleNote("list", args(["bbbbbbbb"]), SOCKET, null);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-	});
-
-	it("uses --task-id flag when listing notes", async () => {
-		mockSend.mockResolvedValue(okResp([]));
-
-		await handleNote("list", args([], { "task-id": "cccccccc" }), SOCKET, null);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc");
-	});
-
-	it("--project flag overrides context", async () => {
-		mockSend.mockResolvedValue(okResp([]));
-
-		await handleNote("list", args([], { project: "other-proj" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe("other-proj");
-	});
-
-	it("exits when no taskId and no context", async () => {
-		await expect(
-			handleNote("list", args(), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-	});
-
-	it("exits on server error", async () => {
-		mockSend.mockResolvedValue(errResp("Task not found"));
-
-		await expect(
-			handleNote("list", args(), SOCKET, CTX),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Task not found");
-	});
-
-	it("truncates long content in table", async () => {
-		const longNote: TaskNote = {
-			...FAKE_NOTE,
-			content: "A".repeat(100),
-		};
-		mockSend.mockResolvedValue(okResp([longNote]));
+	it("truncates long content and replaces newlines with spaces in the table", async () => {
+		mockSend.mockResolvedValue(okResp([
+			{ ...FAKE_NOTE, content: "A".repeat(100) },
+			{ ...FAKE_NOTE, id: "mmmmmmmm-1111", content: "Line one\nLine two\nLine three" },
+		]));
 
 		await handleNote("list", args(), SOCKET, CTX);
 
 		expect(stdoutOutput).toContain("…");
-	});
-
-	it("replaces newlines with spaces in table", async () => {
-		const multilineNote: TaskNote = {
-			...FAKE_NOTE,
-			content: "Line one\nLine two\nLine three",
-		};
-		mockSend.mockResolvedValue(okResp([multilineNote]));
-
-		await handleNote("list", args(), SOCKET, CTX);
-
 		expect(stdoutOutput).not.toContain("\nLine two");
 		expect(stdoutOutput).toContain("Line one Line two");
 	});
@@ -378,23 +298,17 @@ describe("note show", () => {
 		expect(stdoutOutput).not.toContain("…");
 	});
 
-	it("errors when no note id given", async () => {
+	it("errors with no note id, an unknown id, and an ambiguous prefix", async () => {
 		await expect(handleNote("show", args([]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
 		expect(stderrOutput).toContain("Usage: dev3 note show");
-	});
 
-	it("errors when note not found", async () => {
 		mockSend.mockResolvedValue(okResp([MULTILINE_NOTE]));
-
 		await expect(handleNote("show", args(["deadbeef"]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
 		expect(stderrOutput).toContain("Note not found");
-	});
 
-	it("errors on ambiguous prefix", async () => {
 		const a = { ...MULTILINE_NOTE, id: "ffff0000-aaaa" };
 		const b = { ...MULTILINE_NOTE, id: "ffff0000-bbbb" };
 		mockSend.mockResolvedValue(okResp([a, b]));
-
 		await expect(handleNote("show", args(["ffff0000"]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
 		expect(stderrOutput).toContain("Ambiguous note id");
 	});
@@ -403,8 +317,8 @@ describe("note show", () => {
 // ─── note delete ──────────────────────────────────────────────────────────────
 
 describe("note delete", () => {
-	it("deletes note by ID", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
+	it("deletes a note by ID from the context task", async () => {
+		mockSend.mockResolvedValue(okResp(DELETED));
 
 		await handleNote("delete", args(["nnnnnnnn"]), SOCKET, CTX);
 
@@ -416,214 +330,41 @@ describe("note delete", () => {
 		expect(stdoutOutput).toContain("Deleted note");
 		expect(stdoutOutput).toContain("nnnnnnnn");
 	});
-
-	it("auto-detects taskId from context", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
-
-		await handleNote("delete", args(["nnnnnnnn"]), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe(CTX.taskId);
-	});
-
-	it("uses --task flag when no context", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
-
-		await handleNote(
-			"delete",
-			args(["nnnnnnnn"], { task: "bbbbbbbb", project: "proj-001" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-	});
-
-	it("uses --task-id flag when deleting a note", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
-
-		await handleNote(
-			"delete",
-			args(["nnnnnnnn"], { "task-id": "cccccccc", project: "proj-001" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc");
-	});
-
-	it("--project flag overrides context", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
-
-		await handleNote("delete", args(["nnnnnnnn"], { project: "other" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe("other");
-	});
-
-	it("exits when no note ID given", async () => {
-		await expect(
-			handleNote("delete", args(), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Usage:");
-	});
-
-	it("exits when no taskId and no context", async () => {
-		await expect(
-			handleNote("delete", args(["nnnnnnnn"]), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-	});
-
-	it("exits on server error", async () => {
-		mockSend.mockResolvedValue(errResp("Note not found"));
-
-		await expect(
-			handleNote("delete", args(["badid"]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Note not found");
-	});
 });
 
-// ─── note: --id flag consistency with task commands ──────────────────────────
-// Note commands use --task flag to target a specific task.
-// Task commands should similarly support --id flag.
-// These tests verify the INCONSISTENCY: note --task works but task --id doesn't.
+// ─── errors shared by every subcommand ───────────────────────────────────────
 
-describe("note vs task: flag consistency", () => {
-	it("note add: --task flag overrides context (works correctly)", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleNote("add", args(["cross-task note"], { task: "different-id" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		// note commands handle this correctly — --task overrides context
-		expect(params.taskId).toBe("different-id");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-
-	it("note list: --task flag overrides context (works correctly)", async () => {
-		mockSend.mockResolvedValue(okResp([]));
-
-		await handleNote("list", args([], { task: "different-id" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("different-id");
-	});
-
-	it("note delete: --task flag overrides context (works correctly)", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
-
-		await handleNote("delete", args(["nnnnnnnn"], { task: "different-id" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("different-id");
-	});
-});
-
-// ─── note add: multiline content ─────────────────────────────────────────────
-
-describe("note add multiline", () => {
-	it("preserves newlines in note content", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		const multiline = "Line 1\nLine 2\nLine 3";
-		await handleNote("add", args([multiline]), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.content).toBe(multiline);
-		expect(params.content).toContain("\n");
-	});
-});
-
-describe("note unknown flags", () => {
-	it("rejects unknown flags instead of falling back to context", async () => {
-		await expect(
-			handleNote("add", args(["note"], { taskk: "bbbbbbbb" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-
-		expect(stderrOutput).toContain("Unknown option");
-		expect(stderrOutput).toContain("--taskk");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-// ─── short ID resolution ─────────────────────────────────────────────────────
-// Same bug as task commands: `tasks list` shows 8-char IDs, but passing
-// a short ID via --task to note commands sends it as-is to the server,
-// which can't resolve it. The CLI should expand short IDs to full UUIDs.
-
-describe("note add: short ID resolution via --task", () => {
-	it("resolves 8-char --task ID to full UUID before sending to server", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		const shortId = FAKE_TASK.id.slice(0, 8); // "aaaaaaaa"
-		await handleNote("add", args(["test note"], { task: shortId }), SOCKET, CTX);
-
-		const sentTaskId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		expect(sentTaskId).toBe(FAKE_TASK.id); // full UUID, not "aaaaaaaa"
-	});
-});
-
-describe("note list: short ID resolution via positional", () => {
-	it("resolves 8-char positional task ID to full UUID", async () => {
-		mockSend.mockResolvedValue(okResp([]));
-
-		const shortId = FAKE_TASK.id.slice(0, 8);
-		await handleNote("list", args([shortId]), SOCKET, CTX);
-
-		const sentTaskId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		expect(sentTaskId).toBe(FAKE_TASK.id); // full UUID
-	});
-});
-
-describe("note delete: short ID resolution via --task", () => {
-	it("resolves 8-char --task ID to full UUID before sending to server", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
-
-		const shortId = FAKE_TASK.id.slice(0, 8);
-		await handleNote("delete", args(["nnnnnnnn"], { task: shortId }), SOCKET, CTX);
-
-		const sentTaskId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		expect(sentTaskId).toBe(FAKE_TASK.id); // full UUID
-	});
-});
-
-// ─── note add: whitespace validation ─────────────────────────────────────────
-// Whitespace-only content ("   ") is truthy but meaningless.
-// The CLI should reject it early instead of creating an empty-looking note.
-
-describe("note add whitespace validation", () => {
-	it("rejects whitespace-only positional content", async () => {
-		await expect(
-			handleNote("add", args(["   "]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Content");
+describe("note errors", () => {
+	it("exits 3 with no task and no context, no note id, an unknown flag, or a missing/unknown subcommand", async () => {
+		const cases: Array<[string, string | undefined, ParsedArgs, CliContext | null, string?]> = [
+			["add without a task", "add", args(["content"]), null],
+			["list without a task", "list", args(), null],
+			["delete without a task", "delete", args(["nnnnnnnn"]), null],
+			["delete without a note id", "delete", args(), CTX, "Usage:"],
+			// An unknown flag must not fall back to context.
+			["unknown flag", "add", args(["note"], { taskk: "bbbbbbbb" }), CTX, "Unknown option: --taskk"],
+			["unknown subcommand", "edit", args(), null, "Unknown subcommand"],
+			["no subcommand", undefined, args(), null],
+		];
+		for (const [name, sub, parsed, context, message] of cases) {
+			stderrOutput = "";
+			await expect(handleNote(sub, parsed, SOCKET, context), name).rejects.toThrow("EXIT_3");
+			if (message) expect(stderrOutput, name).toContain(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("rejects whitespace-only --content flag", async () => {
-		await expect(
-			handleNote("add", args([], { content: "   " }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-// ─── unknown subcommand ──────────────────────────────────────────────────────
-
-describe("note (unknown subcommand)", () => {
-	it("exits with usage error for unknown subcommand", async () => {
-		await expect(
-			handleNote("edit", args(), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Unknown subcommand");
-	});
-
-	it("exits with usage error when no subcommand", async () => {
-		await expect(
-			handleNote(undefined, args(), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
+	it("exits 1 with the server's error on add, list and delete", async () => {
+		const cases: Array<[string, ParsedArgs, string]> = [
+			["add", args(["test"]), "Task not found"],
+			["list", args(), "Task not found"],
+			["delete", args(["badid"]), "Note not found"],
+		];
+		for (const [sub, parsed, error] of cases) {
+			stderrOutput = "";
+			mockSend.mockResolvedValue(errResp(error));
+			await expect(handleNote(sub, parsed, SOCKET, CTX), sub).rejects.toThrow("EXIT_1");
+			expect(stderrOutput, sub).toContain(error);
+		}
 	});
 });

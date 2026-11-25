@@ -73,7 +73,7 @@ describe("handleExtensionHook (omp)", () => {
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "SessionStart", sessionId: "sess-9", paneId: "%42" });
 	});
 
-	it("carries the prompt and the extension's submission id on UserPromptSubmit only", async () => {
+	it("carries the prompt and submission id on UserPromptSubmit only, and the end-of-prompt mark on PostToolUse only", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 
 		await handleExtensionHook(
@@ -86,24 +86,25 @@ describe("handleExtensionHook (omp)", () => {
 
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ prompt: "rebase and push", turnId: "sub-1" });
 		expect(mockSend.mock.calls[1]![2]).not.toHaveProperty("prompt");
-	});
-
-	it("passes the end-of-prompt mark on a PostToolUse only", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 
 		await handleExtensionHook("omp", JSON.stringify({ event: "PostToolUse", sessionId: "s", promptEnd: true }), SOCKET, CONTEXT);
 		await handleExtensionHook("omp", JSON.stringify({ event: "Stop", sessionId: "s", promptEnd: true }), SOCKET, CONTEXT);
 
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "PostToolUse", promptEnd: true });
-		expect(mockSend.mock.calls[1]![2]).not.toHaveProperty("promptEnd");
+		expect(mockSend.mock.calls[2]![2]).toMatchObject({ event: "PostToolUse", promptEnd: true });
+		expect(mockSend.mock.calls[3]![2]).not.toHaveProperty("promptEnd");
 	});
 
-	it("is a successful no-op outside a dev3 task and when the app is offline", async () => {
+	it("is a silent no-op outside a dev3 task, when the app is offline, and on malformed or unknown payloads", async () => {
 		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), SOCKET, null);
 		await handleExtensionHook("omp", JSON.stringify({ event: "Stop" }), null, CONTEXT);
 
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(stdout).toBe("");
+		await handleExtensionHook("omp", "not-json", SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ event: "turn_start" }), SOCKET, CONTEXT);
+		await handleExtensionHook("omp", JSON.stringify({ hook_event_name: "Stop" }), SOCKET, CONTEXT);
+
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("reports a socket error on stderr without failing", async () => {
@@ -114,13 +115,6 @@ describe("handleExtensionHook (omp)", () => {
 		expect(stderr).toContain("dev3 omp hook: status update failed");
 	});
 
-	it("ignores malformed and unknown payloads", async () => {
-		await handleExtensionHook("omp", "not-json", SOCKET, CONTEXT);
-		await handleExtensionHook("omp", JSON.stringify({ event: "turn_start" }), SOCKET, CONTEXT);
-		await handleExtensionHook("omp", JSON.stringify({ hook_event_name: "Stop" }), SOCKET, CONTEXT);
-
-		expect(mockSend).not.toHaveBeenCalled();
-	});
 });
 
 describe("handleExtensionHook (pi)", () => {

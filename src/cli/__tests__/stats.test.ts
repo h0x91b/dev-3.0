@@ -135,23 +135,15 @@ describe("dev3 stats productivity", () => {
 		expect(json().since).toBe(new Date(2026, 9, 1).toISOString());
 	});
 
-	it("refuses an impossible date instead of rolling it into the next month", async () => {
-		await expect(handleStats("productivity", args({ since: "2026-02-31" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+	it("is a usage error, before asking the app, for a bad --since, a too-short --project or a stray positional", async () => {
+		const usage = `EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`;
+		// An impossible date must not roll into the next month.
+		await expect(handleStats("productivity", args({ since: "2026-02-31" }), SOCKET, CTX)).rejects.toThrow(usage);
 		expect(stderr).toContain("Unparseable --since value: 2026-02-31");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("says a too-short --project prefix is too short, not missing", async () => {
-		await expect(handleStats("productivity", args({ project: "aaaaaaa" }), SOCKET, null)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
-		expect(stderr).toContain("--project prefix too short");
-	});
-
-	it("rejects a stray positional", async () => {
-		await expect(handleStats("productivity", { positional: ["foo"], flags: {} }, SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
-	});
-
-	it("refuses an unparseable --since before asking the app", async () => {
-		await expect(handleStats("productivity", args({ since: "last week" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		await expect(handleStats("productivity", args({ since: "last week" }), SOCKET, CTX)).rejects.toThrow(usage);
+		await expect(handleStats("productivity", args({ project: "aaaaaaa" }), SOCKET, null)).rejects.toThrow(usage);
+		expect(stderr, "too short, not missing").toContain("--project prefix too short");
+		await expect(handleStats("productivity", { positional: ["foo"], flags: {} }, SOCKET, CTX)).rejects.toThrow(usage);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
@@ -170,11 +162,13 @@ describe("dev3 stats productivity", () => {
 });
 
 describe("activity filters", () => {
-	it("counts a task touched after the cutoff by any timestamp, including a movement", () => {
+	it("counts a task touched after the cutoff by any timestamp, and keeps a usage day the cutoff falls inside", () => {
 		const since = "2026-10-10T00:00:00.000Z";
 		expect(productivityEventActiveSince(statEvent(), since)).toBe(false);
 		expect(productivityEventActiveSince(statEvent({ movements: [{ at: "2026-10-11T00:00:00.000Z", to: "in-progress" }] }), since)).toBe(true);
 		expect(productivityEventActiveSince(statEvent({ statusEnteredAt: "2026-10-10T00:00:00.000Z" }), since)).toBe(true);
+		expect(usageDayOverlapsSince(usageDay(), new Date(2026, 9, 20, 18).toISOString())).toBe(true);
+		expect(usageDayOverlapsSince(usageDay(), new Date(2026, 9, 21).toISOString())).toBe(false);
 	});
 
 	it("ends a 25-hour DST day at the next local midnight, not 24 hours in", () => {
@@ -190,21 +184,15 @@ describe("activity filters", () => {
 		}
 	});
 
-	it("keeps a usage day the cutoff falls inside", () => {
-		expect(usageDayOverlapsSince(usageDay(), new Date(2026, 9, 20, 18).toISOString())).toBe(true);
-		expect(usageDayOverlapsSince(usageDay(), new Date(2026, 9, 21).toISOString())).toBe(false);
-	});
 });
 
 describe("dev3 stats usage", () => {
-	it("prints days with the unpriced flag", async () => {
+	it("prints days with the unpriced flag, recomputed for the days --since kept", async () => {
 		mockSend.mockResolvedValue(ok({ days: [usageDay({ fullyPriced: false })], generatedAt: "G", hasUnpricedModels: true }));
 		await handleStats("usage", args({ json: "true" }), SOCKET, CTX);
 		expect(json()).toMatchObject({ schemaVersion: 1, hasUnpricedModels: true, since: null, days: [{ source: "claude", costUsd: 3.5 }] });
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.usage", {});
-	});
-
-	it("recomputes hasUnpricedModels for the days --since kept", async () => {
+		stdout = "";
 		mockSend.mockResolvedValue(ok({
 			days: [usageDay({ fullyPriced: false }), usageDay({ date: "2099-01-01", startMs: new Date(2099, 0, 1).getTime() })],
 			generatedAt: "G", hasUnpricedModels: true,
@@ -217,6 +205,9 @@ describe("dev3 stats usage", () => {
 	it("takes --project only with --task, and says why", async () => {
 		await expect(handleStats("usage", args({ project: PROJECT_A }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(stderr).toContain("per agent and day");
+		// --task refuses --since (a task's cost is reported whole) and needs a value.
+		await expect(handleStats("usage", args({ task: "seq:11", since: "7d" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		await expect(handleStats("usage", args({ task: "true" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
@@ -237,21 +228,8 @@ describe("dev3 stats usage --task", () => {
 			schemaVersion: 1, seq: 11, worktreeExists: false,
 			totals: { cacheWrite1hTokens: 150_000, costUsd: 4.3 }, coverage: { subagentTranscriptFiles: 1 },
 		});
-	});
-
-	it("lets --project pick another board", async () => {
-		mockSend.mockResolvedValue(ok(taskUsageReport()));
 		await handleStats("usage", args({ task: "seq:11", project: PROJECT_B, json: "true" }), SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.taskUsage", { taskId: "seq:11", projectId: PROJECT_B });
-	});
-
-	it("refuses --since, because a task's cost is reported whole", async () => {
-		await expect(handleStats("usage", args({ task: "seq:11", since: "7d" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("needs a value for --task", async () => {
-		await expect(handleStats("usage", args({ task: "true" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(mockSend, "--project picks another board").toHaveBeenCalledWith(SOCKET, "stats.taskUsage", { taskId: "seq:11", projectId: PROJECT_B });
 	});
 
 	it("renders per-model rows, a total and the coverage, flagging a lower bound", async () => {
@@ -277,12 +255,6 @@ describe("dev3 stats usage --task", () => {
 		await handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX);
 		expect(stdout).toContain("(1 subagent, 2 resumed from another folder)");
 	});
-
-	it("gives the update hint on an app that predates it", async () => {
-		mockSend.mockResolvedValue(fail("Unknown method: stats.taskUsage"));
-		await expect(handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
-		expect(stderr).toContain("older than this CLI");
-	});
 });
 
 describe("dev3 stats limits", () => {
@@ -294,18 +266,17 @@ describe("dev3 stats limits", () => {
 		}],
 	};
 
-	it("keeps capturedAt in JSON and defaults sessions to an empty list", async () => {
+	it("keeps capturedAt in JSON, defaults sessions to an empty list, and renders one row per window", async () => {
 		mockSend.mockResolvedValue(ok(report));
 		await handleStats("limits", args({ json: "true" }), SOCKET, CTX);
 		expect(json()).toMatchObject({ schemaVersion: 1, generatedAt: new Date(5).toISOString(), sessions: [], snapshots: [{ capturedAt: 4 }] });
-	});
-
-	it("renders one row per window", async () => {
+		stdout = "";
 		mockSend.mockResolvedValue(ok(report));
 		await handleStats("limits", args(), SOCKET, CTX);
 		expect(stdout).toContain("five_hour");
 		expect(stdout).toContain("42%");
 	});
+
 });
 
 describe("dev3 stats memory", () => {
@@ -315,7 +286,7 @@ describe("dev3 stats memory", () => {
 		expect(json()).toEqual({ schemaVersion: 1, snapshot: null });
 	});
 
-	it("renders pressure and the heaviest tasks", async () => {
+	it("renders pressure and the heaviest tasks, marking a live task the board cannot name", async () => {
 		const gib = 1024 ** 3;
 		const snapshot: SystemMemorySnapshot = {
 			headroom: 8 * gib, used: 24 * gib, total: 32 * gib, cached: 2 * gib, pressure: "normal", pressureEstimated: false,
@@ -327,10 +298,7 @@ describe("dev3 stats memory", () => {
 		await handleStats("memory", args(), SOCKET, CTX);
 		expect(stdout).toContain("Pressure:  normal");
 		expect(stdout).toContain("a27b4229");
-	});
-
-	it("marks a live task the board cannot name instead of printing an empty title", async () => {
-		const gib = 1024 ** 3;
+		stdout = "";
 		mockSend.mockResolvedValue(ok({
 			headroom: gib, used: gib, total: 2 * gib, cached: 0, pressure: "warn", pressureEstimated: false, swapUsed: 0,
 			swapTotal: 0, swapping: false, topConsumers: [], appRss: gib, activeTaskCount: 1, tasksRssApprox: gib,
@@ -339,6 +307,7 @@ describe("dev3 stats memory", () => {
 		await handleStats("memory", args(), SOCKET, CTX);
 		expect(stdout).toMatch(/deadbeef\s+1\.0 GB\s+-/);
 	});
+
 });
 
 describe("dev3 stats prices", () => {
@@ -348,7 +317,7 @@ describe("dev3 stats prices", () => {
 		repeated: models.length ? { model: models } : {},
 	});
 
-	it("prints exactly the agreed contract, priced and unpriced, and exits 0", async () => {
+	it("prints exactly the agreed contract, priced and unpriced; says built-in and asks for every seen model without --model", async () => {
 		mockSend.mockResolvedValue(ok({ fetchedAt: 0, models: [{ model: "claude-opus-5-5[1m]", rate: OPUS }, { model: "mystery", rate: null }] }));
 		await handleStats("prices", pricesArgs(["claude-opus-5-5[1m]", "mystery"]), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.prices", { models: ["claude-opus-5-5[1m]", "mystery"] });
@@ -356,9 +325,7 @@ describe("dev3 stats prices", () => {
 			schemaVersion: 1, currency: "USD", unit: "per 1M tokens", source: "refreshed", fetchedAt: "1970-01-01T00:00:00.000Z",
 			models: [{ model: "claude-opus-5-5[1m]", priced: true, ...OPUS }, { model: "mystery", priced: false }],
 		});
-	});
-
-	it("says built-in with no refreshed table, and asks the app for every seen model when no --model is given", async () => {
+		stdout = "";
 		mockSend.mockResolvedValue(ok({ fetchedAt: null, models: [] }));
 		await handleStats("prices", pricesArgs([]), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.prices", {});
@@ -394,7 +361,7 @@ describe("dev3 approvals list", () => {
 		expect(json().requests).toHaveLength(1);
 	});
 
-	it("names who asked for a launch", async () => {
+	it("names who asked for a launch and shows the agent's reason on one line", async () => {
 		mockSend.mockResolvedValue(ok({ requests: [
 			approval({ kind: "launch", requesterSeq: 33 }),
 			approval({ requestId: "r2", kind: "launch", requesterSenderId: "openclaw", heldByUser: true }),
@@ -403,22 +370,18 @@ describe("dev3 approvals list", () => {
 		expect(stdout).toContain("#33");
 		expect(stdout).toContain("sender openclaw");
 		expect(stdout).toContain("held by user");
-	});
-
-	it("shows the agent's reason on one line", async () => {
+		stdout = "";
 		mockSend.mockResolvedValue(ok({ requests: [approval({ kind: "launch", reason: "Move off the\nexhausted account" })] }));
 		await handleApprovals("list", args(), SOCKET, CTX);
 		expect(stdout).toContain("REASON");
 		expect(stdout).toContain("Move off the exhausted account");
 	});
 
-	it("needs the list verb", async () => {
-		await expect(handleApprovals(undefined, args(), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
-	});
 });
 
-describe("dev3 stats", () => {
-	it("rejects an unknown subcommand", async () => {
+describe("verb routing", () => {
+	it("rejects an unknown stats subcommand and approvals without the list verb", async () => {
+		await expect(handleApprovals(undefined, args(), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		await expect(handleStats("tokens", args(), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 	});
 });

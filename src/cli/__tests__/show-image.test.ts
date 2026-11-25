@@ -78,51 +78,12 @@ describe("show-image", () => {
 		expect(stdoutOutput).toContain("Shared 1 image");
 	});
 
-	it("binds a --caption to the image path it follows", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
-		await handleShowImage([PNG, "--caption", "login screen"], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"ui.show-image",
-			expect.objectContaining({ images: [{ path: PNG, caption: "login screen" }] }),
-		);
-	});
-
-	it("binds a separate caption to each image", async () => {
+	it("binds each --caption / -c to the image path it follows, leaving the rest uncaptioned", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 2, taskId: CTX.taskId }));
 		await handleShowImage([PNG, "--caption", "before", PNG2, "-c", "after"], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"ui.show-image",
-			expect.objectContaining({
-				images: [
-					{ path: PNG, caption: "before" },
-					{ path: PNG2, caption: "after" },
-				],
-			}),
-		);
-	});
-
-	it("leaves images without a caption uncaptioned", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 2, taskId: CTX.taskId }));
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ images: [{ path: PNG, caption: "before" }, { path: PNG2, caption: "after" }] });
 		await handleShowImage([PNG, PNG2, "--caption", "only the second"], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"ui.show-image",
-			expect.objectContaining({
-				images: [{ path: PNG }, { path: PNG2, caption: "only the second" }],
-			}),
-		);
-	});
-
-	it("errors when --caption precedes any image path", async () => {
-		await expect(handleShowImage(["--caption", "orphan", PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an unknown flag", async () => {
-		await expect(handleShowImage([PNG, "--bogus", "x"], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockSend.mock.calls[1][2]).toMatchObject({ images: [{ path: PNG }, { path: PNG2, caption: "only the second" }] });
 	});
 
 	it("reports a viewer queued by Focus Mode", async () => {
@@ -131,23 +92,14 @@ describe("show-image", () => {
 		expect(stdoutOutput).toContain("viewer queued until Focus Mode ends");
 	});
 
-	it("errors with a usage code when no paths are given", async () => {
-		await expect(handleShowImage([], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects a missing file", async () => {
-		await expect(handleShowImage([join(DIR, "gone.png")], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an unsupported type", async () => {
-		await expect(handleShowImage([TXT], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("requires a task in context", async () => {
-		await expect(handleShowImage([PNG], SOCKET, null)).rejects.toThrow("EXIT_3");
+	it("is a usage error, before sending, for an orphan caption, unknown flag, no/missing/unsupported paths or no task", async () => {
+		const cases: Array<[string[], CliContext | null]> = [
+			[["--caption", "orphan", PNG], CTX], [[PNG, "--bogus", "x"], CTX], [[], CTX],
+			[[join(DIR, "gone.png")], CTX], [[TXT], CTX], [[PNG], null],
+		];
+		for (const [argv, ctx] of cases) {
+			await expect(handleShowImage(argv, SOCKET, ctx), argv.join(" ")).rejects.toThrow("EXIT_3");
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
@@ -190,16 +142,13 @@ describe("show-media", () => {
 		expect(stdoutOutput).toContain("Shared 1 media file to task");
 	});
 
-	it.each(["track.flac", "track.opus", "track.aac", "clip.mov", "notes.txt"])("rejects %s before contacting the app", async (name) => {
-		const path = join(DIR, name);
-		writeFileSync(path, "x");
-		await expect(handleShowMedia([path], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+	it("rejects unsupported containers and images before contacting the app, naming the supported ones", async () => {
+		for (const name of ["track.flac", "track.opus", "track.aac", "clip.mov", "notes.txt"]) {
+			const path = join(DIR, name);
+			writeFileSync(path, "x");
+			await expect(handleShowMedia([path], SOCKET, CTX), name).rejects.toThrow("EXIT_3");
+		}
 		expect(stderrText()).toContain("Unsupported media file type");
-		expect(stderrText()).toContain("mp4, webm, mp3, m4a, wav, ogg");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an image and names the supported containers", async () => {
 		await expect(handleShowMedia([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrText()).toContain('Unsupported media file type "png"');
 		expect(stderrText()).toContain("mp4, webm, mp3, m4a, wav, ogg");
@@ -236,8 +185,10 @@ describe("show-media", () => {
 		expect(stderrText()).toContain("max 25 MB = 26,214,400 bytes");
 	});
 
-	it.each([["video", MP4], ["audio", MP3]])("points show-image users at show-media for %s", async (_kind, path) => {
-		await expect(handleShowImage([path], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+	it("points show-image users at show-media for video and audio", async () => {
+		for (const path of [MP4, MP3]) {
+			await expect(handleShowImage([path], SOCKET, CTX), path).rejects.toThrow("EXIT_3");
+		}
 		expect(stderrText()).toContain("dev3 show-media");
 		expect(mockSend).not.toHaveBeenCalled();
 	});

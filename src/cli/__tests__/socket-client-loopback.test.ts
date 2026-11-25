@@ -121,7 +121,7 @@ describe("sendRequest over a loopback endpoint record", () => {
 		expect(received[0].token).toBeUndefined();
 	});
 
-	it("maps a token rejection to a stale-endpoint failure, not a command failure", async () => {
+	it("maps a token rejection and an unparseable record to a stale-endpoint failure, not a command failure", async () => {
 		const dir = tempDir();
 		const { port } = await startServer((req) => JSON.stringify({ id: req.id, ok: false, error: CLI_ENDPOINT_TOKEN_MISMATCH }));
 		const endpoint = writeRecord(dir, 4243, { port });
@@ -133,17 +133,12 @@ describe("sendRequest over a loopback endpoint record", () => {
 		expect((err as Error & { reason: string }).reason).toContain("token");
 		// Idempotent callers may re-discover another live instance.
 		expect(isInstanceLossError(err)).toBe(true);
-	});
 
-	it("treats an unparseable record as a stale endpoint", async () => {
-		const dir = tempDir();
-		const endpoint = join(dir, cliEndpointFileName(4244));
-		writeFileSync(endpoint, "{ this is not a record");
-
-		const err = await sendRequest(endpoint, "task.show").catch((e) => e);
-
-		expect((err as Error).name).toBe("StaleEndpointError");
-		expect((err as Error & { reason: string }).reason).toContain("corrupt");
+		const corrupt = join(dir, cliEndpointFileName(4244));
+		writeFileSync(corrupt, "{ this is not a record");
+		const corruptErr = await sendRequest(corrupt, "task.show").catch((e) => e);
+		expect((corruptErr as Error).name).toBe("StaleEndpointError");
+		expect((corruptErr as Error & { reason: string }).reason).toContain("corrupt");
 	});
 
 	it("treats a record advertising a non-loopback host as a stale endpoint", async () => {
@@ -155,15 +150,11 @@ describe("sendRequest over a loopback endpoint record", () => {
 		expect((err as Error).name).toBe("StaleEndpointError");
 	});
 
-	it("reports APP_NOT_RUNNING when the record vanished", async () => {
+	it("reports APP_NOT_RUNNING when the record vanished, or nothing listens on the recorded port", async () => {
 		const dir = tempDir();
-		const endpoint = join(dir, cliEndpointFileName(4246));
+		const vanished = join(dir, cliEndpointFileName(4246));
+		await expect(sendRequest(vanished, "task.show", {}, { connectAttempts: 2, retryDelayMs: 1 })).rejects.toThrow("APP_NOT_RUNNING");
 
-		await expect(sendRequest(endpoint, "task.show", {}, { connectAttempts: 2, retryDelayMs: 1 })).rejects.toThrow("APP_NOT_RUNNING");
-	});
-
-	it("reports APP_NOT_RUNNING when nothing listens on the recorded port", async () => {
-		const dir = tempDir();
 		// Bind then immediately close, so the port is real but unowned.
 		const { port } = await startServer(() => null);
 		for (const server of servers.splice(0)) server.close();

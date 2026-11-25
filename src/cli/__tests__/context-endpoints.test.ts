@@ -60,119 +60,73 @@ describe("endpoint record discovery", () => {
 		killSpy.mockRestore();
 	});
 
-	it("returns a live endpoint record when no sockets exist", async () => {
+	function newer(file: string): void {
+		mockStatSync.mockImplementation((path: unknown) => ({ mtimeMs: String(path).endsWith(file) ? 999 : 1 }));
+	}
+
+	it("returns a live record, keeps an EPERM-probed one as a fallback, and excludes one that already failed", async () => {
+		const { discoverSocket, discoverSocketExcluding } = await import("../context");
 		mockReaddirSync.mockReturnValue(["44818.endpoint.json"]);
-
-		const { discoverSocket } = await import("../context");
-
 		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/44818.endpoint.json`);
-	});
 
-	it("deprioritizes a guest instance record", async () => {
-		mockReaddirSync.mockReturnValue(["100.endpoint.json", "200.endpoint.json"]);
-		mockReadFileSync.mockImplementation((path: unknown) => {
-			if (String(path).endsWith("100.endpoint.json")) {
-				return endpointRecord(100, { hostTaskId: "aabbccdd-1111-2222-3333-444444444444" });
-			}
-			return endpointRecord(200);
+		mockReaddirSync.mockReturnValue(["1100.endpoint.json", "1200.endpoint.json"]);
+		expect(discoverSocketExcluding([`${SOCKETS_DIR}/1200.endpoint.json`])).toBe(`${SOCKETS_DIR}/1100.endpoint.json`);
+
+		mockReaddirSync.mockReturnValue(["1000.endpoint.json"]);
+		killSpy.mockImplementation(() => {
+			throw Object.assign(new Error("EPERM"), { code: "EPERM" });
 		});
-		// The guest is newer, so only the guest rule can put the primary first.
-		mockStatSync.mockImplementation((path: unknown) => ({
-			mtimeMs: String(path).endsWith("100.endpoint.json") ? 999 : 1,
-		}));
-
-		const { discoverSocket } = await import("../context");
-
-		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/200.endpoint.json`);
+		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/1000.endpoint.json`);
 	});
 
-	it("prefers the newest record among primaries", async () => {
-		mockReaddirSync.mockReturnValue(["300.endpoint.json", "400.endpoint.json"]);
-		mockStatSync.mockImplementation((path: unknown) => ({
-			mtimeMs: String(path).endsWith("400.endpoint.json") ? 500 : 100,
-		}));
-
+	it("ranks a Unix socket over a record, a primary over a newer guest, and the newest primary first", async () => {
 		const { discoverSocket } = await import("../context");
 
-		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/400.endpoint.json`);
-	});
-
-	it("skips a record whose process is gone", async () => {
-		mockReaddirSync.mockReturnValue(["99999.endpoint.json", "500.endpoint.json"]);
-		mockStatSync.mockImplementation((path: unknown) => ({
-			mtimeMs: String(path).endsWith("99999.endpoint.json") ? 999 : 1,
-		}));
-		killSpy.mockImplementation((pid: number) => {
-			if (pid === 99999) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
-			return true;
-		});
-
-		const { discoverSocket } = await import("../context");
-
-		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/500.endpoint.json`);
-	});
-
-	it("skips a corrupt record so it cannot block a healthy instance", async () => {
-		mockReaddirSync.mockReturnValue(["600.endpoint.json", "700.endpoint.json"]);
-		mockStatSync.mockImplementation((path: unknown) => ({
-			mtimeMs: String(path).endsWith("600.endpoint.json") ? 999 : 1,
-		}));
-		mockReadFileSync.mockImplementation((path: unknown) => {
-			if (String(path).endsWith("600.endpoint.json")) return "{ truncated";
-			return endpointRecord(700);
-		});
-
-		const { discoverSocket } = await import("../context");
-
-		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/700.endpoint.json`);
-	});
-
-	it("skips a record that advertises a non-loopback host", async () => {
-		mockReaddirSync.mockReturnValue(["800.endpoint.json"]);
-		mockReadFileSync.mockImplementation(() => endpointRecord(800, { host: "0.0.0.0" }));
-
-		const { discoverSocket } = await import("../context");
-
-		expect(discoverSocket()).toBeNull();
-	});
-
-	it("prefers a Unix socket over an endpoint record when both are present", async () => {
 		mockReaddirSync.mockReturnValue(["900.endpoint.json", "901.sock"]);
-		mockStatSync.mockImplementation((path: unknown) => ({
-			mtimeMs: String(path).endsWith(".endpoint.json") ? 999 : 1,
-		}));
+		newer(".endpoint.json");
 		mockReadFileSync.mockImplementation((path: unknown) => {
 			if (String(path).endsWith(".endpoint.json")) return endpointRecord(900);
 			// No meta sidecar for the socket — treated as primary.
 			throw new Error("ENOENT");
 		});
+		expect(discoverSocket(), "socket over record").toBe(`${SOCKETS_DIR}/901.sock`);
 
-		const { discoverSocket } = await import("../context");
+		mockReaddirSync.mockReturnValue(["100.endpoint.json", "200.endpoint.json"]);
+		newer("100.endpoint.json");
+		mockReadFileSync.mockImplementation((path: unknown) =>
+			String(path).endsWith("100.endpoint.json") ? endpointRecord(100, { hostTaskId: "aabbccdd-1111-2222-3333-444444444444" }) : endpointRecord(200),
+		);
+		expect(discoverSocket(), "primary over newer guest").toBe(`${SOCKETS_DIR}/200.endpoint.json`);
 
-		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/901.sock`);
+		mockReaddirSync.mockReturnValue(["300.endpoint.json", "400.endpoint.json"]);
+		newer("400.endpoint.json");
+		mockReadFileSync.mockImplementation((path: unknown) => endpointRecord(Number(/(\d+)\.endpoint/.exec(String(path))?.[1])));
+		expect(discoverSocket(), "newest primary").toBe(`${SOCKETS_DIR}/400.endpoint.json`);
 	});
 
-	it("keeps an EPERM-probed record as a fallback candidate", async () => {
-		mockReaddirSync.mockReturnValue(["1000.endpoint.json"]);
-		killSpy.mockImplementation(() => {
-			throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+	it("skips a record whose process is gone, a corrupt record, and unrelated files", async () => {
+		const { discoverSocket } = await import("../context");
+
+		mockReaddirSync.mockReturnValue(["99999.endpoint.json", "500.endpoint.json"]);
+		newer("99999.endpoint.json");
+		killSpy.mockImplementation((pid: number) => {
+			if (pid === 99999) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
+			return true;
 		});
+		expect(discoverSocket(), "dead process").toBe(`${SOCKETS_DIR}/500.endpoint.json`);
 
-		const { discoverSocket } = await import("../context");
+		mockReaddirSync.mockReturnValue(["600.endpoint.json", "700.endpoint.json"]);
+		newer("600.endpoint.json");
+		mockReadFileSync.mockImplementation((path: unknown) => (String(path).endsWith("600.endpoint.json") ? "{ truncated" : endpointRecord(700)));
+		expect(discoverSocket(), "corrupt record").toBe(`${SOCKETS_DIR}/700.endpoint.json`);
 
-		expect(discoverSocket()).toBe(`${SOCKETS_DIR}/1000.endpoint.json`);
-	});
-
-	it("excludes an endpoint that already failed this invocation", async () => {
-		mockReaddirSync.mockReturnValue(["1100.endpoint.json", "1200.endpoint.json"]);
-
-		const { discoverSocketExcluding } = await import("../context");
-
-		expect(discoverSocketExcluding([`${SOCKETS_DIR}/1200.endpoint.json`])).toBe(`${SOCKETS_DIR}/1100.endpoint.json`);
-	});
-
-	it("ignores unrelated files in the sockets dir", async () => {
 		mockReaddirSync.mockReturnValue(["readme.txt", "not-a-pid.endpoint.json", "1300.meta.json"]);
+		expect(discoverSocket(), "unrelated files").toBeNull();
+	});
+
+	it("skips a record that advertises a non-loopback host", async () => {
+		mockReaddirSync.mockReturnValue(["800.endpoint.json"]);
+		mockReadFileSync.mockImplementation(() => endpointRecord(800, { host: "0.0.0.0" }));
 
 		const { discoverSocket } = await import("../context");
 
@@ -213,21 +167,14 @@ describe("socketDiagnostics with endpoint records", () => {
 		expect(output).not.toContain(TOKEN);
 	});
 
-	it("flags an unreadable record instead of pretending it is fine", async () => {
+	it("flags an unreadable record, and marks a guest record as deprioritized naming its host task", async () => {
+		const { socketDiagnostics } = await import("../context");
 		mockReaddirSync.mockReturnValue(["1500.endpoint.json"]);
 		mockReadFileSync.mockImplementation(() => "garbage");
-
-		const { socketDiagnostics } = await import("../context");
-
 		expect(socketDiagnostics("/tmp/somewhere")).toContain("UNREADABLE RECORD");
-	});
 
-	it("marks a guest record as deprioritized and names the task hosting it", async () => {
 		mockReaddirSync.mockReturnValue(["1600.endpoint.json"]);
 		mockReadFileSync.mockImplementation(() => endpointRecord(1600, { hostTaskId: "task-9" }));
-
-		const { socketDiagnostics } = await import("../context");
-
 		const out = socketDiagnostics("/tmp/somewhere");
 		expect(out).toContain("guest instance — deprioritized");
 		// A pid changes on every dev-server restart; the task id is what a human can aim at.

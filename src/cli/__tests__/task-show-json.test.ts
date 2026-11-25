@@ -85,23 +85,29 @@ describe("task show --json", () => {
 		]);
 	});
 
-	it("carries a To Do task's start-after condition, and null once the task left To Do", () => {
+	it("projects start-after, epic and origin, each null or defaulted when absent", () => {
 		const launchAfter = { taskId: "pre-1", seq: 12, until: "merged" as const, armedBy: { taskId: "coord-1", seq: 5 }, armedAt: "2026-11-04T10:00:00Z" };
 		expect(buildTaskShowJson({ ...TASK, status: "todo", launchAfter }).startAfter).toEqual({
 			taskId: "pre-1", seq: 12, until: "merged", armedByTaskId: "coord-1", armedAt: "2026-11-04T10:00:00Z",
 		});
 		expect(buildTaskShowJson({ ...TASK, status: "in-progress", launchAfter }).startAfter).toBeNull();
 		expect(buildTaskShowJson(TASK).startAfter).toBeNull();
-	});
 
-	it("names the task's epic, and null when it has none", () => {
 		expect(buildTaskShowJson(TASK).epic).toBeNull();
 		const json = buildTaskShowJson({ ...TASK, epicId: "ep-1111-2222", epic: { id: "ep-1111-2222", name: "Payments v2", color: "#3b82f6", archived: true } });
 		expect(json.epic).toEqual({ id: "ep-1111-2222", name: "Payments v2", archived: true });
 		expect(buildTaskShowJson({ ...TASK, epicId: "gone", epic: null }).epic).toEqual({ id: "gone", name: null, archived: false });
+
+		expect(buildTaskShowJson(TASK).origin).toEqual({ kind: "user" });
+		const parent = { id: "pppppppp-1", projectId: "proj-002", projectName: "homebrew", seq: 7, variantIndex: null, title: "Coordinate" };
+		const child = { ...TASK, origin: { kind: "task", taskId: parent.id, projectId: parent.projectId } } as Task;
+		expect(buildTaskShowJson({ ...child, originParent: parent }).origin).toEqual({
+			kind: "task", taskId: parent.id, projectId: parent.projectId, parent,
+		});
+		expect(buildTaskShowJson({ ...child, originParent: null }).origin).toMatchObject({ kind: "task", parent: null });
 	});
 
-	it("lists every PR the task had, newest first, beside the current prNumber", () => {
+	it("lists every PR newest first beside prNumber, and projects the poller reading, hibernation and keep-alive", () => {
 		const json = buildTaskShowJson({
 			...TASK,
 			prNumber: 12,
@@ -116,10 +122,8 @@ describe("task show --json", () => {
 			{ number: 12, url: "https://github.com/o/r/pull/12", title: null, state: "OPEN" },
 			{ number: 9, url: "https://github.com/o/r/pull/9", title: "First", state: "MERGED" },
 		]);
-	});
-
-	it("carries the PR poller's reading as a projection, plus hibernation and keep-alive", () => {
-		const json = buildTaskShowJson({
+	
+		const polled = buildTaskShowJson({
 			...TASK,
 			hibernated: true,
 			keepAlive: { enabled: true },
@@ -129,12 +133,12 @@ describe("task show --json", () => {
 				prTitle: "Fix", isDraft: false, cachedAt: "2026-10-27T00:00:00Z",
 			},
 		} as Task);
-		expect(json.prStatus).toEqual({
+		expect(polled.prStatus).toEqual({
 			number: 12, ciStatus: "failure", reviewDecision: null, mergeState: { mergeable: "MERGEABLE", status: "BLOCKED" },
 			isDraft: false, autoMergeEnabled: null, unresolvedCount: 2, cachedAt: "2026-10-27T00:00:00Z",
 		});
-		expect(json.hibernated).toBe(true);
-		expect(json.keepAlive).toEqual({ enabled: true, status: "watching" });
+		expect(polled.hibernated).toBe(true);
+		expect(polled.keepAlive).toEqual({ enabled: true, status: "watching" });
 	});
 
 	it("adds notes and history only when asked", async () => {
@@ -150,9 +154,10 @@ describe("task show --json", () => {
 		expect(buildTaskShowJson(bare)).toMatchObject({ labelIds: [], noteCount: 0, branch: null, priority: "P3", overview: null, movedAt: null, prStatus: null, hibernated: false, keepAlive: null });
 	});
 
-	it("the plain form is unchanged and is not JSON", async () => {
+	it("the plain form is unchanged, is not JSON and has no PR line for a task without one", async () => {
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdout).toContain("Seq:");
+		expect(stdout).not.toContain("Pull requests:");
 		expect(() => JSON.parse(stdout)).toThrow();
 	});
 
@@ -187,23 +192,5 @@ describe("task show (human)", () => {
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 
 		expect(stdout).toMatch(/Pull requests:\s+<pr:12> open \(current\), <pr:9> merged/);
-	});
-
-	it("prints no PR line for a task without one", async () => {
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-		expect(stdout).not.toContain("Pull requests:");
-	});
-
-	it("reports the user as origin for a task without one", () => {
-		expect(buildTaskShowJson(TASK).origin).toEqual({ kind: "user" });
-	});
-
-	it("includes a task origin with its resolved parent, or null once the parent is gone", () => {
-		const parent = { id: "pppppppp-1", projectId: "proj-002", projectName: "homebrew", seq: 7, variantIndex: null, title: "Coordinate" };
-		const child = { ...TASK, origin: { kind: "task", taskId: parent.id, projectId: parent.projectId } } as Task;
-		expect(buildTaskShowJson({ ...child, originParent: parent }).origin).toEqual({
-			kind: "task", taskId: parent.id, projectId: parent.projectId, parent,
-		});
-		expect(buildTaskShowJson({ ...child, originParent: null }).origin).toMatchObject({ kind: "task", parent: null });
 	});
 });
