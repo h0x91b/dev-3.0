@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Project, Task, PaneSessionEntry } from "../../shared/types";
 import * as pty from "../pty-server";
+import { spawn } from "../spawn";
 import { launchTaskPty, routePaneExited } from "../rpc-handlers/tmux-pty";
 // Leaf import, not the tmux barrel: this script runs under a preload that mocks
 // whole modules, and the barrel pulls in far more than the unlink helper.
@@ -88,7 +89,11 @@ function tmuxSync(args: string[]): ReturnType<typeof nodeSpawnSync> {
 	return nodeSpawnSync("tmux", args, { env: { ...process.env } });
 }
 
+// The headless tmux client the scenarios drive; closed with the run.
+let control: Bun.Subprocess<"pipe", "pipe", "pipe"> | null = null;
+
 function cleanup(): void {
+	try { control?.kill(); } catch { /* ignore */ }
 	try { pty.destroySession(TASK_ID, TEST_SOCKET); } catch { /* ignore */ }
 	try { tmuxSync(["-L", TEST_SOCKET, "kill-server"]); } catch { /* ignore */ }
 	// kill-server leaves the socket FILE behind, and this name is pid-keyed.
@@ -174,15 +179,21 @@ async function main() {
 		const agentEntry = (paneId: string) => ({ paneId, window: "Agents", agentCmd: "sleep", sessionId: null, agentId: null, configId: null });
 		const hooksOf = (target: string, scope: "-w" | "-g" | ""): string => tmuxOut(["show-hooks", ...(scope ? [scope] : []), "-t", target]);
 
-		// Keys typed after the prefix (Ctrl+B) in a real attached client.
-		const pressKeys = (keys: string): void => {
-			const run = nodeSpawnSync("python3", ["-I", "-c", [
-				"import os,pty,sys,time",
-				"pid,fd=pty.fork()",
-				"if pid==0: os.execvp('tmux',['tmux','-L',sys.argv[1],'attach','-t',sys.argv[2]])",
-				"time.sleep(1); os.write(fd,b'\\x02'+sys.argv[3].encode()); time.sleep(1); os.kill(pid,9)",
-			].join("\n"), TEST_SOCKET, session, keys], { env: { ...process.env, TMUX: "" } });
-			assert(run.status === 0, `could not drive the Ctrl+B ${keys} client: ${run.stderr}`);
+		// A headless attached client (control mode, no terminal): what a prefix key runs is read from
+		// the session's loaded bindings and executed through it, so its new window is current for a client.
+		const client = spawn(["tmux", "-L", TEST_SOCKET, "-C", "attach", "-t", session], { stdin: "pipe", stdout: "pipe", stderr: "pipe" }) as unknown as Bun.Subprocess<"pipe", "pipe", "pipe">;
+		control = client;
+		for (const stream of [client.stdout, client.stderr]) void (async () => { for await (const _ of stream) { /* drain */ } })();
+		await waitFor(() => tmuxOut(["list-clients", "-t", session, "-F", "#{client_control_mode}"]).includes("1"), 5_000);
+		const runPrefixBinding = async (key: string, expected: RegExp): Promise<void> => {
+			const listed = tmuxOut(["list-keys", "-T", "prefix", key]);
+			const bound = listed.match(/^bind-key\s+(?:-r\s+)?-T\s+prefix\s+\S+\s+(.+)$/m)?.[1];
+			assert(!!bound && expected.test(bound), `prefix ${key} should run ${expected}, got ${JSON.stringify(listed)}`);
+			client.stdin.write(`${bound!.replace(/\\;/g, ";")}\n`);
+			client.stdin.flush();
+		};
+		const eventually = async (what: string, check: () => boolean): Promise<void> => {
+			try { await waitFor(check, 5_000, 50); } catch { assert(false, `${what} (not within 5s)`); }
 		};
 		const activeWindowId = (): string => tmuxOut(["display-message", "-p", "-t", session, "#{window_id}"]);
 
@@ -195,13 +206,15 @@ async function main() {
 			console.log(`PASS — ${label}`);
 		};
 
-		// A tab a user opens with the shipped Ctrl+B c binding, in a real attached client.
-		const agentA = newWindow("Agents", "bash -c 'sleep 4'");
-		pressKeys("c");
-		const windows = tmuxOut(["list-windows", "-t", session, "-F", "#{window_active} #{window_name}"]);
-		assert(windows.split("\n").length === 3 && windows.split("\n").some(w => w.startsWith("1 ")), `Ctrl+B c should open a current third tab, got ${JSON.stringify(windows)}`);
-		assert(hooksOf(activeWindowId(), "-w").includes("pane-exited"), "a tab opened with Ctrl+B c should carry the pane-exited hook");
-		await expectAgentsExitCleansUp("Agents exits while a Ctrl+B c tab is current", agentA);
+		// A tab a user opens with the shipped prefix c binding, current in an attached client.
+		const agentA = newWindow("Agents", "bash -c 'sleep 6'");
+		await runPrefixBinding("c", /new-window/);
+		await eventually("prefix c should open a current third tab", () => {
+			const windows = tmuxOut(["list-windows", "-t", session, "-F", "#{window_active} #{window_name}"]).split("\n");
+			return windows.length === 3 && windows[windows.length - 1].startsWith("1 ");
+		});
+		await eventually("a tab opened with prefix c should carry the pane-exited hook", () => hooksOf(activeWindowId(), "-w").includes("pane-exited"));
+		await expectAgentsExitCleansUp("Agents exits while a prefix c tab is current", agentA);
 
 		// A tab open before dev3 (re)configured the session: reattach hooks every existing window.
 		const legacyPane = newWindow("Legacy", "sleep 999");
@@ -215,16 +228,16 @@ async function main() {
 		tmuxOut(["select-window", "-t", legacyWindow]);
 		await expectAgentsExitCleansUp("Agents exits while a pre-existing tab is current", newWindow("Agents", "bash -c 'sleep 3'"));
 
-		// A window Ctrl+B ! (break-pane) makes never fires after-new-window; window-linked covers it.
+		// A window prefix ! (break-pane) makes never fires after-new-window; window-linked covers it.
 		const mainWindow = tmuxOut(["display-message", "-p", "-t", mainEntry.paneId!, "#{window_id}"]);
 		const splitPane = tmuxOut(["split-window", "-d", "-t", mainEntry.paneId!, "-P", "-F", "#{pane_id}", "sleep 999"]);
 		tmuxOut(["select-window", "-t", mainWindow]);
 		tmuxOut(["select-pane", "-t", splitPane]);
-		const agentB = newWindow("Agents", "bash -c 'sleep 4'");
-		pressKeys("!");
-		assert(activeWindowId() !== mainWindow, "Ctrl+B ! should select the broken-out window");
-		assert(hooksOf(activeWindowId(), "-w").includes("pane-exited"), "a window made by Ctrl+B ! should carry the pane-exited hook");
-		await expectAgentsExitCleansUp("Agents exits while a Ctrl+B ! window is current", agentB);
+		const agentB = newWindow("Agents", "bash -c 'sleep 6'");
+		await runPrefixBinding("!", /break-pane/);
+		await eventually("prefix ! should select the broken-out window", () => activeWindowId() !== mainWindow);
+		await eventually("a window made by prefix ! should carry the pane-exited hook", () => hooksOf(activeWindowId(), "-w").includes("pane-exited"));
+		await expectAgentsExitCleansUp("Agents exits while a prefix ! window is current", agentB);
 
 		// A session that survived an app restart still points at the previous app's port; the --window spawn refreshes it first.
 		const STALE = `run-shell "curl -s 'http://127.0.0.1:1/pane-exited?session=${session}&pane=#{hook_pane}' || true"`;
