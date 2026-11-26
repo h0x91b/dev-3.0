@@ -49,6 +49,11 @@ export interface RenderGuardOptions {
 	stallMs?: number;
 	/** How often to check. */
 	checkIntervalMs?: number;
+	/**
+	 * Safety cap on deferring paints while DEC mode 2026 (synchronized output)
+	 * stays set, so a TUI that forgets to emit `CSI ? 2026 l` cannot freeze the pane.
+	 */
+	syncOutputTimeoutMs?: number;
 	now?: () => number;
 	isVisible?: () => boolean;
 	setInterval?: (fn: () => void, ms: number) => unknown;
@@ -64,6 +69,10 @@ export interface RenderGuard {
 /** Frames stop entirely in a hidden window, so the watchdog only judges a visible one. */
 export const DEFAULT_STALL_MS = 6000;
 export const DEFAULT_CHECK_INTERVAL_MS = 2000;
+/** DEC private mode 2026: synchronized output (`CSI ? 2026 h` … `CSI ? 2026 l`). */
+const DEC_MODE_SYNC_OUTPUT = 2026;
+/** Max time to defer painting while DEC mode 2026 remains active. */
+export const DEFAULT_SYNC_OUTPUT_TIMEOUT_MS = 150;
 /** Report the first failures, then only every Nth — a broken frame repeats at 60 fps. */
 const ERROR_REPORT_STRIDE = 60;
 /**
@@ -73,11 +82,19 @@ const ERROR_REPORT_STRIDE = 60;
  */
 const LATE_TICK_FACTOR = 2;
 
+function isSynchronizedOutputActive(buffer: unknown): boolean {
+	if (!buffer || typeof buffer !== "object") return false;
+	const getMode = (buffer as { getMode?: (mode: number, isAnsi?: boolean) => boolean }).getMode;
+	if (typeof getMode !== "function") return false;
+	return Boolean(getMode.call(buffer, DEC_MODE_SYNC_OUTPUT));
+}
+
 export function installRenderGuard(renderer: GuardableRenderer, opts: RenderGuardOptions): RenderGuard {
 	const target = renderer as WrappedRenderer;
 	const now = opts.now ?? Date.now;
 	const isVisible = opts.isVisible ?? (() => typeof document === "undefined" || document.visibilityState === "visible");
 	const stallMs = opts.stallMs ?? DEFAULT_STALL_MS;
+	const syncOutputTimeoutMs = opts.syncOutputTimeoutMs ?? DEFAULT_SYNC_OUTPUT_TIMEOUT_MS;
 	const setTimer = opts.setInterval ?? ((fn: () => void, ms: number) => setInterval(fn, ms));
 	const clearTimer = opts.clearInterval ?? ((handle: unknown) => clearInterval(handle as Parameters<typeof clearInterval>[0]));
 
@@ -88,6 +105,7 @@ export function installRenderGuard(renderer: GuardableRenderer, opts: RenderGuar
 	// minutes; the clock starts again from the moment it can paint.
 	let visibleSince = isVisible() ? lastFrameAt : null;
 	let stallReported = false;
+	let syncStartedAt: number | null = null;
 
 	if (!target[ORIGINAL_RENDER] && typeof renderer.render === "function") {
 		const original = renderer.render;
@@ -101,6 +119,18 @@ export function installRenderGuard(renderer: GuardableRenderer, opts: RenderGuar
 		) {
 			const startedAt = opts.onFrame ? performance.now() : 0;
 			try {
+				if (!forceAll && isSynchronizedOutputActive(buffer)) {
+					const tick = now();
+					if (syncStartedAt === null) syncStartedAt = tick;
+					if (tick - syncStartedAt < syncOutputTimeoutMs) {
+						// Loop is alive and deliberately holding paint until `CSI ? 2026 l`.
+						lastFrameAt = tick;
+						stallReported = false;
+						return;
+					}
+				} else {
+					syncStartedAt = null;
+				}
 				original.call(this, buffer, forceAll, viewportY, scrollbackProvider, scrollbarOpacity);
 				frames += 1;
 				consecutive = 0;
