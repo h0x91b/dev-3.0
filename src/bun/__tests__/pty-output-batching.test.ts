@@ -58,7 +58,7 @@ bun.Bun.serve = (config: unknown) => {
 };
 
 const pty = await import("../pty-server");
-const { createSession, destroySession, hasSession, registerBackpressureProbe } = pty;
+const { createSession, destroySession, hasSession, registerBackpressureProbe, shouldDeferLeadingEdgeFlush } = pty;
 
 const BATCH_MS = 16;
 
@@ -316,5 +316,61 @@ describe("freeze capture recording", () => {
 
 		wsHandlers.close(client);
 		expect(ptyOutputRecorder.snapshot()).toEqual([]);
+	});
+});
+
+describe("TUI redraw coalescing (DEC 2026 & CSI erase)", () => {
+	it("classifies unclosed DEC 2026 and CSI erase chunks for deferred leading-edge flush", () => {
+		expect(shouldDeferLeadingEdgeFlush("x")).toBe(false);
+		expect(shouldDeferLeadingEdgeFlush("\x1b[?2026hhello\x1b[?2026l")).toBe(false);
+		expect(shouldDeferLeadingEdgeFlush("\x1b[?2026h\x1b[1A")).toBe(true);
+		expect(shouldDeferLeadingEdgeFlush("\x1b[?2026h\x1b[?2026l\x1b[?2026hnext")).toBe(true);
+		expect(shouldDeferLeadingEdgeFlush("\x1b[2K")).toBe(true);
+		expect(shouldDeferLeadingEdgeFlush("\x1b[0J")).toBe(true);
+	});
+
+	it("coalesces a multi-chunk DEC 2026 redraw into a single WebSocket message", () => {
+		const client = startSession("task-redraw-sync-1");
+
+		emit("\x1b[?2026h\x1b[2K");
+		// Held briefly instead of flushing the erased half immediately.
+		expect(client.sent).toEqual([]);
+
+		vi.advanceTimersByTime(1);
+		emit("footer line\x1b[?2026l");
+		expect(client.sent).toEqual([]);
+
+		vi.advanceTimersByTime(3);
+		expect(client.sent).toEqual(["\x1b[?2026h\x1b[2Kfooter line\x1b[?2026l"]);
+	});
+
+	it("coalesces a multi-chunk CSI erase + repaint without mode 2026 into one message", () => {
+		const client = startSession("task-redraw-erase-1");
+
+		emit("\x1b[2K\x1b[1A\x1b[2K");
+		expect(client.sent).toEqual([]);
+
+		vi.advanceTimersByTime(2);
+		emit("new footer");
+		vi.advanceTimersByTime(3);
+
+		expect(client.sent).toEqual(["\x1b[2K\x1b[1A\x1b[2Knew footer"]);
+	});
+
+	it("caps redraw debouncing at PTY_BATCH_INTERVAL_MS so continuous output never starves", () => {
+		const client = startSession("task-redraw-cap-1");
+
+		emit("\x1b[2Kchunk0");
+		for (let i = 1; i <= 10; i++) {
+			vi.advanceTimersByTime(2);
+			emit(`|chunk${i}`);
+		}
+		// 20 ms elapsed (> 16 ms cap) — must have flushed at least once already.
+		expect(client.sent.length).toBeGreaterThanOrEqual(1);
+
+		vi.advanceTimersByTime(BATCH_MS);
+		const joined = client.sent.join("");
+		expect(joined).toContain("\x1b[2Kchunk0");
+		expect(joined).toContain("|chunk10");
 	});
 });

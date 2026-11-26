@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { installRenderGuard, DEFAULT_CHECK_INTERVAL_MS, DEFAULT_STALL_MS, type GuardableRenderer } from "../terminal-render-guard";
+import {
+	installRenderGuard,
+	DEFAULT_CHECK_INTERVAL_MS,
+	DEFAULT_STALL_MS,
+	DEFAULT_SYNC_OUTPUT_TIMEOUT_MS,
+	type GuardableRenderer,
+} from "../terminal-render-guard";
 
 /** A renderer whose paint the test controls, plus the vendor loop's own contract. */
 function makeHarness(opts: { visible?: boolean } = {}) {
@@ -221,5 +227,74 @@ describe("installRenderGuard – noticing a loop that stopped", () => {
 
 		expect(h.isWatching()).toBe(false);
 		expect(h.guard.framesPainted()).toBe(0);
+	});
+});
+
+describe("installRenderGuard – DEC mode 2026 synchronized output", () => {
+	function makeSyncHarness() {
+		let syncActive = false;
+		let painted = 0;
+		let clock = 1_000;
+		const buffer = {
+			getMode: (mode: number) => (mode === 2026 ? syncActive : false),
+		};
+		const renderer: GuardableRenderer = {
+			render() {
+				painted += 1;
+			},
+		};
+		const guard = installRenderGuard(renderer, {
+			onFrameError: vi.fn(),
+			onStalled: vi.fn(),
+			now: () => clock,
+			setInterval: () => 1,
+			clearInterval: () => {},
+		});
+		return {
+			guard,
+			setSync(active: boolean) {
+				syncActive = active;
+			},
+			advance(ms: number) {
+				clock += ms;
+			},
+			frame(forceAll = false) {
+				renderer.render(buffer, forceAll, 0, {}, 1);
+			},
+			painted: () => painted,
+		};
+	}
+
+	it("defers painting while mode 2026 is active and paints once it clears", () => {
+		const h = makeSyncHarness();
+		h.setSync(true);
+		h.frame();
+		h.advance(16);
+		h.frame();
+		expect(h.painted()).toBe(0);
+
+		h.setSync(false);
+		h.frame();
+		expect(h.painted()).toBe(1);
+	});
+
+	it("falls back to painting after the safety timeout if mode 2026 stays unclosed", () => {
+		const h = makeSyncHarness();
+		h.setSync(true);
+		h.frame();
+		h.advance(DEFAULT_SYNC_OUTPUT_TIMEOUT_MS - 1);
+		h.frame();
+		expect(h.painted()).toBe(0);
+
+		h.advance(1);
+		h.frame();
+		expect(h.painted()).toBe(1);
+	});
+
+	it("still paints immediately on forceAll frames (open/resize) even when mode 2026 is set", () => {
+		const h = makeSyncHarness();
+		h.setSync(true);
+		h.frame(true);
+		expect(h.painted()).toBe(1);
 	});
 });

@@ -152,6 +152,25 @@ let ptyWsPort = 0;
 // the chunk that opens it is sent at once (see enqueuePtyData), so an idle
 // terminal echoing one keystroke is never held back.
 const PTY_BATCH_INTERVAL_MS = 16;
+/** Short trailing debounce used to coalesce multi-chunk TUI redraws (erase + paint). */
+const PTY_REDRAW_COALESCE_MS = 3;
+const DEC_SYNC_START = "\x1b[?2026h";
+const DEC_SYNC_END = "\x1b[?2026l";
+// CSI Erase in Display (J) / Erase in Line (K): inline TUIs (e.g. Cursor CLI)
+// clear footer rows before repainting them in the next PTY read.
+const CSI_ERASE_RE = /\x1b\[[0-3]?[JK]/;
+
+/**
+ * Returns true when flushing this chunk immediately on the leading edge would
+ * likely split a TUI redraw across a 16 ms batch boundary and cause a visible
+ * blank-frame blink (either an unclosed DEC mode 2026 synchronized update or
+ * a CSI line/screen erase that precedes the replacement rows).
+ */
+export function shouldDeferLeadingEdgeFlush(data: string): boolean {
+	const syncStart = data.lastIndexOf(DEC_SYNC_START);
+	if (syncStart !== -1 && syncStart > data.lastIndexOf(DEC_SYNC_END)) return true;
+	return CSI_ERASE_RE.test(data);
+}
 
 export type PtySessionType = "task" | "project";
 
@@ -193,6 +212,10 @@ interface PtySession {
 	pendingData: string;
 	/** Timer handle for the batch flush interval. */
 	batchTimer: ReturnType<typeof setTimeout> | null;
+	/** Start timestamp (ms) of an active redraw-coalescing debounce burst. */
+	batchStartedAt?: number;
+	/** True while the current batchTimer is a short trailing debounce for a redraw chunk. */
+	coalescingRedraw?: boolean;
 	/** Timer handle for the deferred post-spawn configureTmux() call.
 	 *  Cleared on destroy so a torn-down session never sources its tmux
 	 *  config 200ms later (also prevents stale spawns leaking across tests). */
@@ -1864,6 +1887,8 @@ function flushPendingData(session: PtySession): void {
 		clearTimeout(session.batchTimer);
 		session.batchTimer = null;
 	}
+	session.batchStartedAt = undefined;
+	session.coalescingRedraw = false;
 	if (!session.pendingData) return;
 	if (session.backend !== "native") {
 		if (session.clients.size === 0) return;
@@ -1939,12 +1964,33 @@ function bufferedBytesFor(session: PtySession): number {
 function enqueuePtyData(session: PtySession, data: string): void {
 	session.pendingData += data;
 	if (session.batchTimer) {
-		// A window is already open, so these bytes really are held until it closes.
 		noteQueued(session.registryKey, session.pendingData.length);
+		if (!session.coalescingRedraw) return;
+		// Extend the short redraw-coalescing debounce until the burst settles,
+		// bounded by PTY_BATCH_INTERVAL_MS so continuous output never starves.
+		const now = Date.now();
+		const remaining = PTY_BATCH_INTERVAL_MS - (now - (session.batchStartedAt ?? now));
+		if (remaining <= 0) {
+			flushPendingData(session);
+			return;
+		}
+		clearTimeout(session.batchTimer);
+		const delay = Math.min(PTY_REDRAW_COALESCE_MS, remaining);
+		noteWindow(session.registryKey, 0, delay);
+		session.batchTimer = setTimeout(() => flushPendingData(session), delay);
 		return;
 	}
 
 	const buffered = bufferedBytesFor(session);
+	if (!isBackedUp(buffered) && shouldDeferLeadingEdgeFlush(session.pendingData)) {
+		session.batchStartedAt = Date.now();
+		session.coalescingRedraw = true;
+		noteQueued(session.registryKey, session.pendingData.length);
+		noteWindow(session.registryKey, buffered, PTY_REDRAW_COALESCE_MS);
+		session.batchTimer = setTimeout(() => flushPendingData(session), PTY_REDRAW_COALESCE_MS);
+		return;
+	}
+
 	if (!isBackedUp(buffered)) flushPendingData(session);
 	// What the flush LEFT: nothing on the happy path, everything while the socket is
 	// backed up — which is the backlog this gauge exists to show. Sampling before the
