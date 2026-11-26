@@ -8,6 +8,7 @@ vi.mock("../pty-server", () => ({
 	tmuxSessionExists: vi.fn(async () => true),
 	splitAndRunCommand: vi.fn(async () => "%2"),
 	getPtyPort: vi.fn(() => 9999),
+	installPaneExitedHooks: vi.fn(async () => {}),
 }));
 vi.mock("../agents", () => ({
 	isClaudeCommand: vi.fn((cmd: string) => cmd === "claude"),
@@ -272,6 +273,10 @@ describe("resume of an extra pane opened with --window", () => {
 		expect(openTaskPaneInNamedWindow).toHaveBeenCalledTimes(1);
 		expect(openTaskPaneInNamedWindow).toHaveBeenCalledWith(expect.objectContaining({ windowName: "Agents", cwd: "/wt", tmuxCommand: expect.stringMatching(/^bash ".*resume-pane-1\.sh"$/) }));
 		expect(pty.splitAndRunCommand).toHaveBeenCalledTimes(1);
+		// The surviving session may not have been reattached since a restart: hooks first, once.
+		expect(pty.installPaneExitedHooks).toHaveBeenCalledTimes(1);
+		expect(pty.installPaneExitedHooks).toHaveBeenCalledWith("dev3-t1", expect.any(String));
+		expect(vi.mocked(pty.installPaneExitedHooks).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(openTaskPaneInNamedWindow).mock.invocationCallOrder[0]);
 		const saved = vi.mocked(data.updateTask).mock.calls.find((call) => "sessionState" in call[2])![2].sessionState!.panes;
 		expect(saved[1]).toMatchObject({ paneId: "%30", window: "Agents" });
 		expect(saved[2]).toMatchObject({ paneId: "%2" });

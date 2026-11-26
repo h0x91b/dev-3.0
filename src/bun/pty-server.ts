@@ -1065,11 +1065,9 @@ function paneExitedHookCommand(tmuxSessionName: string): string {
 }
 
 /**
- * Give EVERY window of a session the pane-exited hook. It is a window hook (-w), and when a
- * window's last pane exits tmux resolves it from the CURRENT window, so one unhooked tab
- * silences it. The session's `window-linked` fires for every window that appears (new-window
- * incl. ⌃B c, "+" and `-d`; break-pane ⌃B !; link/move) and its `-w` targets that window;
- * windows that already exist are hooked here. The text is stored as-is: set-hook never expands it.
+ * Give EVERY window of a session the pane-exited hook: tmux resolves it from the CURRENT window,
+ * so one unhooked tab silences it. `window-linked` covers windows that appear later (any command);
+ * the loop covers those that exist. The text is stored as-is: set-hook never expands it.
  */
 export async function installPaneExitedHooks(tmuxSessionName: string, socket: string): Promise<void> {
 	const command = paneExitedHookCommand(tmuxSessionName);

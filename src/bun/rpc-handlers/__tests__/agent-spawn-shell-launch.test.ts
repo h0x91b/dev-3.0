@@ -116,6 +116,7 @@ vi.mock("../shared-pure", async (importOriginal) => ({
 }));
 
 import { tmuxPtyHandlers } from "../tmux-pty";
+import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 
 const TASK_ID = "abcdef12-0000-0000-0000-000000000002";
 const PROJECT = { id: "proj-1", name: "p", path: "/repo" } as any;
@@ -235,6 +236,7 @@ describe("spawnAgentInTask --window", () => {
 	});
 
 	it("refreshes the session's pane-exited hooks before it opens a window, and not for a plain split", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 		const order: string[] = [];
 		mocks.installPaneExitedHooks.mockImplementation(async () => { order.push("hooks"); });
 		mocks.openTaskPaneInNamedWindow.mockImplementation(async () => { order.push("window"); return { backend: "tmux", paneId: "%50" }; });
@@ -245,6 +247,13 @@ describe("spawnAgentInTask --window", () => {
 		mocks.installPaneExitedHooks.mockClear();
 		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%51" });
 		await tmuxPtyHandlers.spawnAgentInTask(base);
+		expect(mocks.installPaneExitedHooks).not.toHaveBeenCalled();
+	});
+
+	it("leaves the hooks alone on a native task, which has no tmux windows", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("native");
+		mocks.openTaskPaneInNamedWindow.mockResolvedValue({ backend: "tmux", paneId: "%50" });
+		await tmuxPtyHandlers.spawnAgentInTask({ ...base, window: "Agents" });
 		expect(mocks.installPaneExitedHooks).not.toHaveBeenCalled();
 	});
 

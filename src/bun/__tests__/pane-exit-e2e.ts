@@ -16,12 +16,17 @@ import { tmpdir } from "node:os";
 import type { Project, Task, PaneSessionEntry } from "../../shared/types";
 import * as pty from "../pty-server";
 import { launchTaskPty, routePaneExited } from "../rpc-handlers/tmux-pty";
-import { refreshTaskSessionHooks } from "../refresh-task-session-hooks";
 // Leaf import, not the tmux barrel: this script runs under a preload that mocks
 // whole modules, and the barrel pulls in far more than the unlink helper.
 import { removeTmuxSocketFile } from "../tmux/socket-files";
 
 // ── Config ──────────────────────────────────────────────────────────
+
+// The hooks this run installs must never touch the user's real tmux server (`-L dev3`).
+if (!process.env.TMUX_TMPDIR || process.env.TMUX_TMPDIR !== process.env.DEV3_TEST_SOCKET_ROOT) {
+	console.error(`FAIL: TMUX_TMPDIR must be the isolated socket root, got ${JSON.stringify(process.env.TMUX_TMPDIR)} — run through \`bun run test:pane-e2e\``);
+	process.exit(1);
+}
 
 const TEST_SOCKET = `dev3-e2e-${process.pid}`;
 const TASK_ID = `e2e-${Date.now()}-0000-0000-000000000000`;
@@ -117,7 +122,7 @@ pty.setOnPaneExited((taskId, paneId) => {
 
 async function main() {
 	console.log("=== pane-exit reconciliation e2e (real launchTaskPty) ===");
-	console.log(`socket=${TEST_SOCKET} task=${TASK_ID.slice(0, 8)}`);
+	console.log(`socket=${TEST_SOCKET} task=${TASK_ID.slice(0, 8)} TMUX_TMPDIR=${process.env.TMUX_TMPDIR}`);
 
 	try {
 		// Launch with setup script — this is the REAL launchTaskPty code path
@@ -221,14 +226,14 @@ async function main() {
 		assert(hooksOf(activeWindowId(), "-w").includes("pane-exited"), "a window made by Ctrl+B ! should carry the pane-exited hook");
 		await expectAgentsExitCleansUp("Agents exits while a Ctrl+B ! window is current", agentB);
 
-		// A session that survived an app restart still points at the previous app's port.
+		// A session that survived an app restart still points at the previous app's port; the --window spawn refreshes it first.
 		const STALE = `run-shell "curl -s 'http://127.0.0.1:1/pane-exited?session=${session}&pane=#{hook_pane}' || true"`;
 		for (const row of tmuxOut(["list-windows", "-t", session, "-F", "#{window_id}"]).split("\n")) {
 			tmuxOut(["set-hook", "-w", "-t", row, "pane-exited", STALE]);
 		}
 		tmuxOut(["set-hook", "-t", session, "window-linked", `set-hook -w pane-exited "${STALE.replace(/["\\]/g, "\\$&")}"`]);
-		await refreshTaskSessionHooks();
-		assert(!hooksOf(activeWindowId(), "-w").includes("127.0.0.1:1/"), "startup should re-point an existing window at this app");
+		await pty.installPaneExitedHooks(session, TEST_SOCKET);
+		assert(!hooksOf(activeWindowId(), "-w").includes("127.0.0.1:1/"), "the spawn preflight should re-point an existing window at this app");
 		await expectAgentsExitCleansUp("Agents exits in a window opened after a restart", newWindow("Agents", "bash -c 'sleep 3'"));
 
 		console.log("\nPASS — surviving main pane kept, exited Agents-window entries removed");

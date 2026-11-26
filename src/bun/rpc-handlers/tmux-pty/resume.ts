@@ -542,6 +542,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					const wrappedCmd = `bash "${scriptPath}"`;
 					let newPaneId: string | null;
 					if (pane.window) {
+						// A surviving session may not have been reattached since the app restarted.
+						await pty.installPaneExitedHooks(taskSessionName(params.taskId), socket);
 						const launch = { task, placement: "right" as const, size: "", cwd: task.worktreePath, socket, tmuxCommand: wrappedCmd, nativeLaunch: generatedScriptLaunch(scriptPath) };
 						newPaneId = (await openTaskPaneInNamedWindow({ ...launch, windowName: pane.window })).paneId || null;
 					} else {

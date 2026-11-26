@@ -15,6 +15,7 @@ import { assertLaunchAgentsInstalled } from "../../agent-launch-availability";
 import { ensureArtifactTemplateEnv } from "../../artifact-template";
 import { markAgentPane } from "../../agent-prompt";
 import { dev3TaskTempPath } from "../../temp-paths";
+import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 import { listNativeTaskAgents, writeNativeAgentAttribution } from "../../native-agent-attribution";
 import type { NativeTaskAgent } from "../../../shared/types/task-lifecycle";
 import { type AgentPromptDelivery } from "../../../shared/agent-prompt-delivery";
@@ -186,7 +187,7 @@ export async function spawnAgentInTask(params: {
 	let handle: AuxPaneHandle;
 	try {
 		// The CLI can reach a surviving session before startup refreshed its hooks (the socket opens first).
-		if (params.window) await pty.installPaneExitedHooks(pty.getSessionTmuxName(task.id), socket);
+		if (params.window && taskTerminalBackendIdentity(task) === "tmux") await pty.installPaneExitedHooks(pty.getSessionTmuxName(task.id), socket);
 		const launch = {
 			task,
 			placement: "right" as const,

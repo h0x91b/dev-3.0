@@ -3,6 +3,8 @@ import type { PaneSessionEntry } from "../../shared/types";
 import { cleanupTestIsolation, configureTestIsolation } from "../../../test-isolation";
 
 const testRoot = configureTestIsolation("pane-e2e");
+// Every tmux call of this run, incl. `-L dev3` and the attached python client, must hit a private server.
+process.env.TMUX_TMPDIR = process.env.DEV3_TEST_SOCKET_ROOT;
 process.once("exit", () => cleanupTestIsolation(testRoot));
 
 mock.module("electrobun/bun", () => ({
