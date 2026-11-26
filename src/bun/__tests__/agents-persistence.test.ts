@@ -14,7 +14,7 @@ vi.mock("../settings", () => ({
 	saveSettings: vi.fn(async () => undefined),
 }));
 
-import { getAllAgents } from "../agents";
+import { getAllAgents, saveAllAgents } from "../agents";
 
 beforeEach(() => {
 	rmSync(TEST_HOME, { recursive: true, force: true });
@@ -26,6 +26,42 @@ afterEach(() => {
 });
 
 describe("getAllAgents persistence", () => {
+	it("round-trips the OpenCode protocol on the agent, shared by all presets", async () => {
+		const opencode = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-opencode")!;
+		const agents: CodingAgent[] = [{
+			...opencode,
+			opencodeProtocol: "v2",
+			configurations: [
+				{ id: "preset-one", name: "Preset one" },
+				{ id: "preset-two", name: "Preset two" },
+			],
+		}];
+
+		await saveAllAgents(agents);
+		const loaded = await getAllAgents();
+		const persisted = JSON.parse(readFileSync(AGENTS_FILE, "utf8")) as CodingAgent[];
+		const loadedAgent = loaded.find((agent) => agent.id === opencode.id)!;
+		const persistedAgent = persisted.find((agent) => agent.id === opencode.id)!;
+
+		expect(loadedAgent.opencodeProtocol).toBe("v2");
+		expect(persistedAgent.opencodeProtocol).toBe("v2");
+		expect(loadedAgent.configurations.every((config) => !("opencodeProtocol" in config))).toBe(true);
+		expect(persistedAgent.configurations.every((config) => !("opencodeProtocol" in config))).toBe(true);
+	});
+
+	it("keeps an absent agent protocol as implicit V1", async () => {
+		const opencode = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-opencode")!;
+		await saveAllAgents([{ ...opencode, configurations: [{ id: "preset", name: "Legacy" }] }]);
+
+		const loaded = await getAllAgents();
+		const persisted = JSON.parse(readFileSync(AGENTS_FILE, "utf8")) as CodingAgent[];
+		const loadedAgent = loaded.find((agent) => agent.id === opencode.id)!;
+		const persistedAgent = persisted.find((agent) => agent.id === opencode.id)!;
+
+		expect(loadedAgent.opencodeProtocol).toBeUndefined();
+		expect(persistedAgent).not.toHaveProperty("opencodeProtocol");
+	});
+
 	it("persists deprecated preset cleanup even when the layout revision is current", async () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const stored: CodingAgent[] = [{

@@ -1,4 +1,6 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { stopAllOpenCodeServers } from "./opencode-server";
+import { createVerifiedQuitGate } from "./verified-quit";
 import { probeDevServer, resolveMainViewUrl } from "./main-view-url";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
@@ -500,10 +502,9 @@ function failDesktopLaunch(timeoutMs: number): void {
 	// Synchronous, because hardExit() below skips any buffered flush.
 	try { writeSync(2, `${diagnostic}\n`); } catch { /* stderr is closed — the log file still has it */ }
 	markQuitConfirmed();
-	try { runGlobalQuitCleanup(); } catch (err) { log.warn("Cleanup during failed launch failed", { error: String(err) }); }
-	// Async only because the OS-level exit needs a dynamic bun:ffi import; it
-	// never returns, so there is nothing to await.
-	void hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
+	void runGlobalQuitCleanup()
+		.then(() => hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE))
+		.catch((err) => log.error("Failed launch is staying alive because OpenCode process termination was not confirmed", { error: String(err) }));
 }
 
 async function openMainWindow(restore?: WindowState, background = false) {
@@ -832,8 +833,10 @@ setOnPaneExited((taskId, paneId) => {
 	});
 });
 
-function runGlobalQuitCleanup(): void {
+async function runGlobalQuitCleanup(): Promise<void> {
 	log.info("App is quitting, running global cleanup");
+	// Keep the live app intact if a managed OpenCode server cannot be confirmed stopped.
+	await stopAllOpenCodeServers();
 	stopFreezeDiagnostics();
 	stopAgentMessageLogWatches();
 	stopBoardCopy();
@@ -864,6 +867,25 @@ function runGlobalQuitCleanup(): void {
 // SIGINT/SIGTERM handlers call Utils.quit().
 installSignalQuitConfirmation();
 
+const verifiedQuitGate = createVerifiedQuitGate({
+	cleanup: runGlobalQuitCleanup,
+	retryQuit: () => Utils.quit(),
+	onFailure: (error) => {
+		log.error("App quit cancelled because OpenCode servers could not be confirmed stopped", { error: String(error) });
+		getPushMessage()?.("cliToast", {
+			taskId: null,
+			projectId: null,
+			message: "OpenCode shutdown could not be verified. The app remains open; check the logs and try quitting again.",
+			level: "error",
+		});
+		try {
+			Utils.showNotification({ title: "dev-3.0 shutdown blocked", body: "OpenCode shutdown could not be verified. The app remains open." });
+		} catch (notificationError) {
+			log.warn("Could not show shutdown failure notification", { error: String(notificationError) });
+		}
+	},
+});
+
 // Single quit gate for EVERY quit trigger — Cmd+Q, menu Quit, closing the last
 // window (red X / Cmd+W), updater restart. Fires once per attempt.
 //
@@ -882,7 +904,7 @@ installSignalQuitConfirmation();
 // renderer and get lost.
 Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 	if (isQuitConfirmed()) {
-		runGlobalQuitCleanup();
+		verifiedQuitGate(e);
 		return;
 	}
 	let skip = false;
@@ -892,7 +914,7 @@ Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 		log.warn("Failed to read skipQuitDialog setting", { error: String(err) });
 	}
 	if (skip) {
-		runGlobalQuitCleanup();
+		verifiedQuitGate(e);
 		return;
 	}
 

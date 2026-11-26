@@ -1,4 +1,5 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { stopAllOpenCodeServers } from "./opencode-server";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
@@ -598,9 +599,22 @@ const SHUTDOWN_FLUSH_TIMEOUT_MS = 2_000;
 
 let shuttingDown = false;
 
+/** Exits only once every managed OpenCode server is verified gone; otherwise stays up and keeps owning them. */
+async function exitAfterOpenCodeShutdown(pending: Promise<unknown> = Promise.resolve()): Promise<void> {
+	try {
+		await Promise.all([pending, stopAllOpenCodeServers()]);
+		process.exit(0);
+	} catch (err) {
+		log.error("Headless shutdown remains open because OpenCode process termination was not confirmed", { error: String(err) });
+	}
+}
+
 function shutdown(signal: string): void {
-	// A second Ctrl-C while the last write is pending means "now".
-	if (shuttingDown) process.exit(0);
+	// A second Ctrl-C while the last write is pending means "now" (an unverified OpenCode server still holds the exit).
+	if (shuttingDown) {
+		void exitAfterOpenCodeShutdown();
+		return;
+	}
 	shuttingDown = true;
 	log.info(`Received ${signal}, shutting down`);
 	stopAgentMessageLogWatches();
@@ -620,8 +634,7 @@ function shutdown(signal: string): void {
 	accountLogins.closeAll();
 	stopTunnel();
 	// Give the focus tracker's last write a moment; never let a stuck disk hold the exit.
-	void Promise.race([focusFlushed, new Promise((resolve) => setTimeout(resolve, SHUTDOWN_FLUSH_TIMEOUT_MS))])
-		.finally(() => process.exit(0));
+	void exitAfterOpenCodeShutdown(Promise.race([focusFlushed, new Promise((resolve) => setTimeout(resolve, SHUTDOWN_FLUSH_TIMEOUT_MS))]).catch(() => {}));
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

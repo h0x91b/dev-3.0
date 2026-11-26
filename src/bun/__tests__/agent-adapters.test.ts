@@ -26,6 +26,7 @@ import {
 import { DEV3_AUTO_APPROVED_SUBCOMMANDS } from "../../shared/agent-hooks";
 import { AGY_SKILL_BODY, CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY } from "../../shared/agent-skill-content";
 import { DEFAULT_AGENTS, type AgentConfiguration } from "../../shared/types";
+import { buildOpenCodeLaunchSpec, buildOpenCodeTuiCommand, openCodeBinary, validateOpenCodeTuiArgs } from "../../shared/agent-adapters/opencode";
 
 // ---------------------------------------------------------------------------
 // Seam B — per-adapter contract tests. Each adapter is a PURE descriptor, so
@@ -376,6 +377,8 @@ describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
 		// OpenCode uses --prompt and ignores generic flags.
 		expect(launch("opencode", cfg({ model: "anthropic/claude-opus-4-6", permissionMode: "bypassPermissions", effort: "high" })))
 			.toBe("opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'");
+		// V2 refuses those root flags: model, agent and brief go through the session API instead.
+		expect(launch("opencode", cfg({ model: "anthropic/claude-opus-4-6" }), { opencodeProtocol: "v2" })).toBe("opencode");
 	});
 
 	it("Generic emits Claude-shaped flags but no body, and never resumes or pre-assigns a session id", () => {
@@ -383,6 +386,67 @@ describe("launchArgs — Gemini / Cursor / OpenCode / Generic", () => {
 			.toBe("aider --model sonnet --permission-mode plan --effort high --max-budget-usd 12 -- 'Fix the login bug'");
 		expect(launch("aider", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }))
 			.toBe("aider --model sonnet -- 'Fix the login bug'");
+	});
+});
+
+describe("OpenCode V2 launch specification", () => {
+	const ctx: TemplateContext = {
+		taskTitle: "Task",
+		taskDescription: "first line\nsecond 'line' $HOME",
+		projectName: "Project",
+		projectPath: "/repo",
+		worktreePath: "/repo/worktree",
+	};
+
+	it("keeps model variants and the complete initial prompt outside TUI argv", () => {
+		expect(buildOpenCodeLaunchSpec(cfg({ model: "anthropic/claude-opus-4-6#high" }), ctx, { protocolBody: "<DEV3>" })).toEqual({
+			model: { providerID: "anthropic", id: "claude-opus-4-6", variant: "high" },
+			prompt: "first line\nsecond 'line' $HOME\n\n<DEV3>",
+			additionalArgs: [],
+		});
+	});
+
+	it("sends the configured OpenCode agent through the V2 session, not root-TUI argv", () => {
+		expect(buildOpenCodeLaunchSpec(cfg({ additionalArgs: ["--agent", "sisyphus"] }), ctx)).toEqual({
+			agent: "sisyphus",
+			prompt: `first line\nsecond 'line' $HOME\n\n${GENERIC_SKILL_BODY}`,
+			additionalArgs: [],
+		});
+		expect(buildOpenCodeLaunchSpec(cfg({ additionalArgs: ["--agent=atlas", "--foo"] }), ctx).additionalArgs).toEqual(["--foo"]);
+		expect(buildOpenCodeLaunchSpec(cfg({ additionalArgs: ["--agent", "sisyphus"] }), ctx, { resume: true, sessionId: "ses_saved" })).toEqual({
+			sessionId: "ses_saved",
+			additionalArgs: [],
+		});
+		expect(() => buildOpenCodeLaunchSpec(cfg({ additionalArgs: ["--agent"] }), ctx)).toThrow("needs an agent ID");
+	});
+
+	it("omits an explicit variant without changing the model or replays on resume", () => {
+		expect(buildOpenCodeLaunchSpec(cfg({ model: "openai/gpt-5" }), ctx)).toEqual({
+			model: { providerID: "openai", id: "gpt-5" },
+			prompt: `first line\nsecond 'line' $HOME\n\n${GENERIC_SKILL_BODY}`,
+			additionalArgs: [],
+		});
+		expect(buildOpenCodeLaunchSpec(cfg({ model: "openai/gpt-5" }), ctx, { resume: true, sessionId: "ses_saved" })).toEqual({
+			sessionId: "ses_saved",
+			additionalArgs: [],
+		});
+		expect(() => buildOpenCodeLaunchSpec(cfg({ model: "openai/gpt-5" }), ctx, { resume: true }))
+			.toThrow("no saved session ID");
+	});
+
+	it("uses the full root TUI, shell-quotes its arguments and rejects reserved TUI flags", () => {
+		expect(buildOpenCodeTuiCommand("opencode", [], "http://127.0.0.1:49152", "ses_abc"))
+			.toBe("opencode --server 'http://127.0.0.1:49152' --session 'ses_abc'");
+		for (const args of [["--session", "ses_wrong"], ["--agent", "sisyphus"], ["--standalone=true"], ["--dir=/other"], ["--continue=true"], ["--server=http://other"]]) {
+			expect(() => validateOpenCodeTuiArgs(args), args.join(" ")).toThrow("cannot override the managed server");
+		}
+	});
+
+	it("accepts the custom agent's env-wrapped binary and rejects the obsolete mini subcommand", () => {
+		const binary = "/opt/opencode/bin/opencode";
+		expect(openCodeBinary(`env ${binary}`)).toBe(binary);
+		expect(() => openCodeBinary(`env ${binary} mini`)).toThrow("remove the `mini` subcommand");
+		expect(() => openCodeBinary("opencode mini")).toThrow("remove the `mini` subcommand");
 	});
 });
 

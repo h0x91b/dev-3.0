@@ -77,6 +77,7 @@ import {
 	AuxPaneUndecidableError,
 	closeAuxPane,
 	findAuxPane,
+	hasStablePaneIdentity,
 	nativeAuxPaneShellPid,
 	openAuxPane,
 	openTaskPaneWindow,
@@ -94,6 +95,16 @@ const nativeTask = { id: TASK_ID, seq: 1383, terminalBackend: "native" } as unkn
 const tmuxTask = { id: TASK_ID, seq: 1383 } as unknown as Task;
 
 const DEV_MARKER = auxPaneMarker(TASK_ID, "devServer");
+
+describe("stable auxiliary pane identity", () => {
+	it("requires tmux IDs to be pane tokens and native IDs to be nonempty", () => {
+		expect(hasStablePaneIdentity({ backend: "tmux", paneId: "%12" })).toBe(true);
+		expect(hasStablePaneIdentity({ backend: "tmux", paneId: "" })).toBe(false);
+		expect(hasStablePaneIdentity({ backend: "tmux", paneId: "main" })).toBe(false);
+		expect(hasStablePaneIdentity({ backend: "native", paneId: "pane-12" })).toBe(true);
+		expect(hasStablePaneIdentity({ backend: "native", paneId: " " })).toBe(false);
+	});
+});
 
 function spec(task: Task, overrides: Partial<Parameters<typeof openAuxPane>[0]> = {}) {
 	return {

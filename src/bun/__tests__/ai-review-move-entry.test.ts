@@ -22,6 +22,11 @@ const mocks = vi.hoisted(() => ({
 	resolveProjectEnv: vi.fn(async () => ({})),
 	resolveOperationalProjectConfig: vi.fn(async () => ({ devScript: "", portCount: 0, env: {} })),
 	resolveCommandForAgent: vi.fn(),
+	prepareOpenCodeLaunch: vi.fn(),
+	startOpenCodePrompt: vi.fn(),
+	stopOpenCodeServer: vi.fn(),
+	writeOpenCodeLaunchScript: vi.fn(),
+	writeNativeAgentAttribution: vi.fn(),
 	setupAgentHooks: vi.fn(async () => ""),
 	// native pane runtime
 	nativeTaskPanesState: vi.fn(),
@@ -104,6 +109,16 @@ vi.mock("../rpc-handlers/settings-config", () => ({
 	resolveOperationalProjectConfig: mocks.resolveOperationalProjectConfig,
 }));
 vi.mock("../agents", () => ({ resolveCommandForAgent: mocks.resolveCommandForAgent }));
+vi.mock("../opencode-server", () => ({
+	prepareOpenCodeLaunch: mocks.prepareOpenCodeLaunch,
+	startOpenCodePrompt: mocks.startOpenCodePrompt,
+	stopOpenCodeServer: mocks.stopOpenCodeServer,
+	writeOpenCodeLaunchScript: mocks.writeOpenCodeLaunchScript,
+}));
+vi.mock("../native-agent-attribution", () => ({
+	listNativeTaskAgents: vi.fn(async () => []),
+	writeNativeAgentAttribution: mocks.writeNativeAgentAttribution,
+}));
 vi.mock("../agent-hooks", () => ({ setupAgentHooks: mocks.setupAgentHooks }));
 vi.mock("../artifact-template", () => ({ ensureArtifactTemplateEnv: () => ({}) }));
 vi.mock("../native-task-panes", () => ({
@@ -206,6 +221,11 @@ beforeEach(async () => {
 		extraEnv: {},
 	} as never);
 	mocks.setupAgentHooks.mockResolvedValue("" as never);
+	mocks.prepareOpenCodeLaunch.mockResolvedValue({ command: "opencode --server http://127.0.0.1 --session ses_column", sessionId: "ses_column", passwordEnv: { OPENCODE_PASSWORD: "private", OPENCODE_SERVER_PASSWORD: "private" } });
+	mocks.startOpenCodePrompt.mockResolvedValue(undefined);
+	mocks.stopOpenCodeServer.mockResolvedValue(undefined);
+	mocks.writeOpenCodeLaunchScript.mockResolvedValue(undefined);
+	mocks.writeNativeAgentAttribution.mockResolvedValue(undefined);
 	mocks.nativeTaskPanesState.mockResolvedValue(paneSet(["pane-1"]));
 	mocks.nativeTaskPaneCommands.mockResolvedValue([]);
 	mocks.splitNativeTaskPane.mockResolvedValue({ paneId: "pane-2", state: paneSet(["pane-1", "pane-2"]) });
@@ -230,6 +250,50 @@ describe("moveTask → AI Review on a native task", () => {
 		expect(viewSpec.background).toBe(true);
 		expect(mocks.focusNativeTaskPane).not.toHaveBeenCalled();
 		for (const call of ALL_TMUX_CALLS) expect(call).not.toHaveBeenCalled();
+	});
+
+	it("prepares and owns a V2 OpenCode column-agent session before submitting its review prompt", async () => {
+		trackTask(nativeTask());
+		mocks.resolveCommandForAgent.mockResolvedValue({
+			command: "opencode",
+			agent: { id: "builtin-opencode", name: "OpenCode", baseCommand: "opencode", configurations: [], defaultConfigId: "v2", opencodeProtocol: "v2" },
+			config: { id: "v2" },
+			extraEnv: {},
+			openCodeLaunch: { prompt: "review this branch", additionalArgs: [] },
+		} as never);
+
+		const moved = await moveTask({ taskId: TASK_ID, projectId: PROJECT.id, newStatus: "review-by-ai" });
+
+		expect(moved.status).toBe("review-by-ai");
+		expect(mocks.prepareOpenCodeLaunch).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: TASK_ID,
+			spec: { prompt: "review this branch", additionalArgs: [] },
+		}));
+		expect(mocks.writeNativeAgentAttribution).toHaveBeenCalledWith(
+			dev3TaskTempPath(TASK_ID, "col-agent.sh"),
+			expect.objectContaining({ sessionId: "ses_column" }),
+			{ required: true },
+		);
+		expect(mocks.startOpenCodePrompt).toHaveBeenCalledWith(TASK_ID, "ses_column", "review this branch");
+		expect(mocks.splitNativeTaskPane).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects a V2 column-agent pane without a stable native identity", async () => {
+		trackTask(nativeTask());
+		mocks.resolveCommandForAgent.mockResolvedValue({
+			command: "opencode",
+			agent: { id: "builtin-opencode", name: "OpenCode", baseCommand: "opencode", configurations: [], defaultConfigId: "v2", opencodeProtocol: "v2" },
+			config: { id: "v2" },
+			extraEnv: {},
+			openCodeLaunch: { prompt: "review this branch", additionalArgs: [] },
+		} as never);
+		mocks.splitNativeTaskPane.mockResolvedValue({ paneId: "", state: paneSet(["pane-1", ""]) });
+
+		const moved = await moveTask({ taskId: TASK_ID, projectId: PROJECT.id, newStatus: "review-by-ai" });
+
+		expect(moved.status).toBe("review-by-user");
+		expect(mocks.startOpenCodePrompt).not.toHaveBeenCalled();
+		expect(mocks.stopOpenCodeServer).toHaveBeenCalledWith(TASK_ID, "ses_column");
 	});
 
 	it("replaces a review pane a previous activation owns, so a second move yields one agent", async () => {

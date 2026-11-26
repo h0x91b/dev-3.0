@@ -19,9 +19,10 @@ import { focusNativeTaskPane, nativeTaskPaneLayout, nativeTaskPanesState, setNat
 import { setSplitRatio, splitCreatedBySplitting } from "../../../shared/split-tree";
 import { deliverAgentPrompt } from "../../agent-prompt-delivery";
 import { agentPromptMayHaveLanded, type AgentPromptDelivery } from "../../../shared/agent-prompt-delivery";
-import { closeTaskPane, splitTaskPane, type AuxPaneHandle, type AuxPanePlacement } from "../../task-aux-panes";
+import { closeTaskPane, hasStablePaneIdentity, splitTaskPane, type AuxPaneHandle, type AuxPanePlacement } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildCmdScript, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, ensureAgentTrust, handlePaneExited, notifyBedrockProfileMissing } from "./task-launch";
+import { applyAgentHooksToCommand, discardOpenCodePane, ensureAgentTrust, handlePaneExited, notifyBedrockProfileMissing, openCodeServerEnv } from "./task-launch";
+import { prepareOpenCodeLaunch, startOpenCodePrompt, writeOpenCodeLaunchScript } from "../../opencode-server";
 
 /** How long the hunter agents get to boot before their prompt is typed in. */
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
@@ -112,6 +113,8 @@ async function spawnSingleBugHunterPane(opts: {
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedAgentFamily: AgentFamily | undefined;
+	let openCodeLaunch: agents.ResolvedAgentCommand["openCodeLaunch"];
+	let openCodeSessionId: string | null = null;
 	let launchedAgentId = opts.agentId;
 	let launchedConfigId = opts.configId;
 	if (opts.agentId) {
@@ -120,6 +123,7 @@ async function spawnSingleBugHunterPane(opts: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
+		openCodeLaunch = resolved.openCodeLaunch;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		if (resolved.projectLoginKept) launchAccountId = undefined;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
@@ -138,6 +142,7 @@ async function spawnSingleBugHunterPane(opts: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
+		openCodeLaunch = resolved.openCodeLaunch;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		if (resolved.projectLoginKept) launchAccountId = undefined;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
@@ -168,54 +173,74 @@ async function spawnSingleBugHunterPane(opts: {
 		opts.task.id,
 		generatedScriptName(`bughunt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
 	);
-	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
-
-	const handle = await splitTaskPane({
-		task: opts.task,
-		placement: opts.split.placement,
-		size: opts.split.size,
-		cwd: opts.worktreePath,
-		socket: opts.socket,
-		tmuxTarget: opts.split.tmuxTarget,
-		nativeAnchor: opts.split.nativeAnchor,
-		tmuxCommand: `bash "${scriptPath}"`,
-		nativeLaunch: generatedScriptLaunch(scriptPath),
-		focus: true,
-	});
-
-	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`
-	// reconcile it against live tmux panes. A native pane is owned by the
-	// coordinator record instead, so writing it here would leave a permanent
-	// phantom entry that no tmux pane can ever match.
-	if (handle.backend === "tmux") {
-		const paneEntry = {
-			paneId: handle.paneId,
-			agentCmd: resolvedBaseCmd,
-			sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,
-			agentId: launchedAgentId,
-			configId: launchedConfigId,
-			accountId: launchAccountId,
-			agentFamily: resolvedAgentFamily,
-			hunter: true,
-		};
-		try {
-			const freshTask = await data.getTask(opts.project, opts.task.id);
-			const existingPanes = freshTask.sessionState?.panes ?? [];
-			const updated = await data.updateTask(opts.project, opts.task.id, {
-				sessionState: { panes: [...existingPanes, paneEntry] },
-			});
-			getPushMessage()?.("taskUpdated", { projectId: opts.project.id, task: updated });
-		} catch (err) {
-			log.error("Failed to append bug hunter pane to sessionState (non-fatal)", { error: String(err) });
+	let handle: AuxPaneHandle | undefined;
+	try {
+		if (openCodeLaunch) {
+			const prepared = await prepareOpenCodeLaunch({ taskId: opts.task.id, baseCommand: resolvedBaseCmd, cwd: opts.worktreePath, env: openCodeServerEnv(opts.project, opts.task, opts.worktreePath, env), spec: openCodeLaunch });
+			tmuxCmd = prepared.command;
+			Object.assign(env, prepared.passwordEnv);
+			openCodeSessionId = prepared.sessionId;
+			await writeOpenCodeLaunchScript(opts.task.id, openCodeSessionId, scriptPath, buildCmdScript(tmuxCmd, env));
+		} else {
+			await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
 		}
-	} else {
-		await writeNativeAgentAttribution(scriptPath, {
-			agentCmd: resolvedBaseCmd,
-			agentId: launchedAgentId,
-			configId: launchedConfigId,
-			accountId: launchAccountId,
-			agentFamily: resolvedAgentFamily,
+
+		handle = await splitTaskPane({
+			task: opts.task,
+			placement: opts.split.placement,
+			size: opts.split.size,
+			cwd: opts.worktreePath,
+			socket: opts.socket,
+			tmuxTarget: opts.split.tmuxTarget,
+			nativeAnchor: opts.split.nativeAnchor,
+			tmuxCommand: `bash "${scriptPath}"`,
+			nativeLaunch: generatedScriptLaunch(scriptPath),
+			focus: true,
 		});
+		// A V2 pane must be findable by its id, or closing it could not stop its server.
+		if (openCodeSessionId && !hasStablePaneIdentity(handle)) throw new Error("OpenCode bug-hunter session has no stable pane identity.");
+
+		// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`
+		// reconcile it against live tmux panes. A native pane is owned by the
+		// coordinator record instead, so writing it here would leave a permanent
+		// phantom entry that no tmux pane can ever match.
+		if (handle.backend === "tmux") {
+			const paneEntry = {
+				paneId: handle.paneId,
+				agentCmd: resolvedBaseCmd,
+				sessionId: openCodeSessionId ?? (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null),
+				agentId: launchedAgentId,
+				configId: launchedConfigId,
+				accountId: launchAccountId,
+				agentFamily: resolvedAgentFamily,
+				hunter: true,
+			};
+			try {
+				const freshTask = await data.getTask(opts.project, opts.task.id);
+				const existingPanes = freshTask.sessionState?.panes ?? [];
+				const updated = await data.updateTask(opts.project, opts.task.id, {
+					sessionState: { panes: [...existingPanes, paneEntry] },
+				});
+				getPushMessage()?.("taskUpdated", { projectId: opts.project.id, task: updated });
+			} catch (err) {
+				// An unregistered V2 pane would keep a server nobody can stop: undo it instead.
+				if (openCodeSessionId) throw err;
+				log.error("Failed to append bug hunter pane to sessionState (non-fatal)", { error: String(err) });
+			}
+		} else {
+			await writeNativeAgentAttribution(scriptPath, {
+				agentCmd: resolvedBaseCmd,
+				...(openCodeSessionId ? { sessionId: openCodeSessionId } : {}),
+				agentId: launchedAgentId,
+				configId: launchedConfigId,
+				accountId: launchAccountId,
+				agentFamily: resolvedAgentFamily,
+			}, { required: !!openCodeSessionId });
+		}
+		if (openCodeSessionId && openCodeLaunch?.prompt) await startOpenCodePrompt(opts.task.id, openCodeSessionId, openCodeLaunch.prompt);
+	} catch (error) {
+		if (openCodeSessionId) await discardOpenCodePane(opts.task, handle, opts.socket, openCodeSessionId);
+		throw error;
 	}
 
 	return { handle, baseCmd: resolvedBaseCmd, agentFamily: resolvedAgentFamily };

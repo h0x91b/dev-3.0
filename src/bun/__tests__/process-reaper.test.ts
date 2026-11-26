@@ -129,6 +129,20 @@ describe("terminatePidsVerified", () => {
 		expect(leftovers).toEqual([40]);
 	});
 
+	it("treats a permission error as a live pid, so termination is never reported as verified", async () => {
+		const signals: NodeJS.Signals[] = [];
+		const deps: ReaperDeps = {
+			kill(_pid, signal): void {
+				if (signal !== 0) signals.push(signal);
+				throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+			},
+			sleep: async () => {},
+		};
+		const leftovers = await terminatePidsVerified([77], { termGraceMs: 1, killWaitMs: 1, pollMs: 1 }, deps);
+		expect(leftovers).toEqual([77]);
+		expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+	});
+
 	it("verifies death before returning — SIGKILL that lands slowly is still waited for", async () => {
 		const deps = makeFakeDeps(new Map([
 			[50, { dieAfterTermMs: Infinity, dieAfterKillMs: 250 }],

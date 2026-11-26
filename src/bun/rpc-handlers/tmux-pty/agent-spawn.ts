@@ -20,11 +20,12 @@ import type { NativeTaskAgent } from "../../../shared/types/task-lifecycle";
 import { type AgentPromptDelivery } from "../../../shared/agent-prompt-delivery";
 import { handoffPrompt, prepareTaskHandoff, previewTaskHandoff } from "../../conversation-handoff";
 import type { HandoffPreview, SpawnAgentResult } from "../../../shared/conversation-handoff-model";
-import { splitTaskPane, AuxPaneUnavailableError, type AuxPaneHandle } from "../../task-aux-panes";
+import { hasStablePaneIdentity, splitTaskPane, AuxPaneUnavailableError, type AuxPaneHandle } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildCmdScript, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, applyModelVersionNotice, ensureAgentTrust, notifyBedrockProfileMissing } from "./task-launch";
+import { applyAgentHooksToCommand, applyModelVersionNotice, discardOpenCodePane, ensureAgentTrust, notifyBedrockProfileMissing, openCodeServerEnv } from "./task-launch";
 import { rootProjectFor } from "../../ops-worktree";
 import { rememberVariantBedrockProfile } from "../../bedrock-profile-pref";
+import { prepareOpenCodeLaunch, startOpenCodePrompt, writeOpenCodeLaunchScript } from "../../opencode-server";
 
 export async function spawnAgentInTask(params: {
 	prompt?: string;
@@ -83,6 +84,8 @@ export async function spawnAgentInTask(params: {
 	let resolvedBaseCmd = "";
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let resolvedLaunchModel: string | undefined;
+	let openCodeLaunch: agents.ResolvedAgentCommand["openCodeLaunch"];
+	let openCodeSessionId: string | null = null;
 	let launchedAgentId = params.agentId;
 	let launchedConfigId = params.configId;
 
@@ -112,6 +115,7 @@ export async function spawnAgentInTask(params: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
+		openCodeLaunch = resolved.openCodeLaunch;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		if (resolved.projectLoginKept) launchAccountId = undefined;
 		projectLogin = !!resolved.projectLoginKept;
@@ -135,6 +139,7 @@ export async function spawnAgentInTask(params: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
+		openCodeLaunch = resolved.openCodeLaunch;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		if (resolved.projectLoginKept) launchAccountId = undefined;
 		projectLogin = !!resolved.projectLoginKept;
@@ -170,8 +175,6 @@ export async function spawnAgentInTask(params: {
 	}
 
 	const scriptPath = dev3TaskTempPath(task.id, generatedScriptName(`spawn-${Date.now()}`));
-	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
-
 	const socket = pty.getSessionSocket(params.taskId);
 
 	// One extra pane in the task's own terminal, on whichever backend it runs. The
@@ -181,8 +184,17 @@ export async function spawnAgentInTask(params: {
 	// The bare primitive, NOT an auxiliary purpose: "+ Agent" is the user asking for
 	// one more agent beside whatever is already there, so several of these panes
 	// coexist by design, while a purpose owns at most one pane and replaces it.
-	let handle: AuxPaneHandle;
+	let handle: AuxPaneHandle | undefined;
 	try {
+		if (openCodeLaunch) {
+			const prepared = await prepareOpenCodeLaunch({ taskId: task.id, baseCommand: resolvedBaseCmd, cwd: task.worktreePath, env: openCodeServerEnv(project, task, task.worktreePath, env), spec: openCodeLaunch });
+			tmuxCmd = prepared.command;
+			Object.assign(env, prepared.passwordEnv);
+			openCodeSessionId = prepared.sessionId;
+			await writeOpenCodeLaunchScript(task.id, openCodeSessionId, scriptPath, buildCmdScript(tmuxCmd, env));
+		} else {
+			await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
+		}
 		handle = await splitTaskPane({
 			task,
 			placement: "right",
@@ -194,7 +206,10 @@ export async function spawnAgentInTask(params: {
 			nativeLaunch: generatedScriptLaunch(scriptPath),
 			focus: params.focus === true,
 		});
+		// A V2 pane must be findable by its id, or closing it could not stop its server.
+		if (openCodeSessionId && !hasStablePaneIdentity(handle)) throw new Error("OpenCode session could not be registered because the new pane has no stable identity.");
 	} catch (err) {
+		if (openCodeSessionId) await discardOpenCodePane(task, handle, socket, openCodeSessionId);
 		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });
 		throw new Error(
 			err instanceof AuxPaneUnavailableError
@@ -212,7 +227,7 @@ export async function spawnAgentInTask(params: {
 	const paneEntry = {
 		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
-		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,
+		sessionId: openCodeSessionId ?? (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null),
 		agentId: launchedAgentId,
 		configId: launchedConfigId,
 		accountId: launchAccountId,
@@ -220,24 +235,31 @@ export async function spawnAgentInTask(params: {
 		...(launchBedrockProfile !== undefined ? { bedrockProfile: launchBedrockProfile } : {}),
 		...(projectLogin ? { projectLogin: true } : {}),
 	};
-	if (handle.backend === "native") {
-		const { sessionId: _sessionId, paneId: _paneId, bedrockProfile: _bedrockProfile, projectLogin: _projectLogin, ...attribution } = paneEntry;
-		await writeNativeAgentAttribution(scriptPath, attribution);
-	}
 	const existingPanes = task.sessionState?.panes ?? [];
 	try {
+		if (handle.backend === "native") {
+			// A V2 session id rides along: it is how closing this pane finds its server.
+			const { sessionId, paneId: _paneId, bedrockProfile: _bedrockProfile, projectLogin: _projectLogin, ...attribution } = paneEntry;
+			await writeNativeAgentAttribution(scriptPath, openCodeSessionId ? { ...attribution, sessionId } : attribution, { required: !!openCodeSessionId });
+		}
 		const updated = await data.updateTask(project, task.id, {
 			agentId: launchedAgentId,
 			configId: launchedConfigId,
 			...(handle.backend === "tmux" ? { sessionState: { panes: [...existingPanes, paneEntry] } } : {}),
 		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		if (openCodeSessionId && openCodeLaunch?.prompt) await startOpenCodePrompt(task.id, openCodeSessionId, openCodeLaunch.prompt);
 		log.info("Recorded the spawned agent", {
 			taskId: params.taskId.slice(0, 8),
 			backend: handle.backend,
 			paneCount: handle.backend === "tmux" ? existingPanes.length + 1 : existingPanes.length,
 		});
 	} catch (err) {
+		// An unregistered V2 pane would keep a server nobody can stop: undo it instead.
+		if (openCodeSessionId) {
+			await discardOpenCodePane(task, handle, socket, openCodeSessionId);
+			throw new Error(`OpenCode session could not be registered to its pane; the pane was closed: ${String(err)}`);
+		}
 		log.error("Failed to append pane to sessionState (non-fatal)", { error: String(err) });
 	}
 

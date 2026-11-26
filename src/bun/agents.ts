@@ -55,6 +55,7 @@ import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
 import { autoAgentFamily, isKnownAgentCommand } from "../shared/agent-adapters/families";
 import type { AdapterLaunchOptions, CodexLaunchRuntime } from "../shared/agent-adapters/types";
 import type { TemplateContext } from "../shared/agent-adapters/template";
+import { buildOpenCodeLaunchSpec, type OpenCodeLaunchSpec } from "../shared/agent-adapters/opencode";
 
 // Re-exported for backward compat: these pure helpers now live in the shared
 // adapter layer (src/shared must not import src/bun), but many callers/tests
@@ -693,6 +694,15 @@ export async function resolveAgentCommand(
 	ctx: TemplateContext,
 	options?: CommandOptions,
 ): Promise<string> {
+	return (await resolveAgentCommandDetails(agent, config, ctx, options)).command;
+}
+
+export async function resolveAgentCommandDetails(
+	agent: CodingAgent,
+	config: AgentConfiguration | undefined,
+	ctx: TemplateContext,
+	options?: CommandOptions,
+): Promise<{ command: string; openCodeLaunch?: OpenCodeLaunchSpec }> {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
@@ -701,6 +711,7 @@ export async function resolveAgentCommand(
 		? { ...ctx, taskDescription: withSharedFolderNotice(ctx.taskDescription) }
 		: ctx;
 	const adapterOptions: AdapterLaunchOptions = {
+		opencodeProtocol: agent.opencodeProtocol,
 		resume: options?.resume,
 		sessionId: options?.sessionId,
 		skipSystemPrompt: options?.skipSystemPrompt,
@@ -731,7 +742,10 @@ export async function resolveAgentCommand(
 	// command line is about to be re-parsed by a wrapper script, so the binary is
 	// spelled as a command here rather than in six adapters.
 	const [binary, ...args] = adapter.launchArgs(baseCmd, config, launchCtx, adapterOptions);
-	return [commandToken(binary ?? baseCmd), ...args].join(" ");
+	const command = [commandToken(binary ?? baseCmd), ...args].join(" ");
+	return adapter.command === "opencode" && agent.opencodeProtocol === "v2"
+		? { command, openCodeLaunch: buildOpenCodeLaunchSpec(config, launchCtx, adapterOptions) }
+		: { command };
 }
 
 /** The worktree's realpath (`/tmp` → `/private/tmp`), or undefined when it cannot be resolved. */
@@ -1257,6 +1271,7 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	 *  model via env, since then the request never reaches the vendor endpoint
 	 *  whose version floor the gate knows about. */
 	launchModel: string | undefined;
+	openCodeLaunch?: OpenCodeLaunchSpec;
 	/** The account the launch really uses (default applied): a managed id, null
 	 *  for the system login, undefined when this harness has no account registry
 	 *  or the preset pins its own config dir. What a pane should record. */
@@ -1319,7 +1334,7 @@ export async function resolveCommandForAgent(
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 		baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
 	);
-	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
+	const commandResolution = await resolveAgentCommandDetails(agentWithPath, launchConfig, ctx, {
 		...routed.options,
 		leanProtocol: settings.leanAgentProtocol === true,
 		rateLimitTracking: settings.agentRateLimitTracking !== false,
@@ -1330,12 +1345,13 @@ export async function resolveCommandForAgent(
 	// record does not carry, and every caller needs the same answer to resume,
 	// trust and hook this launch exactly the way it was built.
 	return {
-		command,
+		command: commandResolution.command,
 		agent,
 		config,
 		extraEnv,
 		agentFamily: agentWithPath.agentFamily,
 		launchModel: nativeLaunchModel(launchConfig, providerOpts, routed.pinnedModel),
+		...(commandResolution.openCodeLaunch ? { openCodeLaunch: commandResolution.openCodeLaunch } : {}),
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
 		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
@@ -1490,18 +1506,19 @@ export async function resolveCommandForProject(
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 			baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
 		);
-		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
+		const commandResolution = await resolveAgentCommandDetails(agentWithPath, launchConfig, ctx, {
 		...routed.options,
 		leanProtocol: settings.leanAgentProtocol === true,
 		rateLimitTracking: settings.agentRateLimitTracking !== false,
 	});
 		return {
-			command,
+			command: commandResolution.command,
 			agent,
 			config,
 			extraEnv,
 			agentFamily: agentWithPath.agentFamily,
 			launchModel: nativeLaunchModel(launchConfig, providerOpts, routed.pinnedModel),
+			...(commandResolution.openCodeLaunch ? { openCodeLaunch: commandResolution.openCodeLaunch } : {}),
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
 			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),

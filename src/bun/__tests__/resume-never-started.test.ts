@@ -30,7 +30,18 @@ vi.mock("../agent-transcripts", () => ({
 vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../ops-worktree", () => ({ resolveLaunchProject: vi.fn(async (p: Project) => p), rootProjectFor: vi.fn((p: Project) => p) }));
-vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: { killSession: vi.fn() } }));
+const resumeOpenCode = vi.hoisted(() => ({
+	prepare: vi.fn(async () => ({ command: "opencode --server http://127.0.0.1 --session ses-extra", sessionId: "ses-extra", passwordEnv: { OPENCODE_PASSWORD: "private", OPENCODE_SERVER_PASSWORD: "private" } })),
+	stop: vi.fn(async () => undefined),
+	killPane: vi.fn(async () => undefined),
+}));
+vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: { killSession: vi.fn(), killPane: resumeOpenCode.killPane } }));
+vi.mock("../opencode-server", () => ({
+	prepareOpenCodeLaunch: resumeOpenCode.prepare,
+	stopOpenCodeServer: resumeOpenCode.stop,
+	stopOpenCodeServers: vi.fn(),
+	writeOpenCodeLaunchScript: vi.fn(async () => undefined),
+}));
 vi.mock("../temp-paths", () => ({ dev3TaskTempPath: (_id: string, name: string) => `/tmp/${name}` }));
 vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
 vi.mock("../native-task-panes", () => ({ nativeTaskPaneCommandsStrict: vi.fn(), nativeTaskPanesAlive: vi.fn(), stopNativeTaskPanes: vi.fn() }));
@@ -48,6 +59,7 @@ vi.mock("../rpc-handlers/tmux-pty/task-launch", () => ({
 	ensureAgentTrust: vi.fn(),
 	applyAgentHooksToCommand: vi.fn(async (_wt: string, _base: string, cmd: string) => cmd),
 	notifyStaleAccountDropped: vi.fn(),
+	openCodeServerEnv: vi.fn((_project: unknown, _task: unknown, _worktree: string, env: Record<string, string>) => env),
 }));
 vi.mock("../rpc-handlers/tmux-pty/task-state", () => ({
 	findTaskAcrossProjects: vi.fn(),
@@ -62,6 +74,7 @@ import { findTaskAcrossProjects } from "../rpc-handlers/tmux-pty/task-state";
 import { ResumeUnavailableError, resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
 import { resolveResumableSessionIds } from "../agent-transcripts";
 import * as pty from "../pty-server";
+import * as agents from "../agents";
 
 const project = { id: "p1", name: "P", path: "/repo" } as Project;
 const mainPane: PaneSessionEntry = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "c", sessionId: "never-created", accountId: "acct-old" };
@@ -83,6 +96,9 @@ const sessionStateWrites = () => vi.mocked(data.updateTask).mock.calls.filter(([
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+	resumeOpenCode.prepare.mockClear();
+	resumeOpenCode.stop.mockClear();
+	resumeOpenCode.killPane.mockClear();
 });
 
 describe("first launch ended before a conversation was created", () => {
@@ -118,6 +134,35 @@ describe("first launch ended before a conversation was created", () => {
 		expect(pty.splitAndRunCommand).toHaveBeenCalledTimes(1);
 		expect(sessionStateWrites().every(([, , updates]) => updates.sessionState !== null)).toBe(true);
 		expect(outcome).toMatchObject({ result: { panes: [{ mode: "fresh-session" }, { index: 1, mode: "exact", status: "resumed", sessionId: "s-codex" }] } });
+	});
+
+	it("rolls back a V2 extra pane when its resumed owner cannot be persisted", async () => {
+		const savedExtra: PaneSessionEntry = {
+			agentCmd: "opencode",
+			agentId: "builtin-opencode",
+			configId: "v2",
+			agentFamily: "opencode",
+			sessionId: "ses-extra",
+		};
+		const task = arrange({ launchFailure: failure(), sessionState: { panes: [mainPane, savedExtra] } });
+		vi.mocked(data.getTask).mockResolvedValue({ ...task, sessionState: { panes: [mainPane, savedExtra] } });
+		vi.mocked(data.updateTask).mockRejectedValueOnce(new Error("disk write failed"));
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValue({
+			command: "opencode",
+			extraEnv: {},
+			agent: { id: "builtin-opencode", baseCommand: "opencode" },
+			agentFamily: "opencode",
+			openCodeLaunch: { sessionId: "ses-extra", additionalArgs: [] },
+		} as never);
+
+		const outcome = await resumeTaskSession("t1");
+
+		expect(resumeOpenCode.prepare).toHaveBeenCalledTimes(1);
+		expect(resumeOpenCode.killPane).toHaveBeenCalledWith("%2", { socket: "dev3" });
+		expect(resumeOpenCode.stop).toHaveBeenCalledWith("t1", "ses-extra");
+		expect(outcome.kind).toBe("resumed");
+		if (outcome.kind !== "resumed") throw new Error("Expected the saved task to resume.");
+		expect(outcome.result.panes[1]).toMatchObject({ index: 1, status: "failed", detail: expect.stringContaining("disk write failed") });
 	});
 
 	it("works as a user restart, which otherwise refuses unless every conversation is restored", async () => {

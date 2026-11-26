@@ -46,6 +46,8 @@ import {
 import { TASK_SEQ_ENV } from "./native-terminal-registry/process-naming";
 import { dev3TaskTempPath } from "./temp-paths";
 import { createLogger } from "./logger";
+import { listNativeTaskAgents } from "./native-agent-attribution";
+import { stopOpenCodeServer } from "./opencode-server";
 
 const log = createLogger("task-aux-panes");
 
@@ -58,6 +60,12 @@ export type AuxPanePlacement = "right" | "below";
 export interface AuxPaneHandle {
 	backend: TaskPaneBackendKind;
 	paneId: string;
+}
+
+/** Whether the handle names one exact pane: an OpenCode V2 session is only ever bound to such a pane. */
+export function hasStablePaneIdentity(handle: AuxPaneHandle): boolean {
+	const paneId = handle.paneId.trim();
+	return handle.backend === "tmux" ? /^%\d+$/.test(paneId) : paneId.length > 0;
 }
 
 /** What a new pane runs and where — shared by every way of opening one. */
@@ -539,12 +547,17 @@ export async function openTaskPaneWindow(spec: TaskPaneLaunch & { windowName: st
  * two panes are still on screen).
  */
 export async function closeTaskPane(task: Task, handle: AuxPaneHandle, socket: string): Promise<void> {
+	// kill-pane fires no pane-exited hook, so an OpenCode V2 pane's server is stopped here.
+	const sessionId = handle.backend === "native"
+		? (await listNativeTaskAgents(task)).find((pane) => pane.paneId === handle.paneId)?.sessionId
+		: task.sessionState?.panes.find((pane) => pane.paneId === handle.paneId)?.sessionId;
 	if (handle.backend === "native") {
 		const { state } = await closeNativeTaskPane(task.id, handle.paneId);
 		if (state?.panes.some((pane) => pane.paneId === handle.paneId)) {
 			throw new Error(`native pane ${handle.paneId} is still in the pane set after closing it`);
 		}
-		return;
+	} else {
+		await tmux.killPane(handle.paneId, { socket });
 	}
-	await tmux.killPane(handle.paneId, { socket });
+	if (sessionId) await stopOpenCodeServer(task.id, sessionId);
 }

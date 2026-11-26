@@ -17,7 +17,7 @@ import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { hookCliFilePath } from "../hook-cli-capability";
 import { broadcastToOtherInstances } from "../instance-broadcast";
-import { chmodSync, realpathSync, writeFileSync } from "node:fs";
+import { closeSync, constants as fsConstants, fchmodSync, ftruncateSync, openSync, realpathSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { whichSync } from "../which";
 import { isExecutableFile } from "../executable";
@@ -69,10 +69,19 @@ export function portableReadKey(options?: { timeoutSeconds?: number }): string {
  */
 export async function writeLaunchScript(scriptPath: string, body: string, options?: { private?: boolean }): Promise<void> {
 	// A private script can carry caller secrets and lives in a world-readable
-	// temp dir: lock the file down BEFORE the body lands, including a stale one.
+	// temp dir: lock the file down BEFORE the body lands, including a stale one,
+	// and never follow a link planted at that path.
 	if (options?.private) {
-		writeFileSync(scriptPath, "", { mode: 0o600 });
-		chmodSync(scriptPath, 0o600);
+		const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | (fsConstants.O_NOFOLLOW ?? 0);
+		const fd = openSync(scriptPath, flags, 0o600);
+		try {
+			fchmodSync(fd, 0o600);
+			ftruncateSync(fd, 0);
+			writeFileSync(fd, launchDialect().scriptByteOrderMark + body);
+		} finally {
+			closeSync(fd);
+		}
+		return;
 	}
 	await Bun.write(scriptPath, launchDialect().scriptByteOrderMark + body);
 }
@@ -288,10 +297,15 @@ export function buildSetupStartupWrapper(opts: {
 	launchMode: "parallel" | "blocking";
 	/** Where the fail branch records the setup exit code for the app to read. */
 	setupExitPath: string;
+	/** OpenCode V2 only: where a successful setup leaves its marker, since the brief waits for it. */
+	setupSuccessPath?: string;
+	/** OpenCode V2 on tmux only: where the split records the exact pane it creates for the agent. */
+	setupAgentPanePath?: string;
 }): string {
 	const d = launchDialect();
 	const cmdRunner = d.runScript(opts.cmdPath, { shellPath: opts.shellPath });
 	const setupDone = d.print(d.style("✓ Setup done", "success"));
+	const setupSuccess = opts.setupSuccessPath ? [d.writeExitCodeFile("S", opts.setupSuccessPath)] : [];
 	// The script runs inside the pane, so bun never sees its exit code. Writing it
 	// is the ONLY report: the app watches this path itself (watchSetupFailure) and
 	// turns the code into the pane's "start the agent anyway" card. Deliberately
@@ -309,20 +323,24 @@ export function buildSetupStartupWrapper(opts: {
 		}),
 	];
 	if (opts.nativeBackend) {
-		return [...d.header(), ...runSetup, setupDone, d.execReplacing(cmdRunner)].join("\n") + "\n";
+		return [...d.header(), ...runSetup, setupDone, ...setupSuccess, d.execReplacing(cmdRunner)].join("\n") + "\n";
 	}
 	assertPosixLaunchDialect("the tmux setup/startup wrapper");
 	// `-b` puts the agent ABOVE the wrapper's own pane, so the setup log sits at
 	// the bottom and the agent keeps the top slot it has without a setup script.
 	// Explicit `-d`: the server may still run a config without the split alias.
 	// `select-pane -U` then hands focus to the agent pane the split just opened.
-	const splitCmd = `tmux split-window -d -v -b -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}" \\; select-pane -U`;
+	const paneCapture = opts.setupAgentPanePath
+		? ` -P -F '#{pane_id}' > "${escapeForDoubleQuotes(opts.setupAgentPanePath)}"`
+		: "";
+	const splitCmd = `tmux split-window -d -v -b${paneCapture} -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}" \\; select-pane -U`;
 	return [
 		...d.header(),
 		...(opts.launchMode === "parallel" ? [splitCmd] : []),
 		...runSetup,
 		...(opts.launchMode === "blocking" ? [splitCmd] : []),
 		setupDone,
+		...setupSuccess,
 		d.print(d.style("Closing in 15s — press any key to close now", "dim")),
 		// Wrapper runs under the user's login shell (often zsh), so use a
 		// shell-portable read — bash's `read -n 1 -s` crashes zsh.

@@ -55,6 +55,7 @@ import { isTaskSoundEnabled, type TaskSoundStatus } from "../../shared/task-soun
 import { loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
+import { stopOpenCodeServers } from "../opencode-server";
 import { dev3TaskTempPath } from "../temp-paths";
 import { reapWorktreeProcesses } from "../worktree-reaper";
 import { forgetWorktreeTrust } from "../worktree-trust";
@@ -1127,6 +1128,7 @@ export async function executeLifecycleEffect(
 				// (cleanup script, diff capture, worktree removal) must never run while
 				// this task's host tree is still alive.
 				await pty.destroyNativeTaskSession(ctx.sourceTask.id);
+				await stopOpenCodeServers(ctx.sourceTask.id);
 				return {};
 			}
 			try {
@@ -1139,6 +1141,7 @@ export async function executeLifecycleEffect(
 					error: String(error),
 				});
 			}
+			await stopOpenCodeServers(ctx.sourceTask.id);
 			return {};
 		case "killDevServer":
 			// Both backends host a dev server (tmux: a nested session, native: an

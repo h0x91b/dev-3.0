@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, ensureClaudeMcpApproved, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, findConfig, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, claudeDefaultEnv, getDefaultEnvForAgent, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, resolveAgentCommandDetails, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, ensureClaudeMcpApproved, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, findConfig, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, claudeDefaultEnv, getDefaultEnvForAgent, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -325,6 +325,17 @@ describe("resolveAgentCommand — positional prompt separator (-- guard)", () =>
 		expect(cmd).toContain("--prompt");
 		expect(cmd).toContain("'---hello frontmatter");
 		expect(cmd).not.toMatch(/ -- '/);
+	});
+
+	it("OpenCode resolves a V2 session spec only when its agent opts into V2", async () => {
+		const config = makeConfig({ model: "openai/gpt-5" });
+		const v1 = await resolveAgentCommandDetails(makeAgent({ baseCommand: "opencode" }), config, makeCtx());
+		expect(v1.openCodeLaunch).toBeUndefined();
+		expect(v1.command).toContain("--model openai/gpt-5 --prompt");
+
+		const v2 = await resolveAgentCommandDetails(makeAgent({ baseCommand: "opencode", opencodeProtocol: "v2" }), config, makeCtx());
+		expect(v2.command).toBe("opencode");
+		expect(v2.openCodeLaunch).toMatchObject({ model: { providerID: "openai", id: "gpt-5" }, prompt: expect.stringContaining("Fix the login bug") });
 	});
 
 	it("does not add -- when resuming (no positional prompt is emitted on resume)", async () => {

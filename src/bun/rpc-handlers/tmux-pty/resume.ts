@@ -19,12 +19,14 @@ import { nativeTaskPaneCommandsStrict, nativeTaskPanesAlive, stopNativeTaskPanes
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import { taskMainAgentLiveness } from "../../scheduled-message-author";
 import { NATIVE_AGENT_PANE_ID } from "../../agent-prompt-native";
+import { ensureArtifactTemplateEnv } from "../../artifact-template";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { mainAgentNeverStarted } from "../../../shared/agent-launch-failure";
 import { forgetAgyTask } from "../../agy-session-state";
+import { prepareOpenCodeLaunch, stopOpenCodeServer, stopOpenCodeServers, writeOpenCodeLaunchScript } from "../../opencode-server";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
+import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped, openCodeServerEnv } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
 
 /**
@@ -175,6 +177,7 @@ async function tearDownTaskTerminal(task: Task): Promise<void> {
 	if (taskTerminalBackendIdentity(task) === "native") {
 		if (pty.hasSession(task.id)) await pty.destroySessionAwaited(task.id);
 		else await stopNativeTaskPanes(task.id);
+		await stopOpenCodeServers(task.id);
 		return;
 	}
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
@@ -184,6 +187,7 @@ async function tearDownTaskTerminal(task: Task): Promise<void> {
 	for (let waited = 0; waited < TEARDOWN_WAIT_MS && await pty.tmuxSessionExists(task.id, socket); waited += TEARDOWN_POLL_MS) {
 		await new Promise((resolve) => setTimeout(resolve, TEARDOWN_POLL_MS));
 	}
+	await stopOpenCodeServers(task.id);
 }
 
 /**
@@ -484,9 +488,10 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				worktreePath: task.worktreePath,
 			};
 			const projectEnv = await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode });
-			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null; projectLogin: boolean }> = [];
+			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null; projectLogin: boolean; openCodeSessionId: string | null }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
+				let openCodeSessionId: string | null = null;
 				try {
 					const paneResume = targets[i].sessionId;
 					const codexHome = codexHomes.get(i);
@@ -510,11 +515,13 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					// a renamed binary is exactly what broke resume.
 					let resumeAgentFamily: AgentFamily | undefined = pane.agentFamily ?? undefined;
 					let extraEnv: Record<string, string> = {};
+					let openCodeLaunch: agents.ResolvedAgentCommand["openCodeLaunch"];
 					let projectLogin = !!pane.projectLogin;
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
 						extraEnv = resolved.extraEnv;
+						openCodeLaunch = resolved.openCodeLaunch;
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
 						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
@@ -535,16 +542,27 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 						family: resumeAgentFamily,
 					});
+					if (openCodeLaunch) {
+						const serverEnv = openCodeServerEnv(project, task, task.worktreePath, { ...paneEnv, ...ensureArtifactTemplateEnv(project, task, task.worktreePath) });
+						const prepared = await prepareOpenCodeLaunch({ taskId: task.id, baseCommand: resumeBaseCmd, cwd: task.worktreePath, env: serverEnv, spec: openCodeLaunch });
+						resumeCmd = prepared.command;
+						Object.assign(paneEnv, prepared.passwordEnv);
+						openCodeSessionId = prepared.sessionId;
+					}
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
 					// Export the project env too, like a fresh spawn: a split pane otherwise inherits the main pane's.
-					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, paneEnv, { keepShell: true }));
+					const resumeScript = buildCmdScript(resumeCmd, paneEnv, { keepShell: true });
+					if (openCodeSessionId) await writeOpenCodeLaunchScript(task.id, openCodeSessionId, scriptPath, resumeScript);
+					else await writeLaunchScript(scriptPath, resumeScript);
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
-					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
-					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume, projectLogin });
-					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };
+					if ((opts.restart || openCodeSessionId) && !newPaneId) throw new Error("The restarted agent pane was not created.");
+					const resumedSessionId = openCodeSessionId ?? freshSessionId ?? paneResume;
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: resumedSessionId, projectLogin, openCodeSessionId });
+					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: resumedSessionId };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
+					if (openCodeSessionId) await stopOpenCodeServer(task.id, openCodeSessionId);
 					log.warn("Failed to resume extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, error: String(err) });
 					reports[i] = { ...reports[i], status: "failed", detail: String(err) };
 				}
@@ -554,8 +572,9 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				try {
 					const freshTask = await data.getTask(project, params.taskId);
 					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
-					for (const { index, paneId, accountId, sessionId, projectLogin } of paneIdUpdates) {
+					for (const { index, paneId, accountId, sessionId, projectLogin, openCodeSessionId } of paneIdUpdates) {
 						const prior = updatedPanes[index];
+						if (!prior && openCodeSessionId) throw new Error(`Saved pane ${index + 1} disappeared during resume registration.`);
 						if (!prior) continue;
 						// `--continue` names no id, so the stored one stays. A replaced id was found
 						// in this worktree's own store, so the origin goes with the old one.
@@ -566,6 +585,15 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {
 					log.warn("Failed to update pane IDs after resume (non-fatal)", { error: String(err) });
+					// A resumed V2 pane nobody recorded would keep a server nobody can stop: undo it.
+					for (const update of paneIdUpdates) {
+						if (!update.openCodeSessionId) continue;
+						await tmux.killPane(update.paneId, { socket }).catch((closeError) => {
+							log.warn("Could not close an unregistered resumed OpenCode pane", { paneId: update.paneId, error: String(closeError) });
+						});
+						await stopOpenCodeServer(task.id, update.openCodeSessionId);
+						reports[update.index] = { ...reports[update.index], status: "failed", detail: `Pane ownership could not be saved: ${String(err)}` };
+					}
 				}
 			}
 		}

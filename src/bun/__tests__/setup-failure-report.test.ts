@@ -67,6 +67,32 @@ describe("setup wrapper — recording a failed setupScript", () => {
 		expect(afterFailBranch).not.toContain("dev3-T-setup-exit");
 	});
 
+	it("writes the successful completion marker before handing off to the agent", async () => {
+		const { buildSetupStartupWrapper } = await import("../rpc-handlers/shared-pure");
+		const script = buildSetupStartupWrapper({
+			...WRAPPER_ARGS,
+			setupSuccessPath: "/tmp/dev3-T-setup-ready",
+			nativeBackend: true,
+			launchMode: "blocking",
+		});
+		const lines = script.split("\n").map((line) => line.trim());
+		const marker = lines.findIndex((line) => line === `printf '%s' "$S" > '/tmp/dev3-T-setup-ready'`);
+		const launch = lines.findIndex((line) => line === `exec '/bin/zsh' '/tmp/dev3-T-cmd.sh'`);
+		expect(marker).toBeGreaterThan(lines.findIndex((line) => line.includes("✓ Setup done")));
+		expect(launch).toBeGreaterThan(marker);
+	});
+
+	it("captures the exact tmux pane created by a setup wrapper", async () => {
+		const { buildSetupStartupWrapper } = await import("../rpc-handlers/shared-pure");
+		const script = buildSetupStartupWrapper({
+			...WRAPPER_ARGS,
+			setupAgentPanePath: "/tmp/dev3-T-agent-pane",
+			nativeBackend: false,
+			launchMode: "blocking",
+		});
+		expect(script).toContain("split-window -d -v -b -P -F '#{pane_id}' > \"/tmp/dev3-T-agent-pane\"");
+	});
+
 	// Windows has no `printf ... >`, and PowerShell 5.1's `>` would write UTF-16LE.
 	// Assert the PowerShell spelling, not just that "some" recording happens.
 	it("uses the PowerShell spelling on win32", async () => {
@@ -149,6 +175,8 @@ describe("watchSetupFailure", () => {
 	});
 
 	const exitPath = () => join(dir, `dev3-${TASK}-setup-exit`);
+	const successPath = () => join(dir, `dev3-${TASK}-setup-ready`);
+	const agentPanePath = () => join(dir, `dev3-${TASK}-setup-agent-pane`);
 	const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
 	it("reports the recorded code once the file appears", async () => {
@@ -161,6 +189,17 @@ describe("watchSetupFailure", () => {
 		writeFileSync(exitPath(), "127");
 		await settle();
 		expect(seen).toEqual([127]);
+	});
+
+	it("runs the success callback once, with the recorded agent pane, when the setup-ready marker appears", async () => {
+		const onSuccess = vi.fn();
+		watch.watchSetupFailure(TASK, vi.fn(), { intervalMs: 5, onSuccess });
+		writeFileSync(agentPanePath(), "%42\n");
+		writeFileSync(successPath(), "S");
+		await settle();
+		await settle();
+		expect(onSuccess).toHaveBeenCalledExactlyOnceWith("%42");
+		expect(watch.watchedSetupFailureTasks()).toEqual([]);
 	});
 
 	it("stops after reporting, so one failure cannot fire twice", async () => {
