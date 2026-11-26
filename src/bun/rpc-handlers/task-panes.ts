@@ -580,8 +580,7 @@ async function tmuxNewWindow(params: { taskId: string }): Promise<void> {
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
 	try {
-		const { paneId } = await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, focus: true, printPaneId: true, socket });
-		if (paneId) await pty.installPaneExitedHook(tmuxSession, paneId, socket);
+		await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, focus: true, socket });
 	} catch (err) {
 		if (!(err instanceof TmuxError)) throw err;
 		throw new Error(`tmux new-window failed: ${err.stderr || "unknown error"}`);

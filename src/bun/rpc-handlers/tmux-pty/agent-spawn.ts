@@ -208,8 +208,6 @@ export async function spawnAgentInTask(params: {
 	}
 
 	const newPaneId = handle.paneId || null;
-	// A window made by `new-window` carries no pane-exited hook, so the pane's entry would never be reconciled.
-	if (params.window && handle.backend === "tmux" && newPaneId) await pty.installPaneExitedHook(pty.getSessionTmuxName(task.id), newPaneId, socket);
 	if (handle.backend === "tmux" && newPaneId) void markAgentPane(socket, newPaneId);
 
 	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`

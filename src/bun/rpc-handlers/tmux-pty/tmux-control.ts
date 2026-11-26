@@ -224,11 +224,9 @@ export async function tmuxAction(params: { taskId: string; action: "splitH" | "s
 			case "prevPane":
 				await tmux.selectPane(`${tmuxSession}:.-`, { socket });
 				break;
-			case "newWindow": {
-				const { paneId } = await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, focus: true, printPaneId: true, socket });
-				if (paneId) await pty.installPaneExitedHook(tmuxSession, paneId, socket);
+			case "newWindow":
+				await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, focus: true, socket });
 				break;
-			}
 			case "nextLayout":
 				await tmux.nextLayout(tmuxSession, { socket });
 				break;

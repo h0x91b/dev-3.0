@@ -544,7 +544,6 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					if (pane.window) {
 						const launch = { task, placement: "right" as const, size: "", cwd: task.worktreePath, socket, tmuxCommand: wrappedCmd, nativeLaunch: generatedScriptLaunch(scriptPath) };
 						newPaneId = (await openTaskPaneInNamedWindow({ ...launch, windowName: pane.window })).paneId || null;
-						if (newPaneId) await pty.installPaneExitedHook(pty.getSessionTmuxName(params.taskId), newPaneId, socket);
 					} else {
 						newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					}

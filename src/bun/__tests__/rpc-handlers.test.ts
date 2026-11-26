@@ -176,7 +176,6 @@ vi.mock("../github", () => ({
 }));
 
 vi.mock("../pty-server", () => ({
-	installPaneExitedHook: vi.fn(async () => {}),
 	createSession: vi.fn(),
 	createNativeTaskSession: vi.fn(),
 	reattachNativeTaskSession: vi.fn(() => Promise.resolve(false)),
@@ -10770,17 +10769,6 @@ describe("tmuxAction", () => {
 		);
 		// A user split is a background split plus an explicit select of the new pane.
 		expect(mockSpawn).toHaveBeenCalledWith(["tmux", "-L", "dev3", "select-pane", "-t", "%5"], expect.any(Object));
-	});
-
-	it("opens a window that takes focus and gives it the pane-exited hook", async () => {
-		mockSpawn.mockImplementation(() => ({
-			stderr: new Response(""),
-			stdout: new Response("%5\n").body,
-			exited: Promise.resolve(0),
-		}));
-		await tmuxAction({ taskId: "abcd1234-full-id", action: "newWindow" });
-		expect(mockSpawn).toHaveBeenCalledWith(expect.arrayContaining(["new-window", "-P"]), expect.any(Object));
-		expect(pty.installPaneExitedHook).toHaveBeenCalledWith(expect.any(String), "%5", "dev3");
 	});
 
 	it("sends split-window -h for splitV action", async () => {

@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
 	// pty-server
 	getSessionSocket: vi.fn(),
 	getSessionTmuxName: vi.fn(),
-	installPaneExitedHook: vi.fn(async () => {}),
 	getTmuxLayout: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
 	ensureNativePanePtySession: vi.fn(),
@@ -67,7 +66,6 @@ vi.mock("../../data", () => ({
 vi.mock("../../pty-server", () => ({
 	getSessionSocket: mocks.getSessionSocket,
 	getSessionTmuxName: mocks.getSessionTmuxName,
-	installPaneExitedHook: mocks.installPaneExitedHook,
 	getTmuxLayout: mocks.getTmuxLayout,
 	getPtyPort: mocks.getPtyPort,
 	ensureNativePanePtySession: mocks.ensureNativePanePtySession,
@@ -221,7 +219,7 @@ beforeEach(() => {
 	mocks.tmuxSelectLayout.mockResolvedValue(undefined);
 	mocks.tmuxNextLayout.mockResolvedValue(undefined);
 	mocks.tmuxResizePaneDirection.mockResolvedValue(undefined);
-	mocks.tmuxNewWindow.mockResolvedValue({ paneId: "%8", stderr: "" });
+	mocks.tmuxNewWindow.mockResolvedValue(undefined);
 	mocks.tmuxKillWindow.mockResolvedValue(undefined);
 	mocks.tmuxListPanes.mockResolvedValue(threeWindowPanes);
 	mocks.ensureNativePanePtySession.mockResolvedValue(undefined);
@@ -716,12 +714,6 @@ describe("tmuxNewWindow", () => {
 	it("opens a new tmux window for a tmux task", async () => {
 		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
 		expect(mocks.tmuxNewWindow).toHaveBeenCalled();
-	});
-
-	it("asks for the new pane id and gives its window the pane-exited hook", async () => {
-		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
-		expect(mocks.tmuxNewWindow).toHaveBeenCalledWith(expect.objectContaining({ focus: true, printPaneId: true }));
-		expect(mocks.installPaneExitedHook).toHaveBeenCalledWith("dev3-aaaaaaaa", "%8", expect.any(String));
 	});
 });
 

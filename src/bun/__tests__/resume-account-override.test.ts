@@ -8,8 +8,6 @@ vi.mock("../pty-server", () => ({
 	tmuxSessionExists: vi.fn(async () => true),
 	splitAndRunCommand: vi.fn(async () => "%2"),
 	getPtyPort: vi.fn(() => 9999),
-	getSessionTmuxName: vi.fn((id: string) => `dev3-${id}`),
-	installPaneExitedHook: vi.fn(async () => {}),
 }));
 vi.mock("../agents", () => ({
 	isClaudeCommand: vi.fn((cmd: string) => cmd === "claude"),
@@ -274,8 +272,6 @@ describe("resume of an extra pane opened with --window", () => {
 		expect(openTaskPaneInNamedWindow).toHaveBeenCalledTimes(1);
 		expect(openTaskPaneInNamedWindow).toHaveBeenCalledWith(expect.objectContaining({ windowName: "Agents", cwd: "/wt", tmuxCommand: expect.stringMatching(/^bash ".*resume-pane-1\.sh"$/) }));
 		expect(pty.splitAndRunCommand).toHaveBeenCalledTimes(1);
-		expect(pty.installPaneExitedHook).toHaveBeenCalledTimes(1);
-		expect(pty.installPaneExitedHook).toHaveBeenCalledWith("dev3-t1", "%30", expect.any(String));
 		const saved = vi.mocked(data.updateTask).mock.calls.find((call) => "sessionState" in call[2])![2].sessionState!.panes;
 		expect(saved[1]).toMatchObject({ paneId: "%30", window: "Agents" });
 		expect(saved[2]).toMatchObject({ paneId: "%2" });

@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({
 	updateTask: vi.fn(),
 	splitTaskPane: vi.fn(),
 	openTaskPaneInNamedWindow: vi.fn(),
-	installPaneExitedHook: vi.fn(async () => {}),
 	resolveCommandForAgent: vi.fn(),
 	writeLaunchScript: vi.fn(async () => {}),
 	writeNativeAgentAttribution: vi.fn(async () => {}),
@@ -71,7 +70,7 @@ vi.mock("../../agent-prompt", () => ({ markAgentPane: vi.fn() }));
 vi.mock("../../settings", () => ({ loadSettings: vi.fn(), recordFavoriteUsages: vi.fn() }));
 vi.mock("../../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 vi.mock("../../port-pool", () => ({ getPortAssignments: vi.fn(() => []), buildPortEnv: vi.fn(() => ({})) }));
-vi.mock("../../pty-server", () => ({ getSessionSocket: mocks.getSessionSocket, getSessionTmuxName: () => "dev3-abcdef12", installPaneExitedHook: mocks.installPaneExitedHook }));
+vi.mock("../../pty-server", () => ({ getSessionSocket: mocks.getSessionSocket }));
 vi.mock("../../native-task-panes", () => ({
 	nativeTaskPanesAlive: vi.fn(async () => false),
 	// How a native task's live dev servers are enumerated: each pane carries its
@@ -232,17 +231,6 @@ describe("spawnAgentInTask --window", () => {
 		expect(mocks.openTaskPaneInNamedWindow).toHaveBeenCalledWith(expect.objectContaining({ windowName: "Agents", placement: "right", cwd: "/repo/wt" }));
 		expect(mocks.updateTask.mock.calls[0][2].sessionState.panes).toEqual([expect.objectContaining({ paneId: "%50", window: "Agents" })]);
 		expect(result).toMatchObject({ paneId: "%50", backend: "tmux", window: "Agents" });
-	});
-
-	it("installs the pane-exited hook on the new pane's window, and not for a plain split", async () => {
-		mocks.openTaskPaneInNamedWindow.mockResolvedValue({ backend: "tmux", paneId: "%50" });
-		await tmuxPtyHandlers.spawnAgentInTask({ ...base, window: "Agents" });
-		expect(mocks.installPaneExitedHook).toHaveBeenCalledWith("dev3-abcdef12", "%50", "dev3");
-
-		mocks.installPaneExitedHook.mockClear();
-		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%51" });
-		await tmuxPtyHandlers.spawnAgentInTask(base);
-		expect(mocks.installPaneExitedHook).not.toHaveBeenCalled();
 	});
 
 	it("records no window and splits the current one without the option", async () => {

@@ -873,6 +873,11 @@ export class TmuxClient {
 		return stdout.trim();
 	}
 
+	/** `set-hook -t <target> <hook> <command>` — a hook of the target's session (replaces index 0). */
+	setSessionHook(target: string, hook: string, command: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["set-hook", "-t", target, hook, command], opts);
+	}
+
 	/** `set-hook -wt <target> <hook> <command>` — window-scoped hook. */
 	setWindowHook(target: string, hook: string, command: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["set-hook", "-wt", target, hook, command], opts);

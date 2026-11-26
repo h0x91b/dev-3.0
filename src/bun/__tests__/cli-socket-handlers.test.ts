@@ -92,7 +92,6 @@ vi.mock("../shared-artifacts", () => ({
 vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 	getTmuxLayout: vi.fn(async () => ({ sessionName: "dev3-task1234", exists: false, windows: [], panes: [] })),
-	installPaneExitedHook: vi.fn(async () => {}),
 }));
 
 vi.mock("../user-activity", () => ({
@@ -298,7 +297,6 @@ import { getServerPort } from "../remote-access-server";
 import { saveSharedClips, saveSharedImage } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
-import { installPaneExitedHook } from "../pty-server";
 import { cancelScheduledMessageByRef, scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
 import { captureScheduledMessageAuthor, resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
 import { withAgentPanes } from "../agent-message-target";
@@ -712,14 +710,6 @@ describe("pane.* — the CLI's own pane surface", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
 		vi.mocked(data.getProject).mockResolvedValue(makeProject());
 		vi.mocked(data.loadTasks).mockResolvedValue([makeTask()]);
-	});
-
-	it("gives the window of a tmux run the pane-exited hook, and does nothing of the kind for a native run", async () => {
-		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
-		expect(installPaneExitedHook).not.toHaveBeenCalled();
-		vi.mocked(startPaneRun).mockResolvedValueOnce({ runId: "run-0123456789ab", paneId: "%9", backend: "tmux", logPath: "/tmp/x.log", command: "ls" } as never);
-		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
-		expect(installPaneExitedHook).toHaveBeenCalledWith(expect.stringMatching(/^dev3-/), "%9", expect.any(String));
 	});
 
 	it("runs a command in a neighbouring pane in the task's worktree; reads an unknown or legacy placement as auto", async () => {

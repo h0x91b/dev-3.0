@@ -62,7 +62,7 @@ import {
 	hasDeadSession,
 	capturePane,
 	listPaneIds,
-	installPaneExitedHook,
+	installPaneExitedHooks,
 	getTmuxLayout,
 	getSessionProjectId,
 	getSessionSocket,
@@ -686,12 +686,19 @@ describe("pty-server", () => {
 			expect(tmuxCall("list-panes")).toEqual(expect.arrayContaining(["list-panes", "-s", "-t"]));
 		});
 
-		it("installPaneExitedHook sets the hook on the window of the given target", async () => {
-			mockSpawn.mockImplementation(() => proc("") as any);
-			await installPaneExitedHook("dev3-abc", "%12", "sock");
-			const cmd = tmuxCall("set-hook")!;
-			expect(cmd).toEqual(expect.arrayContaining(["-L", "sock", "set-hook", "-wt", "%12", "pane-exited"]));
-			expect(cmd[cmd.length - 1]).toContain("/pane-exited?session=dev3-abc&pane=#{hook_pane}");
+		it("installPaneExitedHooks hooks every window that exists and every one that will", async () => {
+			mockSpawn.mockImplementation((cmd: any) => proc(cmd.includes("list-windows") ? "@1\t0\t1\t\tzsh\n@5\t1\t0\t\tAgents\n" : "") as any);
+			await installPaneExitedHooks("dev3-abc", "sock");
+			const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((cmd) => cmd.includes("set-hook"));
+			const exited = (target: string) => calls.find((cmd) => cmd.includes("-wt") && cmd.includes(target));
+			expect(exited("@1")).toEqual(expect.arrayContaining(["-L", "sock", "set-hook", "-wt", "@1", "pane-exited"]));
+			expect(exited("@5")![exited("@5")!.length - 1]).toContain("/pane-exited?session=dev3-abc&pane=#{hook_pane}");
+			// The new-window hook carries the very same text, quoted as an argument of set-hook -w.
+			const session = calls.find((cmd) => cmd.includes("after-new-window"))!;
+			expect(session).toEqual(expect.arrayContaining(["set-hook", "-t", "dev3-abc", "after-new-window"]));
+			const inner = session[session.length - 1];
+			expect(inner).toMatch(/^set-hook -w pane-exited "run-shell \\"curl -s '.*\/pane-exited\?session=dev3-abc&pane=#\{hook_pane\}' \|\| true\\""$/);
+			expect(inner).not.toContain("##{");
 		});
 	});
 

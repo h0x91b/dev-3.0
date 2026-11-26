@@ -11,8 +11,7 @@ import {
 	scriptStorageKey,
 } from "../../shared/types";
 import * as data from "../data";
-import { DEFAULT_TMUX_SOCKET, taskSessionName } from "../tmux";
-import * as pty from "../pty-server";
+import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { parsePackageScripts } from "../package-scripts";
 import { parseMakefile } from "../makefile";
 import { runScript as runScriptInTmux } from "../script-runner";
@@ -81,7 +80,7 @@ async function runScriptHandler(params: {
 	}
 
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-	const paneId = await runScriptInTmux({
+	await runScriptInTmux({
 		taskId: task.id,
 		worktreePath: task.worktreePath,
 		scriptName: params.scriptName,
@@ -90,7 +89,6 @@ async function runScriptHandler(params: {
 		placement: params.placement,
 		socket,
 	});
-	if (paneId) await pty.installPaneExitedHook(taskSessionName(task.id), paneId, socket);
 
 	const storageKey = scriptStorageKey(source, params.scriptName);
 	const { task: updated } = await data.updateTaskWith(project, task.id, (t) => ({
