@@ -832,6 +832,11 @@ setOnPaneExited((taskId, paneId) => {
 	});
 });
 
+// Task sessions outlive the app: re-point their pane-exited hooks at this app's HTTP port.
+void import("./refresh-task-session-hooks")
+	.then(({ refreshTaskSessionHooks }) => refreshTaskSessionHooks())
+	.catch((err) => log.warn("Refreshing task session hooks failed", { error: String(err) }));
+
 function runGlobalQuitCleanup(): void {
 	log.info("App is quitting, running global cleanup");
 	stopFreezeDiagnostics();

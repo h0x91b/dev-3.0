@@ -185,6 +185,8 @@ export async function spawnAgentInTask(params: {
 	// coexist by design, while a purpose owns at most one pane and replaces it.
 	let handle: AuxPaneHandle;
 	try {
+		// The CLI can reach a surviving session before startup refreshed its hooks (the socket opens first).
+		if (params.window) await pty.installPaneExitedHooks(pty.getSessionTmuxName(task.id), socket);
 		const launch = {
 			task,
 			placement: "right" as const,

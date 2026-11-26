@@ -1067,14 +1067,14 @@ function paneExitedHookCommand(tmuxSessionName: string): string {
 /**
  * Give EVERY window of a session the pane-exited hook. It is a window hook (-w), and when a
  * window's last pane exits tmux resolves it from the CURRENT window, so one unhooked tab
- * silences it. `after-new-window` fires for every new-window — the ⌃B c and "+" bindings,
- * app tabs, `new-window -d` — and its `-w` targets the new window; windows that already
- * exist are hooked here. The hook text is stored as-is: set-hook does not expand it.
+ * silences it. The session's `window-linked` fires for every window that appears (new-window
+ * incl. ⌃B c, "+" and `-d`; break-pane ⌃B !; link/move) and its `-w` targets that window;
+ * windows that already exist are hooked here. The text is stored as-is: set-hook never expands it.
  */
 export async function installPaneExitedHooks(tmuxSessionName: string, socket: string): Promise<void> {
 	const command = paneExitedHookCommand(tmuxSessionName);
 	try {
-		await tmux.setSessionHook(tmuxSessionName, "after-new-window", `set-hook -w pane-exited "${command.replace(/["\\]/g, "\\$&")}"`, { socket, bestEffort: true });
+		await tmux.setSessionHook(tmuxSessionName, "window-linked", `set-hook -w pane-exited "${command.replace(/["\\]/g, "\\$&")}"`, { socket, bestEffort: true });
 		const windows = await tmux.listWindows(WINDOW_NAME_FORMAT, { target: tmuxSessionName, socket });
 		for (const { windowId } of windows) {
 			await tmux.setWindowHook(windowId, "pane-exited", command, { socket, bestEffort: true });

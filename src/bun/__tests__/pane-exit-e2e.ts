@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import type { Project, Task, PaneSessionEntry } from "../../shared/types";
 import * as pty from "../pty-server";
 import { launchTaskPty, routePaneExited } from "../rpc-handlers/tmux-pty";
+import { refreshTaskSessionHooks } from "../refresh-task-session-hooks";
 // Leaf import, not the tmux barrel: this script runs under a preload that mocks
 // whole modules, and the barrel pulls in far more than the unlink helper.
 import { removeTmuxSocketFile } from "../tmux/socket-files";
@@ -168,6 +169,18 @@ async function main() {
 		const agentEntry = (paneId: string) => ({ paneId, window: "Agents", agentCmd: "sleep", sessionId: null, agentId: null, configId: null });
 		const hooksOf = (target: string, scope: "-w" | "-g" | ""): string => tmuxOut(["show-hooks", ...(scope ? [scope] : []), "-t", target]);
 
+		// Keys typed after the prefix (Ctrl+B) in a real attached client.
+		const pressKeys = (keys: string): void => {
+			const run = nodeSpawnSync("python3", ["-I", "-c", [
+				"import os,pty,sys,time",
+				"pid,fd=pty.fork()",
+				"if pid==0: os.execvp('tmux',['tmux','-L',sys.argv[1],'attach','-t',sys.argv[2]])",
+				"time.sleep(1); os.write(fd,b'\\x02'+sys.argv[3].encode()); time.sleep(1); os.kill(pid,9)",
+			].join("\n"), TEST_SOCKET, session, keys], { env: { ...process.env, TMUX: "" } });
+			assert(run.status === 0, `could not drive the Ctrl+B ${keys} client: ${run.stderr}`);
+		};
+		const activeWindowId = (): string => tmuxOut(["display-message", "-p", "-t", session, "#{window_id}"]);
+
 		const expectAgentsExitCleansUp = async (label: string, agentPane: string): Promise<void> => {
 			(globalThis as any).__e2eSessionState = { panes: [mainEntry, agentEntry(agentPane)] };
 			await waitFor(() => !getSessionState()!.panes.some(p => p.paneId === agentPane), 15_000);
@@ -179,30 +192,44 @@ async function main() {
 
 		// A tab a user opens with the shipped Ctrl+B c binding, in a real attached client.
 		const agentA = newWindow("Agents", "bash -c 'sleep 4'");
-		const pressNewWindowKey = nodeSpawnSync("python3", ["-I", "-c", [
-			"import os,pty,sys,time",
-			"pid,fd=pty.fork()",
-			"if pid==0: os.execvp('tmux',['tmux','-L',sys.argv[1],'attach','-t',sys.argv[2]])",
-			"time.sleep(1); os.write(fd,b'\\x02c'); time.sleep(1); os.kill(pid,9)",
-		].join("\n"), TEST_SOCKET, session], { env: { ...process.env, TMUX: "" } });
-		assert(pressNewWindowKey.status === 0, `could not drive the Ctrl+B c client: ${pressNewWindowKey.stderr}`);
+		pressKeys("c");
 		const windows = tmuxOut(["list-windows", "-t", session, "-F", "#{window_active} #{window_name}"]);
 		assert(windows.split("\n").length === 3 && windows.split("\n").some(w => w.startsWith("1 ")), `Ctrl+B c should open a current third tab, got ${JSON.stringify(windows)}`);
-		const activeWindow = tmuxOut(["display-message", "-p", "-t", session, "#{window_id}"]);
-		assert(hooksOf(activeWindow, "-w").includes("pane-exited"), "a tab opened with Ctrl+B c should carry the pane-exited hook");
+		assert(hooksOf(activeWindowId(), "-w").includes("pane-exited"), "a tab opened with Ctrl+B c should carry the pane-exited hook");
 		await expectAgentsExitCleansUp("Agents exits while a Ctrl+B c tab is current", agentA);
 
 		// A tab open before dev3 (re)configured the session: reattach hooks every existing window.
 		const legacyPane = newWindow("Legacy", "sleep 999");
 		const legacyWindow = tmuxOut(["display-message", "-p", "-t", legacyPane, "#{window_id}"]);
 		tmuxOut(["set-hook", "-wu", "-t", legacyWindow, "pane-exited"]);
-		tmuxOut(["set-hook", "-u", "-t", session, "after-new-window"]);
+		tmuxOut(["set-hook", "-u", "-t", session, "window-linked"]);
 		assert(!hooksOf(legacyWindow, "-w").includes("pane-exited"), "setup: the legacy tab should start without the hook");
 		await pty.installPaneExitedHooks(session, TEST_SOCKET);
 		assert(hooksOf(legacyWindow, "-w").includes("pane-exited"), "reattach should hook a tab that already existed");
-		assert(hooksOf(session, "").includes("after-new-window"), "reattach should restore the new-window hook");
+		assert(hooksOf(session, "").includes("window-linked"), "reattach should restore the new-window hook");
 		tmuxOut(["select-window", "-t", legacyWindow]);
 		await expectAgentsExitCleansUp("Agents exits while a pre-existing tab is current", newWindow("Agents", "bash -c 'sleep 3'"));
+
+		// A window Ctrl+B ! (break-pane) makes never fires after-new-window; window-linked covers it.
+		const mainWindow = tmuxOut(["display-message", "-p", "-t", mainEntry.paneId!, "#{window_id}"]);
+		const splitPane = tmuxOut(["split-window", "-d", "-t", mainEntry.paneId!, "-P", "-F", "#{pane_id}", "sleep 999"]);
+		tmuxOut(["select-window", "-t", mainWindow]);
+		tmuxOut(["select-pane", "-t", splitPane]);
+		const agentB = newWindow("Agents", "bash -c 'sleep 4'");
+		pressKeys("!");
+		assert(activeWindowId() !== mainWindow, "Ctrl+B ! should select the broken-out window");
+		assert(hooksOf(activeWindowId(), "-w").includes("pane-exited"), "a window made by Ctrl+B ! should carry the pane-exited hook");
+		await expectAgentsExitCleansUp("Agents exits while a Ctrl+B ! window is current", agentB);
+
+		// A session that survived an app restart still points at the previous app's port.
+		const STALE = `run-shell "curl -s 'http://127.0.0.1:1/pane-exited?session=${session}&pane=#{hook_pane}' || true"`;
+		for (const row of tmuxOut(["list-windows", "-t", session, "-F", "#{window_id}"]).split("\n")) {
+			tmuxOut(["set-hook", "-w", "-t", row, "pane-exited", STALE]);
+		}
+		tmuxOut(["set-hook", "-t", session, "window-linked", `set-hook -w pane-exited "${STALE.replace(/["\\]/g, "\\$&")}"`]);
+		await refreshTaskSessionHooks();
+		assert(!hooksOf(activeWindowId(), "-w").includes("127.0.0.1:1/"), "startup should re-point an existing window at this app");
+		await expectAgentsExitCleansUp("Agents exits in a window opened after a restart", newWindow("Agents", "bash -c 'sleep 3'"));
 
 		console.log("\nPASS — surviving main pane kept, exited Agents-window entries removed");
 	} catch (err) {
