@@ -51,6 +51,12 @@ const runGit = vi.fn(async (_cmd: string[], cwd: string) => {
 });
 vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
+// Extra folders per project id; the real resolver would read this machine's Claude settings.
+const extraFolders = vi.hoisted(() => ({} as Record<string, { path: string; exists: boolean }[]>));
+vi.mock("../../project-folders", () => ({
+	resolveProjectFolders: vi.fn(async (project: { id: string }) => extraFolders[project.id] ?? []),
+}));
+
 const wsl = vi.hoisted(() => ({ isWslHost: vi.fn(() => false), openOnWindowsHost: vi.fn(async (_path: string) => {}) }));
 vi.mock("../../wsl-host", () => wsl);
 
@@ -187,7 +193,7 @@ describe("resolveTerminalPaths", () => {
 				paths: [escape, inward],
 			});
 			expect(resolved[escape]).toBeNull();
-			expect(await appHandlers.readFilePreview({ path: escape })).toEqual({ kind: "not-found" });
+			expect(await appHandlers.readFilePreview({ path: escape })).toEqual({ kind: "outside-allowed" });
 			await expect(appHandlers.openTerminalPath({ path: escape, mode: "system" })).rejects.toThrow(
 				/outside the allowed directories/,
 			);
@@ -277,11 +283,24 @@ describe("readFilePreview", () => {
 
 	it("refuses paths outside the home dir and registered projects", async () => {
 		expect(await appHandlers.readFilePreview({ path: "/etc/hosts" })).toEqual({
-			kind: "not-found",
+			kind: "outside-allowed",
 		});
 		await expect(
 			appHandlers.openTerminalPath({ path: "/etc/hosts", mode: "system" }),
 		).rejects.toThrow(/outside the allowed/);
+	});
+
+	it.skipIf(process.platform === "win32")("opens a file in a project's existing extra folder, never one in a missing or root folder", async () => {
+		try {
+			extraFolders["proj-2"] = [{ path: "/", exists: true }, { path: "/etc", exists: false }];
+			expect(await appHandlers.readFilePreview({ path: "/etc/hosts" })).toEqual({ kind: "outside-allowed" });
+			extraFolders["proj-2"] = [{ path: "/etc", exists: true }];
+			expect((await appHandlers.readFilePreview({ path: "/etc/hosts" })).kind).toBe("text");
+			const { resolved } = await appHandlers.resolveTerminalPaths({ paths: ["/etc/hosts"] });
+			expect(resolved["/etc/hosts"]).toEqual({ path: "/etc/hosts", kind: "file" });
+		} finally {
+			delete extraFolders["proj-2"];
+		}
 	});
 
 });

@@ -478,8 +478,8 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 		toast.success(t("terminal.filePreviewOpenedOnWindows"), { taskId, source: "terminal" });
 	});
 
-	const fileMissing = preview?.kind === "not-found";
-	const isFile = !!preview && preview.kind !== "not-found" && preview.kind !== "directory";
+	const fileMissing = preview?.kind === "not-found" || preview?.kind === "outside-allowed";
+	const isFile = !!preview && !fileMissing && preview.kind !== "directory";
 	// A one-line notice (binary, missing, too large) — or an audio player — stays a
 	// small dialog. Content hugs its own height up to the screen, or fills the screen
 	// once expanded — the size changes only when the user asks, never while they read.

@@ -1,3 +1,4 @@
+> Amended on 2026-11-26 by `decisions/2026/11/26/preview-allows-project-extra-folders.md`: the gate also admits each project's existing extra folders.
 > Amended on 2026-09-16 by `decisions/2026/09/16/terminal-links-allow-temp-dirs.md`: the path-scope gate also admits the OS temp directories (`os.tmpdir()` and `/tmp`, each with its real path), not only the home directory and project roots — and inside those temp directories only, it follows symlinks before allowing a path.
 
 # 208 — Terminal file-path links: regex + on-disk verification, Cmd/Ctrl+Click only

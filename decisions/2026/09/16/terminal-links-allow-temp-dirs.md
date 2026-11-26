@@ -1,3 +1,5 @@
+> Amended on 2026-11-26 by `decisions/2026/11/26/preview-allows-project-extra-folders.md`: the gate also admits each project's existing extra folders, and the preview reports a refused path as `outside-allowed`.
+
 # Terminal file-path links: the scope gate admits the OS temp directories
 
 ## Context

@@ -342,6 +342,7 @@ const terminal = {
 	"terminal.linkSheetCopyFailed": "Couldn't copy. Select the text above and copy it by hand.",
 	"terminal.filePreviewLoading": "Loading preview…",
 	"terminal.filePreviewNotFound": "File not found — it may have been moved or deleted.",
+	"terminal.filePreviewOutsideAllowed": "This file is outside the folders dev3 can open.",
 	"terminal.filePreviewViewerCrashed": "This file viewer crashed and cannot show this file.",
 	"terminal.filePreviewViewerCrashedFallback": "This file viewer crashed, so the built-in preview is shown instead.",
 	"terminal.filePreviewBinary": "Binary file ({size}) — no preview available.",

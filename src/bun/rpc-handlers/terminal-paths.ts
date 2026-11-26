@@ -9,6 +9,7 @@ import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_CONTENT_TYPES, FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt, previewMediaKind } from "../../shared/file-link-types";
 import { allProjectWorktreesRoots } from "../../shared/project-storage";
+import { resolveProjectFolders } from "../project-folders";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
@@ -27,8 +28,8 @@ import { log } from "./shared";
  * decisions/2026/08/24/terminal-links-unique-suffix-fallback.md.
  *
  * All three handlers take client-supplied paths, so every path they touch is
- * gated to {@link allowedRoots} — the home directory, the OS temp directories
- * and registered project roots. Resolution is gated too: an out-of-scope path
+ * gated to {@link allowedRoots} — the home directory, the OS temp directories,
+ * registered project roots and the extra folders the file explorer lists for them. Resolution is gated too: an out-of-scope path
  * must never become a link that then refuses to open, and `..` segments let
  * even a relative candidate escape its base. Same exposure class as
  * `listDirectory` behind the same auth, but bounded — see
@@ -109,8 +110,19 @@ function tempRoots(): string[] {
 	return cachedTempRoots;
 }
 
+/** The existing folders the explorer lists beside each project; a filesystem root never admits the whole disk. */
+async function projectFolderRoots(): Promise<string[]> {
+	try {
+		const lists = await Promise.all((await data.loadProjects()).map((p) => resolveProjectFolders(p).catch(() => [])));
+		return lists.flat().filter((f) => f.exists && dirname(f.path) !== f.path).map((f) => f.path);
+	} catch {
+		return [];
+	}
+}
+
 async function allowedRoots(): Promise<string[]> {
-	return [homedir(), ...tempRoots(), ...(await projectRoots())];
+	const [projects, folders] = await Promise.all([projectRoots(), projectFolderRoots()]);
+	return [homedir(), ...tempRoots(), ...projects, ...folders];
 }
 
 /**
@@ -120,19 +132,29 @@ async function allowedRoots(): Promise<string[]> {
  * local account could aim at a file no root covers, and only following it before
  * the stat tells the two apart.
  */
-function isPathAllowed(absPath: string, roots: string[]): boolean {
-	if (!roots.some((root) => isUnder(absPath, root))) return false;
-	if (!tempRoots().some((root) => isUnder(absPath, root))) return true;
+/** `missing` is a temp-dir path whose real path cannot be read (absent or dangling): in scope, nothing to open. */
+type PathScope = "allowed" | "outside" | "missing";
+
+function pathScope(absPath: string, roots: string[]): PathScope {
+	if (!roots.some((root) => isUnder(absPath, root))) return "outside";
+	if (!tempRoots().some((root) => isUnder(absPath, root))) return "allowed";
 	try {
-		return roots.some((root) => isUnder(realpathSync(absPath), root));
+		return roots.some((root) => isUnder(realpathSync(absPath), root)) ? "allowed" : "outside";
 	} catch {
-		// Unreadable or dangling: nothing to open either way.
-		return false;
+		return "missing";
 	}
 }
 
+function isPathAllowed(absPath: string, roots: string[]): boolean {
+	return pathScope(absPath, roots) === "allowed";
+}
+
+async function terminalPathScope(absPath: string): Promise<PathScope> {
+	return pathScope(resolvePath(absPath), await allowedRoots());
+}
+
 async function isTerminalPathAllowed(absPath: string): Promise<boolean> {
-	return isPathAllowed(resolvePath(absPath), await allowedRoots());
+	return (await terminalPathScope(absPath)) === "allowed";
 }
 
 async function terminalPathBases(params: { taskId?: string; projectId?: string }): Promise<string[]> {
@@ -302,9 +324,8 @@ async function readFilePreview(params: { path: string }): Promise<FilePreviewRes
 	if (!isAbsolute(params.path) || params.path.includes("\0")) {
 		return { kind: "not-found" };
 	}
-	if (!(await isTerminalPathAllowed(params.path))) {
-		return { kind: "not-found" };
-	}
+	const scope = await terminalPathScope(params.path);
+	if (scope !== "allowed") return { kind: scope === "outside" ? "outside-allowed" : "not-found" };
 	let st: Stats;
 	try {
 		st = await stat(params.path);

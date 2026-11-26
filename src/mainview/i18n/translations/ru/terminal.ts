@@ -366,6 +366,7 @@ const terminal = {
 	"terminal.linkSheetCopyFailed": "Не удалось скопировать. Выделите текст выше и скопируйте вручную.",
 	"terminal.filePreviewLoading": "Загрузка предпросмотра…",
 	"terminal.filePreviewNotFound": "Файл не найден — возможно, его переместили или удалили.",
+	"terminal.filePreviewOutsideAllowed": "Этот файл вне папок, которые dev3 может открыть.",
 	"terminal.filePreviewViewerCrashed": "Просмотрщик файлов упал и не может показать этот файл.",
 	"terminal.filePreviewViewerCrashedFallback": "Этот просмотрщик файлов упал, поэтому показан встроенный предпросмотр.",
 	"terminal.filePreviewBinary": "Двоичный файл ({size}) — предпросмотр недоступен.",

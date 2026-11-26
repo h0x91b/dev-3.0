@@ -95,11 +95,12 @@ function NoticeViewer({ preview }: FileViewerProps) {
 		"too-large": () => t("terminal.filePreviewTooLarge", { size }),
 		directory: () => t("terminal.filePreviewDirectory"),
 		"not-found": () => t("terminal.filePreviewNotFound"),
-	}[preview.kind as "binary" | "too-large" | "directory" | "not-found"];
+		"outside-allowed": () => t("terminal.filePreviewOutsideAllowed"),
+	}[preview.kind as "binary" | "too-large" | "directory" | "not-found" | "outside-allowed"];
 	return text ? <p className="text-fg-3 text-sm p-6">{text()}</p> : null;
 }
 
-const NOTICE_KINDS = new Set(["binary", "too-large", "directory", "not-found"]);
+const NOTICE_KINDS = new Set(["binary", "too-large", "directory", "not-found", "outside-allowed"]);
 
 export const BUILTIN_FILE_VIEWERS: FileViewerItem[] = [
 	{ id: "builtin:markdown", order: 10, matches: ({ preview, path, showRaw }) => preview.kind === "text" && isRenderableDocPath(path) && !showRaw, component: MarkdownViewer },

@@ -475,6 +475,18 @@ describe("FilePreviewModal", () => {
 		expect(screen.queryByText("Open in new tab")).not.toBeInTheDocument();
 		expect(screen.queryByText("Download")).not.toBeInTheDocument();
 	});
+
+	it("says a refused path is outside the allowed folders, not missing, and offers no open actions", async () => {
+		readFilePreview.mockResolvedValue({ kind: "outside-allowed" });
+		renderModal("/srv/elsewhere/notes.md");
+		await waitFor(() =>
+			expect(screen.getByText("This file is outside the folders dev3 can open.")).toBeInTheDocument(),
+		);
+		expect(screen.queryByText(/File not found/)).not.toBeInTheDocument();
+		expect(screen.queryByText("Open folder")).not.toBeInTheDocument();
+		expect(screen.queryByText("Open in new tab")).not.toBeInTheDocument();
+		expect(screen.queryByText("Download")).not.toBeInTheDocument();
+	});
 });
 
 describe("FilePreviewModal review comments", () => {
