@@ -32,8 +32,8 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	}
 	if (subcommand === "resume") return handleResume(args, socketPath, context);
 	if (subcommand === "aws-profiles") return handleAwsProfiles(args, socketPath);
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--reason <text>] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--reason <text>] [--json]");
-	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json", "reason"]);
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--window [name]] [--reason <text>] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--reason <text>] [--json]");
+	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "window", "json", "reason"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTask) return exitUsage("No task in context — pass --task <id>.");
@@ -41,6 +41,9 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	let prompt = singleTextInput(args, "prompt");
 	if (prompt === "-") prompt = await readStdin();
 	if (prompt !== undefined && !prompt.trim()) return exitUsage("--prompt must not be empty.");
+	// A bare `--window` parses as "true": the shared default tab.
+	const windowName = "window" in args.flags ? (args.flags.window === "true" ? "Agents" : args.flags.window.trim()) : undefined;
+	if (windowName === "") return exitUsage("--window needs a name or no value (the default tab is Agents).");
 	const projectId = resolveProjectId(args.flags.project, context);
 	const params = {
 		taskId: expandShortId(rawTask, context),
@@ -50,6 +53,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		configId: args.flags.config ?? null,
 		...(prompt !== undefined ? { prompt } : {}),
 		handoff: "handoff" in args.flags,
+		...(windowName ? { window: windowName } : {}),
 		...readReasonFlag(args),
 	};
 	let resp;
@@ -66,7 +70,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	if (!result.approved) return exitError(result.stale ? "The target task's run ended before approval" : "User declined the launch request", "No agent was started.", CLI_EXIT_CODE_LAUNCH_DECLINED);
 	// The agent is already running here; a missing pane id must not read as a failure worth retrying.
 	if (!result.spawn) return exitError("Unexpected response to agent spawn");
-	process.stdout.write("json" in args.flags ? `${JSON.stringify(result.spawn, null, 2)}\n` : `Spawned agent ${result.spawn.agentId ?? "default"} in pane ${result.spawn.paneId || "(id unknown)"} (${result.spawn.backend}).\n`);
+	process.stdout.write("json" in args.flags ? `${JSON.stringify(result.spawn, null, 2)}\n` : `Spawned agent ${result.spawn.agentId ?? "default"} in pane ${result.spawn.paneId || "(id unknown)"} (${result.spawn.backend}${result.spawn.window ? `, tab "${result.spawn.window}"` : ""}).\n`);
 }
 
 function describePane(pane: ResumePaneReport): string {

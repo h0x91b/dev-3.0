@@ -34,7 +34,8 @@ import type { TaskPaneBackendKind } from "../shared/task-panes";
 import type { SplitOrientation } from "../shared/split-tree";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import type { TerminalLaunchSpec } from "./task-terminal-backend";
-import { tmux, taskSessionName, TmuxError, PANE_START_COMMAND_FORMAT } from "./tmux";
+import { tmux, taskSessionName, TmuxError, PANE_START_COMMAND_FORMAT, TMUX_WINDOW_NAME_OPTION, WINDOW_NAME_FORMAT, WINDOW_PANE_FORMAT } from "./tmux";
+import { normalizeWindowName } from "../shared/window-name";
 import {
 	closeNativeTaskPane,
 	nativeTaskPaneCommands,
@@ -529,6 +530,55 @@ export async function openTaskPaneWindow(spec: TaskPaneLaunch & { windowName: st
 		if (!(err instanceof TmuxError)) throw err;
 		throw new Error(`tmux new-window failed (exit ${err.exitCode}): ${err.stderr || "unknown error"}`);
 	}
+}
+
+/**
+ * The first window (lowest index) of the task session this name belongs to: its
+ * `@dev3_window_name`, or `window_name` while automatic-rename is off. An unnamed
+ * window's `window_name` is its running command, so it never matches.
+ */
+async function findTaskWindowByName(task: Task, name: string, socket: string): Promise<string | null> {
+	const rows = await tmux.listWindows(WINDOW_NAME_FORMAT, { target: taskSessionName(task.id), socket });
+	const effective = (row: (typeof rows)[number]) => row.customName.trim() || (row.autoRename ? "" : row.name);
+	return rows.filter((row) => effective(row) === name).sort((a, b) => a.index - b.index)[0]?.windowId ?? null;
+}
+
+/** Give a window dev3 just created its sticky name, so the tab reads it instead of the host title. Best-effort. */
+async function nameCreatedWindow(paneId: string, name: string, socket: string): Promise<void> {
+	if (!paneId) return;
+	try {
+		const row = await tmux.displayMessage(WINDOW_PANE_FORMAT, { target: paneId, socket });
+		if (row?.windowId) await tmux.setWindowOption(row.windowId, TMUX_WINDOW_NAME_OPTION, name, { socket });
+	} catch (err) {
+		log.warn("Could not name the new task window", { paneId, error: String(err) });
+	}
+}
+
+/**
+ * tmux only: open the pane in the task session's window called `windowName`.
+ * Found, the pane splits into that window (then only that window is evened out);
+ * missing, a new background window with that name is created and named.
+ */
+export async function openTaskPaneInNamedWindow(spec: TaskPaneLaunch & { windowName: string }): Promise<AuxPaneHandle> {
+	const { task, socket } = spec;
+	if (backendOf(task) === "native") throw new Error("the native terminal backend has no windows to open");
+	const windowName = normalizeWindowName(spec.windowName);
+	if (!windowName) throw new Error("the window name is empty");
+	let windowId: string | null;
+	try {
+		windowId = await findTaskWindowByName(task, windowName, socket);
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		throw new Error(`tmux list-windows failed (exit ${err.exitCode}): ${err.stderr || "unknown error"}`);
+	}
+	if (!windowId) {
+		const handle = await openTaskPaneWindow({ ...spec, windowName });
+		await nameCreatedWindow(handle.paneId, windowName, socket);
+		return handle;
+	}
+	const handle = await splitTaskPane({ ...spec, tmuxTarget: windowId });
+	await tmux.selectLayout(windowId, "even-horizontal", { socket }).catch(() => {});
+	return handle;
 }
 
 /**

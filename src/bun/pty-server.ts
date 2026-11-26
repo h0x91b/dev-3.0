@@ -61,6 +61,7 @@ import {
 	parseWindowLayout,
 	PANE_ID_FORMAT,
 	WINDOW_OVERVIEW_FORMAT,
+	WINDOW_NAME_FORMAT,
 	PANE_GEOMETRY_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 	TMUX_TASK_TITLE_OPTION,
@@ -260,7 +261,7 @@ export function registerBackpressureProbe(sessionKey: string, probe: () => numbe
 }
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
-let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
+let onPaneExitedCallback: ((taskId: string | null, paneId: string) => void) | null = null;
 let onOsc52CopyCallback: ((payload: { taskId: string; text: string; len: number }) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
@@ -271,7 +272,7 @@ export function setOnBell(fn: (taskId: string) => void): void {
 	onBellCallback = fn;
 }
 
-export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): void {
+export function setOnPaneExited(fn: (taskId: string | null, paneId: string) => void): void {
 	onPaneExitedCallback = fn;
 }
 
@@ -1047,10 +1048,37 @@ export async function splitAndRunCommand(taskId: string, socket: string, command
 export async function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): Promise<string[]> {
 	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
 	try {
-		const rows = await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSessionName, socket });
+		const rows = await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSessionName, scope: "session", socket });
 		return rows.map((row) => row.paneId).filter(Boolean);
 	} catch {
 		return [];
+	}
+}
+
+/**
+ * The pane-exited hook command: tell the app over HTTP that a pane exited, so its dead
+ * entry leaves sessionState. `#{hook_pane}` is the exited pane (`#{pane_id}` would be the
+ * active one); the quotes keep the shell off the `&`, `|| true` covers a closing app.
+ */
+function paneExitedHookCommand(tmuxSessionName: string): string {
+	return `run-shell "curl -s '${ptyHttpUrl(ptyWsPort, `/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}`)}' || true"`;
+}
+
+/**
+ * Give EVERY window of a session the pane-exited hook: tmux resolves it from the CURRENT window,
+ * so one unhooked tab silences it. `window-linked` covers windows that appear later (any command);
+ * the loop covers those that exist. The text is stored as-is: set-hook never expands it.
+ */
+export async function installPaneExitedHooks(tmuxSessionName: string, socket: string): Promise<void> {
+	const command = paneExitedHookCommand(tmuxSessionName);
+	try {
+		await tmux.setSessionHook(tmuxSessionName, "window-linked", `set-hook -w pane-exited "${command.replace(/["\\]/g, "\\$&")}"`, { socket, bestEffort: true });
+		const windows = await tmux.listWindows(WINDOW_NAME_FORMAT, { target: tmuxSessionName, socket });
+		for (const { windowId } of windows) {
+			await tmux.setWindowHook(windowId, "pane-exited", command, { socket, bestEffort: true });
+		}
+	} catch (err) {
+		log.warn("Failed to set pane-exited hooks (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
 	}
 }
 
@@ -1969,21 +1997,7 @@ async function configureTmux(tmuxSessionName: string, socket: string): Promise<v
 	// the always-on window bar. Drop it so the session inherits the global value.
 	await tmux.unsetOption(`=${tmuxSessionName}:`, "status", { socket, bestEffort: true });
 
-	// Set pane-exited hook — when any pane in this session exits, notify the app
-	// via HTTP so the dead pane entry can be removed from sessionState.
-	// pane-exited is a window-level hook (-w flag required).
-	// #{hook_pane} expands to the pane that triggered the hook (the exited one).
-	// #{pane_id} would give the *active* pane instead — wrong target.
-	// Single quotes around the URL prevent shell interpretation of &.
-	// || true prevents errors if the app isn't running (e.g. during shutdown).
-	try {
-		await tmux.setWindowHook(tmuxSessionName, "pane-exited",
-			`run-shell "curl -s '${ptyHttpUrl(ptyWsPort, `/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}`)}' || true"`,
-			{ socket, bestEffort: true },
-		);
-	} catch (err) {
-		log.warn("Failed to set pane-exited hook (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
-	}
+	await installPaneExitedHooks(tmuxSessionName, socket);
 
 	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: activeTmuxConfigPath() });
 }
@@ -2276,13 +2290,11 @@ const ptyServer = Bun.serve({
 				const sessionName = url.searchParams.get("session");
 				const paneId = url.searchParams.get("pane");
 				if (sessionName && paneId) {
+					// tmux resolves the hook from the current window, so the session may be absent or
+					// another task's: the pane id is routed on its own.
 					const taskId = findTaskIdByTmuxSession(sessionName);
-					if (taskId) {
-						log.info("Pane exited", { taskId: shortId(taskId), paneId, sessionName });
-						onPaneExitedCallback?.(taskId, paneId);
-					} else {
-						log.debug("Pane exited for unknown session", { sessionName, paneId });
-					}
+					log.info("Pane exited", { taskId: taskId ? shortId(taskId) : null, paneId, sessionName });
+					onPaneExitedCallback?.(taskId, paneId);
 				}
 				return new Response("ok");
 			}

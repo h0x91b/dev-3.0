@@ -13,6 +13,7 @@ import {
 	ALT_CLICK_PANE_FORMAT,
 	SEARCH_STATE_FORMAT,
 	PANE_SPLIT_LAYOUT_FORMAT,
+	WINDOW_NAME_FORMAT,
 } from "../formats";
 
 describe("tmuxFormat builder", () => {
@@ -48,6 +49,14 @@ describe("tmuxFormat builder", () => {
 });
 
 describe("format declarations", () => {
+	it("WINDOW_NAME_FORMAT carries the automatic-rename flag, the custom name, and the window name as the tail", () => {
+		expect(WINDOW_NAME_FORMAT.formatString).toBe("#{window_id}\t#{window_index}\t#{automatic-rename}\t#{@dev3_window_name}\t#{window_name}");
+		expect(WINDOW_NAME_FORMAT.parse("@1\t0\t1\t\tzsh\n@4\t2\t0\tReview\tAgents\n")).toEqual([
+			{ windowId: "@1", index: 0, autoRename: true, customName: "", name: "zsh" },
+			{ windowId: "@4", index: 2, autoRename: false, customName: "Review", name: "Agents" },
+		]);
+	});
+
 	it("PANE_SPLIT_LAYOUT_FORMAT carries window, cells, agent tag and a tab-safe launch command", () => {
 		expect(PANE_SPLIT_LAYOUT_FORMAT.formatString).toBe(
 			"#{window_id}\t#{pane_id}\t#{pane_width}\t#{pane_height}\t#{pane_dead}\t#{@dev3_agent}\t#{pane_start_command}",

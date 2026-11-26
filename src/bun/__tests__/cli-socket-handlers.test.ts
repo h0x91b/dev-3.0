@@ -775,6 +775,15 @@ describe("agent.spawn account boundary", () => {
 	});
 });
 
+describe("agent.spawn window", () => {
+	it("rejects an empty, blank or non-string window before asking anybody", async () => {
+		for (const window of ["", "   ", 5]) {
+			const resp = await handleRequest(makeRequest("agent.spawn", { taskId: "test-task", agentId: null, configId: null, window }));
+			expect(resp, String(window)).toMatchObject({ ok: false, error: expect.stringContaining("window must be a non-empty string") });
+		}
+	});
+});
+
 describe("handleRequest dispatch", () => {
 	it("returns error for unknown method", async () => {
 		const resp = await handleRequest(makeRequest("unknown.method"));

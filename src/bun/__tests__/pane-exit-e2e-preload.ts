@@ -3,6 +3,8 @@ import type { PaneSessionEntry } from "../../shared/types";
 import { cleanupTestIsolation, configureTestIsolation } from "../../../test-isolation";
 
 const testRoot = configureTestIsolation("pane-e2e");
+// Every tmux call of this run, incl. `-L dev3` and the attached python client, must hit a private server.
+process.env.TMUX_TMPDIR = process.env.DEV3_TEST_SOCKET_ROOT;
 process.once("exit", () => cleanupTestIsolation(testRoot));
 
 mock.module("electrobun/bun", () => ({
@@ -28,7 +30,7 @@ mock.module("../data", () => ({
 	loadVirtualProjects: async () => [],
 	getProject: async () => (globalThis as any).__e2eProject,
 	addTask: async () => ({}),
-	loadTasks: async () => [],
+	loadTasks: async () => [{ ...(globalThis as any).__e2eTask, sessionState: (globalThis as any).__e2eSessionState }],
 }));
 
 // Spread the REAL module so the mock can never go stale: an enumerated export list

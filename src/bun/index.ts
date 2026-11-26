@@ -12,7 +12,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import { startDisplayWatch } from "./display-watch";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setAppForeground, isAppForeground, setFocusMode, getActiveContext } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, routePaneExited, setAppForeground, isAppForeground, setFocusMode, getActiveContext } from "./rpc-handlers";
 import { applyFreezeDiagnosticsSetting, configureFreezeDiagnostics, recordFreezeDiagnostic, stopFreezeDiagnostics } from "./freeze-diagnostics";
 import { resolve } from "node:path";
 import { startRendererWatchdog } from "./renderer-watchdog";
@@ -827,8 +827,8 @@ setOnOsc52Copy((payload) => {
 
 // Wire pane-exited notifications — remove dead pane entries from sessionState
 setOnPaneExited((taskId, paneId) => {
-	handlePaneExited(taskId, paneId).catch((err) => {
-		log.error("handlePaneExited unhandled error", { error: String(err) });
+	routePaneExited(taskId, paneId).catch((err) => {
+		log.error("routePaneExited unhandled error", { error: String(err) });
 	});
 });
 

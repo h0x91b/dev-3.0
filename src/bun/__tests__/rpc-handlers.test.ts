@@ -522,6 +522,7 @@ const {
 } = await import("../rpc-handlers");
 const {
 	handlePaneExited,
+	routePaneExited,
 	nativeHunterColumnRatios,
 	launchColumnAgent,
 	tmuxAction,
@@ -13682,6 +13683,54 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 	});
 });
 
+describe("routePaneExited routes by pane id as well as by session", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const entry = (paneId: string) => ({ agentCmd: "claude", agentId: "builtin-claude", configId: "c", sessionId: `s-${paneId}`, paneId });
+	const mainA = { ...entry("%0"), main: true };
+	const mainB = { ...entry("%1"), main: true };
+	const agentB = entry("%7");
+
+	function arrange() {
+		const project = makeProject();
+		const taskA = makeTask({ id: "task-a", sessionState: { panes: [mainA] } });
+		const taskB = makeTask({ id: "task-b", sessionState: { panes: [mainB, agentB] } });
+		mockTaskWrites(taskA, taskB);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockResolvedValue([taskA, taskB]);
+		// What each task's own tmux session still holds after the Agents window went away.
+		vi.mocked(pty.listPaneIds).mockImplementation(async (taskId: string) => (taskId === "task-a" ? ["%0"] : ["%1"]));
+		return { project };
+	}
+
+	it("reconciles the task that owns the pane even when the session in the URL is another task's", async () => {
+		const { project } = arrange();
+		await routePaneExited("task-a", "%7");
+		expect((await data.getTask(project, "task-b")).sessionState?.panes).toEqual([mainB]);
+		expect((await data.getTask(project, "task-a")).sessionState?.panes).toEqual([mainA]);
+	});
+
+	it("still reconciles the pane's owner when the session is unknown", async () => {
+		const { project } = arrange();
+		await routePaneExited(null, "%7");
+		expect((await data.getTask(project, "task-b")).sessionState?.panes).toEqual([mainB]);
+	});
+
+	it("reconciles a task once when the session task and the pane owner are the same", async () => {
+		arrange();
+		await routePaneExited("task-b", "%7");
+		expect(pty.listPaneIds).toHaveBeenCalledTimes(1);
+		expect(pty.listPaneIds).toHaveBeenCalledWith("task-b", expect.any(String));
+	});
+
+	it("still reconciles the session's task when the owner lookup fails", async () => {
+		arrange();
+		vi.mocked(data.loadTasks).mockRejectedValue(new Error("disk"));
+		await routePaneExited("task-b", "%7");
+		expect(pty.listPaneIds).toHaveBeenCalledWith("task-b", expect.any(String));
+	});
+});
+
 describe("handlePaneExited restores the task-level agent from the main pane", () => {
 	beforeEach(() => vi.clearAllMocks());
 	const main = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "claude-opus", sessionId: "s-main", paneId: "%0" };
@@ -13701,6 +13750,21 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 		const { project, task } = arrange([main, extra], "claude-kimi", ["%0"]);
 		await handlePaneExited(task.id, "%1");
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("keeps both entries when a shell pane exits in window 0 while an agent runs in another window", async () => {
+		const tabbed = { ...extra, paneId: "%12", window: "Agents" };
+		const { project, task } = arrange([main, tabbed], "claude-opus", ["%0", "%12"]);
+		await handlePaneExited(task.id, "%5");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([main, tabbed]);
+		expect(pty.listPaneIds).toHaveBeenCalledWith(task.id, expect.any(String));
+	});
+
+	it("drops only the agent of the window that exited", async () => {
+		const tabbed = { ...extra, paneId: "%12", window: "Agents" };
+		const { project, task } = arrange([main, tabbed], "claude-opus", ["%0"]);
+		await handlePaneExited(task.id, "%12");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([main]);
 	});
 
 	it("pushes the restored agent to the renderer", async () => {

@@ -29,6 +29,8 @@ export interface SpawnAgentResult {
 	backend: "tmux" | "native";
 	agentId: string | null;
 	configId: string | null;
+	/** The tmux window ("tab") the agent opened in; absent for a split of the current window. */
+	window?: string;
 	/** Null when the spawn was an ordinary extra agent, with nothing handed over. */
 	handoff: HandoffOutcome | null;
 }

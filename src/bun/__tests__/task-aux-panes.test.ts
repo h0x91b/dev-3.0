@@ -22,6 +22,10 @@ const mocks = vi.hoisted(() => ({
 	tmuxListPanes: vi.fn(),
 	tmuxSplitWindow: vi.fn(),
 	tmuxNewWindow: vi.fn(),
+	tmuxListWindows: vi.fn(),
+	tmuxSelectLayout: vi.fn(),
+	tmuxDisplayMessage: vi.fn(),
+	tmuxSetWindowOption: vi.fn(),
 	tmuxSelectPane: vi.fn(),
 	tmuxKillPane: vi.fn(),
 	// native-task-panes
@@ -34,7 +38,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 /** Every tmux method the module could possibly reach. */
-const TMUX_METHODS = [mocks.tmuxListPanes, mocks.tmuxSplitWindow, mocks.tmuxNewWindow, mocks.tmuxSelectPane, mocks.tmuxKillPane];
+const TMUX_METHODS = [mocks.tmuxListPanes, mocks.tmuxSplitWindow, mocks.tmuxNewWindow, mocks.tmuxListWindows, mocks.tmuxSelectLayout, mocks.tmuxDisplayMessage, mocks.tmuxSetWindowOption, mocks.tmuxSelectPane, mocks.tmuxKillPane];
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -45,12 +49,19 @@ vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
 vi.mock("../tmux", () => ({
 	PANE_START_COMMAND_FORMAT: { formatString: "#{pane_id}\t#{pane_start_command}", parse: () => [] },
+	WINDOW_NAME_FORMAT: { formatString: "windows", parse: () => [] },
+	WINDOW_PANE_FORMAT: { formatString: "window-pane", parse: () => [] },
+	TMUX_WINDOW_NAME_OPTION: "@dev3_window_name",
 	TmuxError: FakeTmuxError,
 	taskSessionName: (taskId: string) => `dev3-${taskId.slice(0, 8)}`,
 	tmux: {
 		listPanes: mocks.tmuxListPanes,
 		splitWindow: mocks.tmuxSplitWindow,
 		newWindow: mocks.tmuxNewWindow,
+		listWindows: mocks.tmuxListWindows,
+		selectLayout: mocks.tmuxSelectLayout,
+		displayMessage: mocks.tmuxDisplayMessage,
+		setWindowOption: mocks.tmuxSetWindowOption,
 		selectPane: mocks.tmuxSelectPane,
 		killPane: mocks.tmuxKillPane,
 	},
@@ -79,6 +90,7 @@ import {
 	findAuxPane,
 	nativeAuxPaneShellPid,
 	openAuxPane,
+	openTaskPaneInNamedWindow,
 	openTaskPaneWindow,
 	splitTaskPane,
 } from "../task-aux-panes";
@@ -146,6 +158,10 @@ beforeEach(() => {
 	mocks.focusNativeTaskPane.mockResolvedValue(nativeState(["pane-1", "pane-2"], "pane-1"));
 	mocks.tmuxSplitWindow.mockResolvedValue({ paneId: "%7", stderr: "" });
 	mocks.tmuxSelectPane.mockResolvedValue(undefined);
+	mocks.tmuxListWindows.mockResolvedValue([]);
+	mocks.tmuxSelectLayout.mockResolvedValue(undefined);
+	mocks.tmuxDisplayMessage.mockResolvedValue({ windowId: "@9" });
+	mocks.tmuxSetWindowOption.mockResolvedValue(undefined);
 	mocks.tmuxKillPane.mockResolvedValue(undefined);
 	mocks.tmuxListPanes.mockResolvedValue([]);
 });
@@ -498,6 +514,83 @@ describe("openTaskPaneWindow", () => {
 
 	it("refuses on native, which has no windows, and never reaches tmux", async () => {
 		await expect(openTaskPaneWindow({ ...spec(nativeTask), windowName: "Runs" })).rejects.toThrow(/no windows/);
+		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
+	});
+});
+
+describe("openTaskPaneInNamedWindow", () => {
+	// autoRename mirrors `#{automatic-rename}`: on for a window nobody named, off after `new-window -n`.
+	const row = (windowId: string, index: number, name: string, customName = "", autoRename = false) => ({ windowId, index, name, customName, autoRename });
+
+	it("creates a detached window when no window carries the name, and gives it a sticky name for the tab", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@1", 0, "main", "", true)]);
+		mocks.tmuxNewWindow.mockResolvedValue({ paneId: "%12", stderr: "" });
+		mocks.tmuxDisplayMessage.mockResolvedValue({ windowId: "@9" });
+		const handle = await openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "Agents" });
+		expect(handle).toEqual({ backend: "tmux", paneId: "%12" });
+		expect(mocks.tmuxListWindows).toHaveBeenCalledWith(expect.anything(), { target: SESSION, socket: SOCKET });
+		expect(mocks.tmuxNewWindow).toHaveBeenCalledWith(expect.objectContaining({ name: "Agents", detached: true }));
+		expect(mocks.tmuxDisplayMessage).toHaveBeenCalledWith(expect.anything(), { target: "%12", socket: SOCKET });
+		expect(mocks.tmuxSetWindowOption).toHaveBeenCalledWith("@9", "@dev3_window_name", "Agents", { socket: SOCKET });
+		expect(mocks.tmuxSplitWindow).not.toHaveBeenCalled();
+		expect(mocks.tmuxSelectLayout).not.toHaveBeenCalled();
+	});
+
+	it("still opens the window when naming it fails", async () => {
+		mocks.tmuxNewWindow.mockResolvedValue({ paneId: "%12", stderr: "" });
+		mocks.tmuxSetWindowOption.mockRejectedValue(new Error("gone"));
+		await expect(openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "Agents" })).resolves.toEqual({ backend: "tmux", paneId: "%12" });
+		mocks.tmuxDisplayMessage.mockRejectedValue(new Error("gone"));
+		await expect(openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "Agents" })).resolves.toEqual({ backend: "tmux", paneId: "%12" });
+	});
+
+	it("splits into the existing window and evens out only that window", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@1", 0, "main", "", true), row("@5", 2, "Agents")]);
+		const handle = await openTaskPaneInNamedWindow({ ...spec(tmuxTask, { placement: "right", size: "" }), windowName: "Agents" });
+		expect(handle).toEqual({ backend: "tmux", paneId: "%7" });
+		expect(mocks.tmuxSplitWindow).toHaveBeenCalledWith(expect.objectContaining({ target: "@5", orientation: "horizontal", printPaneId: true }));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBeUndefined();
+		expect(mocks.tmuxSelectLayout).toHaveBeenCalledWith("@5", "even-horizontal", { socket: SOCKET });
+		expect(mocks.tmuxNewWindow).not.toHaveBeenCalled();
+		expect(mocks.tmuxSetWindowOption).not.toHaveBeenCalled();
+	});
+
+	it("matches a window by its @dev3_window_name, and takes the lowest index when several match", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@9", 4, "review"), row("@3", 1, "zsh", "review", true), row("@2", 0, "review")]);
+		await openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "review" });
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].target).toBe("@2");
+	});
+
+	it("never matches an auto-named window by the command it runs", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@1", 0, "zsh", "", true), row("@2", 1, "claude", "", true)]);
+		mocks.tmuxNewWindow.mockResolvedValue({ paneId: "%12", stderr: "" });
+		await openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "zsh" });
+		expect(mocks.tmuxSplitWindow).not.toHaveBeenCalled();
+		expect(mocks.tmuxNewWindow).toHaveBeenCalledWith(expect.objectContaining({ name: "zsh" }));
+	});
+
+	it("matches a window the user renamed by its custom name, even though its command name differs", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@1", 0, "zsh", "", true), row("@6", 1, "zsh", "Notes", true)]);
+		await openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "Notes" });
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].target).toBe("@6");
+	});
+
+	it("does not reuse a window dev3 created as Agents once the user renamed it to Review", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@5", 1, "Agents", "Review")]);
+		mocks.tmuxNewWindow.mockResolvedValue({ paneId: "%12", stderr: "" });
+		await openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "Agents" });
+		expect(mocks.tmuxSplitWindow).not.toHaveBeenCalled();
+		expect(mocks.tmuxNewWindow).toHaveBeenCalledWith(expect.objectContaining({ name: "Agents" }));
+	});
+
+	it("still succeeds when the layout cannot be evened out", async () => {
+		mocks.tmuxListWindows.mockResolvedValue([row("@5", 2, "Agents")]);
+		mocks.tmuxSelectLayout.mockRejectedValue(new Error("no layout"));
+		await expect(openTaskPaneInNamedWindow({ ...spec(tmuxTask), windowName: "Agents" })).resolves.toEqual({ backend: "tmux", paneId: "%7" });
+	});
+
+	it("refuses on native and never reaches tmux", async () => {
+		await expect(openTaskPaneInNamedWindow({ ...spec(nativeTask), windowName: "Agents" })).rejects.toThrow(/no windows/);
 		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
 	});
 });

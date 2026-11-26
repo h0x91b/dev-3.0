@@ -1014,6 +1014,25 @@ export function cleanupTaskTmuxState(taskId: string): void {
 }
 
 /**
+ * When a window's last pane exits, tmux runs the CURRENT window's hook, so the URL's session
+ * may be another task's or none: every task recording the pane is reconciled too (idempotent).
+ */
+export async function routePaneExited(sessionTaskId: string | null, paneId: string): Promise<void> {
+	const taskIds = new Set<string>(sessionTaskId ? [sessionTaskId] : []);
+	try {
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+		for (const project of projects) {
+			for (const task of await data.loadTasks(project)) {
+				if (task.sessionState?.panes.some((pane) => pane.paneId === paneId)) taskIds.add(task.id);
+			}
+		}
+	} catch (err) {
+		log.warn("Could not look up the owner of an exited pane (non-fatal)", { paneId, error: String(err) });
+	}
+	await Promise.all([...taskIds].map((id) => handlePaneExited(id, paneId)));
+}
+
+/**
  * Called when a tmux pane exits. Reconciles sessionState against live panes
  * rather than matching by exact paneId — this handles setup panes, unmanaged
  * panes, and entries that never got a paneId assigned.

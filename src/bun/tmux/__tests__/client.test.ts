@@ -445,6 +445,7 @@ describe("command methods build the documented argv", () => {
 		["setWindowOption", (c) => c.setWindowOption("@3", "@dev3_window_name", "logs"), ["set-option", "-w", "-t", "@3", "@dev3_window_name", "logs"]],
 		["unsetWindowOption", (c) => c.unsetWindowOption("@3", "@dev3_window_name"), ["set-option", "-w", "-u", "-t", "@3", "@dev3_window_name"]],
 		["setGlobalOption", (c) => c.setGlobalOption("@dev3_pane_dimming", "off"), ["set-option", "-g", "@dev3_pane_dimming", "off"]],
+		["setSessionHook", (c) => c.setSessionHook("dev3-a", "window-linked", "set-hook -w x y"), ["set-hook", "-t", "dev3-a", "window-linked", "set-hook -w x y"]],
 		["setWindowHook", (c) => c.setWindowHook("dev3-a", "pane-exited", "run-shell x"), ["set-hook", "-wt", "dev3-a", "pane-exited", "run-shell x"]],
 		["setEnvironment", (c) => c.setEnvironment("dev3-a", "K", "v"), ["set-environment", "-t", "dev3-a", "K", "v"]],
 		["removeEnvironment", (c) => c.removeEnvironment("dev3-a", "K"), ["set-environment", "-r", "-t", "dev3-a", "K"]],

@@ -76,6 +76,7 @@ const common = {
 	"agentLaunch.resuming": "Reanudando…",
 	"agentLaunch.initialPrompt": "Instrucciones iniciales",
 	"agentLaunch.spawnHandoff": "El nuevo agente también recibirá la última conversación de esta tarea.",
+	"agentLaunch.spawnWindow": "Se abrirá en una pestaña aparte: {name}",
 	"agentLaunch.title": "El agente quiere iniciar esta tarea",
 	"agentLaunch.titleScratch": "El agente pide una tarea scratch",
 	"agentLaunch.requestedBy": "Solicitado por la tarea #{seq} — {title}",

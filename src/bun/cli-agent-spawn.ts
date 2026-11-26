@@ -9,6 +9,7 @@ import { isAutoAccountId, isRoutableAccountKind } from "../shared/agent-accounts
 import { applyBinaryPathOverride, getAllAgents } from "./agents";
 import { brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
 import { getTask } from "./data";
+import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 import { settingsConfigHandlers } from "./rpc-handlers/settings-config";
@@ -23,6 +24,8 @@ interface SpawnOptions {
 	choice: Pick<LaunchVariant, "agentId" | "configId">;
 	prompt?: string;
 	handoff: boolean;
+	/** tmux only: open the agent in this named window ("tab") of the task session instead of splitting the current one. */
+	window?: string;
 	/** Why the requester asks (`--reason`), shown in the dialog. */
 	reason?: ApprovalReason;
 }
@@ -86,8 +89,9 @@ async function assertRunning(task: Task): Promise<void> {
 }
 
 async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
-	const { project, task, requester, prompt, handoff } = opts;
+	const { project, task, requester, prompt, handoff, window } = opts;
 	await assertRunning(task);
+	if (window && taskTerminalBackendIdentity(task) === "native") throw new Error("--window needs a tmux task terminal: the native terminal backend has no tabs. Run without --window to split the current tab.");
 	// Account overrides belong to the human approval response, never the caller.
 	let choice = await validateChoice({ agentId: opts.choice.agentId, configId: opts.choice.configId });
 	// The new pane starts on the task's AWS account; the dialog seeds from this.
@@ -107,7 +111,7 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 			requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
 			scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
 			subject, defaultPriority: task.priority ?? DEFAULT_PRIORITY,
-			canAddVariants: false, autoApproveAt, spawn: { choice, prompt, handoff },
+			canAddVariants: false, autoApproveAt, spawn: { choice, prompt, handoff, ...(window ? { window } : {}) },
 			...(opts.reason ? { reason: opts.reason } : {}),
 		};
 		setAgentLaunchDialog(request);
@@ -122,13 +126,13 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 	const current = await getTask(project, task.id);
 	await assertRunning(current);
 	if (current.worktreePath !== task.worktreePath || current.lifecycleStartedAt !== task.lifecycleStartedAt) throw new Error("The target task's run changed while waiting — no agent was started.");
-	const spawn = await tmuxPtyHandlers.spawnAgentInTask({ taskId: task.id, projectId: project.id, ...choice, prompt, handoff });
+	const spawn = await tmuxPtyHandlers.spawnAgentInTask({ taskId: task.id, projectId: project.id, ...choice, prompt, handoff, ...(window ? { window } : {}) });
 	return { approved: true, spawn };
 }
 
 /** Retries join the whole operation, not just approval: one answer opens one pane. */
 export async function spawnCliAgent(opts: SpawnOptions): Promise<SpawnOutcome> {
-	const signature = JSON.stringify({ choice: opts.choice, prompt: opts.prompt, handoff: opts.handoff, requester: opts.requester?.id });
+	const signature = JSON.stringify({ choice: opts.choice, prompt: opts.prompt, handoff: opts.handoff, window: opts.window, requester: opts.requester?.id });
 	const existing = pendingSpawns.get(opts.task.id);
 	if (existing) {
 		if (existing.signature !== signature) throw new Error("Another agent spawn is pending for this task — wait for its answer first.");

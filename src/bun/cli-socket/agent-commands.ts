@@ -21,6 +21,7 @@ import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
+import { normalizeWindowName } from "../../shared/window-name";
 import { applyClaudeHookStatus, scheduleClaudeBackgroundExpiry } from "./claude-hook-status";
 import { claudeApprovals } from "../claude-approval-state";
 import { recordTaskActivity } from "../task-activity";
@@ -186,6 +187,8 @@ export const agentHandlers: Record<string, Handler> = {
 	},
 	"agent.spawn": async (params) => {
 		if ("accountId" in params) throw new Error("Account selection is not supported by agent.spawn — the default account is used unless the user changes it in the approval dialog.");
+		const window = params.window === undefined ? undefined : typeof params.window === "string" ? normalizeWindowName(params.window) : "";
+		if (window === "") throw new Error("window must be a non-empty string.");
 		const { project, task } = await requirePaneTask(params);
 		const requester = await resolveRequesterTask(params, "launch request");
 		for (const key of ["agentId", "configId", "prompt"]) {
@@ -198,6 +201,7 @@ export const agentHandlers: Record<string, Handler> = {
 			project, task, requester,
 			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null },
 			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
+			...(window ? { window } : {}),
 			...approvalReasonFromParams(params),
 		});
 	},

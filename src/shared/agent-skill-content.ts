@@ -362,7 +362,7 @@ Use it only for work that needs its own session — never to escape your scope, 
 
 Acting on another task? Pass \`--reason "<why>"\`: its approval dialog shows it.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree, user-approved, default account. \`--handoff\` retells the conversation; \`--window [name]\` = own tab (default \`Agents\`), tmux only. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees memory (declined: exit 36); \`dev3 task wake\` resumes it.
 
 **Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
 

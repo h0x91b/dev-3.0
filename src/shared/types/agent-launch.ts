@@ -163,7 +163,7 @@ export interface AgentCancellationRequest {
  */
 export interface AgentLaunchRequest {
 	/** CLI +Agent request: one pane, not a task/variant launch. */
-	spawn?: { choice: LaunchVariant; prompt?: string; handoff: boolean };
+	spawn?: { choice: LaunchVariant; prompt?: string; handoff: boolean; window?: string };
 	/** `dev3 agent resume`: restore these saved panes. The dialog offers no agent choice, only the
 	 *  Claude account; `accountId` is the current pick (undefined keeps each pane's saved account). */
 	resume?: { panes: ResumeDialogPane[]; accountId?: string | null };

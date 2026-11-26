@@ -63,6 +63,7 @@ export {
 	launchTaskPty,
 	launchColumnAgent,
 	handlePaneExited,
+	routePaneExited,
 	addVirtualShellPane,
 } from "./rpc-handlers/tmux-pty";
 

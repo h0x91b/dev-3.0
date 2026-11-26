@@ -15,12 +15,19 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Project, Task, PaneSessionEntry } from "../../shared/types";
 import * as pty from "../pty-server";
-import { launchTaskPty, handlePaneExited } from "../rpc-handlers/tmux-pty";
+import { spawn } from "../spawn";
+import { launchTaskPty, routePaneExited } from "../rpc-handlers/tmux-pty";
 // Leaf import, not the tmux barrel: this script runs under a preload that mocks
 // whole modules, and the barrel pulls in far more than the unlink helper.
 import { removeTmuxSocketFile } from "../tmux/socket-files";
 
 // ── Config ──────────────────────────────────────────────────────────
+
+// The hooks this run installs must never touch the user's real tmux server (`-L dev3`).
+if (!process.env.TMUX_TMPDIR || process.env.TMUX_TMPDIR !== process.env.DEV3_TEST_SOCKET_ROOT) {
+	console.error(`FAIL: TMUX_TMPDIR must be the isolated socket root, got ${JSON.stringify(process.env.TMUX_TMPDIR)} — run through \`bun run test:pane-e2e\``);
+	process.exit(1);
+}
 
 const TEST_SOCKET = `dev3-e2e-${process.pid}`;
 const TASK_ID = `e2e-${Date.now()}-0000-0000-000000000000`;
@@ -82,7 +89,11 @@ function tmuxSync(args: string[]): ReturnType<typeof nodeSpawnSync> {
 	return nodeSpawnSync("tmux", args, { env: { ...process.env } });
 }
 
+// The headless tmux client the scenarios drive; closed with the run.
+let control: Bun.Subprocess<"pipe", "pipe", "pipe"> | null = null;
+
 function cleanup(): void {
+	try { control?.kill(); } catch { /* ignore */ }
 	try { pty.destroySession(TASK_ID, TEST_SOCKET); } catch { /* ignore */ }
 	try { tmuxSync(["-L", TEST_SOCKET, "kill-server"]); } catch { /* ignore */ }
 	// kill-server leaves the socket FILE behind, and this name is pid-keyed.
@@ -103,17 +114,20 @@ function getSessionState(): { panes: PaneSessionEntry[] } | null {
 	return (globalThis as any).__e2eSessionState;
 }
 
+const exitCallbacks: Array<{ taskId: string | null; paneId: string }> = [];
+
 // ── Wire pane-exited callback (normally done in index.ts) ───────────
 
 pty.setOnPaneExited((taskId, paneId) => {
-	handlePaneExited(taskId, paneId);
+	exitCallbacks.push({ taskId, paneId });
+	routePaneExited(taskId, paneId);
 });
 
 // ── Test ────────────────────────────────────────────────────────────
 
 async function main() {
 	console.log("=== pane-exit reconciliation e2e (real launchTaskPty) ===");
-	console.log(`socket=${TEST_SOCKET} task=${TASK_ID.slice(0, 8)}`);
+	console.log(`socket=${TEST_SOCKET} task=${TASK_ID.slice(0, 8)} TMUX_TMPDIR=${process.env.TMUX_TMPDIR}`);
 
 	try {
 		// Launch with setup script — this is the REAL launchTaskPty code path
@@ -153,7 +167,89 @@ async function main() {
 		assert(liveAfter.includes(reconciled[0].paneId!),
 			`paneId ${reconciled[0].paneId} not in live ${JSON.stringify(liveAfter)}`);
 
-		console.log(`\nPASS — panes[0].paneId=${reconciled[0].paneId} (correct surviving agent pane)`);
+		console.log(`panes[0].paneId=${reconciled[0].paneId} (correct surviving agent pane)`);
+
+		// An agent alone in its own window exits while ANOTHER tab is current: tmux resolves the
+		// hook from that tab, so every tab must carry it, whoever opened it.
+		const session = pty.getSessionTmuxName(TASK_ID);
+		const mainEntry = reconciled[0];
+		const tmuxOut = (args: string[]): string => String(tmuxSync(["-L", TEST_SOCKET, ...args]).stdout).trim();
+		const newWindow = (name: string, command: string): string =>
+			tmuxOut(["new-window", "-d", "-n", name, "-t", `${session}:`, "-P", "-F", "#{pane_id}", command]);
+		const agentEntry = (paneId: string) => ({ paneId, window: "Agents", agentCmd: "sleep", sessionId: null, agentId: null, configId: null });
+		const hooksOf = (target: string, scope: "-w" | "-g" | ""): string => tmuxOut(["show-hooks", ...(scope ? [scope] : []), "-t", target]);
+
+		// A headless attached client (control mode, no terminal): what a prefix key runs is read from
+		// the session's loaded bindings and executed through it, so its new window is current for a client.
+		const client = spawn(["tmux", "-L", TEST_SOCKET, "-C", "attach", "-t", session], { stdin: "pipe", stdout: "pipe", stderr: "pipe" }) as unknown as Bun.Subprocess<"pipe", "pipe", "pipe">;
+		control = client;
+		for (const stream of [client.stdout, client.stderr]) void (async () => { for await (const _ of stream) { /* drain */ } })();
+		await waitFor(() => tmuxOut(["list-clients", "-t", session, "-F", "#{client_control_mode}"]).includes("1"), 5_000);
+		const runPrefixBinding = async (key: string, expected: RegExp): Promise<void> => {
+			const listed = tmuxOut(["list-keys", "-T", "prefix", key]);
+			const bound = listed.match(/^bind-key\s+(?:-r\s+)?-T\s+prefix\s+\S+\s+(.+)$/m)?.[1];
+			assert(!!bound && expected.test(bound), `prefix ${key} should run ${expected}, got ${JSON.stringify(listed)}`);
+			client.stdin.write(`${bound!.replace(/\\;/g, ";")}\n`);
+			client.stdin.flush();
+		};
+		const eventually = async (what: string, check: () => boolean): Promise<void> => {
+			try { await waitFor(check, 5_000, 50); } catch { assert(false, `${what} (not within 5s)`); }
+		};
+		const activeWindowId = (): string => tmuxOut(["display-message", "-p", "-t", session, "#{window_id}"]);
+
+		const expectAgentsExitCleansUp = async (label: string, agentPane: string): Promise<void> => {
+			(globalThis as any).__e2eSessionState = { panes: [mainEntry, agentEntry(agentPane)] };
+			await waitFor(() => !getSessionState()!.panes.some(p => p.paneId === agentPane), 15_000);
+			assert(exitCallbacks.some(c => c.paneId === agentPane && c.taskId === TASK_ID), `${label}: the callback should reach with the Agents pane id`);
+			const left = getSessionState()!.panes;
+			assert(left.length === 1 && left[0].paneId === mainEntry.paneId, `${label}: only the Agents entry should be removed`);
+			console.log(`PASS — ${label}`);
+		};
+
+		// A tab a user opens with the shipped prefix c binding, current in an attached client.
+		const agentA = newWindow("Agents", "bash -c 'sleep 6'");
+		await runPrefixBinding("c", /new-window/);
+		await eventually("prefix c should open a current third tab", () => {
+			const windows = tmuxOut(["list-windows", "-t", session, "-F", "#{window_active} #{window_name}"]).split("\n");
+			return windows.length === 3 && windows[windows.length - 1].startsWith("1 ");
+		});
+		await eventually("a tab opened with prefix c should carry the pane-exited hook", () => hooksOf(activeWindowId(), "-w").includes("pane-exited"));
+		await expectAgentsExitCleansUp("Agents exits while a prefix c tab is current", agentA);
+
+		// A tab open before dev3 (re)configured the session: reattach hooks every existing window.
+		const legacyPane = newWindow("Legacy", "sleep 999");
+		const legacyWindow = tmuxOut(["display-message", "-p", "-t", legacyPane, "#{window_id}"]);
+		tmuxOut(["set-hook", "-wu", "-t", legacyWindow, "pane-exited"]);
+		tmuxOut(["set-hook", "-u", "-t", session, "window-linked"]);
+		assert(!hooksOf(legacyWindow, "-w").includes("pane-exited"), "setup: the legacy tab should start without the hook");
+		await pty.installPaneExitedHooks(session, TEST_SOCKET);
+		assert(hooksOf(legacyWindow, "-w").includes("pane-exited"), "reattach should hook a tab that already existed");
+		assert(hooksOf(session, "").includes("window-linked"), "reattach should restore the new-window hook");
+		tmuxOut(["select-window", "-t", legacyWindow]);
+		await expectAgentsExitCleansUp("Agents exits while a pre-existing tab is current", newWindow("Agents", "bash -c 'sleep 3'"));
+
+		// A window prefix ! (break-pane) makes never fires after-new-window; window-linked covers it.
+		const mainWindow = tmuxOut(["display-message", "-p", "-t", mainEntry.paneId!, "#{window_id}"]);
+		const splitPane = tmuxOut(["split-window", "-d", "-t", mainEntry.paneId!, "-P", "-F", "#{pane_id}", "sleep 999"]);
+		tmuxOut(["select-window", "-t", mainWindow]);
+		tmuxOut(["select-pane", "-t", splitPane]);
+		const agentB = newWindow("Agents", "bash -c 'sleep 6'");
+		await runPrefixBinding("!", /break-pane/);
+		await eventually("prefix ! should select the broken-out window", () => activeWindowId() !== mainWindow);
+		await eventually("a window made by prefix ! should carry the pane-exited hook", () => hooksOf(activeWindowId(), "-w").includes("pane-exited"));
+		await expectAgentsExitCleansUp("Agents exits while a prefix ! window is current", agentB);
+
+		// A session that survived an app restart still points at the previous app's port; the --window spawn refreshes it first.
+		const STALE = `run-shell "curl -s 'http://127.0.0.1:1/pane-exited?session=${session}&pane=#{hook_pane}' || true"`;
+		for (const row of tmuxOut(["list-windows", "-t", session, "-F", "#{window_id}"]).split("\n")) {
+			tmuxOut(["set-hook", "-w", "-t", row, "pane-exited", STALE]);
+		}
+		tmuxOut(["set-hook", "-t", session, "window-linked", `set-hook -w pane-exited "${STALE.replace(/["\\]/g, "\\$&")}"`]);
+		await pty.installPaneExitedHooks(session, TEST_SOCKET);
+		assert(!hooksOf(activeWindowId(), "-w").includes("127.0.0.1:1/"), "the spawn preflight should re-point an existing window at this app");
+		await expectAgentsExitCleansUp("Agents exits in a window opened after a restart", newWindow("Agents", "bash -c 'sleep 3'"));
+
+		console.log("\nPASS — surviving main pane kept, exited Agents-window entries removed");
 	} catch (err) {
 		console.error(`\nFAIL — ${err}`);
 		cleanup();
