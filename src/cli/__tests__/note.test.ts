@@ -114,6 +114,7 @@ describe("note add", () => {
 			projectId: CTX.projectId,
 			content: "Found a race condition",
 			source: "ai",
+			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Added note");
 		expect(stdoutOutput).toContain("nnnnnnnn");
@@ -180,6 +181,7 @@ describe("note task targeting", () => {
 
 		await handleNote("add", args(["test"], { task: "bbbbbbbb", project: "proj-001" }), SOCKET, null);
 		expect(lastParams().taskId).toBe("bbbbbbbb");
+		expect(lastParams()).not.toHaveProperty("sourceTaskId");
 
 		await handleNote("add", args(["test"], { "task-id": "cccccccc", project: "proj-001" }), SOCKET, null);
 		expect(lastParams().taskId).toBe("cccccccc");

@@ -36,7 +36,7 @@ const VIRTUAL_PROJECTS_FILE = `${DEV3_HOME}/virtual-projects.json`;
  * Returns the full stored Project objects so callers can read column config
  * (customColumns, columnOrder, …) offline, not just id/name/path.
  */
-function readAllProjectsRaw(): Project[] {
+export function readAllProjectsRaw(): Project[] {
 	const out: Project[] = [];
 	for (const file of [PROJECTS_FILE, VIRTUAL_PROJECTS_FILE]) {
 		try {

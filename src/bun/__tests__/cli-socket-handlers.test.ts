@@ -3388,6 +3388,27 @@ describe("task.update", () => {
 			.toEqual(["blocked on seq:proj-2/60", "blocked on seq:60", "blocked on seq:60"]);
 	});
 
+	it("turns a writer board's existing relative path into a path token", async () => {
+		const writerRoot = "/boards/other";
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/boards/other/todo/brief.md");
+		const project = makeProject();
+		const other = makeProject({ id: "proj-2-0000-4000", name: "Other", path: writerRoot });
+		const task = makeTask({ customTitle: "Mine" });
+		const writer = makeTask({ id: "writer-00-1111-2222-333333333333", projectId: other.id, seq: 9 });
+		vi.mocked(data.getProject).mockImplementation(async (id) => (id === other.id ? other : project));
+		vi.mocked(data.loadProjects).mockResolvedValue([project, other]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === other.id ? [writer] : [task]));
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...task, ...change }));
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "Brief: todo/brief.md, not todo/none.md", sourceTaskId: writer.id }));
+		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "Brief: todo/brief.md" }));
+		expect(vi.mocked(data.updateTask).mock.calls.map((c) => c[2].description))
+			.toEqual(["Brief: path:proj-2-0/todo/brief.md, not todo/none.md", "Brief: todo/brief.md"]);
+		vi.mocked(existsSync).mockImplementation(() => false);
+	});
+
 	it("leaves the target board's own refs alone when another board's agent edits its description", async () => {
 		const project = makeProject();
 		const task = makeTask({ customTitle: "Mine", description: "Goal.\nAfter seq:3 lands." });
@@ -3591,6 +3612,94 @@ describe("note.* — the socket adapter", () => {
 		wire(makeTask({ notes: [note("note-abcd-1234-aaaa"), note("note-abcd-1234-bbbb")] }));
 		const ambiguous = await handleRequest(makeRequest("note.delete", { taskId: makeTask().id, projectId: "proj-1", noteId: "note-abcd-1234" }));
 		expect(ambiguous).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous") });
+	});
+});
+
+describe("cross-board note and overview refs", () => {
+	const writerProject = makeProject({ id: "proj-2", name: "Coordinators" });
+	const writer = makeTask({ id: "writer-0000-1111-2222-333333333333", projectId: "proj-2", seq: 40 });
+
+	function wire(target: Task): void {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project, writerProject]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [target]));
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(target);
+			return { task: { ...target, ...updates }, result } as never;
+		});
+		vi.mocked(getPushMessage).mockReturnValue(null);
+	}
+
+	it("note.add from another board qualifies its bare refs", async () => {
+		const target = makeTask({ notes: [] });
+		wire(target);
+		const resp = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7 and <pr:3>", sourceTaskId: writer.id }));
+		expect(resp.ok).toBe(true);
+		expect((resp.data as Task).notes?.[0]?.content).toBe("See seq:proj-2/7 and <pr:proj-2/3>");
+	});
+
+	it("note.add from the task itself or with no source keeps refs as written", async () => {
+		const target = makeTask({ notes: [] });
+		wire(target);
+		const own = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7", sourceTaskId: target.id }));
+		expect((own.data as Task).notes?.[0]?.content).toBe("See seq:7");
+		const user = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7" }));
+		expect((user.data as Task).notes?.[0]?.content).toBe("See seq:7");
+	});
+
+	it("keeps refs as written for a same-board writer or a source that cannot be found", async () => {
+		const target = makeTask({ notes: [] });
+		const sibling = makeTask({ id: "sibling-0000-1111-2222-333333333333", seq: 2 });
+		wire(target);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [target, sibling]));
+		const same = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7", sourceTaskId: sibling.id }));
+		expect((same.data as Task).notes?.[0]?.content).toBe("See seq:7");
+		const gone = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "See seq:7", sourceTaskId: "gone-0000-1111" }));
+		expect((gone.data as Task).notes?.[0]?.content).toBe("See seq:7");
+	});
+
+	it("overview.set qualifies only the new line of a mixed overview", async () => {
+		const target = makeTask({ overview: "Old seq:7 line" });
+		wire(target);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...target, ...change }) as Task);
+		const resp = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Old seq:7 line\nNew <pr:8>", sourceTaskId: writer.id }));
+		expect((resp.data as Task).overview).toBe("Old seq:7 line\nNew <pr:proj-2/8>");
+	});
+
+	it("overview.set from another board qualifies refs, and keeps a line already in the old overview", async () => {
+		const target = makeTask({ overview: "Old seq:7 line" });
+		wire(target);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...target, ...change }) as Task);
+		const fresh = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Blocked on seq:9", sourceTaskId: writer.id }));
+		expect(fresh.ok).toBe(true);
+		expect((fresh.data as Task).overview).toBe("Blocked on seq:proj-2/9");
+		const kept = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Old seq:7 line", sourceTaskId: writer.id }));
+		expect((kept.data as Task).overview).toBe("Old seq:7 line");
+	});
+	it("note.add and overview.set turn a path only the writer's board holds into its path: token", async () => {
+		const target = makeTask({ notes: [], overview: null });
+		wire(target);
+		const writerBoard = { ...writerProject, path: "/boards/other" };
+		vi.mocked(data.getProject).mockImplementation(async (id) => (id === "proj-2" ? writerBoard : makeProject()));
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject(), writerBoard]);
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/boards/other/todo/brief.md");
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...target, ...change }) as Task);
+		try {
+			const note = await handleRequest(makeRequest("note.add", { taskId: target.id, projectId: "proj-1", content: "Read todo/brief.md, not todo/none.md", sourceTaskId: writer.id }));
+			const overview = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Drafting todo/brief.md", sourceTaskId: writer.id }));
+			expect((note.data as Task).notes?.[0]?.content).toBe("Read path:proj-2/todo/brief.md, not todo/none.md");
+			expect((overview.data as Task).overview).toBe("Drafting path:proj-2/todo/brief.md");
+			// A line already in the old overview stays plain; only the new one is tokenized.
+			const edited = { ...target, overview: "Old todo/brief.md" };
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [writer] : [edited]));
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, change) => ({ ...edited, ...change }) as Task);
+			const mixed = await handleRequest(makeRequest("overview.set", { taskId: target.id, projectId: "proj-1", overview: "Old todo/brief.md\nNew todo/brief.md", sourceTaskId: writer.id }));
+			expect((mixed.data as Task).overview).toBe("Old todo/brief.md\nNew path:proj-2/todo/brief.md");
+		} finally {
+			vi.mocked(existsSync).mockImplementation(() => false);
+		}
 	});
 });
 

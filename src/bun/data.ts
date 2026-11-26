@@ -1,5 +1,8 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { storesInProject } from "../shared/project-storage";
+import { qualifyRefsFor, renumberSelfRefs } from "../shared/task-refs";
+import { qualifyPathsFor } from "../shared/path-refs";
+import { writerOnly } from "./path-ref-resolve";
 import { liveProjectDataDir, liveStorage } from "./project-storage-live";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskOrigin, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
 import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
@@ -1221,7 +1224,9 @@ export async function getTask(
  * feature; the RPC handler above it is pure wiring.
  *
  * Portable fields (title, description, overview, notes, history, priority,
- * `automationId`, `createdAt`, …) travel unchanged. Project-scoped fields are
+ * `automationId`, `createdAt`, …) travel unchanged, except that a bare `seq:N` /
+ * `pr:N` in the text gains the source project, as it did not name the target's, and a
+ * relative path only the source holds becomes its `path:` token. Project-scoped fields are
  * re-derived: `projectId` → target, `seq` → next free target seq, `baseBranch`
  * → the target project's default. Labels match by NAME (attach the target
  * project's same-name label, else drop — never auto-create). `customColumnId`,
@@ -1282,10 +1287,35 @@ export async function moveTaskToProject(
 			}
 
 			const now = new Date().toISOString();
+			// Bare refs in the task's text named the source board's tasks, except its refs to
+			// itself, which follow it to its new seq; plain paths named the source's files.
+			const seq = nextSeq(targetTasks);
+			const retargetTitle = (text: string) => renumberSelfRefs(qualifyRefsFor(text, sourceProject.id, targetProject.id), sourceProject, source.seq, seq);
+			const sourceRoot = sourceProject.kind !== "virtual" ? sourceProject.path : "";
+			const targetRoot = targetProject.kind !== "virtual" && targetProject.path ? targetProject.path : null;
+			// One memo per move: the disk checks run under both locks, so their cap is per move.
+			const sourceOnly = sourceRoot ? writerOnly(sourceRoot, targetRoot) : null;
+			const retarget = (text: string) => {
+				const refs = retargetTitle(text);
+				if (!sourceOnly) return refs;
+				try {
+					return qualifyPathsFor(refs, sourceProject.id, targetProject.id, sourceOnly);
+				} catch (err) {
+					log.warn("Move: path qualification skipped", { taskId, error: String(err) });
+					return refs;
+				}
+			};
+			const optional = (fn: (text: string) => string) => (text: string | null | undefined) => (text ? fn(text) : text);
 			const moved: Task = {
 				...source,
+				title: retargetTitle(source.title),
+				description: retarget(source.description),
+				customTitle: optional(retargetTitle)(source.customTitle),
+				overview: optional(retarget)(source.overview),
+				userOverview: optional(retarget)(source.userOverview),
+				...(source.notes ? { notes: source.notes.map((note) => ({ ...note, content: retarget(note.content) })) } : {}),
 				projectId: targetProject.id,
-				seq: nextSeq(targetTasks),
+				seq,
 				baseBranch: deriveTaskBaseBranch(targetProject),
 				labelIds: remappedLabelIds,
 				customColumnId: null,

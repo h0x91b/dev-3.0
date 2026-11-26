@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { I18nProvider } from "../../i18n";
-import { TaskRefScopeContext, TaskRefText, splitTaskRefs } from "../TaskRefText";
+import { TaskRefScopeContext, TaskRefText, splitTaskText } from "../TaskRefText";
 import { CommentMarkdown } from "../pr-review/markdown";
 import { clearTaskPrRefPreviewCache } from "../../task-ref-preview";
 
@@ -19,14 +19,14 @@ vi.mock("../../toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success:
 
 const wrap = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nProvider>);
 
-describe("splitTaskRefs", () => {
+describe("splitTaskText", () => {
 	it("keeps the prose and cuts out each reference", () => {
-		const parts = splitTaskRefs("ask <seq:12> about <pr:7>.");
+		const parts = splitTaskText("ask <seq:12> about <pr:7>.");
 		expect(parts).toEqual([
 			"ask ",
-			{ ref: { kind: "task", number: 12 }, key: 4 },
+			{ kind: "ref", ref: { kind: "task", number: 12 }, key: 4 },
 			" about ",
-			{ ref: { kind: "pr", number: 7 }, key: 19 },
+			{ kind: "ref", ref: { kind: "pr", number: 7 }, key: 19 },
 			".",
 		]);
 	});

@@ -98,7 +98,8 @@ export const PROJECT_REF_PREFIX_LENGTH = 8;
 const KIND_BY_TAG: Record<string, RefKind> = { seq: "task", pr: "pr" };
 const TAG_BY_KIND: Record<RefKind, string> = { task: "seq", pr: "pr" };
 
-const QUALIFIER = String.raw`[A-Za-z0-9][\w.-]{0,63}`;
+/** A project qualifier as written: an id prefix or a project name. Shared with `path-refs.ts`. */
+export const QUALIFIER = String.raw`[A-Za-z0-9][\w.-]{0,63}`;
 const BODY = String.raw`(seq|pr):(?:(${QUALIFIER})\/)?(\d{1,9})`;
 // Canonical `<seq:…>` first; otherwise a bare `seq:…` not glued to a word, a
 // path or a URL on either side (so `https://x/seq:1` and `foo-seq:1` stay text).
@@ -213,6 +214,23 @@ export function qualifyEditedRefsFor(text: string, previous: string | null | und
 	const kept = new Set(previous.split("\n"));
 	const original = text.split("\n");
 	return qualified.split("\n").map((line, i) => (kept.has(original[i]!) ? original[i]! : line)).join("\n");
+}
+
+/**
+ * A moved task's refs to itself (`seq:<old project>/<old seq>`, by id prefix or name),
+ * renamed to its new seq on its new board, bare; brackets are kept.
+ */
+export function renumberSelfRefs(text: string, oldProject: { id: string; name?: string }, oldSeq: number, newSeq: number): string {
+	let out = "";
+	let cursor = 0;
+	for (const { ref, raw, start, end } of findRefsInText(text)) {
+		// `seq:7 --project P` takes P from the flag; rewriting only `seq:7` would detach it.
+		if (ref.kind !== "task" || ref.number !== oldSeq || !ref.project || !projectMatchesQualifier(oldProject, ref.project) || !raw.includes("/")) continue;
+		const renamed: TaskPrRef = { kind: "task", number: newSeq };
+		out += text.slice(cursor, start) + (raw.startsWith("<") ? formatRef(renamed) : refUri(renamed));
+		cursor = end;
+	}
+	return cursor === 0 ? text : out + text.slice(cursor);
 }
 
 export function formatRef(ref: TaskPrRef): string {

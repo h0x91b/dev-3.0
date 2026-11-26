@@ -246,6 +246,12 @@
 	border-radius: 0.25rem;
 	padding: 0.0625rem 0.25rem;
 }
+/* A path link wrapping an inline code span is one chip, not a chip inside a chip. */
+.dev3-pr-md [data-path-link] code {
+	background: transparent;
+	border: 0;
+	padding: 0;
+}
 /* Wraps rather than scrolls: a mouse has no horizontal axis, and stealing the
    wheel for a code block would pin a long PR body every time the cursor crossed
    one. The surrounding document already wraps (`overflow-wrap: anywhere`). */

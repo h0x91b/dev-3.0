@@ -54,7 +54,7 @@ vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [s
 const wsl = vi.hoisted(() => ({ isWslHost: vi.fn(() => false), openOnWindowsHost: vi.fn(async (_path: string) => {}) }));
 vi.mock("../../wsl-host", () => wsl);
 
-import { isUnder, mintPreviewMediaLink, terminalPathHandlers as appHandlers } from "../terminal-paths";
+import { isUnder, mintPreviewMediaLink, suffixLookupPath, terminalPathHandlers as appHandlers } from "../terminal-paths";
 import { resolveFileLinkPath } from "../../file-links";
 
 beforeAll(() => {
@@ -435,6 +435,13 @@ describe("createFileLink", () => {
 		await expect(appHandlers.createFileLink({ path: join(process.cwd(), `dev3-missing-${process.pid}.txt`) })).rejects.toThrow("File not found");
 		await expect(appHandlers.createFileLink({ path: worktree })).rejects.toThrow("Not a file");
 		await expect(appHandlers.createFileLink({ path: "docs/architecture.md" })).rejects.toThrow("Invalid file path");
+	});
+});
+
+describe("suffixLookupPath", () => {
+	it("reads a Windows backslash path the way git lists it", () => {
+		expect(suffixLookupPath("src\\app.ts", "win32")).toBe("src/app.ts");
+		expect(suffixLookupPath("src\\app.ts", "darwin")).toBe("src\\app.ts");
 	});
 });
 

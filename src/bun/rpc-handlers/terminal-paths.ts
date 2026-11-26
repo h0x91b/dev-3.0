@@ -8,6 +8,8 @@ import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_CONTENT_TYPES, FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt, previewMediaKind } from "../../shared/file-link-types";
+import { parsePathRefUri } from "../../shared/path-refs";
+import { resolvePathRefIn } from "../path-ref-resolve";
 import { allProjectWorktreesRoots } from "../../shared/project-storage";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
@@ -212,12 +214,18 @@ async function buildFileIndex(base: string): Promise<FileIndex> {
 // path the output left rooted at nothing gets searched.
 const EXPLICITLY_ROOTED = /^\.{1,2}\//;
 
+/** git lists paths with `/` on every OS, so a Windows `src\app.ts` is looked up as `src/app.ts`. */
+export function suffixLookupPath(written: string, platform: string = process.platform): string {
+	return platform === "win32" ? written.replaceAll("\\", "/") : written;
+}
+
 /**
  * The one file under `base` whose path ends in `candidate` at a segment
  * boundary. Ambiguous matches resolve to nothing: no link beats a link that
  * opens the wrong file.
  */
-async function resolveBySuffix(base: string, candidate: string, roots: string[]): Promise<ResolvedTerminalPath | null> {
+async function resolveBySuffix(base: string, written: string, roots: string[]): Promise<ResolvedTerminalPath | null> {
+	const candidate = suffixLookupPath(written);
 	if (EXPLICITLY_ROOTED.test(candidate) || candidate.split("/").includes("..")) return null;
 	const index = await fileIndexFor(base);
 	if (!index) return null;
@@ -238,10 +246,20 @@ async function resolveTerminalPaths(params: {
 	const bases = await terminalPathBases(params);
 	// Hoisted: one projects.json lookup per call, not per candidate.
 	const roots = await allowedRoots();
+	let projects: Awaited<ReturnType<typeof data.loadProjects>> | null = null;
 	for (const raw of candidates) {
 		resolved[raw] = null;
 		if (!raw || raw.length > TERMINAL_PATH_MAX_LEN || raw.includes("\0")) continue;
-		const expanded = raw === "~" || raw.startsWith("~/") ? join(homedir(), raw.slice(1)) : raw;
+		const token = parsePathRefUri(raw);
+		if (token) {
+			projects ??= await data.loadProjects();
+			const absolute = resolvePathRefIn(projects, token);
+			resolved[raw] = absolute ? await statPathKind(absolute, roots) : null;
+			continue;
+		}
+		// `~\x` is a home path on Windows only; elsewhere a backslash is a filename character.
+		const homeRelative = raw === "~" || raw.startsWith("~/") || (process.platform === "win32" && raw.startsWith("~\\"));
+		const expanded = homeRelative ? join(homedir(), raw.slice(2)) : raw;
 		if (isAbsolute(expanded)) {
 			resolved[raw] = await statPathKind(resolvePath(expanded), roots);
 			continue;

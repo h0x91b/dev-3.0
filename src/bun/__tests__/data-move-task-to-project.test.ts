@@ -135,6 +135,81 @@ describe("moveTaskToProject", () => {
 		expect(targetTasks.find((t) => t.id === "task-move")!.scheduledLaunch ?? null).toBeNull();
 	});
 
+	it("keeps bare refs in the moved text pointing at the source board", async () => {
+		seed(source, [
+			makeTask({
+				id: "task-refs",
+				title: "Follow up seq:3",
+				description: "Split from <seq:3>; see <pr:12> and seq:proj-tgt/9",
+				customTitle: "Custom seq:3",
+				overview: "Waiting on seq:3",
+				userOverview: "User: <seq:4>",
+				notes: [{ id: "n1", content: "Blocked by seq:5", source: "ai", createdAt: "", updatedAt: "" }],
+			}),
+		]);
+		seed(target, []);
+
+		const moved = await moveTaskToProject(source, target, "task-refs");
+
+		expect(moved.title).toBe("Follow up seq:proj-src/3");
+		expect(moved.description).toBe("Split from <seq:proj-src/3>; see <pr:proj-src/12> and seq:proj-tgt/9");
+		expect(moved.customTitle).toBe("Custom seq:proj-src/3");
+		expect(moved.overview).toBe("Waiting on seq:proj-src/3");
+		expect(moved.userOverview).toBe("User: <seq:proj-src/4>");
+		expect(moved.notes?.map((n) => n.content)).toEqual(["Blocked by seq:proj-src/5"]);
+		expect((await loadTasks(target))[0]!.description).toBe(moved.description);
+	});
+
+	it("turns a relative path only the source project holds into its path: token", async () => {
+		const srcRoot = `${TEST_HOME}/repo-src`;
+		const tgtRoot = `${TEST_HOME}/repo-tgt`;
+		for (const file of [`${srcRoot}/todo/brief.md`, `${srcRoot}/README.md`, `${tgtRoot}/README.md`]) {
+			mkdirSync(dirname(file), { recursive: true });
+			writeFileSync(file, "x");
+		}
+		const src = { ...source, path: srcRoot };
+		const tgt = { ...target, path: tgtRoot };
+		seed(src, [
+			makeTask({
+				id: "task-paths",
+				title: "Read todo/brief.md",
+				description: "Brief: todo/brief.md:3, see README.md and missing.md\n```\ncat todo/brief.md\n```",
+				overview: "Drafting todo/brief.md",
+				notes: [{ id: "n1", content: "Updated todo/brief.md", source: "ai", createdAt: "", updatedAt: "" }],
+			}),
+		]);
+		seed(tgt, []);
+
+		const moved = await moveTaskToProject(src, tgt, "task-paths");
+
+		expect(moved.title).toBe("Read todo/brief.md");
+		expect(moved.description).toBe("Brief: path:proj-src/todo/brief.md:3, see README.md and missing.md\n```\ncat todo/brief.md\n```");
+		expect(moved.overview).toBe("Drafting path:proj-src/todo/brief.md");
+		expect(moved.notes?.[0]?.content).toBe("Updated path:proj-src/todo/brief.md");
+	});
+
+	it("keeps plain paths when the source is a virtual board", async () => {
+		const ops: Project = { ...source, kind: "virtual", path: "" } as Project;
+		seed(ops, [makeTask({ id: "task-ops", description: "Brief: todo/brief.md" })]);
+		seed(target, []);
+
+		const moved = await moveTaskToProject(ops, target, "task-ops");
+
+		expect(moved.description).toBe("Brief: todo/brief.md");
+	});
+
+	it("renames the moved task's refs to itself to its new seq, and leaves history and a flag-qualified ref alone", async () => {
+		const history = [{ at: "2025-02-02T00:00:00Z", title: "Self seq:7", overview: null }];
+		seed(source, [makeTask({ id: "task-self", seq: 7, description: "This is <seq:7> (seq:source/7), split from seq:3; also seq:7 --project proj-tgt and seq:7 --project proj-src", history } as never)]);
+		seed(target, [makeTask({ id: "existing", projectId: "proj-tgt", seq: 4 })]);
+
+		const moved = await moveTaskToProject(source, target, "task-self");
+
+		expect(moved.seq).toBe(5);
+		expect(moved.description).toBe("This is <seq:5> (seq:5), split from seq:proj-src/3; also seq:7 --project proj-tgt and seq:7 --project proj-src");
+		expect((moved as unknown as { history: unknown }).history).toEqual(history);
+	});
+
 	it("remaps a label that exists by name in the target and drops one that does not", async () => {
 		seed(source, [makeTask({ id: "task-move", labelIds: [bugSrc.id, onlySrc.id] })]);
 		seed(target, []);

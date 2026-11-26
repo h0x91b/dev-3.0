@@ -190,7 +190,7 @@ export function OverviewCell({ task, className = "" }: { task: Task; className?:
 	if (!overview) return null;
 	return (
 		<span title={overview} className={`text-xs text-fg-2 ${className}`}>
-			<TaskRefText text={overview} contextProjectId={task.projectId} taskId={task.id} />
+			<TaskRefText text={overview} contextProjectId={task.projectId} taskId={task.id} pathLinks={false} />
 		</span>
 	);
 }

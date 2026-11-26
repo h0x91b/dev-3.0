@@ -1,4 +1,5 @@
 import { parseRefUri } from "../../../shared/task-refs";
+import { parsePathRefUri } from "../../../shared/path-refs";
 
 /**
  * Repo-relative URLs (`docs/guide.md`, `shots/board.png`) are not fetchable from
@@ -17,9 +18,19 @@ const NONCE = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
 	byte.toString(16).padStart(2, "0"),
 ).join("");
 const TOKEN_PREFIX = `https://dev3.invalid/${NONCE}/`;
-// `<seq:N>` / `<pr:N>` autolinks: rehype-sanitize strips their unknown scheme,
-// so they ride the same nonce trick and can only unwrap to a valid reference.
+// `<seq:N>` / `<pr:N>` / `<path:…>` autolinks: rehype-sanitize strips their unknown
+// scheme, so they ride the same nonce trick and can only unwrap to a valid reference.
 const REF_TOKEN_PREFIX = `https://dev3.invalid/${NONCE}-ref/`;
+
+/** A task/PR reference or a path token: an in-app target with a scheme the sanitizer does not know. */
+function isAppRef(url: string): boolean {
+	return parseRefUri(url) !== null || parsePathRefUri(url) !== null;
+}
+
+/** A Windows drive path (`C:\\x`, `C:/x`): a local file, though `C:` parses as a URL scheme. */
+export function isDrivePath(url: string): boolean {
+	return /^[A-Za-z]:[\\/]/.test(url);
+}
 
 /** True for a markdown URL naming a path in the checkout rather than a location the webview can fetch. */
 export function isRelativeUrl(url: string): boolean {
@@ -35,7 +46,7 @@ function safeDecode(value: string): string | undefined {
 }
 
 function protect(url: string): string {
-	if (parseRefUri(url)) return `${REF_TOKEN_PREFIX}${encodeURIComponent(url)}`;
+	if (isAppRef(url)) return `${REF_TOKEN_PREFIX}${encodeURIComponent(url)}`;
 	return `${TOKEN_PREFIX}${encodeURIComponent(url)}`;
 }
 
@@ -43,7 +54,7 @@ function protect(url: string): string {
 export function unprotect(url: string | undefined): string | undefined {
 	if (url?.startsWith(REF_TOKEN_PREFIX)) {
 		const ref = safeDecode(url.slice(REF_TOKEN_PREFIX.length));
-		return ref && parseRefUri(ref) ? ref : undefined;
+		return ref && isAppRef(ref) ? ref : undefined;
 	}
 	if (url === undefined || !url.startsWith(TOKEN_PREFIX)) return url;
 	let relative: string;
@@ -52,7 +63,7 @@ export function unprotect(url: string | undefined): string | undefined {
 	} catch {
 		return undefined;
 	}
-	return isRelativeUrl(relative) ? relative : undefined;
+	return isRelativeUrl(relative) || isDrivePath(relative) ? relative : undefined;
 }
 
 /**
@@ -105,5 +116,5 @@ export function remarkProtectRelativeUrls() {
 
 /** In-page anchors survive hardening as they are, so they need no token. */
 function isProtectable(url: string, isLink: boolean): boolean {
-	return (!url.startsWith("#") && isRelativeUrl(url)) || (isLink && parseRefUri(url) !== null);
+	return (!url.startsWith("#") && isRelativeUrl(url)) || (isLink && (isAppRef(url) || isDrivePath(url)));
 }

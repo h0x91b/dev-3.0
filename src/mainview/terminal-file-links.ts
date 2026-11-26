@@ -1,5 +1,6 @@
 import type { GhosttyTerminal, ILink, ILinkProvider, Terminal } from "ghostty-web";
 import type { ResolvedTerminalPath } from "../shared/types";
+import { findPathCandidates, type PathCandidate } from "../shared/path-candidates";
 
 /**
  * Detects file paths mentioned in terminal output (agent messages, build
@@ -16,67 +17,6 @@ import type { ResolvedTerminalPath } from "../shared/types";
  * overlay repaint, and the next cache invalidation (every write) lets hover
  * re-scan the row.
  */
-
-export interface PathCandidate {
-	/** Exact matched text, including any trailing :line[:col] suffix. */
-	raw: string;
-	/** Path with the :line[:col] suffix stripped — what gets resolved on disk. */
-	cleanPath: string;
-	/** 1-based line number from a :line[:col] suffix, if present. */
-	line?: number;
-	/** Start index in the logical line text. */
-	start: number;
-	/** Inclusive end index in the logical line text. */
-	end: number;
-}
-
-// Three alternatives: rooted paths (/, ~/, ./, ../), relative paths with at
-// least one slash, and bare filenames with an alphabetic extension. Bare
-// words produce false candidates ("e.g") — the on-disk existence check is
-// what filters those out, not the regex.
-const PATH_CHARS = "\\w.@%+,=-";
-const SEGMENT = `[${PATH_CHARS}]+`;
-const PATH_REGEX = new RegExp(
-	`(?:~|\\.{1,2})?/(?:${SEGMENT}/)*${SEGMENT}/?` +
-		`|(?:${SEGMENT}/)+${SEGMENT}/?` +
-		`|[\\w@%+-][\\w.@%+-]*\\.[A-Za-z][A-Za-z0-9]{0,9}`,
-	"g",
-);
-
-// file.ts:12 or file.ts:12:5 — kept in the link text, stripped for stat().
-const LINE_COL_SUFFIX = /^:(\d+)(?::\d+)?/;
-const TRAILING_PUNCTUATION = /[.,;:!?'"`)\]}>]+$/;
-const MIN_CANDIDATE_LEN = 3;
-
-/** Find file-path-looking tokens in one logical line of terminal text. */
-export function findPathCandidates(text: string): PathCandidate[] {
-	const candidates: PathCandidate[] = [];
-	PATH_REGEX.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = PATH_REGEX.exec(text)) !== null) {
-		let raw = match[0];
-		const before = match.index > 0 ? text[match.index - 1] : "";
-		// Skip URL tails: "https://foo.com/bar" would otherwise match at "//foo…".
-		if (before === ":" || before === "/") continue;
-		const suffix = LINE_COL_SUFFIX.exec(text.slice(match.index + raw.length));
-		if (suffix) raw += suffix[0];
-		let cleanPath = suffix ? raw.slice(0, raw.length - suffix[0].length) : raw;
-		// Trailing sentence punctuation belongs to the prose, not the path.
-		const trimmed = cleanPath.replace(TRAILING_PUNCTUATION, "");
-		raw = raw.slice(0, raw.length - (cleanPath.length - trimmed.length));
-		cleanPath = trimmed;
-		if (cleanPath.length < MIN_CANDIDATE_LEN || !/[/\\.]/.test(cleanPath)) continue;
-		if (/^[\d.,]+$/.test(cleanPath)) continue;
-		candidates.push({
-			raw,
-			cleanPath,
-			line: suffix ? Number.parseInt(suffix[1], 10) : undefined,
-			start: match.index,
-			end: match.index + raw.length - 1,
-		});
-	}
-	return candidates;
-}
 
 /** The slice of IBufferLine the detection code reads. */
 export interface CellLine {

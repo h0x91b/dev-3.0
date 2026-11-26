@@ -1,4 +1,5 @@
 import type { Task, TaskNote, NoteSource } from "../../shared/types";
+import { withAbsolutePaths } from "../path-refs";
 import { sendRequest } from "../socket-client";
 import { printTable, printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -46,6 +47,8 @@ async function addNote(args: ParsedArgs, socketPath: string, context: CliContext
 	}
 
 	const params: Record<string, unknown> = { taskId, content, source };
+	// A note written from a task on another board gets that board's refs qualified.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 
@@ -127,7 +130,7 @@ async function showNote(args: ParsedArgs, socketPath: string, context: CliContex
 		["Created:", formatDate(note.createdAt)],
 	]);
 	process.stdout.write("\nContent:\n");
-	for (const line of note.content.split("\n")) {
+	for (const line of withAbsolutePaths(note.content).split("\n")) {
 		process.stdout.write(`  ${line}\n`);
 	}
 }

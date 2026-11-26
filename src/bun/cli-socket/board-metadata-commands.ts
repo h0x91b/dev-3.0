@@ -1,6 +1,8 @@
 import type { Project, Task, TaskStatus, NoteSource } from "../../shared/types";
+import { qualifyEditedWriterPaths, qualifyWriterPaths } from "../path-refs-agent";
 import { replyToReviewComment, resolveReviewComment, resolveReviewCommentId, reopenReviewComment, type ReviewReplyAuthor } from "../../shared/review";
 import { formatStatus, getTaskTitle, STATUS_LABELS } from "../../shared/types";
+import { qualifyEditedRefsFor, qualifyRefsFor } from "../../shared/task-refs";
 import { nextKeepAliveState } from "../../shared/keep-alive";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../../shared/board-events";
 import * as data from "../data";
@@ -13,7 +15,7 @@ import { AGENT_ACTOR } from "../board-operations/types";
 import { getPushMessage } from "../rpc-handlers";
 import { addVent } from "../vents";
 import { conversationImport, log, type Handler } from "./shared";
-import { findByIdPrefix, findTaskByRef, resolveReviewTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, resolveReviewTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, taskNotFoundError, writerProjectIdFor } from "./task-resolution";
 
 export const boardMetadataHandlers: Record<string, Handler> = {
 
@@ -23,7 +25,11 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 			throw new Error("overview text is required");
 		}
 		const { project, task } = await resolveTaskFromParams(params);
-		return (await updateTaskMetadata(boardPorts, project, task.id, { overview }, AGENT_ACTOR)).task;
+		// Written from another board: its bare refs and plain paths name the writer's.
+		const writer = await writerProjectIdFor(params, project, task);
+		const refsQualified = qualifyEditedRefsFor(overview, task.overview, writer, project.id);
+		const qualified = await qualifyEditedWriterPaths(refsQualified, task.overview, writer, project.id);
+		return (await updateTaskMetadata(boardPorts, project, task.id, { overview: qualified }, AGENT_ACTOR)).task;
 	},
 
 	"overview.show": async (params) => {
@@ -73,11 +79,12 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 
 		let project: Project;
 		let task: Task;
+		let boardTasks: Task[] | undefined;
 
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
-			const tasks = await data.loadTasks(project);
-			const found = findTaskByRef(tasks, taskId);
+			boardTasks = await data.loadTasks(project);
+			const found = findTaskByRef(boardTasks, taskId);
 			if (!found) throw await scopedTaskNotFoundError(taskId, project);
 			task = found;
 		} else {
@@ -87,8 +94,10 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
+		const writer = await writerProjectIdFor(params, project, task, boardTasks);
+		const qualified = await qualifyWriterPaths(qualifyRefsFor(content, writer, project.id), writer, project.id);
 		const { task: updated } = await taskNotes.addNote(
-			boardPorts, project, task.id, content, AGENT_ACTOR, params.source as NoteSource | undefined,
+			boardPorts, project, task.id, qualified, AGENT_ACTOR, params.source as NoteSource | undefined,
 		);
 		return updated;
 	},

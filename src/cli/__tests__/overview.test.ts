@@ -91,6 +91,7 @@ describe("overview set", () => {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 			overview: "Short summary of the task",
+			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Overview set");
 		expect(stdoutOutput).toContain("aaaaaaaa");
@@ -132,6 +133,8 @@ describe("overview set", () => {
 			"cccccccc-2222-3333-4444-555555555555",
 			FAKE_TASK.id,
 		]);
+		// The writer is the task the CLI runs in, not the one it writes to.
+		expect(mockSend.mock.calls[0]![2]!.sourceTaskId).toBe(CTX.taskId);
 	});
 
 	it("exits on server error", async () => {

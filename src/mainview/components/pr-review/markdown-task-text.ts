@@ -1,4 +1,6 @@
 import { findRefsInText, refUri } from "../../../shared/task-refs";
+import { findPathCandidates } from "../../../shared/path-candidates";
+import { codeSpans, findPathRefsInText, linesOutsideFences, parsePathRefUri, pathRefUri } from "../../../shared/path-refs";
 
 /**
  * Remark plugins for agent-written plain text rendered as Markdown (task
@@ -45,6 +47,72 @@ export function remarkBareTaskRefs() {
 	return walk;
 }
 
+/** `path` as a link URL: a `:line` suffix rides as `#L<line>`, since `a.ts:12` would read as a scheme. */
+export function pathLinkUrl(path: string, line?: number): string {
+	return line ? `${path}#L${line}` : path;
+}
+
+/** The path and line behind a relative link URL; any other fragment is dropped. */
+export function parsePathLinkUrl(url: string): { path: string; line?: number } {
+	const hash = url.indexOf("#");
+	if (hash < 0) return { path: url };
+	const line = /^#L(\d+)$/.exec(url.slice(hash))?.[1];
+	return line ? { path: url.slice(0, hash), line: Number(line) } : { path: url.slice(0, hash) };
+}
+
+function splitCandidates(value: string, parts: MdNode[]): void {
+	let cursor = 0;
+	for (const candidate of findPathCandidates(value)) {
+		if (candidate.start > cursor) parts.push({ type: "text", value: value.slice(cursor, candidate.start) });
+		parts.push({ type: "link", url: pathLinkUrl(candidate.cleanPath, candidate.line), children: [{ type: "text", value: candidate.raw }] });
+		cursor = candidate.end + 1;
+	}
+	if (cursor < value.length) parts.push({ type: "text", value: value.slice(cursor) });
+}
+
+function splitPaths(value: string): MdNode[] | null {
+	const tokens = findPathRefsInText(value);
+	if (tokens.length === 0 && findPathCandidates(value).length === 0) return null;
+	const parts: MdNode[] = [];
+	let cursor = 0;
+	for (const token of tokens) {
+		splitCandidates(value.slice(cursor, token.start), parts);
+		const uri = pathRefUri(token.ref);
+		parts.push({ type: "link", url: uri, children: [{ type: "text", value: uri }] });
+		cursor = token.end;
+	}
+	splitCandidates(value.slice(cursor), parts);
+	return parts;
+}
+
+/** An inline code span that is one whole path or path token, as agents usually write them. */
+function wrapCodePath(node: MdNode): MdNode | null {
+	const value = node.value?.trim() ?? "";
+	const token = parsePathRefUri(value);
+	if (token) return { type: "link", url: pathRefUri(token), children: [node] };
+	const [candidate] = findPathCandidates(value);
+	if (!candidate || candidate.start !== 0 || candidate.end !== value.length - 1) return null;
+	return { type: "link", url: pathLinkUrl(candidate.cleanPath, candidate.line), children: [node] };
+}
+
+/**
+ * Path-looking text and whole-path inline code become relative links; the link
+ * component checks each on disk and leaves a path that names nothing as text.
+ * Code blocks and existing links are left alone.
+ */
+export function remarkBarePathLinks() {
+	const walk = (node: MdNode) => {
+		if (!node.children || LINK_TYPES.has(node.type)) return;
+		node.children = node.children.flatMap((child) => {
+			if (child.type === "text" && child.value) return splitPaths(child.value) ?? [child];
+			if (child.type === "inlineCode") return [wrapCodePath(child) ?? child];
+			walk(child);
+			return [child];
+		});
+	};
+	return walk;
+}
+
 /** Parents whose `html` children are blocks: their literal text needs a paragraph of its own. */
 const BLOCK_PARENTS = new Set(["root", "blockquote", "listItem"]);
 
@@ -62,4 +130,36 @@ export function remarkHtmlAsText() {
 		});
 	};
 	return walk;
+}
+
+/** `my\_file.py`, `src/my\_file.py`: a `\_` is an author's escape, not a Windows separator (`build\_a\_b` is one). */
+function isMarkdownEscapedPath(raw: string): boolean {
+	if (!raw.includes("\\_") || /^[A-Za-z]:|^\\\\|\\(?!_)/.test(raw)) return false;
+	return raw.includes("/") || raw.split("\\_").length === 2;
+}
+
+/**
+ * Prose paths survive Markdown: `_` is escaped (`src/__init__.py`), a `\` before punctuation
+ * is doubled (`C:\me\.claude`), an author's `\_` stays one escape; code and autolinks are kept.
+ */
+export function escapePathEmphasis(body: string): string {
+	if (!body.includes("_") && !body.includes("\\")) return body;
+	return linesOutsideFences(body).map(({ line, code }) => {
+		if (code) return line;
+		const spans = codeSpans(line);
+		let out = "";
+		let cursor = 0;
+		for (const candidate of findPathCandidates(line)) {
+			if (!/[_\\]/.test(candidate.raw)) continue;
+			if (spans.some((span) => candidate.start >= span.start && candidate.start < span.end)) continue;
+			const before = line.lastIndexOf("<", candidate.start);
+			if (before >= 0 && line.indexOf(">", before) > candidate.end) continue;
+			const escaped = isMarkdownEscapedPath(candidate.raw)
+				? candidate.raw.replace(/(?<!\\)_/g, "\\_")
+				: candidate.raw.replace(/\\(?=[!-/:-@[-`{-~])/g, "\\\\").replaceAll("_", "\\_");
+			out += line.slice(cursor, candidate.start) + escaped;
+			cursor = candidate.end + 1;
+		}
+		return cursor === 0 ? line : out + line.slice(cursor);
+	}).join("\n");
 }

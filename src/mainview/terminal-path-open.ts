@@ -4,6 +4,8 @@ import { toast } from "./toast";
 import { fileUriToLocalPath, safeDeepLinkUri, safeFileUri } from "./terminal-osc8-links";
 import { parseDeepLink } from "../shared/deep-link";
 import { parseRefUri } from "../shared/task-refs";
+import { parsePathRefUri, pathRefUri } from "../shared/path-refs";
+import { resolveTextPath } from "./text-path-links";
 import { activateTaskPrRef } from "./task-ref-open";
 import type { ResolvedTerminalPath, TerminalPathOpenMode } from "../shared/types";
 
@@ -73,6 +75,14 @@ export async function activateDeepLinkUri(uri: string, ctx: Osc8ActivateContext)
 	// `<seq:N>` / `<pr:N>` share the provider; a bare one resolves on this task's project.
 	if (parseRefUri(uri)) {
 		await activateTaskPrRef(uri, { t, taskId, contextProjectId: ctx.projectId });
+		return;
+	}
+	const pathRef = parsePathRefUri(uri);
+	if (pathRef) {
+		const { line, ...file } = pathRef;
+		const resolved = await resolveTextPath(pathRefUri(file), ctx.projectId, taskId);
+		if (resolved) await activateTerminalPath(resolved, t, line, taskId);
+		else toast.error(t("terminal.pathRefNotFound", { uri }), { taskId, source: "terminal" });
 		return;
 	}
 	if (!parseDeepLink(uri)) {
