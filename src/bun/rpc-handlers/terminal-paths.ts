@@ -132,14 +132,17 @@ async function allowedRoots(): Promise<string[]> {
  * local account could aim at a file no root covers, and only following it before
  * the stat tells the two apart.
  */
-/** `missing` is a temp-dir path whose real path cannot be read (absent or dangling): in scope, nothing to open. */
+/**
+ * Only the string check yields `outside`: a temp-dir path that is absent, dangling or links out of
+ * every root is `missing`, so a planted symlink cannot probe whether an outside path exists.
+ */
 type PathScope = "allowed" | "outside" | "missing";
 
 function pathScope(absPath: string, roots: string[]): PathScope {
 	if (!roots.some((root) => isUnder(absPath, root))) return "outside";
 	if (!tempRoots().some((root) => isUnder(absPath, root))) return "allowed";
 	try {
-		return roots.some((root) => isUnder(realpathSync(absPath), root)) ? "allowed" : "outside";
+		return roots.some((root) => isUnder(realpathSync(absPath), root)) ? "allowed" : "missing";
 	} catch {
 		return "missing";
 	}

@@ -193,7 +193,8 @@ describe("resolveTerminalPaths", () => {
 				paths: [escape, inward],
 			});
 			expect(resolved[escape]).toBeNull();
-			expect(await appHandlers.readFilePreview({ path: escape })).toEqual({ kind: "outside-allowed" });
+			// Same answer as a dangling link, so the link cannot probe what exists outside the roots.
+			expect(await appHandlers.readFilePreview({ path: escape })).toEqual({ kind: "not-found" });
 			await expect(appHandlers.openTerminalPath({ path: escape, mode: "system" })).rejects.toThrow(
 				/outside the allowed directories/,
 			);

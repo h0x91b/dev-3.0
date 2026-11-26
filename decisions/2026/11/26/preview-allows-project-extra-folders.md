@@ -6,7 +6,7 @@ The file explorer lists a project's extra folders (`collectProjectFolders` in `s
 
 ## Decision
 
-`allowedRoots` also takes every project's extra folders that exist, from the same cached `resolveProjectFolders` the explorer uses, so anything the explorer lists can be opened. A folder that is a filesystem root (`dirname(path) === path`) is skipped, as `computeTempRoots` skips a `/` temp dir. `readFilePreview` returns `outside-allowed` for a refused path; a temp-dir path whose real path cannot be read stays `not-found` (`pathScope`). The preview shows its own message for `outside-allowed` and hides the open actions, as for `not-found`.
+`allowedRoots` also takes every project's extra folders that exist, from the same cached `resolveProjectFolders` the explorer uses, so anything the explorer lists can be opened. A folder that is a filesystem root (`dirname(path) === path`) is skipped, as `computeTempRoots` skips a `/` temp dir. `readFilePreview` returns `outside-allowed` only when the path string is outside every root, decided before any filesystem call (`pathScope`). A temp-dir path that is absent, dangling or a symlink out of every root stays `not-found`, so a link planted in `/tmp` cannot probe whether an outside path exists. The preview shows its own message for `outside-allowed` and hides the open actions, as for `not-found`.
 
 ## Risks
 
