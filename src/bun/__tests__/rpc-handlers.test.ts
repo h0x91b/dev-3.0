@@ -176,6 +176,7 @@ vi.mock("../github", () => ({
 }));
 
 vi.mock("../pty-server", () => ({
+	installPaneExitedHook: vi.fn(async () => {}),
 	createSession: vi.fn(),
 	createNativeTaskSession: vi.fn(),
 	reattachNativeTaskSession: vi.fn(() => Promise.resolve(false)),
@@ -522,6 +523,7 @@ const {
 } = await import("../rpc-handlers");
 const {
 	handlePaneExited,
+	routePaneExited,
 	nativeHunterColumnRatios,
 	launchColumnAgent,
 	tmuxAction,
@@ -10770,6 +10772,17 @@ describe("tmuxAction", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(["tmux", "-L", "dev3", "select-pane", "-t", "%5"], expect.any(Object));
 	});
 
+	it("opens a window that takes focus and gives it the pane-exited hook", async () => {
+		mockSpawn.mockImplementation(() => ({
+			stderr: new Response(""),
+			stdout: new Response("%5\n").body,
+			exited: Promise.resolve(0),
+		}));
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "newWindow" });
+		expect(mockSpawn).toHaveBeenCalledWith(expect.arrayContaining(["new-window", "-P"]), expect.any(Object));
+		expect(pty.installPaneExitedHook).toHaveBeenCalledWith(expect.any(String), "%5", "dev3");
+	});
+
 	it("sends split-window -h for splitV action", async () => {
 		mockSpawn.mockImplementation(() => ({
 			stderr: new Response(""),
@@ -13679,6 +13692,54 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...stalePane, paneId: null, parked: true }]);
 		// Only a hook from a running agent can add an entry back.
 		expect(placePaneSession([], "%5", sessionId, null)).toBeNull();
+	});
+});
+
+describe("routePaneExited routes by pane id as well as by session", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const entry = (paneId: string) => ({ agentCmd: "claude", agentId: "builtin-claude", configId: "c", sessionId: `s-${paneId}`, paneId });
+	const mainA = { ...entry("%0"), main: true };
+	const mainB = { ...entry("%1"), main: true };
+	const agentB = entry("%7");
+
+	function arrange() {
+		const project = makeProject();
+		const taskA = makeTask({ id: "task-a", sessionState: { panes: [mainA] } });
+		const taskB = makeTask({ id: "task-b", sessionState: { panes: [mainB, agentB] } });
+		mockTaskWrites(taskA, taskB);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockResolvedValue([taskA, taskB]);
+		// What each task's own tmux session still holds after the Agents window went away.
+		vi.mocked(pty.listPaneIds).mockImplementation(async (taskId: string) => (taskId === "task-a" ? ["%0"] : ["%1"]));
+		return { project };
+	}
+
+	it("reconciles the task that owns the pane even when the session in the URL is another task's", async () => {
+		const { project } = arrange();
+		await routePaneExited("task-a", "%7");
+		expect((await data.getTask(project, "task-b")).sessionState?.panes).toEqual([mainB]);
+		expect((await data.getTask(project, "task-a")).sessionState?.panes).toEqual([mainA]);
+	});
+
+	it("still reconciles the pane's owner when the session is unknown", async () => {
+		const { project } = arrange();
+		await routePaneExited(null, "%7");
+		expect((await data.getTask(project, "task-b")).sessionState?.panes).toEqual([mainB]);
+	});
+
+	it("reconciles a task once when the session task and the pane owner are the same", async () => {
+		arrange();
+		await routePaneExited("task-b", "%7");
+		expect(pty.listPaneIds).toHaveBeenCalledTimes(1);
+		expect(pty.listPaneIds).toHaveBeenCalledWith("task-b", expect.any(String));
+	});
+
+	it("still reconciles the session's task when the owner lookup fails", async () => {
+		arrange();
+		vi.mocked(data.loadTasks).mockRejectedValue(new Error("disk"));
+		await routePaneExited("task-b", "%7");
+		expect(pty.listPaneIds).toHaveBeenCalledWith("task-b", expect.any(String));
 	});
 });
 

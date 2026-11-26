@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Project, Task, PaneSessionEntry } from "../../shared/types";
 import * as pty from "../pty-server";
-import { launchTaskPty, handlePaneExited } from "../rpc-handlers/tmux-pty";
+import { launchTaskPty, routePaneExited } from "../rpc-handlers/tmux-pty";
 // Leaf import, not the tmux barrel: this script runs under a preload that mocks
 // whole modules, and the barrel pulls in far more than the unlink helper.
 import { removeTmuxSocketFile } from "../tmux/socket-files";
@@ -103,10 +103,13 @@ function getSessionState(): { panes: PaneSessionEntry[] } | null {
 	return (globalThis as any).__e2eSessionState;
 }
 
+const exitCallbacks: Array<{ taskId: string | null; paneId: string }> = [];
+
 // ── Wire pane-exited callback (normally done in index.ts) ───────────
 
 pty.setOnPaneExited((taskId, paneId) => {
-	handlePaneExited(taskId, paneId);
+	exitCallbacks.push({ taskId, paneId });
+	routePaneExited(taskId, paneId);
 });
 
 // ── Test ────────────────────────────────────────────────────────────
@@ -153,7 +156,30 @@ async function main() {
 		assert(liveAfter.includes(reconciled[0].paneId!),
 			`paneId ${reconciled[0].paneId} not in live ${JSON.stringify(liveAfter)}`);
 
-		console.log(`\nPASS — panes[0].paneId=${reconciled[0].paneId} (correct surviving agent pane)`);
+		console.log(`panes[0].paneId=${reconciled[0].paneId} (correct surviving agent pane)`);
+
+		// An agent alone in its own window exits while another tab is the current window:
+		// tmux resolves the hook from that tab, so every tab must carry it.
+		const session = pty.getSessionTmuxName(TASK_ID);
+		const newWindow = (name: string, command: string): string => {
+			const out = tmuxSync(["-L", TEST_SOCKET, "new-window", "-d", "-n", name, "-t", `${session}:`, "-P", "-F", "#{pane_id}", command]);
+			return String(out.stdout).trim();
+		};
+		const agentPane = newWindow("Agents", "bash -c 'sleep 2'");
+		const notesPane = newWindow("Notes", "sleep 999");
+		assert(!!agentPane && !!notesPane, "windows should have been created");
+		await pty.installPaneExitedHook(session, agentPane, TEST_SOCKET);
+		await pty.installPaneExitedHook(session, notesPane, TEST_SOCKET);
+		tmuxSync(["-L", TEST_SOCKET, "select-window", "-t", notesPane]);
+		(globalThis as any).__e2eSessionState = {
+			panes: [...reconciled, { paneId: agentPane, window: "Agents", agentCmd: "sleep", sessionId: null, agentId: null, configId: null }],
+		};
+
+		await waitFor(() => !getSessionState()!.panes.some(p => p.paneId === agentPane), 15_000);
+		assert(exitCallbacks.some(c => c.paneId === agentPane && c.taskId === TASK_ID), "the exit callback should reach with the Agents pane id");
+		assert(getSessionState()!.panes.length === 1 && getSessionState()!.panes[0].paneId === reconciled[0].paneId, "only the Agents entry should be removed");
+
+		console.log("\nPASS — surviving main pane kept, exited Agents-window entry removed");
 	} catch (err) {
 		console.error(`\nFAIL — ${err}`);
 		cleanup();

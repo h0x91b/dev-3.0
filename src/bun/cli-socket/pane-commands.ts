@@ -1,5 +1,7 @@
 import { assertTaskWorkspacePresent } from "../task-workspace-guard";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
+import { installPaneExitedHook } from "../pty-server";
+import { DEFAULT_TMUX_SOCKET, taskSessionName } from "../tmux";
 import { buildTaskLifecycleEnv } from "../rpc-handlers/shared-pure";
 import type { Handler } from "./shared";
 import { requirePaneTask } from "./task-resolution";
@@ -18,7 +20,7 @@ export const paneHandlers: Record<string, Handler> = {
 		const cwd = task.worktreePath;
 		if (!cwd) throw new Error(`task ${task.id.slice(0, 8)} has no worktree, so it has no pane to split`);
 		assertTaskWorkspacePresent(project, cwd, task);
-		return await startPaneRun({
+		const run = await startPaneRun({
 			task,
 			command: String(params.command ?? ""),
 			// An older CLI sends "right" for "no flag" — that, like anything unknown, is auto.
@@ -28,6 +30,9 @@ export const paneHandlers: Record<string, Handler> = {
 			cwd,
 			env: buildTaskLifecycleEnv(project, task, cwd),
 		});
+		// A run that overflowed into its own window has none of the session's pane-exited hook yet.
+		if (run.backend === "tmux" && run.paneId) await installPaneExitedHook(taskSessionName(task.id), run.paneId, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
+		return run;
 	},
 
 	"pane.logs": async (params) => {

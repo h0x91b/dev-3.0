@@ -260,7 +260,7 @@ export function registerBackpressureProbe(sessionKey: string, probe: () => numbe
 }
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
-let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
+let onPaneExitedCallback: ((taskId: string | null, paneId: string) => void) | null = null;
 let onOsc52CopyCallback: ((payload: { taskId: string; text: string; len: number }) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
@@ -271,7 +271,7 @@ export function setOnBell(fn: (taskId: string) => void): void {
 	onBellCallback = fn;
 }
 
-export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): void {
+export function setOnPaneExited(fn: (taskId: string | null, paneId: string) => void): void {
 	onPaneExitedCallback = fn;
 }
 
@@ -2280,13 +2280,11 @@ const ptyServer = Bun.serve({
 				const sessionName = url.searchParams.get("session");
 				const paneId = url.searchParams.get("pane");
 				if (sessionName && paneId) {
+					// tmux resolves the hook from the current window, so the session may be absent or
+					// another task's: the pane id is routed on its own.
 					const taskId = findTaskIdByTmuxSession(sessionName);
-					if (taskId) {
-						log.info("Pane exited", { taskId: shortId(taskId), paneId, sessionName });
-						onPaneExitedCallback?.(taskId, paneId);
-					} else {
-						log.debug("Pane exited for unknown session", { sessionName, paneId });
-					}
+					log.info("Pane exited", { taskId: taskId ? shortId(taskId) : null, paneId, sessionName });
+					onPaneExitedCallback?.(taskId, paneId);
 				}
 				return new Response("ok");
 			}

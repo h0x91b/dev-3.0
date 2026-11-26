@@ -26,7 +26,7 @@ import { codexTurnWatches } from "./codex-turn-watch";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { handlers, setPushMessage, getPushMessage, setAppForeground, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, setAppForeground, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, routePaneExited, setFocusMode } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { applySavedTmuxPanePreferences } from "./tmux/config";
 import { DEV3_HOME } from "./paths";
@@ -588,8 +588,8 @@ setOnOsc52Copy((payload) => {
 });
 
 setOnPaneExited((taskId, paneId) => {
-	handlePaneExited(taskId, paneId).catch((err) => {
-		log.error("handlePaneExited failed", { error: String(err) });
+	routePaneExited(taskId, paneId).catch((err) => {
+		log.error("routePaneExited failed", { error: String(err) });
 	});
 });
 

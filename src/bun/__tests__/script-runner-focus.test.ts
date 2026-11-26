@@ -32,4 +32,9 @@ describe("runScript focus", () => {
 		await runScript({ ...base, placement: "window" });
 		expect(mocks.newWindow).toHaveBeenCalledWith(expect.objectContaining({ focus: true }));
 	});
+
+	it("returns the pane it opened, so the caller can hook its window", async () => {
+		expect(await runScript({ ...base, placement: "window" })).toBe("%6");
+		expect(await runScript({ ...base, placement: "right" })).toBe("%5");
+	});
 });

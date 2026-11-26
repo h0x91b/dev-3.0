@@ -10,7 +10,7 @@ export { resolveBugHunterCompareRef, buildBugHunterPrompt, nativeHunterColumnRat
 export { killDevServerSession, runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "./tmux-pty/dev-servers";
 export { assertResumeAccountUsable, sessionStateOrLostCodexPane, ResumeUnavailableError, taskTerminalAlive, resumeTaskSession, wakeTaskShell } from "./tmux-pty/resume";
 export type { ResumeTaskOptions, ResumeTaskSessionOutcome } from "./tmux-pty/resume";
-export { launchTaskPty, addVirtualShellPane, launchColumnAgent, cleanupTaskTmuxState, handlePaneExited } from "./tmux-pty/task-launch";
+export { launchTaskPty, addVirtualShellPane, launchColumnAgent, cleanupTaskTmuxState, handlePaneExited, routePaneExited } from "./tmux-pty/task-launch";
 export { tmuxAction, tmuxPaneCount, tmuxKillPane, readPaneLayout, tmuxPaneNavigate } from "./tmux-pty/tmux-control";
 export type { PaneLayoutInfo } from "./tmux-pty/tmux-control";
 

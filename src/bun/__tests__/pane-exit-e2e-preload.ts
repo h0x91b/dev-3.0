@@ -28,7 +28,7 @@ mock.module("../data", () => ({
 	loadVirtualProjects: async () => [],
 	getProject: async () => (globalThis as any).__e2eProject,
 	addTask: async () => ({}),
-	loadTasks: async () => [],
+	loadTasks: async () => [{ ...(globalThis as any).__e2eTask, sessionState: (globalThis as any).__e2eSessionState }],
 }));
 
 // Spread the REAL module so the mock can never go stale: an enumerated export list

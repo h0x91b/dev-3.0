@@ -42,7 +42,8 @@ interface RunScriptOptions {
 	socket?: string;
 }
 
-export async function runScript(opts: RunScriptOptions): Promise<void> {
+/** Returns the id of the pane the script runs in, so the caller can give its window the pane-exited hook. */
+export async function runScript(opts: RunScriptOptions): Promise<string | null> {
 	// Panes and windows only exist on the tmux backend.
 	assertPosixLaunchDialect("running a package script in a tmux pane");
 	const { taskId, worktreePath, scriptName, source, runner, placement } = opts;
@@ -98,6 +99,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 	if (paneId) {
 		tmux.selectPane(paneId, { socket, title: label }).catch(() => {});
 	}
+	return paneId;
 }
 
 export { resolveRunnerCommand };
