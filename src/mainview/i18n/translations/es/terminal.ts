@@ -343,6 +343,7 @@ const terminal = {
 	"terminal.linkSheetCopyFailed": "No se pudo copiar. Selecciona el texto de arriba y cópialo a mano.",
 	"terminal.filePreviewLoading": "Cargando vista previa…",
 	"terminal.filePreviewNotFound": "Archivo no encontrado — puede que se haya movido o eliminado.",
+	"terminal.filePreviewOutsideAllowed": "Este archivo está fuera de las carpetas que dev3 puede abrir.",
 	"terminal.filePreviewViewerCrashed": "Este visor de archivos falló y no puede mostrar este archivo.",
 	"terminal.filePreviewViewerCrashedFallback": "Este visor de archivos falló, así que se muestra la vista previa integrada.",
 	"terminal.filePreviewBinary": "Archivo binario ({size}) — vista previa no disponible.",

@@ -495,7 +495,9 @@ export type FilePreviewResult =
 	| { kind: "binary"; size: number }
 	| { kind: "too-large"; size: number }
 	| { kind: "directory" }
-	| { kind: "not-found" };
+	| { kind: "not-found" }
+	/** No allowed root covers the path, so it was never looked up. */
+	| { kind: "outside-allowed" };
 
 export interface TipState {
 	snoozedUntil: number; // timestamp — all tips hidden until this time
