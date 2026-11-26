@@ -13703,6 +13703,21 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
 	});
 
+	it("keeps both entries when a shell pane exits in window 0 while an agent runs in another window", async () => {
+		const tabbed = { ...extra, paneId: "%12", window: "Agents" };
+		const { project, task } = arrange([main, tabbed], "claude-opus", ["%0", "%12"]);
+		await handlePaneExited(task.id, "%5");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([main, tabbed]);
+		expect(pty.listPaneIds).toHaveBeenCalledWith(task.id, expect.any(String));
+	});
+
+	it("drops only the agent of the window that exited", async () => {
+		const tabbed = { ...extra, paneId: "%12", window: "Agents" };
+		const { project, task } = arrange([main, tabbed], "claude-opus", ["%0"]);
+		await handlePaneExited(task.id, "%12");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([main]);
+	});
+
 	it("pushes the restored agent to the renderer", async () => {
 		const push = vi.fn();
 		setPushMessage(push);

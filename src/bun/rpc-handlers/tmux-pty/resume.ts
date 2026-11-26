@@ -15,6 +15,7 @@ import { claudeConfigDirHasSession, resolveResumableSessionIds, type UnreadableS
 import { DEFAULT_TMUX_SOCKET, taskSessionName, tmux } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
+import { openTaskPaneInNamedWindow } from "../../task-aux-panes";
 import { nativeTaskPaneCommandsStrict, nativeTaskPanesAlive, stopNativeTaskPanes } from "../../native-task-panes";
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import { taskMainAgentLiveness } from "../../scheduled-message-author";
@@ -23,7 +24,7 @@ import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskRes
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { mainAgentNeverStarted } from "../../../shared/agent-launch-failure";
 import { forgetAgyTask } from "../../agy-session-state";
-import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
+import { getPushMessage, buildCmdScript, generatedScriptLaunch, log, writeLaunchScript } from "../shared-pure";
 import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
 
@@ -539,7 +540,14 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					// Export the project env too, like a fresh spawn: a split pane otherwise inherits the main pane's.
 					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, paneEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
-					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
+					let newPaneId: string | null;
+					if (pane.window) {
+						const launch = { task, placement: "right" as const, size: "", cwd: task.worktreePath, socket, tmuxCommand: wrappedCmd, nativeLaunch: generatedScriptLaunch(scriptPath) };
+						newPaneId = (await openTaskPaneInNamedWindow({ ...launch, windowName: pane.window })).paneId || null;
+						if (newPaneId) await pty.installPaneExitedHook(pty.getSessionTmuxName(params.taskId), newPaneId, socket);
+					} else {
+						newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
+					}
 					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
 					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume, projectLogin });
 					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };

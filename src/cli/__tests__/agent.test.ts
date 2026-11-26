@@ -27,6 +27,19 @@ describe("agent spawn", () => {
 			agentId: "builtin-codex", configId: "codex-default", prompt: "instructions from stdin", handoff: true,
 		}, { timeoutMs: 600000 });
 	});
+	it("sends no window by default, the shared Agents tab for a bare --window and the given name otherwise", async () => {
+		await spawn();
+		expect(vi.mocked(sendRequest).mock.lastCall![2]).not.toHaveProperty("window");
+		await spawn({ window: "true" });
+		expect(vi.mocked(sendRequest).mock.lastCall![2]).toMatchObject({ window: "Agents" });
+		await spawn({ window: " review " });
+		expect(vi.mocked(sendRequest).mock.lastCall![2]).toMatchObject({ window: "review" });
+	});
+	it("names the tab in the plain result", async () => {
+		vi.mocked(sendRequest).mockImplementation(async (_socket, method) => ({ id: "1", ok: true, data: method === "approval.policy" ? { autoApproveMs: 0 } : { approved: true, spawn: { paneId: "%12", backend: "tmux", window: "Agents", agentId: "builtin-codex", configId: null, handoff: null } } }));
+		await spawn({ window: "true" });
+		expect(output).toBe('Spawned agent builtin-codex in pane %12 (tmux, tab "Agents").\n');
+	});
 	it("prints a machine-readable pane identity", async () => {
 		await spawn({ json: "true" });
 		expect(JSON.parse(output)).toMatchObject({ paneId: "%9", backend: "tmux" });
@@ -43,6 +56,7 @@ describe("agent spawn", () => {
 	it("rejects invalid flags (incl. any --account) and a missing task before sending", async () => {
 		const cases: Array<[Record<string, string>, CliContext | null]> = [
 			[{ config: "wrong" }, context], [{ prompt: " " }, context], [{ yes: "true" }, context],
+			[{ window: "" }, context], [{ window: "   " }, context],
 			[{ agent: "builtin-codex", config: "codex-default", account: "slot" }, context],
 			[{ agent: "builtin-codex", config: "codex-default", account: "system" }, context],
 			[{}, null],

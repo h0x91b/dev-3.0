@@ -316,6 +316,19 @@ export const WINDOW_SWITCHER_FORMAT = tmuxFormat()
 	.tail("title", "pane_title")
 	.build();
 
+/**
+ * What names a window: its `@dev3_window_name` and, only while automatic-rename is off,
+ * `window_name`. With it on, `window_name` is just the running command (`zsh`).
+ * Free text rides in `customName` and the tail, as in WINDOW_SWITCHER_FORMAT.
+ */
+export const WINDOW_NAME_FORMAT = tmuxFormat()
+	.string("windowId", "window_id")
+	.number("index", "window_index")
+	.flag("autoRename", "automatic-rename")
+	.string("customName", "@dev3_window_name")
+	.tail("name", "window_name")
+	.build();
+
 /** Session overview for the tmux sessions screen. */
 export const SESSION_OVERVIEW_FORMAT = tmuxFormat()
 	.string("name", "session_name")

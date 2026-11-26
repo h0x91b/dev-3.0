@@ -282,6 +282,8 @@ describe("readPaneRun", () => {
 		const view = await readPaneRun(TMUX_TASK, runId);
 		expect(view.paneId).toBe("%9");
 		expect(view.backend).toBe("tmux");
+		// A run in another window (the "Runs" overflow one) must be found too.
+		expect(mocks.tmuxListPanes).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ scope: "session" }));
 	});
 });
 
@@ -324,6 +326,14 @@ describe("paneRunListing", () => {
 		expect(listing.runs.every((run) => run.lines.length === 0)).toBe(true);
 		expect(listing.panes[1].runId).toBe(runIds[0]);
 		expect(listing.runs.find((run) => run.runId === runIds[0])?.paneId).toBe("%9");
+	});
+
+	it("lists the panes of every window of the task session, so an agent in another tab shows up", async () => {
+		mocks.tmuxListPanes.mockClear();
+		mocks.tmuxListPanes.mockResolvedValue([{ paneId: "%1", startCommand: "zsh" }, { paneId: "%12", startCommand: "bash agent.sh" }]);
+		const listing = await paneRunListing(TMUX_TASK, "%1");
+		expect(mocks.tmuxListPanes).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ scope: "session" }));
+		expect(listing.panes.map((pane) => pane.paneId)).toEqual(["%1", "%12"]);
 	});
 
 	it("survives a tmux session that is simply gone", async () => {

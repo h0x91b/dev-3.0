@@ -76,6 +76,7 @@ const common = {
 	"agentLaunch.resuming": "Resuming…",
 	"agentLaunch.initialPrompt": "Initial instructions",
 	"agentLaunch.spawnHandoff": "The new agent will also receive this task's latest conversation.",
+	"agentLaunch.spawnWindow": "Opens in a separate tab: {name}",
 	"agentLaunch.title": "Agent wants to start this task",
 	"agentLaunch.titleScratch": "Agent wants a scratch task",
 	"agentLaunch.requestedBy": "Asked by task #{seq} — {title}",

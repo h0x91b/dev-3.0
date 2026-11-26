@@ -78,6 +78,9 @@ export interface PaneSessionEntry {
 	 *  folder and records no `accountId`. A resume passes this back, so the project's backend
 	 *  env (a Bedrock switch) stays off the session the way it was at launch. */
 	projectLogin?: boolean;
+	/** Name of the tmux window an extra agent opened in (`dev3 agent spawn --window`).
+	 *  Resume reopens the pane in that window; absent → split into the main window. */
+	window?: string;
 	/** The agent CLI this pane runs, snapshotted at launch. Resume paths hold only
 	 *  a pane, and `agentCmd` alone cannot identify a differently named binary —
 	 *  without this a wrapper resumed as an unknown CLI, i.e. as a fresh launch

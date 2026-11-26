@@ -270,6 +270,7 @@ async function runPanes(task: Task): Promise<Map<string, AuxPaneHandle>> {
 	try {
 		const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, {
 			target: taskSessionName(task.id),
+			scope: "session",
 			socket: socketOf(task),
 		});
 		for (const row of rows) {
@@ -488,6 +489,7 @@ export async function paneRunListing(task: Task, selfPaneId: string | null): Pro
 		try {
 			const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, {
 				target: taskSessionName(task.id),
+				scope: "session",
 				socket: socketOf(task),
 			});
 			rows.forEach((row, index) => {

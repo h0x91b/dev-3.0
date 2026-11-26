@@ -99,7 +99,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "spawn",
-				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--reason <text>] [--json]",
+				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--window [name]] [--reason <text>] [--json]",
 				summary: "Add one agent pane to a running task, sharing its existing worktree.",
 				details: [
 					"--task <id>     Target task, or the current worktree's task. Supports seq:<N>.",
@@ -109,6 +109,7 @@ const COMMANDS: CommandHelp[] = [
 					"Preset-defined credentials and provider routing still apply.",
 					"--prompt <text> Initial instructions; - reads stdin, @file reads a file.",
 					"--handoff       Also retell the target task's latest conversation.",
+					"--window [name] Open the agent in its own tab (default Agents, shared; found or created) instead of a split. tmux only.",
 					"--json          Print pane ID, backend, agent/config IDs and handoff result.",
 					"--reason <text> Why you ask, shown in the approval dialog (plain text, max 500 chars).",
 					"From a task worktree, asks the user to approve and pick the agent in the app.",

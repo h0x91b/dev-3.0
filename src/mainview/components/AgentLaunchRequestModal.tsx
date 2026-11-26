@@ -300,6 +300,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						</div>
 					)}
 					{request.spawn?.handoff && <p className="text-fg-3 text-xs">{t("agentLaunch.spawnHandoff")}</p>}
+					{request.spawn?.window && <p className="text-fg-3 text-xs">{t("agentLaunch.spawnWindow", { name: request.spawn.window })}</p>}
 
 					{/* Only speaks up under real pressure, and the forecast scales with
 					    the variant count — same banner the Launch modal shows. A session

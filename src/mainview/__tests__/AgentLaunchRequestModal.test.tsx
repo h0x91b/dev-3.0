@@ -113,6 +113,18 @@ describe("AgentLaunchRequestModal", () => {
 		expect(onRespond).toHaveBeenCalledWith(true, { variants: [{ agentId: "builtin-claude", configId: "claude-plan", accountId: null }] });
 	});
 
+	it("names the separate tab an extra agent will open in", async () => {
+		const choice = { agentId: "builtin-claude", configId: "claude-plan", accountId: null };
+		renderModal(makeRequest({ spawn: { choice, prompt: "Review this task", handoff: false, window: "Agents" } }));
+		expect(await screen.findByText("Opens in a separate tab: Agents")).toBeInTheDocument();
+	});
+
+	it("shows no tab line for a plain split", async () => {
+		renderModal(makeRequest({ spawn: { choice: { agentId: "builtin-claude", configId: "claude-plan", accountId: null }, prompt: "Review this task", handoff: false } }));
+		await screen.findByRole("heading", { name: "Agent wants to add an agent to this task" });
+		expect(screen.queryByText(/Opens in a separate tab/)).not.toBeInTheDocument();
+	});
+
 	it("shows a resume request as the saved panes, with no agent choice, and answers without one", async () => {
 		const user = userEvent.setup();
 		const { onRespond } = renderModal(makeRequest({

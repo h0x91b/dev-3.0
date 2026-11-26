@@ -61,6 +61,8 @@ import {
 	hasSession,
 	hasDeadSession,
 	capturePane,
+	listPaneIds,
+	installPaneExitedHook,
 	getTmuxLayout,
 	getSessionProjectId,
 	getSessionSocket,
@@ -673,6 +675,25 @@ describe("pty-server", () => {
 	});
 
 	// ------- Callbacks -------
+
+	describe("panes of every window", () => {
+		const proc = (stdout: string) => ({ pid: 1, kill: vi.fn(), stdout: new Response(stdout).body, stderr: new Response("").body, exited: Promise.resolve(0) }) as any;
+		const tmuxCall = (verb: string) => mockSpawn.mock.calls.map((c) => c[0] as string[]).find((cmd) => Array.isArray(cmd) && cmd.includes(verb));
+
+		it("listPaneIds reads the whole session, not just its current window", async () => {
+			mockSpawn.mockImplementation(() => proc("%1\n%12\n") as any);
+			expect(await listPaneIds("task-lp-01", "sock")).toEqual(["%1", "%12"]);
+			expect(tmuxCall("list-panes")).toEqual(expect.arrayContaining(["list-panes", "-s", "-t"]));
+		});
+
+		it("installPaneExitedHook sets the hook on the window of the given target", async () => {
+			mockSpawn.mockImplementation(() => proc("") as any);
+			await installPaneExitedHook("dev3-abc", "%12", "sock");
+			const cmd = tmuxCall("set-hook")!;
+			expect(cmd).toEqual(expect.arrayContaining(["-L", "sock", "set-hook", "-wt", "%12", "pane-exited"]));
+			expect(cmd[cmd.length - 1]).toContain("/pane-exited?session=dev3-abc&pane=#{hook_pane}");
+		});
+	});
 
 	describe("callbacks", () => {
 		it("onPtyDied fires when exited promise rejects", async () => {

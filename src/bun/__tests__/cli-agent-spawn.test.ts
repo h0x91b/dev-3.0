@@ -51,6 +51,27 @@ describe("managed CLI agent spawning", () => {
 			taskId: task.id, projectId: project.id, agentId: "agent-1", configId: "config-1", prompt: "Review only", handoff: false,
 		});
 	});
+	it("shows the tab in the dialog, passes it to the launch, and keeps it in the retry signature", async () => {
+		const pending = spawnCliAgent({ ...options(), window: "review" });
+		await expect(spawnCliAgent({ ...options(), window: "Agents" })).rejects.toThrow("Another agent spawn");
+		await answer(true);
+		await pending;
+		expect(push.mock.calls[0][1].spawn).toMatchObject({ window: "review" });
+		expect(tmuxPtyHandlers.spawnAgentInTask).toHaveBeenCalledWith(expect.objectContaining({ window: "review" }));
+		expect(push.mock.calls[0][1].spawn.choice).not.toHaveProperty("window");
+	});
+	it("refuses --window on a native-backend task before the approval dialog, launching nothing", async () => {
+		await expect(spawnCliAgent({ ...options(), task: { ...task, terminalBackend: "native" } as Task, window: "Agents" })).rejects.toThrow("--window needs a tmux task terminal: the native terminal backend has no tabs. Run without --window to split the current tab.");
+		expect(push).not.toHaveBeenCalled();
+		expect(tmuxPtyHandlers.spawnAgentInTask).not.toHaveBeenCalled();
+	});
+	it("sends no window field to the dialog or the launch without --window", async () => {
+		const pending = spawnCliAgent(options());
+		await answer(true);
+		await pending;
+		expect(push.mock.calls[0][1].spawn).not.toHaveProperty("window");
+		expect(vi.mocked(tmuxPtyHandlers.spawnAgentInTask).mock.calls[0][0]).not.toHaveProperty("window");
+	});
 	it("drops a caller-supplied account field and never asks for focus (CLI spawn opens in the background)", async () => {
 		const choice = { agentId: "agent-1", configId: "config-1", accountId: "slot-1" };
 		const pending = spawnCliAgent({ ...options(), choice });

@@ -76,6 +76,7 @@ const common = {
 	"agentLaunch.resuming": "Возобновляю…",
 	"agentLaunch.initialPrompt": "Начальные инструкции",
 	"agentLaunch.spawnHandoff": "Новый агент также получит последний разговор этой задачи.",
+	"agentLaunch.spawnWindow": "Откроется в отдельной вкладке: {name}",
 	"agentLaunch.title": "Агент хочет запустить эту задачу",
 	"agentLaunch.titleScratch": "Агент просит scratch-задачу",
 	"agentLaunch.requestedBy": "Просит задача #{seq} — {title}",

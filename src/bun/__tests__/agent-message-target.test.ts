@@ -149,6 +149,19 @@ describe("agentPaneRoles", () => {
 	});
 });
 
+describe("an extra agent opened in another tab (--window)", () => {
+	it("is found across the whole session, is an agent pane, and gets a handle", async () => {
+		live = ["%1", "%2", "%12"];
+		const tabbed = task([entry("%1"), { ...entry("%12"), window: "Agents" }]);
+		expect((await agentPaneRoles(tabbed)).get("%12")).toBe("agent");
+		expect(vi.mocked(tmux.listPanes).mock.calls.every(([, opts]) => opts.scope === "session")).toBe(true);
+		const listing: PaneRunListing = { backend: "tmux", screenReadable: true, screenReadableDetail: "", selfPaneId: null, runs: [], panes: [{ paneId: "%12", index: 3, label: "", active: false, self: false, alive: null, runId: null }] };
+		const out = await withAgentPanes(tabbed, listing);
+		expect(out.panes[0]).toMatchObject({ agentRole: "agent" });
+		expect(decodeAgentHandle(out.panes[0]!.agentHandle!)).toEqual(author("%12"));
+	});
+});
+
 describe("withAgentPanes — what `dev3 pane list` adds", () => {
 	const line = (paneId: string, index: number, alive: boolean | null = null): PaneRunPaneLine =>
 		({ paneId, index, label: "", active: false, self: false, alive, runId: null });

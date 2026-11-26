@@ -8,6 +8,8 @@ vi.mock("../pty-server", () => ({
 	tmuxSessionExists: vi.fn(async () => true),
 	splitAndRunCommand: vi.fn(async () => "%2"),
 	getPtyPort: vi.fn(() => 9999),
+	getSessionTmuxName: vi.fn((id: string) => `dev3-${id}`),
+	installPaneExitedHook: vi.fn(async () => {}),
 }));
 vi.mock("../agents", () => ({
 	isClaudeCommand: vi.fn((cmd: string) => cmd === "claude"),
@@ -32,6 +34,7 @@ vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) })
 vi.mock("../ops-worktree", () => ({ resolveLaunchProject: vi.fn(async (p: Project) => p), rootProjectFor: vi.fn((p: Project) => p) }));
 vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: {} }));
 vi.mock("../temp-paths", () => ({ dev3TaskTempPath: (_id: string, name: string) => `/tmp/${name}` }));
+vi.mock("../task-aux-panes", () => ({ openTaskPaneInNamedWindow: vi.fn(async () => ({ backend: "tmux", paneId: "%30" })) }));
 vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
 vi.mock("../native-task-panes", () => ({ nativeTaskPaneCommandsStrict: vi.fn(), nativeTaskPanesAlive: vi.fn(), stopNativeTaskPanes: vi.fn() }));
 vi.mock("../task-workspace-guard", () => ({ assertTaskWorkspacePresent: vi.fn() }));
@@ -41,6 +44,7 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 	getPushMessage: vi.fn(() => null),
 	buildCmdScript: vi.fn(() => "script"),
 	writeLaunchScript: vi.fn(),
+	generatedScriptLaunch: vi.fn((script: string) => ({ executable: "/bin/bash", argv: [script] })),
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("../rpc-handlers/tmux-pty/task-launch", () => ({
@@ -67,6 +71,8 @@ import { claudeResumePickTarget, resumeTaskSession } from "../rpc-handlers/tmux-
 import { log } from "../rpc-handlers/shared-pure";
 import { resolveResumableSessionIds } from "../agent-transcripts";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { openTaskPaneInNamedWindow } from "../task-aux-panes";
+import * as pty from "../pty-server";
 
 const project = { id: "p1", name: "P", path: "/repo" } as Project;
 const claudePane: PaneSessionEntry = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "c", sessionId: "s-claude", accountId: "acct-old" };
@@ -255,6 +261,25 @@ describe("resume with an account override", () => {
 		await expect(resumeTaskSession("t1", { accountId: "acct-new" })).rejects.toThrow("already running");
 		release();
 		await first;
+	});
+});
+
+describe("resume of an extra pane opened with --window", () => {
+	it("reopens it in its named window and keeps the window on the saved entry, while an entry without one still splits", async () => {
+		const tabPane = { ...claudePane, main: false, sessionId: "s-tab", window: "Agents", paneId: "%old" };
+		const splitPane = { ...claudePane, main: false, sessionId: "s-split", paneId: "%old2" };
+		const task = arrange([codexPane, tabPane, splitPane]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		await resumeTaskSession("t1");
+		expect(openTaskPaneInNamedWindow).toHaveBeenCalledTimes(1);
+		expect(openTaskPaneInNamedWindow).toHaveBeenCalledWith(expect.objectContaining({ windowName: "Agents", cwd: "/wt", tmuxCommand: expect.stringMatching(/^bash ".*resume-pane-1\.sh"$/) }));
+		expect(pty.splitAndRunCommand).toHaveBeenCalledTimes(1);
+		expect(pty.installPaneExitedHook).toHaveBeenCalledTimes(1);
+		expect(pty.installPaneExitedHook).toHaveBeenCalledWith("dev3-t1", "%30", expect.any(String));
+		const saved = vi.mocked(data.updateTask).mock.calls.find((call) => "sessionState" in call[2])![2].sessionState!.panes;
+		expect(saved[1]).toMatchObject({ paneId: "%30", window: "Agents" });
+		expect(saved[2]).toMatchObject({ paneId: "%2" });
+		expect(saved[2]).not.toHaveProperty("window");
 	});
 });
 

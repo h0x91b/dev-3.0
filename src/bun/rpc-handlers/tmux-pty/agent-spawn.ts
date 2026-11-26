@@ -20,7 +20,7 @@ import type { NativeTaskAgent } from "../../../shared/types/task-lifecycle";
 import { type AgentPromptDelivery } from "../../../shared/agent-prompt-delivery";
 import { handoffPrompt, prepareTaskHandoff, previewTaskHandoff } from "../../conversation-handoff";
 import type { HandoffPreview, SpawnAgentResult } from "../../../shared/conversation-handoff-model";
-import { splitTaskPane, AuxPaneUnavailableError, type AuxPaneHandle } from "../../task-aux-panes";
+import { splitTaskPane, openTaskPaneInNamedWindow, AuxPaneUnavailableError, type AuxPaneHandle } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildCmdScript, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
 import { applyAgentHooksToCommand, applyModelVersionNotice, ensureAgentTrust, notifyBedrockProfileMissing } from "./task-launch";
 import { rootProjectFor } from "../../ops-worktree";
@@ -39,6 +39,8 @@ export async function spawnAgentInTask(params: {
 	handoff?: boolean;
 	/** The user asked for this pane from the UI: focus moves to it. Absent → background. */
 	focus?: boolean;
+	/** tmux only: open the pane in this named window of the task session (created when missing). */
+	window?: string;
 }): Promise<SpawnAgentResult> {
 	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId, handoff: params.handoff === true, promptChars: params.prompt?.length ?? 0 });
 
@@ -183,17 +185,19 @@ export async function spawnAgentInTask(params: {
 	// coexist by design, while a purpose owns at most one pane and replaces it.
 	let handle: AuxPaneHandle;
 	try {
-		handle = await splitTaskPane({
+		const launch = {
 			task,
-			placement: "right",
+			placement: "right" as const,
 			size: "",
 			cwd: task.worktreePath,
 			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
 			socket,
 			tmuxCommand: `bash "${scriptPath}"`,
 			nativeLaunch: generatedScriptLaunch(scriptPath),
-			focus: params.focus === true,
-		});
+		};
+		handle = params.window
+			? await openTaskPaneInNamedWindow({ ...launch, windowName: params.window })
+			: await splitTaskPane({ ...launch, focus: params.focus === true });
 	} catch (err) {
 		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });
 		throw new Error(
@@ -204,6 +208,8 @@ export async function spawnAgentInTask(params: {
 	}
 
 	const newPaneId = handle.paneId || null;
+	// A window made by `new-window` carries no pane-exited hook, so the pane's entry would never be reconciled.
+	if (params.window && handle.backend === "tmux" && newPaneId) await pty.installPaneExitedHook(pty.getSessionTmuxName(task.id), newPaneId, socket);
 	if (handle.backend === "tmux" && newPaneId) void markAgentPane(socket, newPaneId);
 
 	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`
@@ -219,6 +225,7 @@ export async function spawnAgentInTask(params: {
 		agentFamily: resolvedAgentFamily,
 		...(launchBedrockProfile !== undefined ? { bedrockProfile: launchBedrockProfile } : {}),
 		...(projectLogin ? { projectLogin: true } : {}),
+		...(params.window ? { window: params.window } : {}),
 	};
 	if (handle.backend === "native") {
 		const { sessionId: _sessionId, paneId: _paneId, bedrockProfile: _bedrockProfile, projectLogin: _projectLogin, ...attribution } = paneEntry;
@@ -259,7 +266,7 @@ export async function spawnAgentInTask(params: {
 	}
 
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
-	return { paneId: handle.paneId, backend: handle.backend, agentId: launchedAgentId, configId: launchedConfigId, handoff: handoffResult };
+	return { paneId: handle.paneId, backend: handle.backend, agentId: launchedAgentId, configId: launchedConfigId, ...(params.window ? { window: params.window } : {}), handoff: handoffResult };
 }
 
 /**
