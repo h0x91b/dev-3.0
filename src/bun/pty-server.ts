@@ -400,6 +400,7 @@ function markNativeClosed(session: PtySession): void {
 	session.appliedRows = undefined;
 	log.info("Native PTY session closed", { taskId: shortId(session.taskId), paneId: closedPaneId });
 	void publishNativeDeathIfLastPane(session, closedPaneId);
+	if (closedPaneId) onPaneExitedCallback?.(session.taskId, closedPaneId);
 }
 
 /**

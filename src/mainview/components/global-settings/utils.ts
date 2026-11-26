@@ -4,6 +4,7 @@ import type {
 	ExternalApp,
 	GlobalSettings,
 	LlmProvider,
+	OpenCodeProtocol,
 	ProviderConfig,
 } from "../../../shared/types";
 import { DEFAULT_CLAUDE_CONFIG_ID } from "../../../shared/types";
@@ -135,6 +136,7 @@ export function buildCommandPreview(
 	providerConfig?: ProviderConfig,
 	agentFamily?: AgentFamily,
 	catalog?: ModelCatalog,
+	opencodeProtocol?: OpenCodeProtocol,
 ): { command: string; envLine: string | null } {
 	const baseCmd = config.baseCommandOverride || agentBaseCommand || "???";
 	const parts: string[] = [baseCmd];
@@ -265,5 +267,9 @@ export function buildCommandPreview(
 			? envPairs.map(([key, value]) => `${key}=${value}`).join(" ")
 			: null;
 
-	return { command: parts.join(" "), envLine };
+	// V2 sends model, agent and brief through the session API and attaches the TUI to it.
+	const command = cmdName === "opencode" && opencodeProtocol === "v2"
+		? `${baseCmd} --server <managed-server> --session <saved-session>`
+		: parts.join(" ");
+	return { command, envLine };
 }

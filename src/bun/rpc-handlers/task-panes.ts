@@ -27,6 +27,8 @@ import { normalizeWindowName } from "../../shared/window-name";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { buildTaskLifecycleEnv } from "./shared-pure";
 import { auxPaneTitle, auxPurposeOfCommand } from "../task-aux-panes";
+import { listNativeTaskAgents } from "../native-agent-attribution";
+import { stopOpenCodeServer, stopOpenCodeServers } from "../opencode-server";
 import {
 	nativeTaskPaneCommandsOf,
 	nativeTaskPaneLayout,
@@ -508,8 +510,10 @@ async function nativePaneAction(task: Task, action: TaskPaneAction): Promise<Tas
 				break;
 			}
 
+			const openCodeSessionId = (await listNativeTaskAgents(task)).find((pane) => pane.paneId === paneId)?.sessionId;
 			const { state } = await closeNativeTaskPane(taskId, paneId);
 			if (!state) {
+				await stopOpenCodeServers(taskId);
 				// Session torn down — return empty state
 				return {
 					backend: "native",
@@ -521,6 +525,7 @@ async function nativePaneAction(task: Task, action: TaskPaneAction): Promise<Tas
 					capabilities: ["split"],
 				};
 			}
+			if (openCodeSessionId) await stopOpenCodeServer(taskId, openCodeSessionId);
 			updatedState = state;
 			break;
 		}

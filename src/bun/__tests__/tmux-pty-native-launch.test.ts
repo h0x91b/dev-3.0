@@ -40,6 +40,7 @@ vi.mock("../task-aux-panes", () => ({
 	auxPaneTitle: vi.fn((purpose: string) => purpose),
 	AuxPaneUnavailableError: class extends Error {},
 	closeAuxPane: vi.fn(),
+	hasStablePaneIdentity: (handle: { backend: string; paneId: string }) => handle.backend === "tmux" ? /^%\d+$/.test(handle.paneId.trim()) : !!handle.paneId.trim(),
 	auxPaneAlive: vi.fn(async () => false),
 	replaceAuxPanes: vi.fn(),
 	splitTaskPane: vi.fn(),
@@ -147,7 +148,10 @@ vi.mock("../agent-prompt", () => ({ markAgentPane: vi.fn() }));
 vi.mock("../temp-paths", () => ({
 	dev3TaskTempPath: vi.fn((taskId: string, name?: string) => (name ? `/tmp/dev3/${taskId}/${name}` : `/tmp/dev3/${taskId}`)),
 	setupExitCodePath: vi.fn((taskId: string) => `/tmp/dev3/${taskId}/setup-exit`),
+	setupSuccessPath: vi.fn((taskId: string) => `/tmp/dev3/${taskId}/setup-ready`),
+	setupAgentPanePath: vi.fn((taskId: string) => `/tmp/dev3/${taskId}/setup-agent-pane`),
 	clearSetupExitCode: vi.fn(),
+	clearSetupHandoff: vi.fn(),
 }));
 
 vi.mock("../shell-init", () => ({
@@ -186,6 +190,7 @@ vi.mock("../process-reaper", () => ({
 }));
 
 vi.mock("../resource-monitor", () => ({ getResourceUsage: vi.fn(() => undefined) }));
+vi.mock("../native-agent-attribution", () => ({ writeNativeAgentAttribution: vi.fn(async () => undefined) }));
 
 vi.mock("../settings", () => ({
 	loadSettings: vi.fn(async () => ({})),
@@ -196,6 +201,15 @@ vi.mock("../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/zsh") }));
 
 vi.mock("../spawn", () => ({
 	spawn: vi.fn(() => ({ exited: Promise.resolve(0), stdout: undefined, stderr: undefined })),
+}));
+
+const reviewOpenCode = vi.hoisted(() => ({ prepare: vi.fn(), startPrompt: vi.fn(async () => undefined), writeScript: vi.fn(async () => undefined) }));
+vi.mock("../opencode-server", () => ({
+	prepareOpenCodeLaunch: reviewOpenCode.prepare,
+	startOpenCodePrompt: reviewOpenCode.startPrompt,
+	stopOpenCodeServer: vi.fn(async () => {}),
+	stopOpenCodeServers: vi.fn(async () => {}),
+	writeOpenCodeLaunchScript: reviewOpenCode.writeScript,
 }));
 
 vi.mock("../agent-hooks", () => ({ setupAgentHooks: vi.fn() }));
@@ -247,6 +261,7 @@ import * as sharedPure from "../rpc-handlers/shared-pure";
 import * as settingsConfig from "../rpc-handlers/settings-config";
 import * as auxPanes from "../task-aux-panes";
 import * as repoConfig from "../repo-config";
+import * as portPool from "../port-pool";
 import { tmux } from "../tmux";
 import { which } from "../which";
 
@@ -309,6 +324,12 @@ function tmuxCalls(): string[] {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(sharedPure.getPushMessage).mockReset().mockReturnValue(null);
+	vi.mocked(sharedPure.buildTaskLifecycleEnv).mockImplementation((_project, task) => ({ DEV3_TASK_ID: task.id }));
+	vi.mocked(portPool.allocatePorts).mockResolvedValue([]);
+	vi.mocked(portPool.buildPortEnv).mockReturnValue({});
+	reviewOpenCode.prepare.mockReset();
+	reviewOpenCode.startPrompt.mockReset().mockResolvedValue(undefined);
 	written.clear();
 });
 
@@ -359,6 +380,136 @@ describe("Codex model/CLI version notice (issue #1667)", () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 
 		expect(sharedPure.buildModelVersionGateWrapper).not.toHaveBeenCalled();
+	});
+});
+
+describe("OpenCode V2 launch", () => {
+	function arrangeOpenCode() {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "opencode",
+			extraEnv: {},
+			agent: { id: "builtin-opencode", baseCommand: "opencode", opencodeProtocol: "v2" },
+			agentFamily: "opencode",
+			openCodeLaunch: { prompt: "brief", additionalArgs: [] },
+		} as never);
+		reviewOpenCode.prepare.mockResolvedValue({ command: "opencode --server http://127.0.0.1 --session ses_test", sessionId: "ses_test", passwordEnv: { OPENCODE_PASSWORD: "private", OPENCODE_SERVER_PASSWORD: "private" } });
+	}
+
+	async function launchSetupForOpenCode(task = makeTask()) {
+		arrangeOpenCode();
+		await launchTaskPty(makeProject({ setupScript: "bun install\n", setupScriptLaunchMode: "parallel" }), task, WORKTREE, null, null, true);
+		const [, onFailure, options] = vi.mocked(watch.watchSetupFailure).mock.calls[vi.mocked(watch.watchSetupFailure).mock.calls.length - 1]!;
+		return { onFailure, onSuccess: options?.onSuccess };
+	}
+
+	const boundTo = (paneId: string) => expect.objectContaining({
+		sessionState: expect.objectContaining({ panes: expect.arrayContaining([expect.objectContaining({ sessionId: "ses_test", paneId })]) }),
+	});
+
+	it("reattaches without preparing a session or submitting the brief again", async () => {
+		arrangeOpenCode();
+
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, false, { skipSessionPersist: true });
+
+		expect(reviewOpenCode.prepare).not.toHaveBeenCalled();
+		expect(reviewOpenCode.startPrompt).not.toHaveBeenCalled();
+		expect(reviewOpenCode.writeScript).not.toHaveBeenCalled();
+	});
+
+	it("passes the complete task environment to the managed tool server", async () => {
+		arrangeOpenCode();
+		vi.mocked(portPool.allocatePorts).mockResolvedValue([{ port: 4321, name: "web" }] as never);
+		vi.mocked(portPool.buildPortEnv).mockReturnValue({ DEV3_PORT1: "4321" });
+		vi.mocked(sharedPure.buildTaskLifecycleEnv).mockReturnValue({ DEV3_TASK_ID: TASK_ID, DEV3_PROJECT_PATH: "/project" });
+
+		await launchTaskPty(makeProject({ portCount: 1 }), makeTask(), WORKTREE);
+
+		expect(reviewOpenCode.prepare).toHaveBeenCalledWith(expect.objectContaining({
+			env: expect.objectContaining({ DEV3_TASK_ID: TASK_ID, DEV3_PROJECT_PATH: "/project", DEV3_ARTIFACT_DIR: "/tmp/art", DEV3_PORT1: "4321" }),
+		}));
+		expect(reviewOpenCode.startPrompt).toHaveBeenCalledWith(TASK_ID, "ses_test", "brief");
+	});
+
+	it("rolls back the tmux session and managed server when exact pane ownership cannot persist", async () => {
+		arrangeOpenCode();
+		vi.mocked(data.updateTask)
+			.mockResolvedValueOnce(undefined as never)
+			.mockRejectedValueOnce(new Error("pane registry unavailable"));
+
+		await expect(launchTaskPty(makeProject(), makeTask(), WORKTREE)).rejects.toThrow("pane registry unavailable");
+
+		expect(tmux.killSession).toHaveBeenCalledWith(`dev3-${TASK_ID.slice(0, 8)}`, { socket: "dev3" });
+		const { stopOpenCodeServer } = await import("../opencode-server");
+		expect(stopOpenCodeServer).toHaveBeenCalledWith(TASK_ID, "ses_test");
+		expect(reviewOpenCode.startPrompt).not.toHaveBeenCalled();
+	});
+
+	it("rejects a V2 launch when pane capture returns no usable pane ID", async () => {
+		arrangeOpenCode();
+		vi.mocked(pty.listPaneIds).mockResolvedValue([""] as never);
+		try {
+			await expect(launchTaskPty(makeProject(), makeTask(), WORKTREE)).rejects.toThrow("bound to a tmux pane");
+			expect(reviewOpenCode.startPrompt).not.toHaveBeenCalled();
+			const { stopOpenCodeServer } = await import("../opencode-server");
+			expect(stopOpenCodeServer).toHaveBeenCalledWith(TASK_ID, "ses_test");
+		} finally {
+			vi.mocked(pty.listPaneIds).mockResolvedValue(["%1"]);
+		}
+	});
+
+	it("submits the initial prompt only after setup reports success, bound to the pane it created", async () => {
+		const { onSuccess } = await launchSetupForOpenCode();
+
+		expect(reviewOpenCode.startPrompt).not.toHaveBeenCalled();
+		await onSuccess?.("%22");
+		expect(reviewOpenCode.startPrompt).toHaveBeenCalledWith(TASK_ID, "ses_test", "brief");
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), TASK_ID, boundTo("%22"));
+	});
+
+	it("retains the attempted binding when a failed prompt's rollback cannot close its pane", async () => {
+		const push = vi.fn();
+		vi.mocked(sharedPure.getPushMessage).mockReturnValue(push);
+		reviewOpenCode.startPrompt.mockRejectedValueOnce(new Error("prompt rejected"));
+		vi.mocked(tmux.killPane).mockRejectedValueOnce(new Error("pane still alive"));
+		const { onSuccess } = await launchSetupForOpenCode();
+		const restoreCalls = vi.mocked(data.updateTaskWith).mock.calls.length;
+
+		await expect(onSuccess?.("%22")).rejects.toThrow("prompt rejected");
+
+		expect(data.updateTaskWith).toHaveBeenCalledTimes(restoreCalls);
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), TASK_ID, boundTo("%22"));
+		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ message: expect.stringContaining("terminal: Error: pane still alive") }));
+	});
+
+	it("retains the attempted binding when a failed setup's rollback cannot stop the server", async () => {
+		const push = vi.fn();
+		vi.mocked(sharedPure.getPushMessage).mockReturnValue(push);
+		const { stopOpenCodeServer } = await import("../opencode-server");
+		vi.mocked(stopOpenCodeServer).mockRejectedValueOnce(new Error("server still alive"));
+		const { onFailure } = await launchSetupForOpenCode();
+		const restoreCalls = vi.mocked(data.updateTaskWith).mock.calls.length;
+
+		await onFailure(17, "%22");
+
+		expect(tmux.killPane).toHaveBeenCalledWith("%22", { socket: "dev3" });
+		expect(data.updateTaskWith).toHaveBeenCalledTimes(restoreCalls);
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), TASK_ID, boundTo("%22"));
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), TASK_ID, expect.objectContaining({ setupFailedExitCode: 17, setupFailedAgentRunning: true }));
+		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ message: expect.stringContaining("server: Error: server still alive") }));
+	});
+
+	it("keeps a native session's binding when setup rollback cannot destroy its terminal", async () => {
+		const push = vi.fn();
+		vi.mocked(sharedPure.getPushMessage).mockReturnValue(push);
+		vi.mocked(pty.destroySessionAwaited).mockRejectedValueOnce(new Error("native host still alive"));
+		const { onFailure } = await launchSetupForOpenCode(makeTask({ terminalBackend: "native" }));
+		const restoreCalls = vi.mocked(data.updateTaskWith).mock.calls.length;
+
+		await onFailure(17, null);
+
+		expect(pty.destroySessionAwaited).toHaveBeenCalledWith(TASK_ID, "dev3");
+		expect(data.updateTaskWith).toHaveBeenCalledTimes(restoreCalls);
+		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ message: expect.stringContaining("terminal: Error: native host still alive") }));
 	});
 });
 
@@ -614,7 +765,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 	it("watches for the setup verdict, and only when setup runs", async () => {
 		const task = makeTask();
 		await launchTaskPty(setupProject(), task, WORKTREE, null, null, true);
-		expect(vi.mocked(watch.watchSetupFailure)).toHaveBeenCalledWith(task.id, expect.any(Function));
+		expect(vi.mocked(watch.watchSetupFailure)).toHaveBeenCalledWith(task.id, expect.any(Function), { onSuccess: undefined });
 
 		vi.mocked(watch.watchSetupFailure).mockClear();
 		await launchTaskPty(setupProject(), makeTask(), WORKTREE, null, null, false);
@@ -632,7 +783,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		const push = vi.fn();
 		vi.mocked(sharedPure.getPushMessage).mockReturnValue(push);
 		const onFailure = vi.mocked(watch.watchSetupFailure).mock.calls[0][1];
-		await onFailure(127);
+		await onFailure(127, null);
 
 		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
 			expect.anything(),
@@ -666,7 +817,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 
 		const onFailure = vi.mocked(watch.watchSetupFailure).mock.calls[0][1];
 		vi.mocked(data.updateTask).mockClear();
-		await onFailure(1);
+		await onFailure(1, null);
 
 		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
 			expect.anything(),
@@ -681,7 +832,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 
 		const onFailure = vi.mocked(watch.watchSetupFailure).mock.calls[0][1];
 		vi.mocked(data.updateTask).mockClear();
-		await onFailure(1);
+		await onFailure(1, null);
 
 		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
 			expect.anything(),
@@ -706,7 +857,7 @@ describe("setup-script wrapper — one flavour per backend", () => {
 
 		const onFailure = vi.mocked(watch.watchSetupFailure).mock.calls[vi.mocked(watch.watchSetupFailure).mock.calls.length - 1][1];
 		vi.mocked(data.updateTask).mockClear();
-		await onFailure(1);
+		await onFailure(1, null);
 
 		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
 			expect.anything(),

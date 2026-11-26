@@ -5,6 +5,7 @@ import type { LlmProvider, ProviderConfig } from "./model-routing";
 
 export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan" | "auto";
 export type EffortLevel = "low" | "medium" | "high" | "xhigh";
+export type OpenCodeProtocol = "v1" | "v2";
 
 export interface AgentConfiguration {
 	id: string;
@@ -80,6 +81,8 @@ export interface CodingAgent {
 	llmProvider?: LlmProvider;
 	/** Per-provider connection settings for this agent (model override, inference-profile region). */
 	providerConfig?: ProviderConfig;
+	/** OpenCode CLI protocol shared by every preset on this agent. Unset keeps the legacy v1 CLI flow. */
+	opencodeProtocol?: OpenCodeProtocol;
 	/**
 	 * Which agent CLI this command actually is. Undefined = auto-detect from
 	 * `baseCommand`, which recognizes only the five literal CLI names — a wrapper

@@ -40,8 +40,9 @@ export function getPreparingStageProgress(stage: PreparingStage): number {
  */
 export const STUCK_PREPARATION_FETCH_THRESHOLD_MS = 60 * 1000;
 
-/** The launch attribution of one "+ Agent" or bug-hunter pane on a native task. */
-export type NativeAgentAttribution = Pick<PaneSessionEntry, "agentCmd" | "agentId" | "configId" | "accountId" | "agentFamily">;
+/** The launch attribution of one "+ Agent" or bug-hunter pane on a native task; an OpenCode V2 pane adds its session. */
+export type NativeAgentAttribution = Pick<PaneSessionEntry, "agentCmd" | "agentId" | "configId" | "accountId" | "agentFamily">
+	& Partial<Pick<PaneSessionEntry, "sessionId">>;
 
 export interface NativeTaskAgent extends NativeAgentAttribution {
 	paneId: string;
@@ -59,8 +60,8 @@ export interface PaneSessionEntry {
 	 *  prompt hook; for Codex — which has no launch-time flag — it is filled
 	 *  in post-hoc from the lifecycle hook once the session exists, and omp the
 	 *  same way from its status extension (see cli-socket-server
-	 *  `capturePaneSession`). Null until known / for agents
-	 *  that support neither (OpenCode), which fall back to resume-last. */
+	 *  `capturePaneSession`); OpenCode V2 from its server API. Null until known /
+	 *  for agents that support neither (OpenCode V1), which fall back to resume-last. */
 	sessionId: string | null;
 	/** Agent ID used at launch time. */
 	agentId: string | null;

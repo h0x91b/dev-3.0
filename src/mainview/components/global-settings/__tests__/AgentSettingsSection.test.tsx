@@ -271,6 +271,39 @@ async function openPreset(user: ReturnType<typeof userEvent.setup>, configId: st
 }
 
 describe("AgentSettingsSection — preset library", () => {
+	it("shows the OpenCode protocol in agent settings and applies it to every preset", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = vi.fn();
+		render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={identityT as never}
+					agents={DEFAULT_AGENTS}
+					globalSettings={baseSettings}
+					onAgentsChange={onAgentsChange}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		expect(screen.queryByLabelText("settings.openCodeProtocol")).toBeNull();
+		await expandAgent(user, "OpenCode");
+
+		const protocol = screen.getByRole("combobox", { name: "settings.openCodeProtocol" });
+		expect(protocol.textContent).toContain("settings.openCodeProtocolV1");
+		await user.click(protocol);
+		await user.click(screen.getByRole("option", { name: "settings.openCodeProtocolV2" }));
+
+		const updated = onAgentsChange.mock.calls[onAgentsChange.mock.calls.length - 1]![0] as CodingAgent[];
+		const openCode = updated.find((agent) => agent.id === "builtin-opencode")!;
+		expect(openCode.opencodeProtocol).toBe("v2");
+		expect(openCode.configurations.every((config) => !("opencodeProtocol" in config))).toBe(true);
+	});
+
 	it("filters the list loosely, so “xhigh” finds “X-High” rows", async () => {
 		const user = userEvent.setup();
 		renderSection();

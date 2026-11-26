@@ -360,6 +360,7 @@ export default function AgentSettingsSection({
 							t={t}
 							llmProvider={selectedDefaultAgent?.llmProvider}
 							providerConfig={selectedDefaultAgent?.providerConfig}
+							opencodeProtocol={selectedDefaultAgent?.opencodeProtocol}
 						/>
 					</div>
 				);
@@ -646,6 +647,7 @@ function ConfigPreviewCard({
 	t,
 	llmProvider,
 	providerConfig,
+	opencodeProtocol,
 }: {
 	config: AgentConfiguration;
 	agentBaseCommand: string;
@@ -653,6 +655,7 @@ function ConfigPreviewCard({
 	t: TFunction;
 	llmProvider?: LlmProvider;
 	providerConfig?: ProviderConfig;
+	opencodeProtocol?: CodingAgent["opencodeProtocol"];
 }) {
 	const tags: { label: string; value: string }[] = [];
 	const isCodex = agentKey(config.baseCommandOverride || agentBaseCommand || "", agentFamily) === "codex";
@@ -691,7 +694,7 @@ function ConfigPreviewCard({
 		});
 	}
 
-	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig, agentFamily);
+	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig, agentFamily, undefined, opencodeProtocol);
 
 	return (
 		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
@@ -823,6 +826,7 @@ function PresetEditor({
 		agent.providerConfig,
 		agent.agentFamily,
 		catalog ?? undefined,
+		agent.opencodeProtocol,
 	);
 	const baseCommandName = agent.baseCommand.split("/").pop() ?? agent.baseCommand;
 	const modelOptions: SelectOption[] = modelsForAgent(agent).map((model) => ({ value: model, label: model }));
@@ -1289,6 +1293,23 @@ function AgentPane({
 			</div>
 
 			<AgentFamilyField t={t} agent={agent} onChange={onChange} />
+			{agentKey(agent.baseCommand, agent.agentFamily) === "opencode" ? (
+				<Field
+					label={t("settings.openCodeProtocol")}
+					htmlFor={`agent-opencode-protocol-${agent.id}`}
+					hint={t("settings.openCodeProtocolHint")}
+				>
+					<Select
+						id={`agent-opencode-protocol-${agent.id}`}
+						value={agent.opencodeProtocol ?? "v1"}
+						options={[
+							{ value: "v1", label: t("settings.openCodeProtocolV1") },
+							{ value: "v2", label: t("settings.openCodeProtocolV2") },
+						]}
+						onChange={(value) => onChange({ opencodeProtocol: value === "v2" ? "v2" : undefined })}
+					/>
+				</Field>
+			) : null}
 
 			<ProviderSelector
 				t={t}

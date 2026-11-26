@@ -416,6 +416,10 @@ vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
 	readdirSync: vi.fn(() => []),
 	statSync: vi.fn(() => ({ isDirectory: () => true, isFile: () => true, mode: 0o755, size: 0 })),
+	openSync: vi.fn(() => 1),
+	fchmodSync: vi.fn(),
+	ftruncateSync: vi.fn(),
+	closeSync: vi.fn(),
 	mkdirSync: vi.fn(() => undefined),
 	chmodSync: vi.fn(() => undefined),
 	writeFileSync: vi.fn(() => undefined),
@@ -11891,6 +11895,49 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode)).toEqual(["shared-folder"]);
 	});
 
+	it("uses the managed password for both OpenCode TUI variables in a hunter", async () => {
+		const project = makeProject({ path: "/tmp/wt", gitWorkflow: false });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({
+			command: "opencode",
+			extraEnv: { OPENCODE_PASSWORD: "inherited-primary-password" },
+			agent: { id: "builtin-opencode", baseCommand: "opencode", opencodeProtocol: "v2" },
+			config: { id: "v2" },
+			agentFamily: "opencode",
+			openCodeLaunch: { prompt: "investigate", additionalArgs: [] },
+		});
+		makeSplitMock(["%10"]);
+
+		const opencode = await import("../opencode-server");
+		const prepare = vi.spyOn(opencode, "prepareOpenCodeLaunch").mockResolvedValue({
+			command: "opencode --server http://127.0.0.1 --session ses_hunter",
+			sessionId: "ses_hunter",
+			passwordEnv: { OPENCODE_PASSWORD: "managed-password", OPENCODE_SERVER_PASSWORD: "managed-password" },
+		});
+		const write = vi.spyOn(opencode, "writeOpenCodeLaunchScript").mockResolvedValue(undefined);
+		const start = vi.spyOn(opencode, "startOpenCodePrompt").mockResolvedValue(undefined);
+
+		try {
+			await runLaunch(
+				handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-opencode", configId: "v2", count: 1 }),
+				1,
+			);
+
+			const script = write.mock.calls[0]?.[3] ?? "";
+			expect(script).toContain("OPENCODE_PASSWORD='managed-password'");
+			expect(script).toContain("OPENCODE_SERVER_PASSWORD='managed-password'");
+			expect(script).not.toContain("inherited-primary-password");
+			expect(start).toHaveBeenCalledWith("abcd1234-full-id", "ses_hunter", "investigate");
+		} finally {
+			prepare.mockRestore();
+			write.mockRestore();
+			start.mockRestore();
+			(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		}
+	});
+
 	it("launches a hunter on a foreign-code task with foreignCode set", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
@@ -12615,7 +12662,11 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 		expect(scripts).toHaveLength(2);
 		for (const scriptPath of scripts) {
 			expect(scriptPath).toContain("bughunt-");
-			expect(writeNativeAgentAttribution).toHaveBeenCalledWith(scriptPath, expect.objectContaining({ agentCmd: "claude" }));
+			expect(writeNativeAgentAttribution).toHaveBeenCalledWith(
+				scriptPath,
+				expect.objectContaining({ agentCmd: "claude" }),
+				{ required: false },
+			);
 		}
 	});
 });
@@ -14349,7 +14400,7 @@ describe("launchTaskPty", () => {
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
 			const setupIndex = script.indexOf(`'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-setup.sh'`);
-			const splitIndex = script.indexOf(`tmux split-window -d -v -b -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
+			const splitIndex = script.indexOf("tmux split-window -d -v -b");
 
 			expect(setupIndex).toBeGreaterThanOrEqual(0);
 			expect(splitIndex).toBeGreaterThanOrEqual(0);
@@ -14373,7 +14424,7 @@ describe("launchTaskPty", () => {
 
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
-			const splitIndex = script.indexOf(`tmux split-window -d -v -b -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
+			const splitIndex = script.indexOf("tmux split-window -d -v -b");
 			const setupIndex = script.indexOf(`'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-setup.sh'`);
 
 			expect(splitIndex).toBeGreaterThanOrEqual(0);

@@ -25,18 +25,20 @@ import { ensureArtifactTemplateEnv } from "../../artifact-template";
 import { tmux, DEFAULT_TMUX_SOCKET, TmuxError, taskSessionName } from "../../tmux";
 import { markAgentPane } from "../../agent-prompt";
 import { noteDev3TypedPrompt } from "../../agent-typed-prompt-claims";
-import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../../temp-paths";
+import { clearSetupExitCode, clearSetupHandoff, dev3TaskTempPath, setupAgentPanePath, setupExitCodePath, setupSuccessPath } from "../../temp-paths";
 import { stopSetupFailureWatch, watchSetupFailure } from "../../setup-failure-watch";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 import { AGENT_EXITED_METHOD, AGENT_SESSION_STARTED_METHOD, noteAgentLaunched } from "../../agent-session-receipts";
 import { hookCliSupports } from "../../hook-cli-capability";
 import { claudeSessionStartHookInstalled } from "../../../shared/agent-hooks";
-import { openAuxPane } from "../../task-aux-panes";
+import { closeTaskPane, hasStablePaneIdentity, openAuxPane, type AuxPaneHandle } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, agentExitReportArgv, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
 import { launchDialect } from "../../../shared/platform-launch";
 import { devViewerPaneIds, setTmuxSessionPortEnv } from "./dev-servers";
 import { dev3ShellPromptEnv } from "../../shell-init";
 import { findTaskAcrossProjects } from "./task-state";
+import { listNativeTaskAgents, writeNativeAgentAttribution } from "../../native-agent-attribution";
+import { prepareOpenCodeLaunch, startOpenCodePrompt, stopOpenCodeServer, writeOpenCodeLaunchScript } from "../../opencode-server";
 
 const MAIN_AGENT_PANE_CAPTURE_ATTEMPTS = 10;
 
@@ -69,16 +71,18 @@ async function waitForTaskTmuxSession(taskId: string, socket: string): Promise<v
  *
  * Setup wrappers are excluded because they initially run in a non-agent pane;
  * their eventual agent pane is captured by the lifecycle hook or exit
- * reconciliation instead.
+ * reconciliation instead — except an OpenCode V2 wrapper, which records the
+ * exact pane it creates and passes it here as `knownPaneId`.
  */
 async function persistInitialAgentPaneId(
 	project: Project,
 	task: Task,
 	socket: string,
 	paneEntry: NonNullable<Task["sessionState"]>["panes"][number],
-): Promise<void> {
+	knownPaneId?: string,
+): Promise<string | null> {
 	for (let attempt = 0; attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS; attempt++) {
-		const paneIds = await pty.listPaneIds(task.id, socket);
+		const paneIds = knownPaneId ? [knownPaneId] : await pty.listPaneIds(task.id, socket);
 		if (paneIds.length === 1 && paneIds[0]) {
 			const current = await data.getTask(project, task.id);
 			await data.updateTask(project, task.id, {
@@ -89,7 +93,7 @@ async function persistInitialAgentPaneId(
 				taskId: task.id.slice(0, 8),
 				paneId: paneIds[0],
 			});
-			return;
+			return paneIds[0];
 		}
 
 		if (attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS - 1) {
@@ -98,6 +102,7 @@ async function persistInitialAgentPaneId(
 	}
 
 	log.warn("Could not capture initial agent pane ID", { taskId: task.id.slice(0, 8) });
+	return null;
 }
 
 const STALE_ACCOUNT_NOTICE_WINDOW_MS = 60_000;
@@ -354,24 +359,71 @@ async function restoreNeverStartedMain(project: Project, task: Task, prior: Pane
 	}
 }
 
+/**
+ * Closes a failed OpenCode V2 launch's terminal and server. Pane 0 gets its prior binding back only
+ * once both are confirmed gone; otherwise the attempted binding stays, so the cleanup can be retried.
+ */
+async function rollbackOpenCodeLaunch(
+	project: Project,
+	task: Task,
+	prior: Task["sessionState"],
+	sessionId: string,
+	closeTerminal: () => Promise<void>,
+): Promise<string[]> {
+	const errors: string[] = [];
+	await closeTerminal().catch((error) => errors.push(`terminal: ${String(error)}`));
+	await stopOpenCodeServer(task.id, sessionId).catch((error) => errors.push(`server: ${String(error)}`));
+	if (errors.length > 0) {
+		log.error("OpenCode launch rollback is incomplete", { taskId: task.id.slice(0, 8), errors });
+		return errors;
+	}
+	try {
+		await data.updateTaskWith(project, task.id, (current) => ({
+			updates: current.sessionState?.panes[0]?.sessionId === sessionId ? { sessionState: prior } : {},
+			result: null,
+		}));
+	} catch (err) {
+		log.warn("Could not restore the main pane binding after a failed OpenCode launch", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+	return errors;
+}
+
 type LaunchTaskPtyArgs = Parameters<typeof launchTaskPtyOnce> extends [unknown, ...infer Rest] ? Rest : never;
 
 export async function launchTaskPty(...args: LaunchTaskPtyArgs): ReturnType<typeof launchTaskPtyOnce> {
 	const [project, task, worktreePath, , , , , opts] = args;
 	assertTaskWorkspacePresent(project, worktreePath, task);
 	const priorMain = task.sessionState?.panes?.[0];
+	const priorSessionState = task.sessionState;
 	// Set once the replacement session exists: after that the new id is live and must keep its binding.
-	const progress = { sessionCreated: false };
+	const progress: LaunchProgress = { sessionCreated: false, openCodeCommitted: false };
 	try {
 		return await launchTaskPtyOnce(progress, ...args);
 	} catch (err) {
-		if (!progress.sessionCreated && opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
+		if (progress.openCodeSessionId && !progress.openCodeCommitted) {
+			const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+			await rollbackOpenCodeLaunch(project, task, priorSessionState, progress.openCodeSessionId, async () => {
+				if (!progress.sessionCreated) return;
+				if (taskTerminalBackendIdentity(task) === "native") return await pty.destroySessionAwaited(task.id, socket);
+				await tmux.killSession(taskSessionName(task.id), { socket });
+				pty.destroySession(task.id, socket);
+			});
+		} else if (!progress.sessionCreated && opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) {
+			await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
+		}
 		throw err;
 	}
 }
 
+/** An OpenCode V2 session is rolled back on failure until its prompt has been handed over. */
+interface LaunchProgress {
+	sessionCreated: boolean;
+	openCodeSessionId?: string;
+	openCodeCommitted: boolean;
+}
+
 async function launchTaskPtyOnce(
-	progress: { sessionCreated: boolean },
+	progress: LaunchProgress,
 	project: Project,
 	task: Task,
 	worktreePath: string,
@@ -402,6 +454,7 @@ async function launchTaskPtyOnce(
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath, task);
+	const priorSessionState = task.sessionState;
 	// Scripts and agent env see the repo as the project root; `project` itself keeps keying the task file.
 	const rootProject = rootProjectFor(project, task);
 	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
@@ -415,6 +468,7 @@ async function launchTaskPtyOnce(
 		: opts?.accountId !== undefined ? opts.accountId : task.accountId;
 	const bedrockProfile = opts?.bedrockProfile !== undefined ? opts.bedrockProfile : task.bedrockProfile;
 	const skipSessionPersist = opts?.skipSessionPersist ?? false;
+	const nativeBackend = taskTerminalBackendIdentity(task) === "native";
 	const artifactTemplateEnv = ensureArtifactTemplateEnv(project, task, worktreePath);
 	log.info("launchTaskPty START", {
 		taskId: task.id.slice(0, 8),
@@ -437,6 +491,7 @@ async function launchTaskPtyOnce(
 	}
 	stopSetupFailureWatch(task.id);
 	clearSetupExitCode(task.id);
+	clearSetupHandoff(task.id);
 
 	const resumeFresh = resume && !!opts?.freshSessionId;
 	// A never-started relaunch has no conversation to stay with, so it routes its account like a first launch.
@@ -460,6 +515,9 @@ async function launchTaskPtyOnce(
 	let resolvedPermissionMode: PermissionMode | undefined;
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let resolvedLaunchModel: string | undefined;
+	let openCodeLaunch: agents.ResolvedAgentCommand["openCodeLaunch"];
+	let openCodeSessionId: string | null = null;
+	let env: Record<string, string>;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 	const projectEnv = await repoConfig.resolveProjectEnv(rootProject, worktreePath, { foreignCode: task.foreignCode });
 	const reservationKey = `${task.id}:${crypto.randomUUID()}`;
@@ -517,6 +575,7 @@ async function launchTaskPtyOnce(
 			resolvedPermissionMode = resolved.config?.permissionMode;
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
+			openCodeLaunch = resolved.openCodeLaunch;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			projectLoginKept = !!resolved.projectLoginKept;
 			if (projectLoginKept) launchAccountId = undefined;
@@ -540,6 +599,7 @@ async function launchTaskPtyOnce(
 			resolvedPermissionMode = resolved.config?.permissionMode;
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
+			openCodeLaunch = resolved.openCodeLaunch;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			projectLoginKept = !!resolved.projectLoginKept;
 			if (projectLoginKept) launchAccountId = undefined;
@@ -561,12 +621,52 @@ async function launchTaskPtyOnce(
 
 		if (opts?.codexHome) extraEnv.CODEX_HOME = opts.codexHome;
 
+		// Lifecycle env first so an explicit agent-config extraEnv can override it.
+		// These vars reach the agent session, and — crucially — the setup script
+		// below: a git-ignored hook (e.g. installed by the b44 CLI into
+		// .dev3/config.local.json) only exists at the project root, so the script
+		// command must be resolvable as "$DEV3_PROJECT_PATH/.dev3/<hook>.sh".
+		// dev3's own defaults first, then project env (Project Settings / .dev3
+		// config) — overridable by lifecycle DEV3_* vars and per-agent-config env.
+		// Built before the OpenCode V2 server starts: that server runs the agent's tools.
+		env = {
+			...AGENT_ENV_DEFAULTS,
+			...projectEnv,
+			...buildTaskLifecycleEnv(rootProject, task, worktreePath, opts?.branchName),
+			...buildAgentEnv(extraEnv, task.id),
+			...artifactTemplateEnv,
+		};
+
+		const portCount = project.portCount ?? 0;
+		if (portCount > 0) {
+			try {
+				const ports = await portPool.allocatePorts(task.id, portCount);
+				Object.assign(env, portPool.buildPortEnv(ports));
+				log.info("Port env vars injected", { taskId: task.id.slice(0, 8), ports });
+			} catch (err) {
+				log.error("Port allocation failed (non-fatal)", {
+					taskId: task.id.slice(0, 8),
+					portCount,
+					error: String(err),
+				});
+			}
+		}
+
+		// A reconnect reattaches to the agent already running in tmux: never a second conversation.
+		if (openCodeLaunch && !skipSessionPersist) {
+			const prepared = await prepareOpenCodeLaunch({ taskId: task.id, baseCommand: resolvedBaseCmd, cwd: worktreePath, env, spec: openCodeLaunch });
+			tmuxCmd = prepared.command;
+			Object.assign(env, prepared.passwordEnv);
+			openCodeSessionId = prepared.sessionId;
+			progress.openCodeSessionId = prepared.sessionId;
+		}
+
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
 		if (!skipSessionPersist && !opts?.shellNotice) {
-			const effectiveSessionId = resumeFresh ? opts?.freshSessionId
+			const effectiveSessionId = openCodeSessionId ?? (resumeFresh ? opts?.freshSessionId
 				: resume ? sessionId
-				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null);
+				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null));
 			// This write replaces pane[0] wholesale, so an origin store the resolver
 			// still needs has to be carried across it. It belongs to one specific id:
 			// a substituted id was found in this worktree's own store, so it drops.
@@ -606,6 +706,7 @@ async function launchTaskPtyOnce(
 				await data.updateTask(project, task.id, { sessionState, ...routedPatch });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
 			} catch (err) {
+				if (openCodeSessionId) throw err;
 				log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 			}
 		} else if (!skipSessionPersist && opts?.shellNotice && task.sessionState?.panes.length) {
@@ -626,37 +727,8 @@ async function launchTaskPtyOnce(
 		throw err;
 	}
 
-	// Lifecycle env first so an explicit agent-config extraEnv can override it.
-	// These vars reach the agent session, and — crucially — the setup script
-	// below: a git-ignored hook (e.g. installed by the b44 CLI into
-	// .dev3/config.local.json) only exists at the project root, so the script
-	// command must be resolvable as "$DEV3_PROJECT_PATH/.dev3/<hook>.sh".
-	// dev3's own defaults first, then project env (Project Settings / .dev3
-	// config) — overridable by lifecycle DEV3_* vars and per-agent-config env.
-	const env = {
-		...AGENT_ENV_DEFAULTS,
-		...projectEnv,
-		...buildTaskLifecycleEnv(rootProject, task, worktreePath, opts?.branchName),
-		...buildAgentEnv(extraEnv, task.id),
-		...artifactTemplateEnv,
-	};
 	const userShell = getUserShell();
 	const dialect = launchDialect();
-
-	const portCount = project.portCount ?? 0;
-	if (portCount > 0) {
-		try {
-			const ports = await portPool.allocatePorts(task.id, portCount);
-			Object.assign(env, portPool.buildPortEnv(ports));
-			log.info("Port env vars injected", { taskId: task.id.slice(0, 8), ports });
-		} catch (err) {
-			log.error("Port allocation failed (non-fatal)", {
-				taskId: task.id.slice(0, 8),
-				portCount,
-				error: String(err),
-			});
-		}
-	}
 
 	// A plain shell runs no agent, so there is nothing to trust — and nothing to write into ~/.claude.json.
 	if (!opts?.shellNotice) {
@@ -720,7 +792,9 @@ async function launchTaskPtyOnce(
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
 			const originalCmdPath = dev3TaskTempPath(task.id, `original-cmd${dialect.scriptExtension}`);
-			await writeLaunchScript(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell, exitReport }));
+			const originalCmd = buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell, exitReport });
+			if (openCodeSessionId) await writeOpenCodeLaunchScript(task.id, openCodeSessionId, originalCmdPath, originalCmd);
+			else await writeLaunchScript(originalCmdPath, originalCmd);
 			// The retry wrapper hands over to that script; nothing outside it may report again.
 			exitReport = undefined;
 
@@ -744,8 +818,6 @@ async function launchTaskPtyOnce(
 		userShell,
 	});
 
-	const nativeBackend = taskTerminalBackendIdentity(task) === "native";
-
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
 		const setupScriptLaunchMode = project.setupScriptLaunchMode ?? "parallel";
@@ -756,7 +828,9 @@ async function launchTaskPtyOnce(
 		const startupPath = `${prefix}-startup${ext}`;
 
 		await writeLaunchScript(setupPath, project.setupScript + "\n");
-		await writeLaunchScript(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell, exitReport }));
+		const commandScript = buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell, exitReport });
+		if (openCodeSessionId) await writeOpenCodeLaunchScript(task.id, openCodeSessionId, cmdPath, commandScript);
+		else await writeLaunchScript(cmdPath, commandScript);
 		exitReport = undefined;
 
 		const startupScript = buildSetupStartupWrapper({
@@ -767,6 +841,7 @@ async function launchTaskPtyOnce(
 			nativeBackend,
 			launchMode: setupScriptLaunchMode,
 			setupExitPath: setupExitCodePath(task.id),
+			...(openCodeSessionId ? { setupSuccessPath: setupSuccessPath(task.id), setupAgentPanePath: setupAgentPanePath(task.id) } : {}),
 		});
 		await writeLaunchScript(startupPath, startupScript);
 		tmuxCmd = buildScriptRunnerCommand(startupPath, { shellPath: userShell });
@@ -775,18 +850,79 @@ async function launchTaskPtyOnce(
 		// known — a parallel tmux launch has already split the agent pane above, so a
 		// later failure finds it alive. Native ignores launchMode and always gates.
 		const agentRunning = !nativeBackend && setupScriptLaunchMode === "parallel";
+		// A V2 launch whose setup fails, or whose prompt cannot start, is rolled back. The agent pane is
+		// bound first: if the cleanup fails, the pane left alive still owns (and later stops) its server.
+		const rollbackSetupLaunch = async (sessionId: string, agentPaneId: string | null, reason: string): Promise<boolean> => {
+			const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+			const bindingErrors = !nativeBackend && agentPaneId && mainPaneEntry
+				? await persistInitialAgentPaneId(project, task, socket, mainPaneEntry, agentPaneId).then(() => [], (error) => [`binding: ${String(error)}`])
+				: [];
+			const errors = await rollbackOpenCodeLaunch(project, task, priorSessionState, sessionId, async () => {
+				if (nativeBackend) await pty.destroySessionAwaited(task.id, socket);
+				else if (agentPaneId) await tmux.killPane(agentPaneId, { socket });
+				else {
+					await tmux.killSession(taskSessionName(task.id), { socket });
+					pty.destroySession(task.id, socket);
+				}
+			});
+			if (errors.length === 0) return true;
+			getPushMessage()?.("cliToast", {
+				taskId: task.id,
+				projectId: project.id,
+				message: `OpenCode setup failed (${reason}); cleanup is incomplete (${[...bindingErrors, ...errors].join("; ")}). The attempted session binding was retained so cleanup can be retried.`,
+				level: "error",
+			});
+			return false;
+		};
+		const v2SessionId = openCodeSessionId;
 		// Only this process can see the wrapper's verdict — see setup-failure-watch.
-		watchSetupFailure(task.id, async (exitCode) => {
+		watchSetupFailure(task.id, async (exitCode, agentPaneId) => {
+			const rolledBack = v2SessionId ? await rollbackSetupLaunch(v2SessionId, agentPaneId, `setup exited with code ${exitCode}`) : true;
 			const updated = await data.updateTask(project, task.id, {
 				setupFailedExitCode: exitCode,
-				setupFailedAgentRunning: agentRunning,
+				setupFailedAgentRunning: v2SessionId ? !rolledBack : agentRunning,
 			});
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		}, {
+			// A V2 brief waits for setup to succeed and for its exact pane to be recorded.
+			onSuccess: v2SessionId
+				? async (agentPaneId) => {
+					try {
+						if (!nativeBackend) {
+							if (!agentPaneId) throw new Error("Setup completed without recording the OpenCode agent pane ID.");
+							await persistInitialAgentPaneId(project, task, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, mainPaneEntry!, agentPaneId);
+						}
+						if (openCodeLaunch?.prompt) await startOpenCodePrompt(task.id, v2SessionId, openCodeLaunch.prompt);
+					} catch (error) {
+						if (await rollbackSetupLaunch(v2SessionId, agentPaneId, String(error))) {
+							getPushMessage()?.("cliToast", {
+								taskId: task.id,
+								projectId: project.id,
+								message: `OpenCode setup launch was rolled back: ${String(error)}`,
+								level: "error",
+							});
+						}
+						throw error;
+					}
+				}
+				: undefined,
 		});
 	}
 
 	const runScriptPath = dev3TaskTempPath(task.id, `run${dialect.scriptExtension}`);
-	await writeLaunchScript(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell, exitReport }));
+	const runScript = buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell, exitReport });
+	if (openCodeSessionId) await writeOpenCodeLaunchScript(task.id, openCodeSessionId, runScriptPath, runScript);
+	else await writeLaunchScript(runScriptPath, runScript);
+	if (nativeBackend && openCodeSessionId) {
+		await writeNativeAgentAttribution(runScriptPath, {
+			agentCmd: resolvedBaseCmd,
+			sessionId: openCodeSessionId,
+			agentId: agentId ?? task.agentId,
+			configId: configId ?? task.configId,
+			accountId: launchAccountId,
+			agentFamily: resolvedAgentFamily,
+		}, { required: true });
+	}
 	const wrapperCmd = buildScriptRunnerCommand(runScriptPath, { shellPath: userShell });
 
 	log.info("Creating PTY session", {
@@ -803,6 +939,9 @@ async function launchTaskPtyOnce(
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
 		progress.sessionCreated = true;
+		// Behind a setup wrapper the brief waits for its verdict instead (onSuccess above).
+		if (openCodeSessionId && openCodeLaunch?.prompt && !isSetupWrapper) await startOpenCodePrompt(task.id, openCodeSessionId, openCodeLaunch.prompt);
+		progress.openCodeCommitted = true;
 		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		return launchAccountId;
 	}
@@ -824,8 +963,12 @@ async function launchTaskPtyOnce(
 		progress.sessionCreated = true;
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
-			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
+			const paneId = await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
+			// The brief must never run in a session no known pane owns.
+			if (openCodeSessionId && !paneId) throw new Error("OpenCode session could not be bound to a tmux pane.");
 		}
+		if (openCodeSessionId && openCodeLaunch?.prompt && !isSetupWrapper) await startOpenCodePrompt(task.id, openCodeSessionId, openCodeLaunch.prompt);
+		if (!isSetupWrapper) progress.openCodeCommitted = true;
 		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
 		if (project.kind === "virtual" && !sessionPreexisted) {
@@ -941,6 +1084,8 @@ export async function launchColumnAgent(
 	let resolvedPermissionMode: PermissionMode | undefined;
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let launchAccountId: string | null | undefined;
+	let openCodeLaunch: agents.ResolvedAgentCommand["openCodeLaunch"];
+	let openCodeSessionId: string | null = null;
 	const projectEnv = await repoConfig.resolveProjectEnv(rootProject, worktreePath, { foreignCode: task.foreignCode });
 	const reservationKey = `${task.id}:column:${crypto.randomUUID()}`;
 
@@ -961,6 +1106,7 @@ export async function launchColumnAgent(
 		resolvedPermissionMode = resolved.config?.permissionMode;
 		resolvedAgentFamily = resolved.agentFamily;
 		launchAccountId = resolved.resolvedAccountId;
+		openCodeLaunch = resolved.openCodeLaunch;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 	} catch (err) {
 		releaseAccountReservation(reservationKey);
@@ -979,31 +1125,78 @@ export async function launchColumnAgent(
 		permissionMode: resolvedPermissionMode,
 		family: resolvedAgentFamily,
 	});
+	if (openCodeLaunch) {
+		const prepared = await prepareOpenCodeLaunch({ taskId: task.id, baseCommand: resolvedBaseCmd, cwd: worktreePath, env: openCodeServerEnv(project, task, worktreePath, env), spec: openCodeLaunch });
+		tmuxCmd = prepared.command;
+		Object.assign(env, prepared.passwordEnv);
+		openCodeSessionId = prepared.sessionId;
+	}
 
-	const scriptPath = dev3TaskTempPath(task.id, generatedScriptName("col-agent"));
-	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env, {
-		paneTitle: options.paneTitle,
-		onExitCommand: options.onExitCommand,
-	}));
+	let handle: AuxPaneHandle | undefined;
+	try {
+		const scriptPath = dev3TaskTempPath(task.id, generatedScriptName("col-agent"));
+		const script = buildCmdScript(tmuxCmd, env, {
+			paneTitle: options.paneTitle,
+			onExitCommand: options.onExitCommand,
+		});
+		if (openCodeSessionId) await writeOpenCodeLaunchScript(task.id, openCodeSessionId, scriptPath, script);
+		else await writeLaunchScript(scriptPath, script);
 
-	// The seam owns placement and dedup: the `columnAgent` purpose keeps at most one
-	// live pane per task, re-found by the command it was launched with, so a repeated
-	// activation REPLACES the review agent — and refuses to launch if it cannot prove
-	// the old one is gone. A native task never reaches tmux from here.
-	const handle = await openAuxPane({
-		task,
-		purpose: "columnAgent",
-		placement: "right",
-		size: "40%",
-		cwd: worktreePath,
-		env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath },
-		socket,
-		title: options.paneTitle,
-		tmuxCommand: `bash "${scriptPath}"`,
-		nativeLaunch: generatedScriptLaunch(scriptPath),
-	});
+		// The seam owns placement and dedup: the `columnAgent` purpose keeps at most one
+		// live pane per task, re-found by the command it was launched with, so a repeated
+		// activation REPLACES the review agent — and refuses to launch if it cannot prove
+		// the old one is gone. A native task never reaches tmux from here.
+		handle = await openAuxPane({
+			task,
+			purpose: "columnAgent",
+			placement: "right",
+			size: "40%",
+			cwd: worktreePath,
+			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath },
+			socket,
+			title: options.paneTitle,
+			tmuxCommand: `bash "${scriptPath}"`,
+			nativeLaunch: generatedScriptLaunch(scriptPath),
+		});
+		if (openCodeSessionId) {
+			// A V2 pane must be findable by its id, or closing it could not stop its server.
+			if (!hasStablePaneIdentity(handle)) throw new Error("OpenCode column-agent session has no stable pane identity.");
+			const attribution = { agentCmd: resolvedBaseCmd, sessionId: openCodeSessionId, agentId, configId, agentFamily: resolvedAgentFamily };
+			if (handle.backend === "tmux") {
+				await data.updateTask(project, task.id, { sessionState: { panes: [...(task.sessionState?.panes ?? []), { ...attribution, paneId: handle.paneId, main: false }] } });
+			} else {
+				await writeNativeAgentAttribution(scriptPath, attribution, { required: true });
+			}
+			if (openCodeLaunch?.prompt) await startOpenCodePrompt(task.id, openCodeSessionId, openCodeLaunch.prompt);
+		}
+	} catch (error) {
+		if (openCodeSessionId) await discardOpenCodePane(task, handle, socket, openCodeSessionId);
+		throw error;
+	}
 
 	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8), backend: handle.backend, paneId: handle.paneId });
+}
+
+/** V2 runs the agent's tools in its server, not the TUI, so the server gets the task env a primary launch builds. */
+export function openCodeServerEnv(project: Project, task: Task, worktreePath: string, env: Record<string, string>): Record<string, string> {
+	const ports = portPool.getPortAssignments(task.id);
+	return {
+		...AGENT_ENV_DEFAULTS,
+		...buildAgentEnv(env, task.id),
+		...buildTaskLifecycleEnv(rootProjectFor(project, task), task, worktreePath),
+		...(ports.length > 0 ? portPool.buildPortEnv(ports) : {}),
+	};
+}
+
+/** Undoes a V2 pane whose registration or prompt failed: the pane, its entry and its server. */
+export async function discardOpenCodePane(task: Task, handle: AuxPaneHandle | undefined, socket: string, sessionId: string): Promise<void> {
+	if (handle && hasStablePaneIdentity(handle)) {
+		await closeTaskPane(task, handle, socket).catch((error) => {
+			log.warn("Could not close an unregistered OpenCode pane", { taskId: task.id.slice(0, 8), error: String(error) });
+		});
+		if (handle.backend === "tmux") await handlePaneExited(task.id, handle.paneId);
+	}
+	await stopOpenCodeServer(task.id, sessionId);
 }
 
 export function cleanupTaskTmuxState(taskId: string): void {
@@ -1030,11 +1223,19 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 5. If the task-level agent belonged to a removed pane, put the surviving main
  *    pane's agent back on the task and push the update to the renderer.
  */
-export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
+export async function handlePaneExited(taskId: string, exitedPaneId: string): Promise<void> {
 	try {
 		const { task, project } = await findTaskAcrossProjects(taskId);
 		if (!task || !project) return;
 		const panes = task.sessionState?.panes ?? [];
+		// A native pane is owned by its launch-script sidecar, not sessionState: only its server needs stopping.
+		if (taskTerminalBackendIdentity(task) === "native") {
+			const owner = (await listNativeTaskAgents(task, { includeDead: true })).find((pane) => pane.paneId === exitedPaneId);
+			if (owner?.sessionId) await stopOpenCodeServer(taskId, owner.sessionId);
+			return;
+		}
+		const exitedSessionId = panes.find((pane) => pane.paneId === exitedPaneId)?.sessionId;
+		if (exitedSessionId) await stopOpenCodeServer(taskId, exitedSessionId);
 		if (!panes.length) return;
 
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;

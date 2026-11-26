@@ -11,7 +11,7 @@
  */
 
 import type { PaneInputStage } from "../pane-input";
-import type { AgentConfiguration, PermissionMode, TaskStatus } from "../types";
+import type { AgentConfiguration, OpenCodeProtocol, PermissionMode, TaskStatus } from "../types";
 import type { TemplateContext } from "./template";
 import type { SkillFamily } from "../agent-skill-content";
 
@@ -62,6 +62,8 @@ export interface AgyLaunchRuntime {
 /** Pure inputs to `launchArgs`. The backend maps its public CommandOptions
  *  (plus the resolved provider / codex runtime) into this shape. */
 export interface AdapterLaunchOptions {
+	/** OpenCode CLI protocol selected for the whole agent. Unset means legacy v1. */
+	opencodeProtocol?: OpenCodeProtocol;
 	/** Resume the previous session instead of starting fresh (ignored if the
 	 *  adapter does not support resume). */
 	resume?: boolean;

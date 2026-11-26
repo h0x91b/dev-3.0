@@ -20,6 +20,10 @@ const mocks = vi.hoisted(() => ({
 	writeLaunchScript: vi.fn(async () => {}),
 	writeNativeAgentAttribution: vi.fn(async () => {}),
 	getSessionSocket: vi.fn(() => "dev3"),
+	prepareOpenCodeLaunch: vi.fn(async () => ({ command: "opencode --server 'http://127.0.0.1:49152' --session 'ses_native'", sessionId: "ses_native", passwordEnv: { OPENCODE_PASSWORD: "server-password", OPENCODE_SERVER_PASSWORD: "server-password" } })),
+	writeOpenCodeLaunchScript: vi.fn(async () => {}),
+	startOpenCodePrompt: vi.fn(async () => {}),
+	stopOpenCodeServer: vi.fn(async () => {}),
 }));
 
 vi.mock("../../task-workspace-guard", async (importOriginal) => ({
@@ -38,15 +42,25 @@ vi.mock("../../task-aux-panes", () => ({
 	auxPaneAlive: vi.fn(),
 	auxPaneTitle: (purpose: string) => purpose,
 	closeAuxPane: vi.fn(),
+	closeTaskPane: vi.fn(async () => {}),
 	findAuxPane: vi.fn(),
+	hasStablePaneIdentity: (handle: { backend: string; paneId: string }) => handle.backend === "tmux" ? /^%\d+$/.test(handle.paneId.trim()) : !!handle.paneId.trim(),
 	nativeAuxPaneShellPid: vi.fn(),
 	openAuxPane: vi.fn(),
 	splitTaskPane: mocks.splitTaskPane,
 	AuxPaneUnavailableError: class AuxPaneUnavailableError extends Error {},
 }));
+vi.mock("../../opencode-server", () => ({
+	prepareOpenCodeLaunch: mocks.prepareOpenCodeLaunch,
+	writeOpenCodeLaunchScript: mocks.writeOpenCodeLaunchScript,
+	startOpenCodePrompt: mocks.startOpenCodePrompt,
+	stopOpenCodeServer: mocks.stopOpenCodeServer,
+	stopOpenCodeServers: vi.fn(async () => {}),
+}));
 
 vi.mock("../../agents", () => ({
 	resolveCommandForAgent: mocks.resolveCommandForAgent,
+	getAllAgents: vi.fn(async () => []),
 	resolveCommandForProject: vi.fn(),
 	ensureClaudeTrust: vi.fn(),
 	ensureClaudeConfigDir: vi.fn(),
@@ -193,7 +207,11 @@ describe("spawnAgentInTask agent attribution", () => {
 	it("records a native pane in a sidecar next to its script, not in sessionState.panes", async () => {
 		await spawn();
 		const [writtenPath] = mocks.writeLaunchScript.mock.calls[0] as unknown as [string];
-		expect(mocks.writeNativeAgentAttribution).toHaveBeenCalledWith(writtenPath, expect.objectContaining({ agentId: "builtin-claude", configId: "cfg", accountId: "acc-1" }));
+		expect(mocks.writeNativeAgentAttribution).toHaveBeenCalledWith(
+			writtenPath,
+			expect.objectContaining({ agentId: "builtin-claude", configId: "cfg", accountId: "acc-1" }),
+			expect.objectContaining({ required: false }),
+		);
 		expect(mocks.updateTask.mock.calls[0][2]).not.toHaveProperty("sessionState");
 	});
 
@@ -202,6 +220,64 @@ describe("spawnAgentInTask agent attribution", () => {
 		await spawn();
 		expect(mocks.writeNativeAgentAttribution).not.toHaveBeenCalled();
 		expect(mocks.updateTask.mock.calls[0][2].sessionState.panes).toEqual([expect.objectContaining({ paneId: "%42", accountId: "acc-1" })]);
+	});
+
+	it.each(["native", "tmux"] as const)("stores OpenCode's real session ID for a %s pane", async (backend) => {
+		mocks.splitTaskPane.mockResolvedValue({ backend, paneId: "%42" });
+		mocks.resolveCommandForAgent.mockResolvedValue({
+			command: "opencode",
+			extraEnv: {},
+			config: { id: "cfg", baseCommandOverride: "opencode" },
+			openCodeLaunch: { prompt: "first prompt", additionalArgs: [] },
+		});
+
+		await spawn();
+		expect(mocks.prepareOpenCodeLaunch).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: TASK_ID,
+			spec: { prompt: "first prompt", additionalArgs: [] },
+		}));
+		expect(mocks.startOpenCodePrompt).toHaveBeenCalledWith(TASK_ID, "ses_native", "first prompt");
+		if (backend === "native") {
+			expect(mocks.writeNativeAgentAttribution).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.objectContaining({ sessionId: "ses_native" }),
+				{ required: true },
+			);
+		} else {
+			expect(mocks.updateTask.mock.calls[0][2].sessionState.panes).toEqual([expect.objectContaining({ paneId: "%42", sessionId: "ses_native" })]);
+		}
+	});
+
+});
+
+describe("spawnAgentInTask managed OpenCode V2", () => {
+	const resolveOpenCode = () => mocks.resolveCommandForAgent.mockResolvedValue({
+		command: "opencode",
+		extraEnv: { OPENCODE_PASSWORD: "inherited-primary-password" },
+		agent: { id: "builtin-opencode", baseCommand: "opencode" },
+		config: { id: "v2" },
+		agentFamily: "opencode",
+		openCodeLaunch: { prompt: "brief", additionalArgs: [] },
+	} as never);
+
+	it("overrides both inherited TUI password names with the managed server password", async () => {
+		resolveOpenCode();
+		await tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-opencode", configId: "v2" });
+
+		const script = (mocks.writeOpenCodeLaunchScript.mock.calls[0] as unknown as unknown[])[3] as string;
+		expect(script).toContain("OPENCODE_PASSWORD='server-password'");
+		expect(script).toContain("OPENCODE_SERVER_PASSWORD='server-password'");
+		expect(script).not.toContain("inherited-primary-password");
+	});
+
+	it("rejects an empty V2 pane identity before registering or prompting", async () => {
+		resolveOpenCode();
+		mocks.splitTaskPane.mockResolvedValueOnce({ backend: "native", paneId: "" });
+
+		await expect(tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-opencode", configId: "v2" }))
+			.rejects.toThrow("no stable identity");
+		expect(mocks.startOpenCodePrompt).not.toHaveBeenCalled();
+		expect(mocks.stopOpenCodeServer).toHaveBeenCalledWith(TASK_ID, "ses_native");
 	});
 });
 

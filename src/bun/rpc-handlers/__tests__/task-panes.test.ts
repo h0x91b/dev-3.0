@@ -44,6 +44,9 @@ const mocks = vi.hoisted(() => ({
 	closeNativeTaskPane: vi.fn(),
 	focusNativeTaskPane: vi.fn(),
 	setNativeTaskPaneLayout: vi.fn(),
+	listNativeTaskAgents: vi.fn(),
+	stopOpenCodeServer: vi.fn(),
+	stopOpenCodeServers: vi.fn(),
 	// tmux-pty helpers
 	readPaneLayout: vi.fn(),
 	tmuxActionHelper: vi.fn(),
@@ -117,6 +120,12 @@ vi.mock("../../native-task-panes", () => ({
 	closeNativeTaskPane: mocks.closeNativeTaskPane,
 	focusNativeTaskPane: mocks.focusNativeTaskPane,
 	setNativeTaskPaneLayout: mocks.setNativeTaskPaneLayout,
+}));
+
+vi.mock("../../native-agent-attribution", () => ({ listNativeTaskAgents: mocks.listNativeTaskAgents }));
+vi.mock("../../opencode-server", () => ({
+	stopOpenCodeServer: mocks.stopOpenCodeServer,
+	stopOpenCodeServers: mocks.stopOpenCodeServers,
 }));
 
 vi.mock("../tmux-pty", () => ({
@@ -226,6 +235,9 @@ beforeEach(() => {
 	mocks.hasSession.mockReturnValue(true);
 	mocks.reattachNativeTaskSession.mockResolvedValue(true);
 	mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
+	mocks.listNativeTaskAgents.mockResolvedValue([]);
+	mocks.stopOpenCodeServer.mockResolvedValue(undefined);
+	mocks.stopOpenCodeServers.mockResolvedValue(undefined);
 	// The action path reads the layout only; in production it is the same tree the
 	// full state serializes, so derive it from whatever a case set up.
 	mocks.nativeTaskPaneLayout.mockImplementation(async () => {
@@ -540,9 +552,11 @@ describe("taskPaneAction (native)", () => {
 	});
 
 	it("close: two panes close freely; the last pane is refused without force and torn down with it", async () => {
+		mocks.listNativeTaskAgents.mockResolvedValue([{ paneId: "pane-2", sessionId: "ses-2" }]);
 		mocks.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: makeSingleNativeState() });
 		const two = await act({ kind: "close", paneId: "pane-2" });
 		expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
+		expect(mocks.stopOpenCodeServer).toHaveBeenCalledWith(TASK_ID, "ses-2");
 		expect(two.panes).toHaveLength(1);
 
 		mocks.closeNativeTaskPane.mockClear();

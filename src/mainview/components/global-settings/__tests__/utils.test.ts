@@ -148,6 +148,13 @@ describe("global-settings utils", () => {
 		});
 	});
 
+	it("previews OpenCode V2 as a TUI attached to the managed session", () => {
+		const preset = { id: "o", name: "OpenCode", model: "openai/gpt-5" };
+		expect(buildCommandPreview("opencode", preset).command).toContain("opencode --model openai/gpt-5");
+		expect(buildCommandPreview("opencode", preset, undefined, undefined, undefined, undefined, "v2").command)
+			.toBe("opencode --server <managed-server> --session <saved-session>");
+	});
+
 	it("previews omp with the flags omp actually receives", () => {
 		expect(buildCommandPreview("omp", { id: "o", name: "YOLO (X-High)", permissionMode: "bypassPermissions", effort: "xhigh", maxBudgetUsd: 5 }).command)
 			.toBe("omp --approval-mode yolo --thinking xhigh --append-system-prompt '…dev3 prompt file…' -- '{{TASK_DESCRIPTION}}'");

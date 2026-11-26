@@ -34,7 +34,21 @@ export function setupExitCodePath(taskId: string): string {
 	return dev3TaskTempPath(taskId, "setup-exit");
 }
 
+export function setupSuccessPath(taskId: string): string {
+	return dev3TaskTempPath(taskId, "setup-ready");
+}
+
+export function setupAgentPanePath(taskId: string): string {
+	return dev3TaskTempPath(taskId, "setup-agent-pane");
+}
+
 /** Drop a previous run's recorded code so a later read cannot pick up a stale one. */
 export function clearSetupExitCode(taskId: string): void {
 	rmSync(setupExitCodePath(taskId), { force: true });
+}
+
+/** Same for an OpenCode V2 setup's success marker and recorded agent pane. */
+export function clearSetupHandoff(taskId: string): void {
+	rmSync(setupSuccessPath(taskId), { force: true });
+	rmSync(setupAgentPanePath(taskId), { force: true });
 }

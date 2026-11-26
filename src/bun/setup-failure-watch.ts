@@ -19,7 +19,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { createLogger } from "./logger";
-import { setupExitCodePath } from "./temp-paths";
+import { setupAgentPanePath, setupExitCodePath, setupSuccessPath } from "./temp-paths";
 
 const log = createLogger("setup-failure-watch");
 
@@ -61,18 +61,35 @@ export function watchedSetupFailureTasks(): string[] {
  */
 export function watchSetupFailure(
 	taskId: string,
-	onFailure: (exitCode: number) => void | Promise<void>,
-	opts?: { intervalMs?: number; maxMs?: number },
+	onFailure: (exitCode: number, paneId: string | null) => void | Promise<void>,
+	opts?: { intervalMs?: number; maxMs?: number; onSuccess?: (paneId: string | null) => void | Promise<void> },
 ): void {
 	stopSetupFailureWatch(taskId);
 	const path = setupExitCodePath(taskId);
+	const successPath = setupSuccessPath(taskId);
+	const agentPanePath = setupAgentPanePath(taskId);
 	const intervalMs = opts?.intervalMs ?? POLL_INTERVAL_MS;
 	const deadline = Date.now() + (opts?.maxMs ?? MAX_WATCH_MS);
+	const readAgentPaneId = (): string | null => {
+		try {
+			const recorded = readFileSync(agentPanePath, "utf-8").trim();
+			return /^%\d+$/.test(recorded) ? recorded : null;
+		} catch {
+			return null;
+		}
+	};
 
 	const timer = setInterval(() => {
 		if (Date.now() > deadline) {
 			log.info("Setup watch expired", { taskId: taskId.slice(0, 8) });
 			stopSetupFailureWatch(taskId);
+			return;
+		}
+		if (opts?.onSuccess && existsSync(successPath)) {
+			stopSetupFailureWatch(taskId);
+			void Promise.resolve(opts.onSuccess(readAgentPaneId())).catch((err) => {
+				log.warn("Failed to start the gated OpenCode prompt", { taskId: taskId.slice(0, 8), error: String(err) });
+			});
 			return;
 		}
 		if (!existsSync(path)) return;
@@ -86,10 +103,11 @@ export function watchSetupFailure(
 		if (raw.trim() === "") return;
 		stopSetupFailureWatch(taskId);
 		const exitCode = parseSetupExitCode(raw);
+		const paneId = readAgentPaneId();
 		log.info("Setup script failed", { taskId: taskId.slice(0, 8), exitCode });
 		void (async () => {
 			try {
-				await onFailure(exitCode);
+				await onFailure(exitCode, paneId);
 			} catch (err) {
 				log.warn("Failed to report a setup failure (non-fatal)", { error: String(err) });
 			}
