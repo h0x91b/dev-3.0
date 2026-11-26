@@ -45,7 +45,7 @@ function okResp(data: unknown): CliResponse {
 
 function changed(spaces: Array<{ id: string; name: string }>, deletedSpaces: Array<{ id: string; name: string }> = []): ProjectSpacesChangeResult {
 	return {
-		project: { id: PROJECT_ID, name: "side-project", path: "/Users/dev/side-project", kind: "git", defaultBaseBranch: "main", spaces },
+		project: { id: PROJECT_ID, name: "side-project", path: "/Users/dev/side-project", kind: "git", defaultBaseBranch: "main", gitWorkflow: true, spaces },
 		deletedSpaces,
 	};
 }

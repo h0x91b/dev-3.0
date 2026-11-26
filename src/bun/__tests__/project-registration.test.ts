@@ -173,6 +173,20 @@ describe("registerProject", () => {
 		});
 
 		await expect(registerProject({ path: REPO })).rejects.toThrow(/Pass --init/);
+		await expect(registerProject({ path: REPO })).rejects.toThrow(/--no-git-workflow/);
+	});
+
+	it("adds the folder with the git workflow off under --no-git-workflow, and refuses it with --init", async () => {
+		addSucceeds();
+		const result = await registerProject({ path: REPO, noGitWorkflow: true });
+
+		expect(mocks.addProject).toHaveBeenCalledWith({ path: REPO, name: undefined, gitWorkflow: false });
+		expect(result.outcome).toBe("added");
+
+		mocks.addProject.mockClear();
+		await expect(registerProject({ path: REPO, init: true, noGitWorkflow: true })).rejects.toThrow(/--init cannot be combined/);
+		expect(mocks.addProject).not.toHaveBeenCalled();
+		expect(mocks.initAndAddProject).not.toHaveBeenCalled();
 	});
 
 	it("goes through the app's init flow with --init", async () => {

@@ -116,6 +116,7 @@ describe("projects list", () => {
 			path: "/Users/dev/my-app",
 			kind: "git",
 			defaultBaseBranch: "main",
+			gitWorkflow: true,
 			spaces: [{ id: SPACES.spaces[0].id, name: "Work / Side" }],
 		});
 		expect(listed[1].spaces).toEqual([]);
@@ -150,7 +151,7 @@ describe("projects list", () => {
 	});
 });
 
-function added(outcome: ProjectRegistrationResult["outcome"] = "added"): ProjectRegistrationResult {
+function added(outcome: ProjectRegistrationResult["outcome"] = "added", gitWorkflow = true): ProjectRegistrationResult {
 	return {
 		outcome,
 		project: {
@@ -159,6 +160,7 @@ function added(outcome: ProjectRegistrationResult["outcome"] = "added"): Project
 			path: "/Users/dev/side-project",
 			kind: "git",
 			defaultBaseBranch: "main",
+			gitWorkflow,
 			spaces: [{ id: "sp_99999999-0000-0000-0000-000000000000", name: "Work / Side" }],
 		},
 		createdSpaces: [],
@@ -177,6 +179,7 @@ describe("projects add", () => {
 			path: "/Users/dev/side-project",
 			name: "Side Project",
 			init: false,
+			noGitWorkflow: false,
 			spaces: ["Work / Side", "sp_12345678"],
 			newSpaces: ["Side"],
 			noSpace: false,
@@ -196,6 +199,36 @@ describe("projects add", () => {
 		await run(["add", "--init", "/Users/dev/side-project", "--no-space"]);
 
 		expect(mockSend.mock.calls[1][2]).toMatchObject({ path: "/Users/dev/side-project", init: true, noSpace: true });
+	});
+
+	it("sends --no-git-workflow without eating the path, and refuses it with --init", async () => {
+		mockSend.mockResolvedValue(okResp(added("added", false)));
+
+		await run(["add", "--no-git-workflow", "/Users/dev/notes"]);
+
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ path: "/Users/dev/notes", init: false, noGitWorkflow: true });
+
+		await expect(run(["add", "/Users/dev/notes", "--init", "--no-git-workflow"])).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--init cannot be combined with --no-git-workflow");
+		expect(mockSend).toHaveBeenCalledTimes(1);
+	});
+
+	it("fails when an older app ignored --no-git-workflow, and points an existing project at projects set", async () => {
+		const { gitWorkflow: _dropped, ...oldShape } = added().project;
+		mockSend.mockResolvedValue(okResp({ ...added(), project: oldShape }));
+
+		await expect(run(["add", "/Users/dev/side-project", "--no-git-workflow"])).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("The app ignored --no-git-workflow");
+		expect(stderrOutput).toContain("dev3 projects set gitWorkflow off --project a1b2c3d4");
+
+		mockSend.mockResolvedValue(okResp(added("exists")));
+		await expect(run(["add", "/Users/dev/side-project", "--no-git-workflow"])).rejects.toThrow("EXIT_33");
+		expect(stdoutOutput).toContain("Its git workflow stays on. Switch it off with: dev3 projects set gitWorkflow off --project a1b2c3d4");
+
+		// Without the flag, neither line appears.
+		stdoutOutput = "";
+		await expect(run(["add", "/Users/dev/side-project"])).rejects.toThrow("EXIT_33");
+		expect(stdoutOutput).not.toContain("git workflow");
 	});
 
 	it("refuses a git URL (pointing at clone), --no-space with --space, and a bare --space, sending nothing", async () => {

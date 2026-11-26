@@ -1381,12 +1381,12 @@ describe("projects.add / projects.clone / spaces.*", () => {
 			const { registerProject } = await import("../project-registration");
 
 			const resp = await handleRequest(makeRequest("projects.add", {
-				path: "/repos/app", init: true, spaces: ["Work / Side", 7], newSpaces: "not-a-list", noSpace: "yes",
+				path: "/repos/app", init: true, noGitWorkflow: "yes", spaces: ["Work / Side", 7], newSpaces: "not-a-list", noSpace: "yes",
 			}));
 
 			expect(resp.ok).toBe(true);
 			expect(registerProject).toHaveBeenCalledWith({
-				path: "/repos/app", name: undefined, init: true, spaces: ["Work / Side"], newSpaces: [], noSpace: false,
+				path: "/repos/app", name: undefined, init: true, noGitWorkflow: false, spaces: ["Work / Side"], newSpaces: [], noSpace: false,
 			});
 		}
 		vi.clearAllMocks();
