@@ -1811,13 +1811,13 @@ describe("ActiveTasksSidebar — space scope", () => {
 		};
 	}
 
-	function renderSidebarWith(allProjects: Project[], spaceId?: string) {
+	function renderSidebarWith(allProjects: Project[], spaceId?: string, tasks: Task[] = [makeTask()]) {
 		return render(
 			<I18nProvider>
 				<ActiveTasksSidebar
 					project={project}
 					spaceId={spaceId}
-					tasks={[makeTask()]}
+					tasks={tasks}
 					allProjects={allProjects}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
@@ -2019,6 +2019,38 @@ describe("ActiveTasksSidebar — space scope", () => {
 		renderSidebarWith([project, otherProject]);
 		// The project's own task list (the props-driven project scope) renders.
 		await waitFor(() => expect(screen.getByText("Привет! как сам?")).toBeInTheDocument());
+	});
+
+	it("project scope lists only the current project's tasks from a mixed space-board store", async () => {
+		const { api } = await import("../../rpc");
+		localStorage.setItem("dev3-sidebar-scope", "project");
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockSpaces([["p1", "p2"]]));
+		renderSidebarWith([project, otherProject], "sp_0", [
+			makeTask(),
+			makeTask({ id: "t-sibling", projectId: "p2", title: "Sibling task", groupId: "g2" }),
+			makeTask({ id: "t-foreign", projectId: "p3", title: "Foreign task", groupId: "g3" }),
+		]);
+		await waitFor(() => expect(screen.getByTestId("sidebar-scope-space")).not.toHaveAttribute("aria-disabled"));
+		expect(screen.getByText("Привет! как сам?")).toBeInTheDocument();
+		expect(screen.queryByText("Sibling task")).not.toBeInTheDocument();
+		expect(screen.queryByText("Foreign task")).not.toBeInTheDocument();
+	});
+
+	it("space scope shows no tasks while the spaces are still loading", async () => {
+		const { api } = await import("../../rpc");
+		localStorage.setItem("dev3-sidebar-scope", "space");
+		let resolveSpaces: (value: ReturnType<typeof mockSpaces>) => void = () => {};
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+			new Promise((resolve) => { resolveSpaces = resolve; }),
+		);
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+			{ projectId: "p3", todoCount: 0, tasks: [makeTask({ id: "t-foreign", projectId: "p3", title: "Foreign task" })] },
+		]);
+		renderSidebarWith([project, strangerProject], "sp_0");
+		await waitFor(() => expect(api.request.getAllProjectTasks).toHaveBeenCalled());
+		await act(async () => { await Promise.resolve(); });
+		expect(screen.queryByText("Foreign task")).not.toBeInTheDocument();
+		await act(async () => { resolveSpaces(mockSpaces([["p1"]])); });
 	});
 });
 

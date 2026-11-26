@@ -325,11 +325,18 @@ function ActiveTasksSidebar({
 		};
 	}, [effectiveScope]);
 
-	const sourceTasks = effectiveScope === "project" ? tasks : globalTasks;
+	// On a space board the task store also holds sibling and foreign-project tasks.
+	const projectTasks = useMemo(
+		() => tasks.filter((task) => task.projectId === project?.id),
+		[tasks, project?.id],
+	);
+	const sourceTasks = effectiveScope === "project" ? projectTasks : globalTasks;
+	// A space scope with unresolved spaces has no pool yet — it must not fall back to every project.
+	const spacePoolPending = effectiveScope === "space" && siblingIds === null;
 
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
-	if (effectiveScope === "space" && siblingIds) {
-		activeTasks = activeTasks.filter((task) => siblingIds.has(task.projectId));
+	if (effectiveScope === "space") {
+		activeTasks = siblingIds ? activeTasks.filter((task) => siblingIds.has(task.projectId)) : [];
 	}
 	// `is:hidden` / `is:hibernated` reveal on their own: a token that selects those tasks must not
 	// search a pool they were already filtered out of.
@@ -801,7 +808,7 @@ function ActiveTasksSidebar({
 
 			{/* Task list */}
 			<div ref={listRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-help-id="sidebar.active-tasks">
-				{effectiveScope !== "project" && globalLoading && grouped.length === 0 ? (
+				{effectiveScope !== "project" && (globalLoading || spacePoolPending) && grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
 						{t("sidebar.globalLoading")}
 					</div>
