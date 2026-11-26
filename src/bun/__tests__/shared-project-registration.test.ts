@@ -115,6 +115,7 @@ describe("toCliProject / toCliSpaces", () => {
 			path: "/repos/api",
 			kind: "git",
 			defaultBaseBranch: "main",
+			gitWorkflow: true,
 			spaces: [
 				{ id: PERSONAL.id, name: "Personal" },
 				{ id: WORK.id, name: "Work / Side" },
@@ -124,6 +125,8 @@ describe("toCliProject / toCliSpaces", () => {
 		// A virtual board is marked, and deleted spaces are skipped.
 		const info = toCliProject(project("p1", "ops", { kind: "virtual" }), FILE);
 		expect(info.kind).toBe("virtual");
+		expect(info.gitWorkflow).toBe(false);
+		expect(toCliProject(project("p3", "notes", { gitWorkflow: false }), FILE).gitWorkflow).toBe(false);
 		expect(info.spaces.map((s) => s.name)).toEqual(["Work / Side"]);
 	});
 

@@ -135,9 +135,10 @@ function requireFolder(path: string, what: string): string {
 
 function gitInitAdvice(offer: GitInitOffer): string {
 	const placeholder = "a first commit holding only a placeholder .dev3/README.md";
+	const plain = "Or pass --no-git-workflow to add it as a plain folder: tasks then share it, with no worktree or branch each.";
 	return offer.mode === "init"
-		? `${offer.path} is not a git repository. Pass --init to run git init there and make ${placeholder}; nothing already in the folder is committed.`
-		: `${offer.path} is a git repository with no commits yet, so task worktrees cannot be created. Commit first, or pass --init to make ${placeholder}; anything you staged stays staged.`;
+		? `${offer.path} is not a git repository. Pass --init to run git init there and make ${placeholder}; nothing already in the folder is committed. ${plain}`
+		: `${offer.path} is a git repository with no commits yet, so task worktrees cannot be created. Commit first, or pass --init to make ${placeholder}; anything you staged stays staged. ${plain}`;
 }
 
 async function existingOutcome(project: Project): Promise<ProjectRegistrationResult> {
@@ -167,7 +168,10 @@ async function finishRegistration(project: Project, flags: SpaceFlags): Promise<
 	};
 }
 
-export async function registerProject(params: SpaceFlags & { path: string; name?: string; init?: boolean }): Promise<ProjectRegistrationResult> {
+export async function registerProject(
+	params: SpaceFlags & { path: string; name?: string; init?: boolean; noGitWorkflow?: boolean },
+): Promise<ProjectRegistrationResult> {
+	if (params.init && params.noGitWorkflow) throw new Error("--init cannot be combined with --no-git-workflow");
 	const path = requireFolder(params.path, "Project folder");
 	planSpaces(await spacesHandlers.getSpaces({}), params);
 	const existing = await findRegisteredProject(path);
@@ -176,7 +180,7 @@ export async function registerProject(params: SpaceFlags & { path: string; name?
 	const name = params.name?.trim() || undefined;
 	const result = params.init
 		? await appHandlers.initAndAddProject({ path, name, initNonEmpty: true })
-		: await appHandlers.addProject({ path, name });
+		: await appHandlers.addProject({ path, name, ...(params.noGitWorkflow ? { gitWorkflow: false } : {}) });
 	if (!result.ok) throw new Error(result.gitInit ? gitInitAdvice(result.gitInit) : result.error);
 	return finishRegistration(result.project, params);
 }

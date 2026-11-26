@@ -79,16 +79,19 @@ async function listProjects(args: ParsedArgs, socketPath: string): Promise<void>
 }
 
 /** Print an add/clone result; an already-registered folder exits with its own code. */
-function report(result: ProjectRegistrationResult, json: boolean): void {
+function report(result: ProjectRegistrationResult, json: boolean, noGitWorkflow = false): void {
 	const { project } = result;
+	const id8 = project.id.slice(0, 8);
+	const workflowStillOn = noGitWorkflow && project.gitWorkflow !== false;
 	if (json) {
 		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 	} else if (result.outcome === "exists") {
 		process.stdout.write(
 			`Already a project: ${project.id.slice(0, 8)} "${project.name}" — ${project.path}\n` +
 				`Spaces: ${spaceNames(project)}\n` +
-				`Nothing changed. Change its spaces with: dev3 spaces add|set|remove <space> --project ${project.id.slice(0, 8)}\n`,
+				`Nothing changed. Change its spaces with: dev3 spaces add|set|remove <space> --project ${id8}\n`,
 		);
+		if (workflowStillOn) process.stdout.write(`Its git workflow stays on. Switch it off with: dev3 projects set gitWorkflow off --project ${id8}\n`);
 	} else {
 		for (const space of result.createdSpaces) {
 			process.stdout.write(`Created space ${shortSpaceId(space.id)} "${space.name}"\n`);
@@ -99,26 +102,34 @@ function report(result: ProjectRegistrationResult, json: boolean): void {
 		);
 	}
 	if (result.outcome === "exists") process.exit(CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED);
+	// An app older than this CLI drops the flag and adds a repo with the workflow on.
+	if (workflowStillOn) {
+		exitError(`The app ignored --no-git-workflow: project ${id8} was added with the git workflow on. Update the app, or run: dev3 projects set gitWorkflow off --project ${id8}`);
+	}
 }
 
 async function addProject(args: ParsedArgs, socketPath: string): Promise<void> {
-	rejectUnknownFlags(args, ["name", "init", "json", ...SPACE_FLAGS]);
+	rejectUnknownFlags(args, ["name", "init", "no-git-workflow", "json", ...SPACE_FLAGS]);
 	const [raw, ...extra] = args.positional;
 	if (!raw || extra.length > 0) {
-		exitUsage('Usage: dev3 projects add <path> [--name "..."] [--space <id|name>]... [--new-space "..."]... [--no-space] [--init] [--json]');
+		exitUsage('Usage: dev3 projects add <path> [--name "..."] [--space <id|name>]... [--new-space "..."]... [--no-space] [--init | --no-git-workflow] [--json]');
 	}
 	if (looksLikeGitUrl(raw)) {
 		exitUsage(`"${raw}" is a git URL, not a folder. Clone and add it with: dev3 projects clone ${raw}`);
 	}
+	const init = "init" in args.flags;
+	const noGitWorkflow = "no-git-workflow" in args.flags;
+	if (init && noGitWorkflow) exitUsage("--init cannot be combined with --no-git-workflow: one makes a git repo, the other needs none");
 
 	const resp = await sendRequest(socketPath, "projects.add", {
 		path: absolutePath(raw),
 		name: flagValue(args, "name"),
-		init: "init" in args.flags,
+		init,
+		noGitWorkflow,
 		...spaceParams(args),
 	}, { timeoutMs: ADD_TIMEOUT_MS });
 	if (!resp.ok) exitRequestFailed(resp, "Failed to add project", SPACE_HINT);
-	report(resp.data as ProjectRegistrationResult, "json" in args.flags);
+	report(resp.data as ProjectRegistrationResult, "json" in args.flags, noGitWorkflow);
 }
 
 async function cloneProject(args: ParsedArgs, socketPath: string): Promise<void> {
@@ -208,7 +219,7 @@ async function setSetting(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 export async function handleProjects(subcommand: string | undefined, args: ParsedArgs, socketPath: string, context: CliContext | null = null): Promise<void> {
-	args = withBooleanFlags(args, ["json", "init", "no-space"]);
+	args = withBooleanFlags(args, ["json", "init", "no-git-workflow", "no-space"]);
 	switch (subcommand) {
 		case undefined:
 		case "list":

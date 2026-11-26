@@ -178,8 +178,8 @@ Commands:
   dev3 install-hooks [--remove-cursor]   Install agent hooks, or remove global Cursor usage hooks
   dev3 install-skills                    Install agent skills globally
   dev3 projects list [--json]           List all projects with the spaces they belong to
-  dev3 projects add <path> [--name "..."] [--space <id|name>]... [--new-space "..."]... [--no-space] [--init] [--json]
-                                         Register a local git repo as a project, optionally in spaces (exit 33 if already registered)
+  dev3 projects add <path> [--name "..."] [--space <id|name>]... [--new-space "..."]... [--no-space] [--init | --no-git-workflow] [--json]
+                                         Register a local git repo (or, with --no-git-workflow, a plain folder) as a project (exit 33 if already registered)
   dev3 projects clone <git-url> [--dir <parent>] [--name "..."] [--space ...] [--new-space ...] [--no-space] [--json]
                                          Clone a repo into the app's clone folder (or --dir) and register it
   dev3 projects get [<key>] [--project <id>] [--json]  Machine-local Project Settings switches (gitWorkflow, storageRoot, ...)
