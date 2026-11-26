@@ -84,7 +84,7 @@ describe("cliTransportFor", () => {
 });
 
 describe("startCliListener (unix transport)", () => {
-	it("binds the historical socket path and writes the guest sidecar", () => {
+	it("binds the historical socket path, writes the guest sidecar and never requires a token", async () => {
 		const dir = tempSocketsDir();
 		const fake = fakeListen();
 
@@ -107,13 +107,8 @@ describe("startCliListener (unix transport)", () => {
 		expect(existsSync(join(dir, cliEndpointFileName(4242)))).toBe(false);
 		const meta = JSON.parse(readFileSync(join(dir, "4242.meta.json"), "utf-8"));
 		expect(meta).toMatchObject({ pid: 4242, hostTaskId: "aabbccdd-1111-2222-3333-444444444444" });
-	});
 
-	it("never requires a token on the Unix carrier", async () => {
-		const dir = tempSocketsDir();
-		const fake = fakeListen();
-		startCliListener({ socketsDir: dir, pid: 4243, hostTaskId: null, transport: "unix", handle: echoHandler, listen: fake.listen });
-
+		// The Unix carrier never requires a token.
 		const socket = mockSocket();
 		await fake.handlers().data(socket, requestLine("task.show"));
 
@@ -151,26 +146,12 @@ describe("startCliListener (loopback TCP transport)", () => {
 		expect(existsSync(join(dir, "7001.meta.json"))).toBe(false);
 	});
 
-	it("records the launching task so guest instances stay identifiable", () => {
-		const dir = tempSocketsDir();
-		const fake = fakeListen();
-		const listener = startCliListener({
-			socketsDir: dir,
-			pid: 7002,
-			hostTaskId: "deadbeef-1111-2222-3333-444444444444",
-			transport: "tcp",
-			handle: echoHandler,
-			listen: fake.listen,
-		});
-
-		expect(readRecord(listener.endpoint).hostTaskId).toBe("deadbeef-1111-2222-3333-444444444444");
-	});
-
-	it("gives two coexisting instances distinct records and tokens", () => {
+	it("gives two coexisting instances distinct records and tokens, recording the launching task", () => {
 		const dir = tempSocketsDir();
 		const first = readRecord(startCliListener({
-			socketsDir: dir, pid: 8001, hostTaskId: null, transport: "tcp", handle: echoHandler, listen: fakeListen(60001).listen,
+			socketsDir: dir, pid: 8001, hostTaskId: "deadbeef-1111-2222-3333-444444444444", transport: "tcp", handle: echoHandler, listen: fakeListen(60001).listen,
 		}).endpoint);
+		expect(first.hostTaskId).toBe("deadbeef-1111-2222-3333-444444444444");
 		const second = readRecord(startCliListener({
 			socketsDir: dir, pid: 8002, hostTaskId: null, transport: "tcp", handle: echoHandler, listen: fakeListen(60002).listen,
 		}).endpoint);
@@ -201,45 +182,22 @@ describe("loopback request handling", () => {
 		return { handlers: fake.handlers(), token: readRecord(listener.endpoint).token };
 	}
 
-	it("answers the existing request contract when the token matches", async () => {
+	it("rejects a mismatched token and a request carrying no token", async () => {
+		const { handlers } = startTcp();
+		for (const token of ["not-the-token", undefined]) {
+			const socket = mockSocket();
+			await handlers.data(socket, requestLine("task.update", token));
+			expect(responses(socket)[0], String(token)).toMatchObject({ ok: false, error: CLI_ENDPOINT_TOKEN_MISMATCH });
+		}
+	});
+
+	it("reports a malformed frame like the Unix carrier, and rejects an oversized request with the shared size-bound message", async () => {
 		const { handlers, token } = startTcp();
-		const socket = mockSocket();
+		const malformed = mockSocket();
+		await handlers.data(malformed, "{not json at all\n");
+		expect(responses(malformed)[0].id).toBe("unknown");
+		expect(responses(malformed)[0].error).toContain("Invalid JSON in CLI request");
 
-		await handlers.data(socket, requestLine("task.update", token));
-
-		expect(responses(socket)[0]).toMatchObject({ id: "req-task.update", ok: true, data: { echoed: "task.update" } });
-	});
-
-	it("rejects a mismatched token", async () => {
-		const { handlers } = startTcp();
-		const socket = mockSocket();
-
-		await handlers.data(socket, requestLine("task.update", "not-the-token"));
-
-		expect(responses(socket)[0]).toMatchObject({ ok: false, error: CLI_ENDPOINT_TOKEN_MISMATCH });
-	});
-
-	it("rejects a request carrying no token", async () => {
-		const { handlers } = startTcp();
-		const socket = mockSocket();
-
-		await handlers.data(socket, requestLine("task.update"));
-
-		expect(responses(socket)[0]).toMatchObject({ ok: false, error: CLI_ENDPOINT_TOKEN_MISMATCH });
-	});
-
-	it("reports a malformed frame the same way the Unix carrier does", async () => {
-		const { handlers } = startTcp();
-		const socket = mockSocket();
-
-		await handlers.data(socket, "{not json at all\n");
-
-		expect(responses(socket)[0].id).toBe("unknown");
-		expect(responses(socket)[0].error).toContain("Invalid JSON in CLI request");
-	});
-
-	it("rejects an oversized request with the shared size-bound message", async () => {
-		const { handlers, token } = startTcp();
 		const socket = mockSocket();
 		const oversized = "x".repeat(MAX_CLI_REQUEST_BYTES + 512);
 
@@ -262,7 +220,13 @@ describe("loopback request handling", () => {
 		expect(responses(socket)).toHaveLength(0);
 		await handlers.data(socket, line.slice(half));
 
-		expect(responses(socket)[0]).toMatchObject({ ok: true, data: { echoed: "note.add" } });
+		// The matching token answers the existing request contract.
+		expect(responses(socket)[0]).toMatchObject({ id: "req-note.add", ok: true, data: { echoed: "note.add" } });
+
+		// ...and answers every request in a batched chunk.
+		const batched = mockSocket();
+		await handlers.data(batched, requestLine("current", token) + requestLine("overview.set", token));
+		expect(responses(batched).map((r) => (r.data as { echoed: string }).echoed)).toEqual(["current", "overview.set"]);
 	});
 
 	it("keeps a multibyte character intact when a data event splits its bytes", async () => {
@@ -280,15 +244,6 @@ describe("loopback request handling", () => {
 		await handlers.data(socket, new Uint8Array(bytes.subarray(cutInEmoji)));
 
 		expect(responses(socket)[0].data).toEqual({ content });
-	});
-
-	it("answers every request in a batched chunk", async () => {
-		const { handlers, token } = startTcp();
-		const socket = mockSocket();
-
-		await handlers.data(socket, requestLine("current", token) + requestLine("overview.set", token));
-
-		expect(responses(socket).map((r) => (r.data as { echoed: string }).echoed)).toEqual(["current", "overview.set"]);
 	});
 
 	it("drops per-connection buffers when a client disconnects mid-request", async () => {

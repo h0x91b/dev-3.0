@@ -37,27 +37,19 @@ function probes(overrides: Partial<OwnershipProbes>): OwnershipProbes {
 describe("classifyOwnership — POSIX start signatures", () => {
 	const rec = record("posix-start-signature");
 
-	it("owned when both PIDs are alive with matching start signatures", async () => {
+	it("owned with matching start signatures, dead when a PID is gone, reused when a signature changed", async () => {
 		expect(await classifyOwnership(rec, "tok", probes({}))).toBe("owned");
-	});
-
-	it("dead when a recorded PID is gone", async () => {
-		expect(await classifyOwnership(rec, "tok", probes({ isAlive: (pid) => pid !== 200 }))).toBe("dead");
-	});
-
-	it("reused when a PID is alive but its start signature changed", async () => {
-		expect(await classifyOwnership(rec, "tok", probes({ readSignature: (pid) => `${pid}@LATER` }))).toBe("reused");
+		{
+			expect(await classifyOwnership(rec, "tok", probes({ isAlive: (pid) => pid !== 200 }))).toBe("dead");
+		}
+		{
+			expect(await classifyOwnership(rec, "tok", probes({ readSignature: (pid) => `${pid}@LATER` }))).toBe("reused");
+		}
 	});
 
 	// The real probe shells out to `ps` and is async so a whole pane set can be
 	// classified in one round trip instead of N (seq 1382).
-	it("accepts an async signature probe", async () => {
-		expect(
-			await classifyOwnership(rec, "tok", probes({ readSignature: async (pid) => `${pid}@t0` })),
-		).toBe("owned");
-	});
-
-	it("starts the host and shell probes together rather than in sequence", async () => {
+	it("accepts an async signature probe and starts the host and shell probes together", async () => {
 		const started: number[] = [];
 		let releaseFirst!: () => void;
 		const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
@@ -80,16 +72,14 @@ describe("classifyOwnership — POSIX start signatures", () => {
 describe("classifyOwnership — Windows Job membership", () => {
 	const rec = record("windows-job");
 
-	it("owned when host and shell are both job members", async () => {
+	it("owned when both are job members, reused when a PID left the job or the token is missing", async () => {
 		expect(await classifyOwnership(rec, VALID_TOKEN, probes({}))).toBe("owned");
-	});
-
-	it("reused when the live PID is not in the session job", async () => {
-		expect(await classifyOwnership(rec, VALID_TOKEN, probes({ isInJob: async (_t, pid) => pid === 100 }))).toBe("reused");
-	});
-
-	it("reused when the private token is missing (cannot open the job)", async () => {
-		expect(await classifyOwnership(rec, null, probes({}))).toBe("reused");
+		{
+			expect(await classifyOwnership(rec, VALID_TOKEN, probes({ isInJob: async (_t, pid) => pid === 100 }))).toBe("reused");
+		}
+		{
+			expect(await classifyOwnership(rec, null, probes({}))).toBe("reused");
+		}
 	});
 
 	it("reused (never throws) when the token is malformed — one corrupt token cannot abort a sweep", async () => {

@@ -28,9 +28,7 @@ describe("nextDueAfterRun", () => {
 		const r = nextDueAfterRun(NOW, 60_000, () => 0.999);
 		expect(r).toBeGreaterThan(NOW + 60_000);
 		expect(r).toBeLessThan(NOW + 60_000 + SCHEDULE_JITTER_MS);
-	});
-
-	it("gives two tasks scheduled together different next-due times (no re-alignment)", () => {
+		// Two tasks scheduled together get different next-due times (no re-alignment).
 		const a = nextDueAfterRun(NOW, 60_000, () => 0.1);
 		const b = nextDueAfterRun(NOW, 60_000, () => 0.8);
 		expect(a).not.toBe(b);

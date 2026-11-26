@@ -43,16 +43,11 @@ describe("sleep-inhibit watch", () => {
 		vi.useRealTimers();
 	});
 
-	it("starts the inhibit process as soon as the remote check resolves", async () => {
+	it("starts the inhibit process as soon as the remote check resolves, and respawns it on its own timer", async () => {
 		startSleepInhibitWatch(remoteOff);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(procs).toHaveLength(1);
 		expect(isCaffeinateRunning()).toBe(true);
-	});
-
-	it("respawns an inhibit process that exited, on its own timer", async () => {
-		startSleepInhibitWatch(remoteOff);
-		await vi.advanceTimersByTimeAsync(0);
 
 		// Long enough to count as a healthy run, then the -t timeout lapses.
 		await vi.advanceTimersByTimeAsync(9_000);
@@ -101,7 +96,7 @@ describe("sleep-inhibit watch", () => {
 		expect(procs).toHaveLength(1);
 	});
 
-	it("shutdown kills the process and stops the watch from starting another", async () => {
+	it("shutdown kills the process and stops the watch, even one still loading, from starting another", async () => {
 		startSleepInhibitWatch(remoteOff);
 		await vi.advanceTimersByTimeAsync(0);
 
@@ -109,15 +104,14 @@ describe("sleep-inhibit watch", () => {
 		expect(procs[0].kill).toHaveBeenCalled();
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(procs).toHaveLength(1);
-	});
 
-	it("a remote check still loading at shutdown starts nothing", async () => {
+		// A remote check still loading at shutdown starts nothing either.
 		let resolveReader: (reader: () => boolean) => void = () => {};
 		startSleepInhibitWatch(() => new Promise((resolve) => { resolveReader = resolve; }));
 		shutdownCaffeinate();
 		resolveReader(() => true);
 		await vi.advanceTimersByTimeAsync(60_000);
-		expect(procs).toHaveLength(0);
+		expect(procs).toHaveLength(1);
 	});
 
 	it("stopping the watch leaves a running inhibit process alone", async () => {

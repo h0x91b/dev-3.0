@@ -98,6 +98,14 @@ export interface CliResponse {
 
 // ---- RPC schema ----
 
+/** agents.json could not be read: its presets were restored from the last-known-good
+ *  copy, or (no usable copy) built-in defaults are being served. `backupFile` is the
+ *  basename of the copy of the unreadable bytes, next to agents.json. */
+export interface AgentsStoreNotice {
+	kind: "recovered" | "unreadable";
+	backupFile: string | null;
+}
+
 export type AppRPCSchema = {
 	bun: RPCSchema<{
 		requests: {
@@ -504,6 +512,11 @@ export type AppRPCSchema = {
 			getAgents: {
 				params: void;
 				response: CodingAgent[];
+			};
+			/** The pending agents.json storage notice, for a renderer that mounted after it was pushed. */
+			getAgentsStoreNotice: {
+				params: void;
+				response: AgentsStoreNotice | null;
 			};
 			saveAgents: {
 				params: { agents: CodingAgent[] };
@@ -1303,13 +1316,19 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; kind: "images" | "artifacts"; itemIds: string[] };
 				response: Task;
 			};
-			/** Deletes stored show-media clip files (tombstoning the records); `dryRun` only reports what it would free. */
+			/** Pins (keeps) or unpins one shared item: a pinned item is never removed by automatic cleanup. */
+			setSharedMediaPinned: {
+				params: { taskId: string; projectId: string; mediaId: string; pinned: boolean };
+				response: Task;
+			};
+			/** Read-only: what deleting these clips would remove and free. `skipRefused` reports refused clips instead of throwing. */
 			previewSharedMediaDelete: {
-				params: { taskId: string; projectId: string; mediaIds: string[] };
+				params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean };
 				response: SharedMediaDeleteSummary;
 			};
+			/** Deletes stored show-media clip files, tombstoning their records. */
 			deleteSharedMedia: {
-				params: { taskId: string; projectId: string; mediaIds: string[] };
+				params: { taskId: string; projectId: string; mediaIds: string[]; skipRefused?: boolean };
 				response: { task: Task; summary: SharedMediaDeleteSummary };
 			};
 			toggleTaskWatch: {
@@ -2343,6 +2362,8 @@ export type AppRPCSchema = {
 			 * paths became strict no longer exists. Once per agent and path per host run.
 			 */
 			staleAgentPath: { agentId: string; agentName: string; path: string; command: string };
+			/** agents.json was unreadable; see AgentsStoreNotice. Also served by getAgentsStoreNotice. */
+			agentsStoreNotice: AgentsStoreNotice;
 			cliToast: {
 				taskId: string | null;
 				projectId: string | null;

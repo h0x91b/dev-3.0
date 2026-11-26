@@ -27,7 +27,7 @@ beforeEach(() => { home = mkdtempSync(join(tmpdir(), "dev3-pi-usage-")); });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe("collectPiUsage (pi)", () => {
-	it("maps normalized usage, keeps the 1h cache split and counts output once", () => {
+	it("maps normalized usage, keeps the 1h cache split, counts output once and prices a virtual model's physical answerer", () => {
 		write(join(sessions(), "a.jsonl"), [header("s1"), assistant("e1", "claude-sonnet-4-6",
 			usage(100, 50, { cacheRead: 1_000, cacheWrite: 300, cacheWrite1h: 200, reasoning: 20 }))]);
 		const state = newUsageState();
@@ -39,6 +39,13 @@ describe("collectPiUsage (pi)", () => {
 				cacheCreation1hInputTokens: 200, cacheCreation5mInputTokens: 100,
 			},
 		}]);
+
+		// A virtual model is priced as the physical model that answered it.
+		write(join(sessions(), "b.jsonl"), [assistant("e2", "router", usage(10, 1), { responseModel: "claude-opus-4-8" })]);
+		const routed = newUsageState();
+		collectPiUsage(routed, "pi", piSessionRoots("pi", home, []));
+		expect([...routed.records.values()].map((r) => r.model)).toContain("claude-opus-4-8");
+		expect([...routed.records.values()].map((r) => r.model)).not.toContain("router");
 	});
 
 	it("tags usage with its provider's billing, using the agent dir's own auth.json for ambiguous providers", () => {
@@ -55,13 +62,6 @@ describe("collectPiUsage (pi)", () => {
 		expect([...state.records.values()].map((r) => [r.model, r.billing])).toEqual([
 			["gpt-6-sol", "subscription"], ["claude-sonnet-4-6", undefined], ["llama", "api"], ["claude-sonnet-4-6", "subscription"],
 		]);
-	});
-
-	it("prices the physical model that answered a virtual model", () => {
-		write(join(sessions(), "a.jsonl"), [assistant("e1", "router", usage(10, 1), { responseModel: "claude-opus-4-8" })]);
-		const state = newUsageState();
-		collectPiUsage(state, "pi", piSessionRoots("pi", home, []));
-		expect([...state.records.values()][0].model).toBe("claude-opus-4-8");
 	});
 
 	it("counts a forked or branch-extracted copy of a response once", () => {
@@ -106,7 +106,7 @@ describe("collectPiUsage (pi)", () => {
 describe("collectPiUsage (omp)", () => {
 	const ompSessions = (root = join(home, ".omp", "agent")) => join(root, "sessions", "--private-repo--");
 
-	it("counts assistant and model_usage entries, adds orchestration tokens and walks subagent sessions", () => {
+	it("counts assistant and model_usage entries, adds orchestration tokens, walks subagent sessions and skips unnamed models", () => {
 		write(join(ompSessions(), "main.jsonl"), [header("s1"),
 			assistant("e1", "gpt-5.4", usage(100, 10, { orchestration: { input: 5, cacheRead: 7, output: 3 } }), { provider: "openai", api: "openai-responses" })]);
 		write(join(ompSessions(), "main", "subagent.jsonl"), [
@@ -119,6 +119,13 @@ describe("collectPiUsage (omp)", () => {
 			{ inputTokens: 20, outputTokens: 2, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
 			{ inputTokens: 105, outputTokens: 13, cacheReadInputTokens: 7, cacheCreationInputTokens: 0 },
 		]);
+
+		// An assistant message that names no model is skipped.
+		write(join(ompSessions(), "main.jsonl"), [assistant("e1", "", usage(1, 1))]);
+		write(join(ompSessions(), "main", "subagent.jsonl"), []);
+		const unnamed = newUsageState();
+		collectPiUsage(unnamed, "omp", piSessionRoots("omp", home, [], {}));
+		expect(unnamed.records.size).toBe(0);
 	});
 
 	it("deduplicates a copied response across the default, XDG and account stores", () => {
@@ -131,12 +138,5 @@ describe("collectPiUsage (omp)", () => {
 		const state = newUsageState();
 		collectPiUsage(state, "omp", piSessionRoots("omp", home, [account], { XDG_DATA_HOME: xdg }));
 		expect(state.records.size).toBe(2);
-	});
-
-	it("skips assistant messages that name no model", () => {
-		write(join(ompSessions(), "a.jsonl"), [assistant("e1", "", usage(1, 1))]);
-		const state = newUsageState();
-		collectPiUsage(state, "omp", piSessionRoots("omp", home, [], {}));
-		expect(state.records.size).toBe(0);
 	});
 });

@@ -89,43 +89,32 @@ describe("submissions dev3 caused", () => {
 		expect(rows()).toHaveLength(0);
 	});
 
-	it("does not record the harness's own subagent-completion prompt", () => {
+	it("does not record the harness's subagent-completion prompt, slash-command scaffolding or a reminder, but records a tag further in", () => {
 		// Observed on claude 2.1.267: finishing a Task subagent raises a SECOND
 		// UserPromptSubmit in the same session, with its own prompt id and nothing
 		// marking it as generated. dev3 typed none of it, so no receipt exists and
 		// only the shape of the text can save it.
 		const notification = "<task-notification>\n<task-id>a7a60b2f2e83f827c</task-id>\n<result>PONG</result>\n</task-notification>";
-		expect(submit(notification)).toBe("machine-tagged");
+		expect(submit(notification), "subagent completion").toBe("machine-tagged");
+		expect(submit("<command-name>/review</command-name>\nrun it"), "slash command").toBe("machine-tagged");
+		expect(submit("<system-reminder>the plan is stale</system-reminder>"), "reminder").toBe("machine-tagged");
 		expect(rows()).toHaveLength(0);
-	});
 
-	it("does not record slash-command scaffolding or a reminder either", () => {
-		expect(submit("<command-name>/review</command-name>\nrun it")).toBe("machine-tagged");
-		expect(submit("<system-reminder>the plan is stale</system-reminder>")).toBe("machine-tagged");
-		expect(rows()).toHaveLength(0);
-	});
-
-	it("still records a human prompt that merely contains a tag further in", () => {
-		expect(submit("why does <task-notification> keep showing up?")).toBe("recorded");
+		expect(submit("why does <task-notification> keep showing up?"), "human prompt with a tag inside").toBe("recorded");
 		expect(rows()).toHaveLength(1);
 	});
 
-	it("does not record what a UI send typed, so the row that path already wrote is not doubled", () => {
+	it("does not record a UI send, the launch-argument task brief, or a held burst: dev3 typed each of them", () => {
 		// sendAgentMessageNow / scheduleMessage both go through deliverAgentPrompt,
 		// which leaves this receipt, and both write their own row with origin "user".
 		noteDev3TypedPrompt(task.id, "Please look at this diff hunk");
-		expect(submit("Please look at this diff hunk")).toBe("dev3-typed");
-		expect(rows()).toHaveLength(0);
-	});
+		expect(submit("Please look at this diff hunk"), "UI send").toBe("dev3-typed");
 
-	it("does not record the task brief handed over as a launch argument", () => {
 		noteDev3TypedPrompt(task.id, "Record terminal user messages reliably, without duplicates.");
 		const asSubmitted = "Record terminal user messages reliably, without duplicates.\n\n# dev3 — Task Lifecycle Protocol\n…";
-		expect(submit(asSubmitted)).toBe("dev3-typed");
-		expect(rows()).toHaveLength(0);
-	});
+		expect(submit(asSubmitted), "task brief").toBe("dev3-typed");
 
-	it("does not record a held burst, composed of several deliveries plus a trailer", () => {
+		// A burst is several deliveries plus a trailer.
 		noteDev3TypedPrompt(task.id, "first peer body, long enough to match");
 		noteDev3TypedPrompt(task.id, "second peer body, long enough to match");
 		const composed = [
@@ -133,7 +122,7 @@ describe("submissions dev3 caused", () => {
 			"second peer body, long enough to match",
 			"<dev3-board>snapshot</dev3-board>",
 		].join(AGENT_MESSAGE_BURST_SEPARATOR);
-		expect(submit(composed)).toBe("dev3-typed");
+		expect(submit(composed), "held burst").toBe("dev3-typed");
 		expect(rows()).toHaveLength(0);
 	});
 
@@ -146,24 +135,18 @@ describe("submissions dev3 caused", () => {
 });
 
 describe("exactly once", () => {
-	it("writes one row when the same submission is reported twice", () => {
+	it("writes one row per submission id: a repeated report is a duplicate, the same text twice is two rows", () => {
 		expect(submit("ship it", { submissionId: "prompt-7" })).toBe("recorded");
 		expect(submit("ship it", { submissionId: "prompt-7" })).toBe("duplicate");
 		expect(rows()).toHaveLength(1);
-	});
 
-	it("writes two rows for two submissions of the same text", () => {
 		submit("again", { submissionId: "prompt-1" });
 		submit("again", { submissionId: "prompt-2" });
-		expect(rows()).toHaveLength(2);
+		expect(rows()).toHaveLength(3);
 	});
 
-	it("refuses to record when the harness identified nothing", () => {
+	it("refuses an unidentified submission and ignores an empty one", () => {
 		expect(submit("who sent this", { sessionId: null, submissionId: null })).toBe("unidentified");
-		expect(rows()).toHaveLength(0);
-	});
-
-	it("ignores an empty submission", () => {
 		expect(submit("   ")).toBe("empty");
 		expect(rows()).toHaveLength(0);
 	});

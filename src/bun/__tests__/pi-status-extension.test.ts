@@ -22,10 +22,8 @@ describe("buildPiStatusExtension", () => {
 		expect(body).toContain('["hook", "pi"]');
 		expect(body).toContain("if (!process.env.DEV3_TASK_ID) return;");
 		expect(body).not.toBe(buildOmpStatusExtension({ cli: "/x/dev3" }));
-	});
 
-	it("subscribes only to events plain pi defines, and reports only accepted events", () => {
-		const body = buildPiStatusExtension({ cli: "/x/dev3" });
+		// Subscribes only to events plain pi defines, and reports only accepted events.
 		for (const name of body.matchAll(/report(?:Working|Idle)?\(ctx, "([A-Za-z]+)"/g)) {
 			expect(AGENT_STATUS_HOOK_EVENTS).toContain(name[1]);
 		}
@@ -43,9 +41,8 @@ describe("buildPiStatusExtension", () => {
 		// omp-only events: plain pi has no approval tiers, and agent_end is not final there.
 		expect(body).not.toContain("tool_approval");
 		expect(body).not.toContain('pi.on("agent_end"');
-	});
 
-	it("is written under <dev3 home>/data/agent-hooks/pi-status.ts", () => {
+		// Written under <dev3 home>/data/agent-hooks/pi-status.ts.
 		const path = writePiStatusExtension({ dev3Home: tempHome, cli: "/x/dev3" });
 		expect(path).toBe(piStatusExtensionPath(tempHome));
 		expect(path).toBe(join(tempHome, "data", "agent-hooks", "pi-status.ts"));
@@ -120,22 +117,17 @@ describe.skipIf(isWindows)("the generated pi extension at runtime", () => {
 		expect((await h.reports())[3]!.promptEnd).toBe(true);
 	});
 
-	it("settles again when a prompt is answered while pi is idle", async () => {
+	it("settles again when a prompt is answered while pi is idle, and keeps an extension-sourced prompt anonymous", async () => {
 		const h = await load();
 		await h.fire("session_start", {});
 		await h.fire("ui_prompt_start", { kind: "select" });
 		await h.fire("ui_prompt_end", { kind: "select" });
 
-		expect((await h.reports()).map((r) => r.event)).toEqual(["SessionStart", "PermissionRequest", "Stop"]);
-	});
-
-	it("does not forward an extension-sourced input as the human's prompt", async () => {
-		const h = await load();
-		await h.fire("session_start", {});
+		// An extension-sourced input is not forwarded as the human's prompt.
 		await h.fire("input", { text: "[from peer] hi", source: "extension" });
 
 		const reports = await h.reports();
-		expect(reports.map((r) => r.event)).toEqual(["SessionStart", "UserPromptSubmit"]);
-		expect(reports[1]).not.toHaveProperty("prompt");
+		expect(reports.map((r) => r.event)).toEqual(["SessionStart", "PermissionRequest", "Stop", "UserPromptSubmit"]);
+		expect(reports[3]).not.toHaveProperty("prompt");
 	});
 });

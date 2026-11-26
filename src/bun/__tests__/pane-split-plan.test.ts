@@ -64,14 +64,15 @@ describe("paneUsability", () => {
 });
 
 describe("planPaneSplit", () => {
-	it("gives the first pane the right half of the main pane", () => {
-		const plan = planPaneSplit(request({ paneId: "%0", cols: 200, rows: 50, order: 0 }, []));
-		expect(plan).toMatchObject({ kind: "split", splitsMain: true, paneId: "%0", orientation: "horizontal" });
-	});
-
-	it("puts the first pane below the main pane only when the right half would be a strip", () => {
-		const plan = planPaneSplit(request({ paneId: "%0", cols: 70, rows: 60, order: 0 }, []));
-		expect(plan).toMatchObject({ kind: "split", splitsMain: true, orientation: "vertical" });
+	it("gives the first pane the right half, goes below only when that half would be a strip, and refuses when main would be unusable", () => {
+		const cases: Array<[name: string, cols: number, rows: number, expected: object]> = [
+			["wide main", 200, 50, { kind: "split", splitsMain: true, paneId: "%0", orientation: "horizontal" }],
+			["right half would be a strip", 70, 60, { kind: "split", splitsMain: true, orientation: "vertical" }],
+			["main itself would be unusable", 60, 12, { kind: "no-room" }],
+		];
+		for (const [name, cols, rows, expected] of cases) {
+			expect(planPaneSplit(request({ paneId: "%0", cols, rows, order: 0 }, [])), name).toMatchObject(expected);
+		}
 	});
 
 	it("never changes the main pane after the first split, however many panes open", () => {
@@ -93,9 +94,12 @@ describe("planPaneSplit", () => {
 		expect(aux.every((pane) => pane.cols >= 74 && pane.rows >= 39)).toBe(true);
 	});
 
-	it("keeps stacking in a tall window, where a side-by-side split would be too narrow", () => {
+	it("keeps stacking in a tall window, where a side-by-side split would be too narrow, and always under --below", () => {
 		const { plans } = openPanes(100, 90, 4);
 		expect(plans.slice(1).every((plan) => plan.kind === "split" && plan.orientation === "vertical")).toBe(true);
+		// --below never splits side by side, even in a wide window.
+		const below = openPanes(300, 80, 3, ["vertical"]).plans;
+		expect(below.every((plan) => plan.kind === "split" && plan.orientation === "vertical")).toBe(true);
 	});
 
 	it("refuses rather than open a pane below the minimum, and never offers the main pane", () => {
@@ -107,16 +111,6 @@ describe("planPaneSplit", () => {
 			expect(last.closest?.paneId).not.toBe("main");
 			expect(describeNoRoom(last)).toMatch(`below the ${PANE_SPLIT_MIN_COLS}x${PANE_SPLIT_MIN_ROWS} minimum`);
 		}
-	});
-
-	it("refuses a first split that would leave the main pane itself unusable", () => {
-		const plan = planPaneSplit(request({ paneId: "%0", cols: 60, rows: 12, order: 0 }, []));
-		expect(plan.kind).toBe("no-room");
-	});
-
-	it("honours --below by never splitting side by side", () => {
-		const { plans } = openPanes(300, 80, 3, ["vertical"]);
-		expect(plans.every((plan) => plan.kind === "split" && plan.orientation === "vertical")).toBe(true);
 	});
 
 	it("halves the biggest pane even when a smaller one has the nicer shape", () => {

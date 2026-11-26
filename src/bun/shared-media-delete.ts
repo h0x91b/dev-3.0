@@ -2,7 +2,7 @@ import { statSync, unlinkSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Project, SharedImage, SharedMediaDeleteSummary, Task } from "../shared/types";
 import { isDeletableSharedMedia, taskSharedMedia } from "../shared/types";
-import { sharedImagesDir } from "./shared-images";
+import { sharedImagesDirs } from "./shared-images";
 import { isStoredSharedMediaPath } from "./shared-media-stream";
 
 /**
@@ -50,32 +50,45 @@ export function freeableBytes(item: Pick<SharedImage, "storedPath" | "originalPa
 }
 
 /**
- * A stored clip of THIS project: directly inside its shared-images pool, with no
- * `.`/`..` segment that could resolve somewhere else (another project's pool included).
+ * A stored clip of THIS project: directly inside one of its two shared-images pools
+ * (home or in-project), with no `.`/`..` segment that could resolve somewhere else.
  */
 export function isInProjectSharedMediaPool(project: Project, storedPath: string): boolean {
 	if (!isStoredSharedMediaPath(storedPath)) return false;
 	if (storedPath.split(/[\\/]/).some((part) => part === "." || part === "..")) return false;
-	return dirname(resolve(storedPath)) === resolve(sharedImagesDir(project));
+	const dir = dirname(resolve(storedPath));
+	return sharedImagesDirs(project).some((pool) => resolve(pool) === dir);
+}
+
+function refusal(project: Project, item: SharedImage | undefined, allTasks: readonly Task[]): string | null {
+	if (!item) return "Media not found on task";
+	if (!isDeletableSharedMedia(item)) return "Not a deletable clip";
+	if (!isInProjectSharedMediaPool(project, item.storedPath)) return "Refusing a path outside the shared media pool";
+	const shared = allTasks.some((other) => taskSharedMedia(other).some((rec) => rec.storedPath === item.storedPath && rec.id !== item.id && !rec.removedAt));
+	return shared ? "Stored file is shared with another record" : null;
+}
+
+export interface SharedMediaDeletePlan {
+	items: SharedMediaDeletePlanItem[];
+	skipped: Array<{ id: string; reason: string }>;
 }
 
 /**
  * Resolves the ids against the task's own records — the renderer never names a
  * path. Refuses anything that is not a live clip, not inside this project's
- * shared-images pool, or referenced by another record in the project.
+ * shared-images pools, or referenced by another record in the project: a throw,
+ * or with `skipRefused` (a sweep) a skipped entry, so one odd clip cannot block the rest.
  */
-export function planSharedMediaDelete(project: Project, task: Task, allTasks: readonly Task[], mediaIds: string[], stat: StatFn = safeStat): SharedMediaDeletePlanItem[] {
+export function planSharedMediaDelete(project: Project, task: Task, allTasks: readonly Task[], mediaIds: string[], opts: { stat?: StatFn; skipRefused?: boolean } = {}): SharedMediaDeletePlan {
 	if (mediaIds.length === 0) throw new SharedMediaDeleteError("No media ids given");
 	const byId = new Map(taskSharedMedia(task).map((item) => [item.id, item]));
-	const plan: SharedMediaDeletePlanItem[] = [];
+	const plan: SharedMediaDeletePlan = { items: [], skipped: [] };
 	for (const id of new Set(mediaIds)) {
 		const item = byId.get(id);
-		if (!item) throw new SharedMediaDeleteError(`Media not found on task: ${id}`);
-		if (!isDeletableSharedMedia(item)) throw new SharedMediaDeleteError(`Not a deletable clip: ${id}`);
-		if (!isInProjectSharedMediaPool(project, item.storedPath)) throw new SharedMediaDeleteError(`Refusing a path outside the shared media pool: ${id}`);
-		const sharers = allTasks.flatMap((other) => taskSharedMedia(other)).filter((rec) => rec.storedPath === item.storedPath && rec.id !== item.id && !rec.removedAt);
-		if (sharers.length > 0) throw new SharedMediaDeleteError(`Stored file is shared with another record: ${id}`);
-		plan.push({ id, storedPath: item.storedPath, bytes: item.bytes, freeableBytes: freeableBytes(item, stat) });
+		const reason = refusal(project, item, allTasks);
+		if (reason && !opts.skipRefused) throw new SharedMediaDeleteError(`${reason}: ${id}`);
+		if (reason || !item) plan.skipped.push({ id, reason: reason ?? "Media not found on task" });
+		else plan.items.push({ id, storedPath: item.storedPath, bytes: item.bytes, freeableBytes: freeableBytes(item, opts.stat ?? safeStat) });
 	}
 	return plan;
 }
@@ -98,6 +111,10 @@ function revive(list: SharedImage[] | undefined, ids: Set<string>): SharedImage[
 export interface SharedMediaDeletePorts {
 	updateTaskWith<T>(project: Project, taskId: string, mutator: (task: Task, tasks?: readonly Task[]) => { updates: Partial<Task>; result: T }): Promise<{ task: Task; result: T }>;
 	unlink?: (path: string) => void;
+	/** Narrows the ids against the task as read under the lock; automatic cleanup re-checks status, pins and due-ness here. */
+	guard?: (current: Task, mediaIds: string[]) => string[];
+	/** Skip refused clips instead of refusing the whole call (the older-clips sweep, retention). */
+	skipRefused?: boolean;
 	stat?: StatFn;
 	now?: () => number;
 }
@@ -123,14 +140,17 @@ export async function deleteSharedMedia(
 ): Promise<{ task: Task; summary: SharedMediaDeleteSummary }> {
 	const unlink = ports.unlink ?? defaultUnlink;
 	const now = (ports.now ?? Date.now)();
-	const { task: marked, result: plan } = await ports.updateTaskWith(project, taskId, (current, allTasks) => {
+	const { task: marked, result: { items: plan, skipped } } = await ports.updateTaskWith(project, taskId, (current, allTasks) => {
 		if (!allTasks) throw new SharedMediaDeleteError("The board was not read under the lock");
-		const items = planSharedMediaDelete(project, current, allTasks, mediaIds, ports.stat);
+		const ids = ports.guard ? ports.guard(current, mediaIds) : mediaIds;
+		if (ids.length === 0) return { updates: {}, result: { items: [], skipped: [] } as SharedMediaDeletePlan };
+		const result = planSharedMediaDelete(project, current, allTasks, ids, { stat: ports.stat, skipRefused: ports.skipRefused });
+		const items = result.items;
 		const marks = new Map(items.map((item) => [item.id, { removedAt: now, removedBytes: item.freeableBytes }]));
 		const updates: Partial<Task> = {};
 		if (current.sharedVideos) updates.sharedVideos = tombstone(current.sharedVideos, marks);
 		if (current.sharedAudio) updates.sharedAudio = tombstone(current.sharedAudio, marks);
-		return { updates, result: items };
+		return { updates, result };
 	});
 
 	const failed: SharedMediaDeleteSummary["failed"] = [];
@@ -159,20 +179,28 @@ export async function deleteSharedMedia(
 			bytes: done.reduce((sum, item) => sum + item.bytes, 0),
 			freeableBytes: done.reduce((sum, item) => sum + item.freeableBytes, 0),
 			failed,
+			skipped,
 		},
 	};
 }
 
 /** Dry run for the confirmation dialog: what would be deleted and freed, nothing touched. */
-export async function previewSharedMediaDelete(project: Project, taskId: string, mediaIds: string[], loadTasks: (project: Project) => Promise<Task[]>, stat: StatFn = safeStat): Promise<SharedMediaDeleteSummary> {
+export async function previewSharedMediaDelete(
+	project: Project,
+	taskId: string,
+	mediaIds: string[],
+	loadTasks: (project: Project) => Promise<Task[]>,
+	opts: { stat?: StatFn; skipRefused?: boolean } = {},
+): Promise<SharedMediaDeleteSummary> {
 	const allTasks = await loadTasks(project);
 	const task = allTasks.find((candidate) => candidate.id === taskId);
 	if (!task) throw new SharedMediaDeleteError(`Task not found: ${taskId}`);
-	const plan = planSharedMediaDelete(project, task, allTasks, mediaIds, stat);
+	const { items, skipped } = planSharedMediaDelete(project, task, allTasks, mediaIds, opts);
 	return {
-		count: plan.length,
-		bytes: plan.reduce((sum, item) => sum + item.bytes, 0),
-		freeableBytes: plan.reduce((sum, item) => sum + item.freeableBytes, 0),
+		count: items.length,
+		bytes: items.reduce((sum, item) => sum + item.bytes, 0),
+		freeableBytes: items.reduce((sum, item) => sum + item.freeableBytes, 0),
 		failed: [],
+		skipped,
 	};
 }

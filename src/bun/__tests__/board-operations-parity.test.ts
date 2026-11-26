@@ -73,24 +73,18 @@ describe("board operations — GUI and CLI doors agree on notes", () => {
 
 		expect(viaGui.notes?.map((n) => n.source)).toEqual(["ai"]);
 		expect((viaCli.data as Task).notes?.map((n) => n.source)).toEqual(["ai", "user"]);
+
+		// The GUI door creates a blank note for + Add Note; the CLI door still refuses empty content.
+		const blank = await gui.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "", source: "user" });
+		const emptyCli = await cli("note.add", { taskId: "task-1", projectId: "proj-1", content: "" });
+		expect(blank.notes?.map((n) => n.content)).toEqual(["a", "b", ""]);
+		expect(emptyCli).toMatchObject({ ok: false, error: "content is required" });
 	});
 
-	it("the GUI door creates a blank note for + Add Note; the CLI door still refuses empty content", async () => {
-		board = await createBoard();
-		await recordProductionPushes();
-		const { gui, cli } = await doors();
-
-		const viaGui = await gui.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "", source: "user" });
-		const viaCli = await cli("note.add", { taskId: "task-1", projectId: "proj-1", content: "" });
-
-		expect(viaGui.notes?.map((n) => n.content)).toEqual([""]);
-		expect(viaCli).toMatchObject({ ok: false, error: "content is required" });
-	});
-
-	it("GUI note edits and deletes now reach other clients (they used to push nothing)", async () => {
+	it("GUI note edits and deletes now reach other clients (they used to push nothing); CLI delete resolves a prefix", async () => {
 		board = await createBoard();
 		const pushes = await recordProductionPushes();
-		const { gui } = await doors();
+		const { gui, cli } = await doors();
 
 		const added = await gui.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "v1" });
 		const noteId = added.notes![0].id;
@@ -100,17 +94,12 @@ describe("board operations — GUI and CLI doors agree on notes", () => {
 		expect(pushes.map((p) => p.name)).toEqual(["taskUpdated", "taskUpdated", "taskUpdated"]);
 		expect((pushes[1].payload.task as Task).notes?.[0].content).toBe("v2");
 		expect((pushes[2].payload.task as Task).notes).toEqual([]);
-	});
 
-	it("CLI note delete resolves a prefix and keeps its not-found error", async () => {
-		board = await createBoard();
-		await recordProductionPushes();
-		const { gui, cli } = await doors();
-		const added = await gui.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "x" });
-		const noteId = added.notes![0].id;
-
+		// CLI note delete resolves a prefix and keeps its not-found error.
+		const second = await gui.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "x" });
+		const secondId = second.notes![0].id;
 		const missing = await cli("note.delete", { taskId: "task-1", projectId: "proj-1", noteId: "zzzzzzzz" });
-		const byPrefix = await cli("note.delete", { taskId: "task-1", projectId: "proj-1", noteId: noteId.slice(0, 8) });
+		const byPrefix = await cli("note.delete", { taskId: "task-1", projectId: "proj-1", noteId: secondId.slice(0, 8) });
 
 		expect(missing).toMatchObject({ ok: false, error: "Note not found: zzzzzzzz" });
 		expect(byPrefix.ok).toBe(true);

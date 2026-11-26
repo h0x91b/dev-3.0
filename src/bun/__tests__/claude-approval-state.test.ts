@@ -5,22 +5,23 @@ const parent = { sessionId: "s" };
 const child = { sessionId: "s", agentId: "reader" };
 
 describe("ClaudeApprovalState", () => {
-	it.each(["todo", "completed", "cancelled"] as const)("does not revive a %s task", status => {
-		const state = new ClaudeApprovalState();
-		expect(state.apply("t", status, "PermissionRequest", child)).toBeNull();
-		expect(state.apply("t", status, "PreToolUse", child)).toBeNull();
+	it("does not revive a todo, completed or cancelled task", () => {
+		for (const status of ["todo", "completed", "cancelled"] as const) {
+			const state = new ClaudeApprovalState();
+			expect(state.apply("t", status, "PermissionRequest", child), status).toBeNull();
+			expect(state.apply("t", status, "PreToolUse", child), status).toBeNull();
+		}
 	});
 
-	it("keeps another agent's wait visible when the parent submits a new prompt", () => {
+	it("keeps another agent's wait visible on a new parent prompt, but clears the parent's own", () => {
 		const state = new ClaudeApprovalState();
 		state.apply("t", "in-progress", "PermissionRequest", child);
 		expect(state.apply("t", "user-questions", "UserPromptSubmit", parent)).toBe("user-questions");
-	});
 
-	it("clears the parent's own cancelled wait on a new prompt", () => {
-		const state = new ClaudeApprovalState();
-		state.apply("t", "in-progress", "PermissionRequest", parent);
-		expect(state.apply("t", "user-questions", "UserPromptSubmit", parent)).toBe("in-progress");
+		// The parent's own cancelled wait, by contrast, clears.
+		const own = new ClaudeApprovalState();
+		own.apply("t", "in-progress", "PermissionRequest", parent);
+		expect(own.apply("t", "user-questions", "UserPromptSubmit", parent)).toBe("in-progress");
 	});
 
 	it("remembers a parent that stops while its child awaits approval", () => {
@@ -28,41 +29,36 @@ describe("ClaudeApprovalState", () => {
 		state.apply("t", "in-progress", "PermissionRequest", child);
 		expect(state.stopParent("t", "user-questions", "s", "review-by-user")).toBe("user-questions");
 		expect(state.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
+		// Unowned semantic questions are preserved when the parent stops.
+		expect(new ClaudeApprovalState().stopParent("t", "user-questions", "s", "review-by-user")).toBeNull();
 	});
 
-	it("keeps working until every child of a stopped parent finishes", () => {
+	it("keeps working until every child of a stopped parent finishes, and finishes a paused AI reviewer", () => {
 		const state = new ClaudeApprovalState();
 		state.apply("t", "in-progress", "PreToolUse", child);
 		expect(state.stopParent("t", "in-progress", "s", "review-by-ai")).toBe("in-progress");
 		expect(state.apply("t", "in-progress", "SubagentStop", child)).toBe("review-by-ai");
+
+		// A paused AI reviewer finishes after its child stops.
+		const reviewer = new ClaudeApprovalState();
+		reviewer.apply("t", "review-by-ai", "PermissionRequest", child);
+		expect(reviewer.stopParent("t", "user-questions", "s", "review-by-ai")).toBe("user-questions");
+		expect(reviewer.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
 	});
 
-	it("finishes a paused AI reviewer after its child stops", () => {
-		const state = new ClaudeApprovalState();
-		state.apply("t", "review-by-ai", "PermissionRequest", child);
-		expect(state.stopParent("t", "user-questions", "s", "review-by-ai")).toBe("user-questions");
-		expect(state.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
-	});
-
-	it("preserves unowned semantic questions when the parent stops", () => {
-		const state = new ClaudeApprovalState();
-		expect(state.stopParent("t", "user-questions", "s", "review-by-user")).toBeNull();
-	});
-
-	it("scopes session cleanup to that conversation", () => {
+	it("scopes session cleanup to that conversation, and state to its task", () => {
 		const state = new ClaudeApprovalState();
 		state.apply("t", "in-progress", "PermissionRequest", child);
 		state.apply("t", "user-questions", "PermissionRequest", { sessionId: "other", agentId: "reader" });
 		state.endSession("t", "s");
 		expect(state.apply("t", "user-questions", "PreToolUse", parent)).toBe("user-questions");
 		expect(state.apply("t", "user-questions", "PostToolUse", { sessionId: "other", agentId: "reader" })).toBe("in-progress");
-	});
 
-	it("does not interfere with other tasks", () => {
-		const state = new ClaudeApprovalState();
-		state.apply("t", "in-progress", "PermissionRequest", parent);
-		expect(state.apply("other", "review-by-user", "PreToolUse", child)).toBe("in-progress");
-		expect(state.apply("t", "user-questions", "PreToolUse", child)).toBe("user-questions");
+		// Other tasks are not interfered with either.
+		const tasks = new ClaudeApprovalState();
+		tasks.apply("t", "in-progress", "PermissionRequest", parent);
+		expect(tasks.apply("other", "review-by-user", "PreToolUse", child)).toBe("in-progress");
+		expect(tasks.apply("t", "user-questions", "PreToolUse", child)).toBe("user-questions");
 	});
 
 	it("restores AI review after multiple owners resume", () => {
@@ -119,20 +115,19 @@ describe("ClaudeApprovalState", () => {
 		expect(state.apply("t", "in-progress", "SubagentStop", busy)).toBe("review-by-ai");
 	});
 
-	it("never expires a background agent that waits on an approval", () => {
+	it("never expires a background agent that waits on an approval, nor arms expiry while the parent works", () => {
 		const state = new ClaudeApprovalState();
 		state.apply("t", "in-progress", "PermissionRequest", child, 0);
 		state.stopParent("t", "user-questions", "s", "review-by-user");
 		expect(state.nextExpiry("t")).toBeNull();
 		expect(state.expireStale("t", "user-questions", 10 * CLAUDE_BACKGROUND_STALE_MS)).toBeNull();
 		expect(state.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
-	});
 
-	it("does not arm expiry while the parent is still working", () => {
-		const state = new ClaudeApprovalState();
-		state.apply("t", "in-progress", "PreToolUse", child, 0);
-		expect(state.nextExpiry("t")).toBeNull();
-		expect(state.expireStale("t", "in-progress", 10 * CLAUDE_BACKGROUND_STALE_MS)).toBeNull();
+		// Nor is expiry armed while the parent is still working.
+		const working = new ClaudeApprovalState();
+		working.apply("t", "in-progress", "PreToolUse", child, 0);
+		expect(working.nextExpiry("t")).toBeNull();
+		expect(working.expireStale("t", "in-progress", 10 * CLAUDE_BACKGROUND_STALE_MS)).toBeNull();
 	});
 
 	it("clears a parent's own wait on a failed call without claiming the idle agent is working", () => {
@@ -141,12 +136,11 @@ describe("ClaudeApprovalState", () => {
 		expect(state.apply("t", "user-questions", "PostToolUseFailure", parent)).toBeNull();
 		expect(state.apply("t", "review-by-user", "PostToolUseFailure", parent)).toBeNull();
 		expect(state.apply("t", "user-questions", "PreToolUse", parent)).toBe("in-progress");
-	});
 
-	it("resumes a background agent whose own wait ends in a failed call", () => {
-		const state = new ClaudeApprovalState();
-		state.apply("t", "in-progress", "PermissionRequest", child);
-		expect(state.apply("t", "user-questions", "PostToolUseFailure", child)).toBe("in-progress");
+		// A background agent whose own wait ends in a failed call resumes.
+		const bg = new ClaudeApprovalState();
+		bg.apply("t", "in-progress", "PermissionRequest", child);
+		expect(bg.apply("t", "user-questions", "PostToolUseFailure", child)).toBe("in-progress");
 	});
 
 	it("forgetTask drops every owner and cancels the pending expiry timer", () => {

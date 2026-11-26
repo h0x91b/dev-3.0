@@ -16,14 +16,11 @@ const WORKFLOW = readFileSync(
 );
 
 describe("deciding whether a platform needs an canary build", () => {
-	it("builds when no manifest has ever been published", () => {
+	it("builds when no manifest has ever been published, and skips when it is already at this commit", () => {
 		expect(decidePlatformPublish({ kind: "absent" }, HEAD)).toEqual({
 			build: true,
 			reason: "no canary manifest has ever been published for this platform",
 		});
-	});
-
-	it("skips when the published manifest is already at this commit", () => {
 		const decision = decidePlatformPublish({ kind: "present", body: JSON.stringify({ sha: HEAD }) }, HEAD);
 		expect(
 			decision,
@@ -31,8 +28,12 @@ describe("deciding whether a platform needs an canary build", () => {
 		).toMatchObject({ build: false });
 	});
 
-	it("builds when the published manifest is at an older commit", () => {
+	it("builds when the published manifest is at an older commit, or predates the sha field", () => {
 		expect(decidePlatformPublish({ kind: "present", body: JSON.stringify({ sha: "cafe1234deadbeef" }) }, HEAD))
+			.toMatchObject({ build: true });
+		// Cannot be compared, so it cannot be trusted as current. Builds exactly once,
+		// after which the field is present.
+		expect(decidePlatformPublish({ kind: "present", body: JSON.stringify({ version: "1.42.0" }) }, HEAD))
 			.toMatchObject({ build: true });
 	});
 
@@ -48,24 +49,13 @@ describe("deciding whether a platform needs an canary build", () => {
 			decision,
 			"an undecidable read must be an ERROR, never a build. A missing key on this bucket answers 403 to an anonymous caller, so treating an unproven absence as absent turns one bucket-policy change into a full sign-and-notarize cycle every hour, forever.",
 		).toMatchObject({ error: expect.stringContaining("403 AccessDenied") });
-	});
-
-	it("FAILS on a server error rather than guessing", () => {
-		expect(decidePlatformPublish({ kind: "undecidable", detail: "503 Slow Down" }, HEAD)).toMatchObject({
-			error: expect.stringContaining("503"),
-		});
-	});
-
-	it("quotes what it actually saw, so absent and unreachable stay distinguishable afterwards", () => {
-		const decision = decidePlatformPublish({ kind: "undecidable", detail: "500 Internal Error" }, HEAD);
+		// A server error fails too, quoting what it actually saw, so absent and unreachable stay distinguishable.
+		const serverError = decidePlatformPublish({ kind: "undecidable", detail: "500 Internal Error" }, HEAD);
 		expect(
-			"error" in decision && decision.error,
+			"error" in serverError && serverError.error,
 			"the failure must quote the probe's own words. Without them the operator cannot tell a transient outage from a permissions change, which are the two causes and have different fixes.",
 		).toContain("500 Internal Error");
-	});
-
-	it("names s3:ListBucket in the failure, because that is the fix for the likely cause", () => {
-		const decision = decidePlatformPublish({ kind: "undecidable", detail: "403 AccessDenied" }, HEAD);
+		// It names s3:ListBucket, because that is the fix for the likely cause.
 		expect(
 			"error" in decision && decision.error,
 			"the undecidable failure must name the permission that makes absence provable. Without it the operator reads 'could not be read', checks that the bucket is up, finds it is, and has nowhere to go next.",
@@ -78,25 +68,16 @@ describe("deciding whether a platform needs an canary build", () => {
 		});
 	});
 
-	it("builds when the published manifest predates the sha field", () => {
-		// Cannot be compared, so it cannot be trusted as current. Builds exactly once,
-		// after which the field is present.
-		expect(decidePlatformPublish({ kind: "present", body: JSON.stringify({ version: "1.42.0" }) }, HEAD))
-			.toMatchObject({ build: true });
-	});
-
-	it("covers every platform the workflow publishes", () => {
+	it("covers every platform the workflow publishes, spelling Windows the way the updater does", () => {
 		expect(
 			CANARY_PLATFORMS.map((p) => `${p.os}-${p.arch}`),
 			"the platform list must match the caller jobs in canary-publish.yml. A platform present in the workflow but missing here is never probed, so it publishes every hour regardless of whether main moved.",
 		).toEqual(["macos-arm64", "macos-x64", "linux-x64", "linux-arm64", "win-x64"]);
-	});
 
-	// The token, not the platform. `windows` is what every runner label, workflow filename and
-	// English sentence says, and it would build a perfectly well-formed
-	// `canary-windows-x64-update.json` that no client ever fetches — green run, populated
-	// bucket, zero Windows users updated, nothing anywhere saying why.
-	it("spells Windows the way the updater spells it, not the way the runner does", () => {
+		// The token, not the platform. `windows` is what every runner label, workflow filename and
+		// English sentence says, and it would build a perfectly well-formed
+		// `canary-windows-x64-update.json` that no client ever fetches — green run, populated
+		// bucket, zero Windows users updated, nothing anywhere saying why.
 		const updater = readFileSync(
 			fileURLToPath(new URL("../updater.ts", import.meta.url)),
 			"utf8",
@@ -140,7 +121,7 @@ describe("the publisher can reach its own first publish", () => {
 		"utf8",
 	);
 
-	it("probes the feed with credentials, not anonymously", () => {
+	it("probes the feed with credentials, not anonymously, and the decide job carries them", () => {
 		expect(
 			SCRIPT,
 			"the probe went back to an unauthenticated fetch of the feed URL. On this bucket a MISSING key answers 403, not 404, so absence can never be proven and the first publish is unreachable — the cron then fails every hour forever. Fix: read the object through the aws CLI with the publishing credentials.",
@@ -149,9 +130,6 @@ describe("the publisher can reach its own first publish", () => {
 			/fetch\(/.test(SCRIPT),
 			"an anonymous fetch is back in the probe. It cannot distinguish a missing key from a denied one on this bucket. Fix: use the authenticated read.",
 		).toBe(false);
-	});
-
-	it("carries the credentials into the probing step", () => {
 		const decide = /^ {2}decide:$[\s\S]*?^ {2}[a-z-]+:$/m.exec(WORKFLOW)?.[0] ?? WORKFLOW;
 		expect(
 			decide,
@@ -168,9 +146,6 @@ describe("the publisher can reach its own first publish", () => {
 			SCRIPT,
 			"the script no longer reads FORCE_PUBLISH, so the dispatch input is decoration and pressing it does nothing.",
 		).toMatch(/FORCE_PUBLISH/);
-	});
-
-	it("says loudly that a forced run compared nothing", () => {
 		expect(
 			SCRIPT,
 			"a forced run must announce that the feed was NOT compared. Silently publishing four platforms on a human's say-so looks identical in the log to a normal publish, and the next reader will believe the feed said so.",
@@ -187,14 +162,11 @@ describe("the publisher can reach its own first publish", () => {
 describe("the Windows proof is scoped to hours that actually publish", () => {
 	const gate = /^ {2}windows-proof:$[\s\S]*?^ {4}uses:/m.exec(WORKFLOW)?.[0] ?? "";
 
-	it("is conditional at all, rather than running on every quiet hour", () => {
+	it("is conditional, and names every platform decide emits so none loses its gate silently", () => {
 		expect(
 			gate,
 			"the windows-proof job in canary-publish.yml has no `if:`, so it packages Windows every hour whether or not anything publishes. Fix: gate it on the decide outputs — see the comment above the job.",
 		).toMatch(/^ {4}if:/m);
-	});
-
-	it("names every platform decide emits, so none loses its gate silently", () => {
 		const missing = CANARY_PLATFORMS.map((p) => `${p.os}-${p.arch}`).filter(
 			(key) => !gate.includes(`needs.decide.outputs.${key} == 'true'`),
 		);

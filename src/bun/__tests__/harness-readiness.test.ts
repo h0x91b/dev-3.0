@@ -27,50 +27,41 @@ function agent(baseCommand: string, installed = true): AgentCheckResult {
 }
 
 describe("harnessSignIn", () => {
-	it("says unknown for a CLI it has no probe for", () => {
+	it("says unknown for a CLI it has no probe for, or when the probe itself throws", () => {
 		expect(harnessSignIn("some-new-agent", probeEnv())).toBe("unknown");
+		expect(harnessSignIn("codex", probeEnv({ readJson: () => { throw new Error("EACCES"); } }))).toBe("unknown");
 	});
 
-	it("reads a Claude OAuth login out of ~/.claude.json", () => {
-		const p = probeEnv({ files: { "/home/u/.claude.json": { oauthAccount: { emailAddress: "a@b.c" } } } });
-		expect(harnessSignIn("claude", p)).toBe("signed-in");
+	it("finds a Claude login in ~/.claude.json, a bare credentials file, or a dev3-managed account dir", () => {
+		const cases: Array<[name: string, p: ProbeEnv]> = [
+			["OAuth login in ~/.claude.json", probeEnv({ files: { "/home/u/.claude.json": { oauthAccount: { emailAddress: "a@b.c" } } } })],
+			["credentials file with no .claude.json", probeEnv({ files: { "/home/u/.claude/.credentials.json": {} } })],
+			["dev3-managed account dir", probeEnv({
+				files: { "/accounts/one/.claude.json": { oauthAccount: { emailAddress: "a@b.c" } } },
+				claudeAccountDirs: () => ["/accounts/one"],
+			})],
+		];
+		for (const [name, p] of cases) expect(harnessSignIn("claude", p), name).toBe("signed-in");
 	});
 
-	it("accepts a Claude credentials file with no .claude.json at all", () => {
-		expect(harnessSignIn("claude", probeEnv({ files: { "/home/u/.claude/.credentials.json": {} } }))).toBe("signed-in");
-	});
-
-	it("counts a dev3-managed Claude account dir, not just the system home", () => {
-		const p = probeEnv({
-			files: { "/accounts/one/.claude.json": { oauthAccount: { emailAddress: "a@b.c" } } },
-			claudeAccountDirs: () => ["/accounts/one"],
-		});
-		expect(harnessSignIn("claude", p)).toBe("signed-in");
-	});
-
-	it("treats an API key as signed in — there is no login to do", () => {
+	it("treats an API key as signed in — there is no login to do — but not a blank one", () => {
 		expect(harnessSignIn("claude", probeEnv({ env: { ANTHROPIC_API_KEY: "sk-x" } }))).toBe("signed-in");
 		expect(harnessSignIn("codex", probeEnv({ env: { OPENAI_API_KEY: "sk-x" } }))).toBe("signed-in");
 		expect(harnessSignIn("gemini", probeEnv({ env: { GEMINI_API_KEY: "x" } }))).toBe("signed-in");
-	});
-
-	it("ignores a blank env var — an exported empty key is not a credential", () => {
+		// An exported empty key is not a credential.
 		expect(harnessSignIn("claude", probeEnv({ env: { ANTHROPIC_API_KEY: "  " } }))).toBe("not-signed-in");
 	});
 
-	it("reads Codex auth.json and rejects an emptied one", () => {
-		expect(harnessSignIn("codex", probeEnv({ files: { "/home/u/.codex/auth.json": { tokens: { id_token: "x" } } } }))).toBe("signed-in");
-		expect(harnessSignIn("codex", probeEnv({ files: { "/home/u/.codex/auth.json": {} } }))).toBe("not-signed-in");
-	});
-
-	it("reads Gemini's active google account", () => {
-		expect(harnessSignIn("gemini", probeEnv({ files: { "/home/u/.gemini/google_accounts.json": { active: "a@b.c" } } }))).toBe("signed-in");
-		expect(harnessSignIn("gemini", probeEnv({ files: { "/home/u/.gemini/google_accounts.json": { active: "" } } }))).toBe("not-signed-in");
-	});
-
-	it("reads Cursor Agent's authInfo", () => {
-		expect(harnessSignIn("agent", probeEnv({ files: { "/home/u/.cursor/cli-config.json": { authInfo: { x: 1 } } } }))).toBe("signed-in");
-		expect(harnessSignIn("agent", probeEnv({ files: { "/home/u/.cursor/cli-config.json": { model: "auto" } } }))).toBe("not-signed-in");
+	it("reads Codex auth.json, Gemini's active account and Cursor Agent's authInfo, rejecting an emptied one", () => {
+		const cases: Array<[cli: string, file: string, good: unknown, emptied: unknown]> = [
+			["codex", "/home/u/.codex/auth.json", { tokens: { id_token: "x" } }, {}],
+			["gemini", "/home/u/.gemini/google_accounts.json", { active: "a@b.c" }, { active: "" }],
+			["agent", "/home/u/.cursor/cli-config.json", { authInfo: { x: 1 } }, { model: "auto" }],
+		];
+		for (const [cli, file, good, emptied] of cases) {
+			expect(harnessSignIn(cli, probeEnv({ files: { [file]: good } })), cli).toBe("signed-in");
+			expect(harnessSignIn(cli, probeEnv({ files: { [file]: emptied } })), cli).toBe("not-signed-in");
+		}
 	});
 
 	it("finds OpenCode's auth store under XDG or the plain config dir", () => {
@@ -91,42 +82,27 @@ describe("harnessSignIn", () => {
 		expect(harnessSignIn("pi", probeEnv())).toBe("unknown");
 		expect(harnessSignIn("pi", probeEnv({ files: { "/home/u/.pi/agent/auth.json": { anthropic: {} } } }))).toBe("unknown");
 	});
-
-	it("reports unknown when the probe itself throws", () => {
-		const p = probeEnv({ readJson: () => { throw new Error("EACCES"); } });
-		expect(harnessSignIn("codex", p)).toBe("unknown");
-	});
 });
 
 describe("harnessReadinessFrom", () => {
-	it("reports nothing installed when no binary resolves", () => {
+	it("reports nothing installed when no binary resolves, without probing an uninstalled CLI's credentials", () => {
 		const report = harnessReadinessFrom([agent("claude", false), agent("codex", false)], probeEnv());
 		expect(report.noneInstalled).toBe(true);
 		expect(report.usable).toEqual([]);
-	});
-
-	it("does not probe an uninstalled CLI — its credentials are beside the point", () => {
 		const p = probeEnv({ files: { "/home/u/.claude.json": { oauthAccount: {} } } });
-		const report = harnessReadinessFrom([agent("claude", false)], p);
-		expect(report.harnesses[0].signIn).toBe("unknown");
-		expect(report.usable).toEqual([]);
+		const uninstalled = harnessReadinessFrom([agent("claude", false)], p);
+		expect(uninstalled.harnesses[0].signIn).toBe("unknown");
+		expect(uninstalled.usable).toEqual([]);
 	});
 
-	it("blocks when every installed CLI is provably signed out", () => {
-		const report = harnessReadinessFrom([agent("claude"), agent("codex")], probeEnv());
-		expect(report.noneInstalled).toBe(false);
-		expect(report.usable).toEqual([]);
-	});
-
-	it("passes an unprobeable CLI rather than blocking on our own ignorance", () => {
-		const report = harnessReadinessFrom([agent("claude"), agent("some-new-agent")], probeEnv());
-		expect(report.usable).toEqual(["builtin-some-new-agent"]);
-	});
-
-	it("passes as soon as one CLI holds credentials", () => {
+	it("blocks only when every installed CLI is provably signed out, passing an unprobeable or credentialed one", () => {
+		const signedOut = harnessReadinessFrom([agent("claude"), agent("codex")], probeEnv());
+		expect(signedOut.noneInstalled).toBe(false);
+		expect(signedOut.usable).toEqual([]);
+		// An unprobeable CLI passes rather than blocking on our own ignorance.
+		expect(harnessReadinessFrom([agent("claude"), agent("some-new-agent")], probeEnv()).usable).toEqual(["builtin-some-new-agent"]);
 		const p = probeEnv({ files: { "/home/u/.codex/auth.json": { tokens: {} } } });
-		const report = harnessReadinessFrom([agent("claude"), agent("codex")], p);
-		expect(report.usable).toEqual(["builtin-codex"]);
+		expect(harnessReadinessFrom([agent("claude"), agent("codex")], p).usable).toEqual(["builtin-codex"]);
 	});
 });
 

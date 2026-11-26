@@ -41,9 +41,8 @@ describe("rev-parse --verify misses", () => {
 		expect(await getBehindOriginCount(repo.local, "dev3/task-unpushed")).toBe(0);
 		expect(await refExists(repo.local, "origin/dev3/task-unpushed")).toBe(false);
 		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
-	});
 
-	it("a real git error is still logged", async () => {
+		// A real git error is still logged.
 		const notARepo = mkdtempSync(join(tmpdir(), "dev3-not-a-repo-"));
 		try {
 			expect(await refExists(notARepo, "main")).toBe(false);
@@ -69,12 +68,10 @@ describe("merge-base --is-ancestor answers", () => {
 		cleanup(repo);
 	});
 
-	it("a commit that is not an ancestor is not logged as a failed git command", async () => {
+	it("a commit that is not an ancestor is not logged, but an unresolvable ref still is", async () => {
 		expect(await isRefMergedInto(repo.local, "feature", "main")).toBe(false);
 		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
-	});
 
-	it("an unresolvable ref is still logged", async () => {
 		expect(await isRefMergedInto(repo.local, "no-such-branch", "main")).toBe(false);
 		expect(warn).toHaveBeenCalledWith("Git command failed", expect.objectContaining({ exitCode: 128 }));
 	});
@@ -92,23 +89,16 @@ describe("other probes that answer no with exit 1", () => {
 		cleanup(repo);
 	});
 
-	it("an unset config key is not logged as a failed git command", async () => {
+	it("an unset config key or a conflicting merge-tree is not logged; a real failure names only the subcommand", async () => {
 		expect((await run(["git", "config", "--get", "core.sshCommand"], repo.local)).ok).toBe(false);
-		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
-	});
 
-	it("a conflicting merge-tree is not logged as a failed git command", async () => {
 		g("git checkout -b side", repo.local);
 		g("sh -c 'echo side > conflict.txt' && git add conflict.txt && git commit -m side", repo.local);
 		g("git checkout main", repo.local);
 		g("sh -c 'echo main > conflict.txt' && git add conflict.txt && git commit -m main", repo.local);
-		warn.mockClear();
-
 		expect((await run(["git", "merge-tree", "--write-tree", "side", "HEAD"], repo.local)).ok).toBe(false);
 		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
-	});
 
-	it("a real failure names the subcommand but never its arguments", async () => {
 		await run(["git", "rev-parse", "--verify", "no-such-ref"], repo.local);
 		expect(warn).toHaveBeenCalledWith("Git command failed", expect.objectContaining({ subcommand: "rev-parse", exitCode: 128 }));
 	});

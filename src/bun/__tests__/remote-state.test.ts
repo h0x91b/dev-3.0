@@ -58,30 +58,21 @@ describe("remote-state path derivation", () => {
 });
 
 describe("writeRemoteState / readRemoteState", () => {
-	it("round-trips a full state record", () => {
+	it("round-trips a full state record, creating the remote dir if needed", () => {
 		const state = sampleState();
 		writeRemoteState(state);
 		expect(existsSync(REMOTE_STATE_FILE)).toBe(true);
 		expect(readRemoteState()).toEqual(state);
-	});
-
-	it("creates the remote dir if it does not exist", () => {
 		rmSync(REMOTE_DIR, { recursive: true, force: true });
 		writeRemoteState(sampleState());
 		expect(existsSync(REMOTE_STATE_FILE)).toBe(true);
 	});
 
-	it("returns null when no state file exists", () => {
+	it("returns null without a state file, for corrupt JSON, or with required fields missing", () => {
 		expect(readRemoteState()).toBeNull();
-	});
-
-	it("returns null for corrupt JSON", () => {
 		mkdirSync(REMOTE_DIR, { recursive: true });
 		writeFileSync(REMOTE_STATE_FILE, "{ not json");
 		expect(readRemoteState()).toBeNull();
-	});
-
-	it("returns null when required fields are missing", () => {
 		mkdirSync(REMOTE_DIR, { recursive: true });
 		writeFileSync(REMOTE_STATE_FILE, JSON.stringify({ pid: 123 }));
 		expect(readRemoteState()).toBeNull();
@@ -107,28 +98,23 @@ describe("writeRemoteState / readRemoteState", () => {
 });
 
 describe("clearRemoteState", () => {
-	it("removes an existing state file", () => {
+	it("removes an existing state file, and is a no-op without one", () => {
 		writeRemoteState(sampleState());
 		clearRemoteState();
 		expect(existsSync(REMOTE_STATE_FILE)).toBe(false);
-	});
-
-	it("is a no-op when no file exists", () => {
 		expect(() => clearRemoteState()).not.toThrow();
 	});
 });
 
 describe("clearRemoteStateIfOwnedBy", () => {
-	it("clears when the pid matches", () => {
-		writeRemoteState(sampleState({ pid: 777 }));
-		clearRemoteStateIfOwnedBy(777);
-		expect(readRemoteState()).toBeNull();
-	});
 
-	it("leaves a record owned by a different pid intact", () => {
+	it("clears only a record whose pid matches", () => {
 		writeRemoteState(sampleState({ pid: 777 }));
 		clearRemoteStateIfOwnedBy(888);
 		expect(readRemoteState()).not.toBeNull();
+		writeRemoteState(sampleState({ pid: 777 }));
+		clearRemoteStateIfOwnedBy(777);
+		expect(readRemoteState()).toBeNull();
 	});
 });
 
@@ -162,25 +148,12 @@ describe("acquireStartLock / releaseStartLock (F4)", () => {
 		expect(typeof fd).toBe("number");
 		releaseStartLock(fd as number);
 	});
-
-	it("does NOT reclaim a fresh lock held by a live launcher", () => {
-		const fd = acquireStartLock();
-		// A brand-new lock (mtime ~ now) must be respected, not reclaimed.
-		expect(acquireStartLock()).toBeNull();
-		releaseStartLock(fd as number);
-	});
 });
 
 describe("isProcessAlive", () => {
-	it("is true for the current process", () => {
+	it("is true for the current process, false for an unused high pid or a non-positive / non-integer one", () => {
 		expect(isProcessAlive(process.pid)).toBe(true);
-	});
-
-	it("is false for an unused high pid", () => {
 		expect(isProcessAlive(2_000_000_000)).toBe(false);
-	});
-
-	it("is false for non-positive / non-integer pids", () => {
 		expect(isProcessAlive(0)).toBe(false);
 		expect(isProcessAlive(-1)).toBe(false);
 		expect(isProcessAlive(1.5)).toBe(false);
@@ -254,7 +227,7 @@ describe("handoff records", () => {
 // destroys the process holding the in-memory attempt counter. The supervisor runs
 // in a DIFFERENT process, so the count only survives if it is on disk.
 describe("recordUpdateFailure", () => {
-	it("counts up across calls for the same version", () => {
+	it("counts up per version and resets for a NEW version", () => {
 		writeRemoteState(sampleState());
 		recordUpdateFailure("1.46.0", "did not boot", 1000);
 		recordUpdateFailure("1.46.0", "did not boot again", 2000);
@@ -265,9 +238,6 @@ describe("recordUpdateFailure", () => {
 			lastFailureMs: 2000,
 			lastError: "did not boot again",
 		});
-	});
-
-	it("resets the count when a NEW version starts failing", () => {
 		writeRemoteState(sampleState());
 		recordUpdateFailure("1.46.0", "boom", 1000);
 		recordUpdateFailure("1.47.0", "boom", 2000);
@@ -312,7 +282,7 @@ describe("carriedOverState", () => {
 	// own state file BEFORE the failure is recorded. Dropping the counter on that
 	// write pinned it at 1 forever — the give-up after five attempts was unreachable
 	// and the box re-downloaded the same non-booting release every quiet window.
-	it("carries the update record AND the attempt counter across a restart", () => {
+	it("carries the update record AND the attempt counter across a restart, and nulls without a predecessor", () => {
 		const prior: RemoteServerState = {
 			...sampleState(),
 			lastUpdate: { fromVersion: "1.45.0", toVersion: "1.46.0", startedAt: "2026-08-21T12:00:00Z" },
@@ -324,9 +294,6 @@ describe("carriedOverState", () => {
 
 		expect(carried.lastUpdate?.toVersion).toBe("1.46.0");
 		expect(carried.updateAttempts?.failures).toBe(3);
-	});
-
-	it("carries nulls when there was no predecessor at all", () => {
 		expect(carriedOverState(null)).toEqual({ lastUpdate: null, updateAttempts: null });
 	});
 

@@ -14,31 +14,33 @@ function grid(count: number): SplitTree {
 }
 
 describe("shared layout normalization", () => {
-	it("parks focus on the first pane and clears zoom", () => {
+	it("parks focus on the first pane and clears zoom, returning the same reference when already normalized", () => {
 		const zoomed = zoomPane(splitPane(createSplitTree(), "pane-1", "horizontal"), "pane-2");
 		const shared = normalizeSharedLayout(zoomed);
 		expect(shared.activePaneId).toBe("pane-1");
 		expect(shared.zoomedPaneId).toBeNull();
 		expect(listPaneIds(shared)).toEqual(["pane-1", "pane-2"]);
+		{
+			const shared = grid(4);
+			expect(normalizeSharedLayout(shared)).toBe(shared);
+		}
 	});
 
-	it("returns the same reference when already normalized", () => {
-		const shared = grid(4);
-		expect(normalizeSharedLayout(shared)).toBe(shared);
-	});
 });
 
 describe("directional focus mapping", () => {
-	it("moves right and back left across a horizontal split", () => {
+	it("moves right and back left, stays put with no pane that way, and falls back to the first pane for an unknown origin", () => {
 		const tree = grid(2);
 		expect(directionalFocusTarget(tree, "pane-1", "right")).toBe("pane-2");
 		expect(directionalFocusTarget(tree, "pane-2", "left")).toBe("pane-1");
-	});
-
-	it("stays put when there is no pane that way", () => {
-		const tree = grid(2);
-		expect(directionalFocusTarget(tree, "pane-1", "left")).toBe("pane-1");
-		expect(directionalFocusTarget(tree, "pane-1", "up")).toBe("pane-1");
+		{
+			const tree = grid(2);
+			expect(directionalFocusTarget(tree, "pane-1", "left")).toBe("pane-1");
+			expect(directionalFocusTarget(tree, "pane-1", "up")).toBe("pane-1");
+		}
+		{
+			expect(directionalFocusTarget(grid(3), "pane-99", "down")).toBe("pane-1");
+		}
 	});
 
 	it("never mutates the shared tree, even across six panes", () => {
@@ -52,9 +54,6 @@ describe("directional focus mapping", () => {
 		expect(tree).toEqual(snapshot);
 	});
 
-	it("falls back to the first pane for an unknown origin", () => {
-		expect(directionalFocusTarget(grid(3), "pane-99", "down")).toBe("pane-1");
-	});
 });
 
 describe("coordinator client views", () => {

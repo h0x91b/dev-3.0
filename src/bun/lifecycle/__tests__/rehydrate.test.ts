@@ -142,18 +142,16 @@ describe("boot terminal probe", () => {
 		await rehydrateTaskLifecycles();
 	}
 
-	it("probes a native task for presence instead of reattaching to it", async () => {
+	it("probes a native task for presence instead of reattaching to it, and reports what it found", async () => {
 		await bootWith({ terminalBackend: "native" });
 
 		expect(nativeTaskPanesAlive).toHaveBeenCalledTimes(1);
 		expect(pty.reattachNativeTaskSession).not.toHaveBeenCalled();
-	});
 
-	it("reports what the native probe found", async () => {
+		// It reports what the native probe found.
+		vi.clearAllMocks();
 		vi.mocked(nativeTaskPanesAlive).mockResolvedValueOnce(false);
-
 		await bootWith({ terminalBackend: "native" });
-
 		expect(bootReality().terminalAlive).toBe(false);
 		expect(pty.tmuxSessionExists).not.toHaveBeenCalled();
 	});
@@ -187,18 +185,15 @@ describe("boot recovery and runs owned by another instance", () => {
 		await rehydrateTaskLifecycles();
 	}
 
-	it("does not touch a preparation stamped by a live peer", async () => {
+	it("does not touch a preparation or a tear-down stamped by a live peer", async () => {
 		vi.mocked(peerEndpointForPid).mockReturnValue(`/sockets/${PEER_PID}.sock`);
 
 		await bootPreparing({ runtime: "preparing", stage: "creating-worktree", runId: "r1", ownerPid: PEER_PID, updatedAt: 1 });
 
 		expect(peerEndpointForPid).toHaveBeenCalledWith(PEER_PID);
 		expect(dispatchLifecycleEvent).not.toHaveBeenCalled();
-	});
 
-	it("does not touch a tear-down stamped by a live peer", async () => {
-		vi.mocked(peerEndpointForPid).mockReturnValue(`/sockets/${PEER_PID}.sock`);
-
+		// Nor a tear-down.
 		await bootPreparing({ runtime: "tearing-down", stage: "completed", runId: "r1", ownerPid: PEER_PID, updatedAt: 1 });
 
 		expect(dispatchLifecycleEvent).not.toHaveBeenCalled();

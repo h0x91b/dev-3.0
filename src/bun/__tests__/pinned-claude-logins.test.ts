@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 
 describe("listPinnedClaudeLogins", () => {
-	it("groups projects by their normalized dir and skips ~/.claude and unpinned ones", async () => {
+	it("groups projects by their normalized dir, treating ~/.claude as the system login and skipping unpinned ones", async () => {
 		const logins = await agentAccountHandlers.listPinnedClaudeLogins();
 		expect(logins).toEqual([
 			{
@@ -65,9 +65,8 @@ describe("listPinnedClaudeLogins", () => {
 				accountId: null,
 			},
 		]);
-	});
 
-	it("treats a project pinning its home .claude as the system login", async () => {
+		// A project pinning its home .claude is the system login.
 		vi.mocked(data.getProject).mockResolvedValue(project("c"));
 		await expect(agentAccountHandlers.getProjectClaudeLogin({ projectId: "c" })).resolves.toEqual({
 			configDir: null,
@@ -86,21 +85,24 @@ describe("getClaudePickLaunches", () => {
 		}));
 	});
 
-	it.each([
-		["a", null],
-		["f", "bedrock"],
-		["g", "env-auth"],
-		["h", null],
-		["i", "model"],
-		["j", "model"],
-		["k", "gateway"],
-		["l", "env-auth"],
-	])("reports the backend project %s's env puts Claude on for no pick, and drops it for a named login: %s", async (id, backend) => {
-		vi.mocked(data.getProject).mockResolvedValue(project(id));
-		await expect(agentAccountHandlers.getClaudePickLaunches({ projectId: id })).resolves.toEqual({
-			none: { projectFolder: true, backend },
-			accounts: { "cl-1": { projectFolder: true, backend: null }, "cl-2": { projectFolder: false, backend: null } },
-		});
+	it("reports the backend each project's env puts Claude on for no pick, and drops it for a named login", async () => {
+		const cases: Array<[string, string | null]> = [
+			["a", null],
+			["f", "bedrock"],
+			["g", "env-auth"],
+			["h", null],
+			["i", "model"],
+			["j", "model"],
+			["k", "gateway"],
+			["l", "env-auth"],
+		];
+		for (const [id, backend] of cases) {
+			vi.mocked(data.getProject).mockResolvedValue(project(id));
+			await expect(agentAccountHandlers.getClaudePickLaunches({ projectId: id }), id).resolves.toEqual({
+				none: { projectFolder: true, backend },
+				accounts: { "cl-1": { projectFolder: true, backend: null }, "cl-2": { projectFolder: false, backend: null } },
+			});
+		}
 	});
 
 	it("names no backend when the project pins no folder", async () => {
@@ -126,21 +128,18 @@ describe("getClaudePickLaunches", () => {
 		});
 	});
 
-	it("leaves out the accounts a --continue resume would refuse to switch to", async () => {
+	it("leaves out the accounts a --continue resume would refuse to switch to, keeping same-folder switches", async () => {
 		vi.mocked(data.getProject).mockResolvedValue(project("a"));
 		vi.mocked(data.getTask).mockResolvedValue({ id: "t1", worktreePath: "/wt/t1" } as any);
 		// The pane ran on cl-2 with no conversation id: only a re-pick of cl-2 is no switch.
 		vi.mocked(claudeResumePickTarget).mockReturnValueOnce({ sessionId: null, agentLatest: true, savedAccountId: "cl-2" });
 		const { accounts } = await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true });
 		expect(accounts).toEqual({ "cl-2": { projectFolder: false, backend: null } });
-	});
 
-	it("keeps a --continue switch that stays in the project folder the pane ran in", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(project("a"));
-		vi.mocked(data.getTask).mockResolvedValue({ id: "t1", worktreePath: "/wt/t1" } as any);
+		// With no saved account, a --continue switch that stays in the project folder is kept.
 		vi.mocked(claudeResumePickTarget).mockReturnValueOnce({ sessionId: null, agentLatest: true, savedAccountId: undefined });
-		const { accounts } = await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true });
-		expect(Object.keys(accounts)).toEqual(["cl-1"]);
+		const kept = await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true });
+		expect(Object.keys(kept.accounts)).toEqual(["cl-1"]);
 	});
 
 	it("logs a failure before the picker sees it", async () => {

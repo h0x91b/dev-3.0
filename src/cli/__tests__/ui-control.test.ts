@@ -102,43 +102,29 @@ describe("notify", () => {
 		expect(mockSend.mock.calls[0][2]).toMatchObject({ taskId: "other-task", sourceTaskId: CTX.taskId });
 	});
 
-	it("passes the harness session id when the environment carries one", async () => {
+	it("passes the harness session id only when the environment carries one", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
+
+		await handleNotify(args(["hi"]), SOCKET, CTX);
+		expect(mockSend.mock.calls[0][2], "never invents one").not.toHaveProperty("sourceSessionId");
+
 		process.env.CLAUDE_CODE_SESSION_ID = "session-xyz";
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
-
 		await handleNotify(args(["hi"]), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).toMatchObject({ sourceSessionId: "session-xyz" });
+		expect(mockSend.mock.calls[1][2]).toMatchObject({ sourceSessionId: "session-xyz" });
 	});
 
-	it("omits the session id rather than inventing one when the environment has none", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
-
-		await handleNotify(args(["hi"]), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).not.toHaveProperty("sourceSessionId");
-	});
-
-	it("omits the caller's worktree when the command ran outside one", async () => {
+	it("sends a plain non-clickable toast without the caller's worktree outside one", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: null }));
 
-		await handleNotify(args(["hi"]), SOCKET, null);
+		await handleNotify(args(["heads up"]), SOCKET, null);
 
-		expect(mockSend.mock.calls[0][2]).not.toHaveProperty("sourceTaskId");
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params).not.toHaveProperty("sourceTaskId");
+		expect(params.taskId).toBeUndefined();
+		expect(params.message).toBe("heads up");
 	});
 
-	it("marks the fan-out copies so only the primary is recorded", async () => {
-		mockEndpoints.mockReturnValue([SOCKET, "/tmp/guest-a.sock"]);
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
-
-		await handleNotify(args(["build is green"]), SOCKET, CTX);
-
-		const [primary, fanout] = mockSend.mock.calls;
-		expect(primary[2]).not.toHaveProperty("fanout");
-		expect(fanout[2]).toMatchObject({ fanout: true });
-	});
-
-	it("delivers the toast to every live instance, not just the one it dialed", async () => {
+	it("delivers the toast to every live instance, marking only fan-out copies, and still succeeds when one refuses", async () => {
 		mockEndpoints.mockReturnValue([SOCKET, "/tmp/guest-a.sock", "/tmp/guest-b.sock"]);
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
 
@@ -148,9 +134,10 @@ describe("notify", () => {
 		expect(dialed).toEqual([SOCKET, "/tmp/guest-a.sock", "/tmp/guest-b.sock"]);
 		expect(new Set(mockSend.mock.calls.map((call) => call[1]))).toEqual(new Set(["ui.notify"]));
 		expect(stdoutOutput).toContain("Toast sent to 3 instances");
-	});
-
-	it("still reports success when a second instance refuses the fan-out", async () => {
+		const [primary, fanout] = mockSend.mock.calls;
+		expect(primary[2]).not.toHaveProperty("fanout");
+		expect(fanout[2]).toMatchObject({ fanout: true });
+		// A second instance that refuses the fan-out does not fail the toast.
 		mockEndpoints.mockReturnValue([SOCKET, "/tmp/dying.sock"]);
 		mockSend.mockImplementation(async (socket: string) => {
 			if (socket !== SOCKET) throw new Error("Empty response from server");
@@ -163,101 +150,50 @@ describe("notify", () => {
 		expect(stderrOutput).toBe("");
 	});
 
-	it("does not fan out an OS notification — one machine, one Notification Center", async () => {
+	it("forwards --desktop and does not fan out an OS notification — one machine, one Notification Center", async () => {
 		mockEndpoints.mockReturnValue([SOCKET, "/tmp/guest-a.sock"]);
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "desktop", taskId: CTX.taskId }));
 
-		await handleNotify(args(["build is green"], { desktop: "" }), SOCKET, CTX);
+		await handleNotify(args(["build is green"], { desktop: "true" }), SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(mockSend.mock.calls[0]![2]!.desktop).toBe(true);
 		expect(stdoutOutput).toContain("Desktop notification sent.");
 	});
 
-	it("passes the chosen level", async () => {
+	it("passes the chosen level and a custom duration in milliseconds", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
 
-		await handleNotify(args(["it broke"], { level: "error" }), SOCKET, CTX);
+		await handleNotify(args(["it broke"], { level: "error", duration: "15" }), SOCKET, CTX);
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.level).toBe("error");
+		expect(mockSend.mock.calls[0]![2]!).toMatchObject({ level: "error", durationMs: 15_000 });
 	});
 
-	it("passes a custom toast duration in milliseconds", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
-
-		await handleNotify(args(["brief update"], { duration: "15" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.durationMs).toBe(15_000);
-	});
-
-	it("rejects an invalid toast duration", async () => {
-		await expect(handleNotify(args(["x"], { duration: "31s" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Invalid --duration");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects a custom duration for native desktop notifications", async () => {
-		await expect(
-			handleNotify(args(["x"], { duration: "2s", desktop: "true" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("cannot be combined with --desktop");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an invalid level", async () => {
-		await expect(handleNotify(args(["x"], { level: "loud" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Invalid --level");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an empty message", async () => {
-		await expect(handleNotify(args([]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("forwards --desktop and reports the mode", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "desktop", taskId: CTX.taskId }));
-
-		await handleNotify(args(["look at me"], { desktop: "true" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.desktop).toBe(true);
-		expect(stdoutOutput).toContain("Desktop notification sent");
-	});
-
-	it("rejects --desktop with no task in context", async () => {
+	it("rejects invalid flags and an empty message before sending", async () => {
 		const ctxNoTask: CliContext = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
-		await expect(handleNotify(args(["x"], { desktop: "true" }), SOCKET, ctxNoTask)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--desktop needs a task");
+		const cases: Array<[ParsedArgs, CliContext, string]> = [
+			[args(["x"], { duration: "31s" }), CTX, "Invalid --duration"],
+			[args(["x"], { duration: "2s", desktop: "true" }), CTX, "cannot be combined with --desktop"],
+			[args(["x"], { level: "loud" }), CTX, "Invalid --level"],
+			[args(["x"], { desktop: "true" }), ctxNoTask, "--desktop needs a task"],
+			[args([]), CTX, ""],
+		];
+		for (const [a, ctx, message] of cases) {
+			stderrOutput = "";
+			await expect(handleNotify(a, SOCKET, ctx), message || "empty message").rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("reports focus-mode suppression", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: false, mode: "toast", suppressed: true }));
-
+	it("reports focus-mode suppression and a queued toast", async () => {
+		mockSend.mockResolvedValueOnce(okResp({ delivered: false, mode: "toast", suppressed: true }));
 		await handleNotify(args(["x"]), SOCKET, CTX);
-
 		expect(stdoutOutput).toContain("Focus mode is on");
-	});
 
-	it("reports a queued toast", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", queued: true }));
-
+		mockSend.mockResolvedValueOnce(okResp({ delivered: true, mode: "toast", queued: true }));
 		await handleNotify(args(["x"]), SOCKET, CTX);
-
 		expect(stdoutOutput).toContain("Toast queued until Focus Mode ends");
-	});
-
-	it("works without a task (plain non-clickable toast)", async () => {
-		const ctxNoTask: CliContext = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
-		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: null }));
-
-		await handleNotify(args(["heads up"]), SOCKET, ctxNoTask);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBeUndefined();
-		expect(params.message).toBe("heads up");
 	});
 });
 
@@ -277,32 +213,28 @@ describe("attention", () => {
 		expect(stdoutOutput).toContain("Attention badge raised");
 	});
 
-	it("errors when no task is in context", async () => {
+	it("errors without a task in context, with --clear plus a reason, with a valued --clear, and on a backend error", async () => {
 		const ctxNoTask: CliContext = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
 		await expect(handleAttention(args(["x"]), SOCKET, ctxNoTask)).rejects.toThrow("EXIT_3");
+		await expect(handleAttention(args(["all clear"], { clear: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--clear cannot carry a reason");
+		// `--clear "text"` parses as clear="text": reject it instead of swallowing the text.
+		await expect(handleAttention(args([], { clear: "all clear" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--clear takes no value");
 		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("reports focus-mode suppression", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: false, suppressed: true, taskId: CTX.taskId }));
-
-		await handleAttention(args(["x"]), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("Focus mode is on");
-	});
-
-	it("reports a queued attention badge", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, taskId: CTX.taskId }));
-
-		await handleAttention(args(["x"]), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("Attention badge queued until Focus Mode ends");
-	});
-
-	it("surfaces a backend error", async () => {
 		mockSend.mockResolvedValue(errResp("Task not found"));
 		await expect(handleAttention(args(["x"]), SOCKET, CTX)).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task not found");
+	});
+
+	it("reports focus-mode suppression and a queued attention badge", async () => {
+		mockSend.mockResolvedValueOnce(okResp({ delivered: false, suppressed: true, taskId: CTX.taskId }));
+		await handleAttention(args(["x"]), SOCKET, CTX);
+		expect(stdoutOutput).toContain("Focus mode is on");
+
+		mockSend.mockResolvedValueOnce(okResp({ delivered: true, queued: true, taskId: CTX.taskId }));
+		await handleAttention(args(["x"]), SOCKET, CTX);
+		expect(stdoutOutput).toContain("Attention badge queued until Focus Mode ends");
 	});
 
 	it("clears the badge with --clear and sends no reason", async () => {
@@ -317,34 +249,17 @@ describe("attention", () => {
 			projectId: CTX.projectId,
 		});
 		expect(stdoutOutput).toContain("Attention badge cleared");
-	});
 
-	it("refuses --clear together with a reason", async () => {
-		await expect(handleAttention(args(["all clear"], { clear: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("--clear cannot carry a reason");
-	});
-
-	// `--clear "text"` parses as clear="text": reject it instead of swallowing the text.
-	it("refuses a valued --clear", async () => {
-		await expect(handleAttention(args([], { clear: "all clear" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stderrOutput).toContain("--clear takes no value");
-	});
-
-	it("reports a windowless app when clearing", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: false, taskId: CTX.taskId }));
-
 		await handleAttention(args([], { clear: "true" }), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("nothing to clear");
+		expect(stdoutOutput, "windowless app").toContain("nothing to clear");
 	});
 });
 
 // ─── ui state ────────────────────────────────────────────────────────────────
 
 describe("ui state", () => {
-	it("prints the reported UI state and passes the context task id", async () => {
+	it("prints the reported UI state, passes the context task id, and notes when this task is focused", async () => {
 		mockSend.mockResolvedValue(
 			okResp({ appRunning: true, foreground: true, activeProjectId: "proj-001", activeTaskId: "task-9", userIdleSeconds: 4, tmux: null }),
 		);
@@ -356,6 +271,13 @@ describe("ui state", () => {
 		expect(stdoutOutput).toContain("yes");
 		expect(stdoutOutput).toContain("userActivity");
 		expect(stdoutOutput).toContain("active (4s idle)");
+		mockSend.mockResolvedValue(
+			okResp({ appRunning: true, foreground: true, activeProjectId: CTX.projectId, activeTaskId: CTX.taskId, tmux: null }),
+		);
+
+		await handleUi("state", args(), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("This task is currently focused");
 	});
 
 	it("warns when the user has been idle a while", async () => {
@@ -367,26 +289,13 @@ describe("ui state", () => {
 
 		expect(stdoutOutput).toContain("idle 15m");
 		expect(stdoutOutput).toContain("may not see an in-app toast");
-	});
 
-	it("shows 'unknown' activity when idle is null", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(
 			okResp({ appRunning: true, foreground: true, activeProjectId: "p", activeTaskId: "t", userIdleSeconds: null, tmux: null }),
 		);
-
 		await handleUi("state", args(), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("unknown");
-	});
-
-	it("notes when the current task is the focused one", async () => {
-		mockSend.mockResolvedValue(
-			okResp({ appRunning: true, foreground: true, activeProjectId: CTX.projectId, activeTaskId: CTX.taskId, tmux: null }),
-		);
-
-		await handleUi("state", args(), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("This task is currently focused");
+		expect(stdoutOutput, "null idle").toContain("unknown");
 	});
 
 	it("renders the tmux layout (ASCII map + pane list) when present", async () => {

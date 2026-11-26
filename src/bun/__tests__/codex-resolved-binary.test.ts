@@ -42,35 +42,10 @@ afterEach(() => {
 });
 
 describe("withResolvedCodexBinary", () => {
-	it("starts a symlinked Codex by the path the sandbox helper will allow", () => {
+	it("starts a symlinked Codex by the path the sandbox helper will allow, bare or quoted", () => {
 		asPlatform("darwin");
 		expect(withResolvedCodexBinary("codex --model x", "codex", link)).toBe(`${target} --model x`);
-	});
-
-	it("rewrites a command that is only the binary", () => {
-		asPlatform("darwin");
 		expect(withResolvedCodexBinary("codex", "codex", link)).toBe(target);
-	});
-
-	it("leaves a binary that is not a symlink alone", () => {
-		asPlatform("darwin");
-		expect(withResolvedCodexBinary("codex --model x", "codex", plain)).toBe("codex --model x");
-	});
-
-	it("leaves an absolute path or wrapper the user chose alone", () => {
-		asPlatform("darwin");
-		const command = "/opt/homebrew/bin/codex --model x";
-		expect(withResolvedCodexBinary(command, "codex", link)).toBe(command);
-		expect(withResolvedCodexBinary("my-codex-wrapper --model x", "codex", link)).toBe("my-codex-wrapper --model x");
-	});
-
-	it("never rewrites a token that merely starts with the binary name", () => {
-		asPlatform("darwin");
-		expect(withResolvedCodexBinary("codexy --model x", "codex", link)).toBe("codexy --model x");
-	});
-
-	it("quotes a resolved path containing a space", () => {
-		asPlatform("darwin");
 		const spaced = join(dir, "with space");
 		const spacedLink = join(dir, "codex-spaced-link");
 		writeFileSync(spaced, "");
@@ -78,15 +53,20 @@ describe("withResolvedCodexBinary", () => {
 		expect(withResolvedCodexBinary("codex -x", "codex", spacedLink)).toBe(`'${spaced}' -x`);
 	});
 
+	it("leaves a non-symlink, a user-chosen path or wrapper, a lookalike token and an unresolvable path alone", () => {
+		asPlatform("darwin");
+		expect(withResolvedCodexBinary("codex --model x", "codex", plain)).toBe("codex --model x");
+		const command = "/opt/homebrew/bin/codex --model x";
+		expect(withResolvedCodexBinary(command, "codex", link)).toBe(command);
+		expect(withResolvedCodexBinary("my-codex-wrapper --model x", "codex", link)).toBe("my-codex-wrapper --model x");
+		expect(withResolvedCodexBinary("codexy --model x", "codex", link)).toBe("codexy --model x");
+		expect(withResolvedCodexBinary("codex --model x", "codex", join(dir, "gone"))).toBe("codex --model x");
+	});
+
 	it("does nothing off macOS — Seatbelt is what mismatches", () => {
 		asPlatform("linux");
 		expect(withResolvedCodexBinary("codex --model x", "codex", link)).toBe("codex --model x");
 		asPlatform("win32");
 		expect(withResolvedCodexBinary("codex --model x", "codex", link)).toBe("codex --model x");
-	});
-
-	it("returns the command untouched when the path cannot be resolved", () => {
-		asPlatform("darwin");
-		expect(withResolvedCodexBinary("codex --model x", "codex", join(dir, "gone"))).toBe("codex --model x");
 	});
 });

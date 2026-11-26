@@ -13,22 +13,16 @@ function task(overrides: Partial<Task>): Task {
 }
 
 describe("preparationOutcomeOf", () => {
-	it("reads a running task in its active column as started", () => {
+	it("reads a running task as started and a run in flight as still preparing, legacy flag included", () => {
 		expect(preparationOutcomeOf(task({ runtimeState: { runtime: "running", updatedAt: 1 } }))).toEqual({ state: "started" });
-	});
-
-	it("carries the persisted preparation error", () => {
-		expect(preparationOutcomeOf(task({ status: "todo", preparationError: "worktree missing" })))
-			.toEqual({ state: "failed", error: "worktree missing" });
-	});
-
-	it("treats a task back in To Do without an error as failed, never as started", () => {
-		expect(preparationOutcomeOf(task({ status: "todo" })).state).toBe("failed");
-	});
-
-	it("keeps a run in flight as still preparing, legacy flag included", () => {
 		expect(preparationOutcomeOf(task({ preparing: true })).state).toBe("still-preparing");
 		expect(preparationOutcomeOf(task({ runtimeState: { runtime: "preparing", updatedAt: 1 } })).state).toBe("still-preparing");
+	});
+
+	it("carries the persisted error, and treats a task back in To Do without one as failed, never started", () => {
+		expect(preparationOutcomeOf(task({ status: "todo", preparationError: "worktree missing" })))
+			.toEqual({ state: "failed", error: "worktree missing" });
+		expect(preparationOutcomeOf(task({ status: "todo" })).state).toBe("failed");
 	});
 });
 

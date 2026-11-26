@@ -62,15 +62,13 @@ describe("liveTaskTerminalBackend", () => {
 });
 
 describe("readTaskTerminalBackendState", () => {
-	it("reports an unmarked task as effective tmux without claiming it is explicit", async () => {
+	it("reports an unmarked task as effective tmux without claiming it is explicit, and an explicit identity with its live owner", async () => {
 		expect(await readTaskTerminalBackendState(makeTask())).toEqual({
 			backend: "tmux",
 			explicit: false,
 			liveBackend: null,
 		});
-	});
 
-	it("reports an explicit identity together with the live owner", async () => {
 		nativeTaskPanesAlive.mockResolvedValue(true);
 		expect(await readTaskTerminalBackendState(makeTask({ terminalBackend: "native" }))).toEqual({
 			backend: "native",
@@ -86,10 +84,12 @@ describe("readTaskTerminalBackendState", () => {
 });
 
 describe("switchTaskTerminalBackend", () => {
-	it.each(["tmux", "native"] as const)("persists %s for a stopped task", async (target) => {
-		const { state } = await switchTaskTerminalBackend(project, makeTask(), target);
-		expect(setTaskTerminalBackend).toHaveBeenCalledWith(project, expect.any(String), target);
-		expect(state).toMatchObject({ backend: target, explicit: true });
+	it("persists either backend for a stopped task", async () => {
+		for (const target of ["tmux", "native"] as const) {
+			const { state } = await switchTaskTerminalBackend(project, makeTask(), target);
+			expect(setTaskTerminalBackend).toHaveBeenCalledWith(project, expect.any(String), target);
+			expect(state).toMatchObject({ backend: target, explicit: true });
+		}
 	});
 
 	it("rejects an identity this build cannot decode, writing nothing", async () => {
@@ -101,24 +101,26 @@ describe("switchTaskTerminalBackend", () => {
 
 	// Backend-neutral: the refusal must look identical whichever side is alive,
 	// and in both directions.
-	it.each([
-		{ live: "native" as const, from: "native" as const, to: "tmux" as const },
-		{ live: "tmux" as const, from: "tmux" as const, to: "native" as const },
-	])("refuses to switch away from a live $live session and mutates nothing", async ({ live, from, to }) => {
-		nativeTaskPanesAlive.mockResolvedValue(live === "native");
-		tmuxSessionExists.mockResolvedValue(live === "tmux");
-		const task = makeTask({ terminalBackend: from });
+	it("refuses to switch away from a live session in either direction (legacy unmarked tmux too) and mutates nothing", async () => {
+		const cases = [
+			{ live: "native" as const, from: "native" as const, to: "tmux" as const },
+			{ live: "tmux" as const, from: "tmux" as const, to: "native" as const },
+		];
+		for (const { live, from, to } of cases) {
+			nativeTaskPanesAlive.mockResolvedValue(live === "native");
+			tmuxSessionExists.mockResolvedValue(live === "tmux");
+			const task = makeTask({ terminalBackend: from });
 
-		await expect(switchTaskTerminalBackend(project, task, to)).rejects.toThrow(
-			new RegExp(`still has a live ${live} terminal`),
-		);
-		// `setTaskTerminalBackend` is the ONLY writer of the field, and the module
-		// touches no session API beyond the two read-only probes.
-		expect(setTaskTerminalBackend).not.toHaveBeenCalled();
-		expect(task.terminalBackend).toBe(from);
-	});
+			await expect(switchTaskTerminalBackend(project, task, to)).rejects.toThrow(
+				new RegExp(`still has a live ${live} terminal`),
+			);
+			// `setTaskTerminalBackend` is the ONLY writer of the field, and the module
+			// touches no session API beyond the two read-only probes.
+			expect(setTaskTerminalBackend).not.toHaveBeenCalled();
+			expect(task.terminalBackend).toBe(from);
+		}
 
-	it("refuses a live unmarked (legacy tmux) task the same way", async () => {
+		nativeTaskPanesAlive.mockResolvedValue(false);
 		tmuxSessionExists.mockResolvedValue(true);
 		await expect(switchTaskTerminalBackend(project, makeTask(), "native")).rejects.toThrow(
 			/still has a live tmux terminal/,
@@ -134,7 +136,7 @@ describe("switchTaskTerminalBackend", () => {
 });
 
 describe("nativeTerminalAvailability", () => {
-	it("reports a resolvable host with its provenance", () => {
+	it("reports a resolvable host with its provenance, marking tmux unsupported on Windows", () => {
 		resolveNativeHostRuntime.mockReturnValue({ origin: "staged packaged host image abc" });
 		expect(nativeTerminalAvailability("darwin")).toEqual({
 			available: true,
@@ -142,9 +144,11 @@ describe("nativeTerminalAvailability", () => {
 			origin: "staged packaged host image abc",
 			diagnostics: [],
 		});
+		resolveNativeHostRuntime.mockReturnValue({ origin: "packaged" });
+		expect(nativeTerminalAvailability("win32")).toMatchObject({ available: true, tmuxSupported: false });
 	});
 
-	it("surfaces the install diagnostics instead of throwing or falling back to tmux", () => {
+	it("surfaces the install diagnostics instead of throwing or falling back to tmux, for any failure", () => {
 		resolveNativeHostRuntime.mockImplementation(() => {
 			throw new NativeHostRuntimeError("no host", ["Reinstall dev3 from a package that ships native-host-image/."]);
 		});
@@ -153,14 +157,7 @@ describe("nativeTerminalAvailability", () => {
 			tmuxSupported: true,
 			diagnostics: ["Reinstall dev3 from a package that ships native-host-image/."],
 		});
-	});
 
-	it("marks tmux unsupported on Windows", () => {
-		resolveNativeHostRuntime.mockReturnValue({ origin: "packaged" });
-		expect(nativeTerminalAvailability("win32")).toMatchObject({ available: true, tmuxSupported: false });
-	});
-
-	it("still answers for a non-NativeHostRuntimeError failure", () => {
 		resolveNativeHostRuntime.mockImplementation(() => {
 			throw new Error("disk on fire");
 		});

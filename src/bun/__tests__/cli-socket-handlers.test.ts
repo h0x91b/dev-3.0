@@ -284,7 +284,7 @@ import * as data from "../data";
 import * as git from "../git";
 import { rememberTaskSession } from "../task-sessions";
 import * as pty from "../pty-server";
-import { activateTask, createTask, deleteTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { activateTask, createTask, deleteTask, moveTask, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { appendNotificationLog } from "../notification-log";
 import { loadSettings } from "../settings";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
@@ -451,24 +451,15 @@ describe("message.send / message.schedule — the subject gate", () => {
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0]?.[4]).toMatchObject({ subject: "CI green on main" });
 	});
 
-	it("refuses a send with no subject, and never reaches the send seam", async () => {
-		const resp = await send({ text: "ping" });
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("needs --subject");
-		expect(resp.error).toContain("dev3 update");
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("refuses a whitespace-only subject", async () => {
-		const resp = await send({ text: "ping", subject: "  " });
-		expect(resp.ok).toBe(false);
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("refuses an over-limit subject rather than clipping it", async () => {
-		const resp = await send({ text: "ping", subject: "a".repeat(81) });
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("too long");
+	it("refuses a missing, blank or over-limit subject, and never reaches the send seam", async () => {
+		const missing = await send({ text: "ping" });
+		expect(missing.ok).toBe(false);
+		expect(missing.error).toContain("needs --subject");
+		expect(missing.error).toContain("dev3 update");
+		expect((await send({ text: "ping", subject: "  " })).ok).toBe(false);
+		const long = await send({ text: "ping", subject: "a".repeat(81) });
+		expect(long.ok).toBe(false);
+		expect(long.error).toContain("too long");
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 
@@ -517,33 +508,25 @@ describe("message.send / message.sendAsSender — the sender guards", () => {
 		expect(source).toBeNull();
 	});
 
-	it("refuses --as-sender with --agent: a sender's message goes to the main agent", async () => {
+	it("refuses --agent, a plain message.send, and a task identity on a sender request, sending nothing", async () => {
 		const handle = encodeAgentHandle({ paneId: "%3", sessionId: null, paneToken: "gen-1", agentProcess: "303@Mon Oct 26 09:00:00 2026" });
-		const resp = await handleRequest(makeRequest("message.sendAsSender", { ...base(), asSender: "cli", agentHandle: handle }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("--agent") });
+		const cases: Array<[string, Record<string, unknown>, string]> = [
+			["message.sendAsSender", { agentHandle: handle }, "--agent"],
+			["message.send", {}, "message.sendAsSender"],
+			["message.sendAsSender", { sourceTaskId: makeTask().id }, "inside a task worktree"],
+		];
+		for (const [method, extra, error] of cases) {
+			const resp = await handleRequest(makeRequest(method, { ...base(), asSender: "cli", ...extra }));
+			expect(resp, error).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+		}
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 
-	it("refuses asSender on plain message.send, so an app never drops it silently", async () => {
-		const resp = await handleRequest(makeRequest("message.send", { ...base(), asSender: "cli" }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("message.sendAsSender") });
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("refuses a sender request that also carries a task's identity", async () => {
-		const resp = await handleRequest(makeRequest("message.sendAsSender", { ...base(), asSender: "cli", sourceTaskId: makeTask().id }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("inside a task worktree") });
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("refuses asSender on plain agent.resume before resolving anything", async () => {
-		const resp = await handleRequest(makeRequest("agent.resume", { taskId: makeTask().id, asSender: "cli" }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("agent.resumeAsSender") });
-	});
-
-	it("refuses a resume account that names nothing before resolving anything", async () => {
-		const resp = await handleRequest(makeRequest("agent.resume", { taskId: makeTask().id, accountId: 42 }));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("accountId must be") });
+	it("refuses asSender and a non-string account on plain agent.resume before resolving anything", async () => {
+		const sender = await handleRequest(makeRequest("agent.resume", { taskId: makeTask().id, asSender: "cli" }));
+		expect(sender).toMatchObject({ ok: false, error: expect.stringContaining("agent.resumeAsSender") });
+		const account = await handleRequest(makeRequest("agent.resume", { taskId: makeTask().id, accountId: 42 }));
+		expect(account).toMatchObject({ ok: false, error: expect.stringContaining("accountId must be") });
 	});
 
 	it("never queues a sender's message into tasks.json", async () => {
@@ -570,7 +553,7 @@ describe("message.scheduled.list / cancel — the CLI queue verbs", () => {
 		expect(resp.data).toMatchObject({ messageId: "new-id", pending: 2 });
 	});
 
-	it("binds a self-scheduled message to the scheduling agent's pane", async () => {
+	it("binds a self-scheduled message to the scheduling agent's pane, and another task's to that task", async () => {
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(makeProject());
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
@@ -581,24 +564,20 @@ describe("message.scheduled.list / cancel — the CLI queue verbs", () => {
 		expect(resp.ok).toBe(true);
 		expect(captureScheduledMessageAuthor).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%1", 4242, { tmuxEnv: null, envTaskId: null });
 		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[2]).toMatchObject({ author: { paneId: "%1", sessionId: "conv-a" } });
-	});
 
-	it("leaves a message for ANOTHER task addressed to that task, not to the sender's pane", async () => {
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(makeProject());
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		const resp = await handleRequest(makeRequest("message.schedule", {
+		// A message for ANOTHER task is addressed to that task, not to the sender's pane.
+		vi.mocked(captureScheduledMessageAuthor).mockClear();
+		await handleRequest(makeRequest("message.schedule", {
 			taskId: task.id, projectId: "proj-1", text: "later", subject: "s", at: new Date(Date.now() + 60_000).toISOString(),
 			sourceTaskId: "some-other-task", sourcePaneId: "%7",
 		}));
-		expect(resp.ok).toBe(true);
 		expect(captureScheduledMessageAuthor).not.toHaveBeenCalled();
-		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[2]).toMatchObject({ author: null });
+		expect(vi.mocked(scheduleMessage).mock.calls[1]?.[2]).toMatchObject({ author: null });
 	});
 
 	const ADDRESSED = { paneId: "%3", sessionId: null, paneToken: "gen-1", agentProcess: "303@Mon Oct 26 09:00:00 2026" };
 
-	it("binds a message scheduled with --agent to that agent, checked while the sender listens", async () => {
+	it("binds a message scheduled with --agent to that agent, and refuses one that is already gone", async () => {
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(makeProject());
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
@@ -609,19 +588,16 @@ describe("message.scheduled.list / cancel — the CLI queue verbs", () => {
 		expect(resp.ok).toBe(true);
 		expect(resolveScheduledMessageAuthorPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), ADDRESSED);
 		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[2]).toMatchObject({ author: ADDRESSED });
-	});
+		vi.mocked(scheduleMessage).mockClear();
 
-	it("refuses to schedule for an addressed agent that is already gone, queueing nothing", async () => {
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(makeProject());
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		// An addressed agent that is already gone: refuse, queueing nothing.
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: false, detail: "the addressed agent (pane %3) is no longer running in this task; not sent to another pane" });
-		const resp = await handleRequest(makeRequest("message.schedule", {
+		const gone = await handleRequest(makeRequest("message.schedule", {
 			taskId: task.id, projectId: "proj-1", text: "later", subject: "s", at: new Date(Date.now() + 60_000).toISOString(),
 			agentHandle: encodeAgentHandle(ADDRESSED),
 		}));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("the addressed agent (pane %3) is no longer running");
+		expect(gone.ok).toBe(false);
+		expect(gone.error).toContain("the addressed agent (pane %3) is no longer running");
 		expect(scheduleMessage).not.toHaveBeenCalled();
 	});
 
@@ -669,32 +645,26 @@ describe("task.addLabels / task.removeLabels — merge, never replace", () => {
 		return task;
 	}
 
-	it("add keeps existing labels, resolves prefixes, and skips duplicates", async () => {
+	it("add keeps existing labels, resolves prefixes, and skips duplicates; remove drops only the named ones", async () => {
 		withTask(["lbl-1111-full"]);
 		const resp = await handleRequest(makeRequest("task.addLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-2222", "lbl-1111-full"] }));
 		expect(resp.ok).toBe(true);
 		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full", "lbl-2222-full"]);
 		expect(data.updateTask).not.toHaveBeenCalled();
+
+		withTask(["lbl-1111-full", "lbl-2222-full", "lbl-3333-full"]);
+		const removed = await handleRequest(makeRequest("task.removeLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-2222"] }));
+		expect((removed.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full", "lbl-3333-full"]);
 	});
 
 	// Two spellings of one label in a single call used to append it twice, and a
 	// repeated id in task.labelIds is as permanent as a dangling one.
-	it("add writes one entry when the same label is named twice", async () => {
-		withTask([]);
-		const resp = await handleRequest(makeRequest("task.addLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
-		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full"]);
-	});
-
-	it("set writes one entry when the same label is named twice", async () => {
-		withTask([]);
-		const resp = await handleRequest(makeRequest("task.setLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
-		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full"]);
-	});
-
-	it("remove drops only the named labels", async () => {
-		withTask(["lbl-1111-full", "lbl-2222-full", "lbl-3333-full"]);
-		const resp = await handleRequest(makeRequest("task.removeLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-2222"] }));
-		expect((resp.data as { labelIds: string[] }).labelIds).toEqual(["lbl-1111-full", "lbl-3333-full"]);
+	it("add and set write one entry when the same label is named twice", async () => {
+		for (const method of ["task.addLabels", "task.setLabels"]) {
+			withTask([]);
+			const resp = await handleRequest(makeRequest(method, { taskId: makeTask().id, projectId: "proj-1", labelIds: ["lbl-1111", "lbl-1111-full"] }));
+			expect((resp.data as { labelIds: string[] }).labelIds, method).toEqual(["lbl-1111-full"]);
+		}
 	});
 
 	it("an unknown label id fails the whole call without writing", async () => {
@@ -707,24 +677,26 @@ describe("task.addLabels / task.removeLabels — merge, never replace", () => {
 });
 
 describe("remote.accessUrl", () => {
-	it("errors when no remote-access server is bound (serverPort 0)", async () => {
-		vi.mocked(getServerPort).mockReturnValue(0);
-		const resp = await handleRequest(makeRequest("remote.accessUrl"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("not running");
-	});
-
-	it("returns a fresh access URL when the server is running", async () => {
-		vi.mocked(getServerPort).mockReturnValue(41234);
-		const resp = await handleRequest(makeRequest("remote.accessUrl"));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({
-			url: "http://10.0.0.5:41234/?token=fresh",
-			port: 41234,
-			tunnelUrl: null,
-			staticCode: null,
-			signInLink: null,
-		});
+	it("errors while no remote-access server is bound, and returns a fresh access URL once it runs", async () => {
+		{
+			vi.mocked(getServerPort).mockReturnValue(0);
+			const resp = await handleRequest(makeRequest("remote.accessUrl"));
+			expect(resp.ok).toBe(false);
+			expect(resp.error).toContain("not running");
+		}
+		vi.clearAllMocks();
+		{
+			vi.mocked(getServerPort).mockReturnValue(41234);
+			const resp = await handleRequest(makeRequest("remote.accessUrl"));
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toMatchObject({
+				url: "http://10.0.0.5:41234/?token=fresh",
+				port: 41234,
+				tunnelUrl: null,
+				staticCode: null,
+				signInLink: null,
+			});
+		}
 	});
 });
 
@@ -740,43 +712,41 @@ describe("pane.* — the CLI's own pane surface", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([makeTask()]);
 	});
 
-	it("runs a command in a neighbouring pane, with the task's own worktree as cwd", async () => {
-		const resp = await handleRequest(
-			makeRequest("pane.run", { taskId: makeTask().id, command: "bun run build", placement: "below", label: "Build" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(vi.mocked(startPaneRun).mock.calls[0][0]).toMatchObject({
-			command: "bun run build",
-			placement: "below",
-			label: "Build",
-			cwd: "/tmp/wt",
-		});
-		expect(resp.data).toMatchObject({ runId: "run-0123456789ab" });
+	it("runs a command in a neighbouring pane in the task's worktree; reads an unknown or legacy placement as auto", async () => {
+		{
+			const resp = await handleRequest(
+				makeRequest("pane.run", { taskId: makeTask().id, command: "bun run build", placement: "below", label: "Build" }),
+			);
+			expect(resp.ok).toBe(true);
+			expect(vi.mocked(startPaneRun).mock.calls[0][0]).toMatchObject({
+				command: "bun run build",
+				placement: "below",
+				label: "Build",
+				cwd: "/tmp/wt",
+			});
+			expect(resp.data).toMatchObject({ runId: "run-0123456789ab" });
+		}
+		vi.clearAllMocks();
+		{
+			await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "sideways" }));
+			await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "right", selfPaneId: "%3" }));
+			expect(vi.mocked(startPaneRun).mock.calls[0][0]).toMatchObject({ placement: "auto", selfPaneId: null });
+			expect(vi.mocked(startPaneRun).mock.calls[1][0]).toMatchObject({ placement: "auto", selfPaneId: "%3" });
+		}
 	});
 
-	it("reads an unknown placement — and an older CLI's \"right\" — as auto, and passes the caller's pane", async () => {
-		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "sideways" }));
-		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "right", selfPaneId: "%3" }));
-		expect(vi.mocked(startPaneRun).mock.calls[0][0]).toMatchObject({ placement: "auto", selfPaneId: null });
-		expect(vi.mocked(startPaneRun).mock.calls[1][0]).toMatchObject({ placement: "auto", selfPaneId: "%3" });
-	});
-
-	it("refuses to split a task with no worktree instead of running the command somewhere else", async () => {
-		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ worktreePath: "" })]);
-		const resp = await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("no worktree");
-		expect(startPaneRun).not.toHaveBeenCalled();
-	});
-
-	it("refuses a worktree that is gone, before starting anything (no $HOME fallback)", async () => {
+	it("refuses a task with no worktree, or one that is gone, before starting anything (no $HOME fallback)", async () => {
 		const guard = await import("../task-workspace-guard");
 		vi.mocked(guard.assertTaskWorkspacePresent).mockImplementationOnce((_project, path) => {
 			throw new guard.TaskWorkspaceUnavailableError("missing", String(path));
 		});
-		const resp = await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("worktree is missing");
+		const gone = await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
+		expect(gone.ok).toBe(false);
+		expect(gone.error).toContain("worktree is missing");
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ worktreePath: "" })]);
+		const none = await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
+		expect(none.ok).toBe(false);
+		expect(none.error).toContain("no worktree");
 		expect(startPaneRun).not.toHaveBeenCalled();
 	});
 
@@ -792,20 +762,16 @@ describe("pane.* — the CLI's own pane surface", () => {
 		expect((await handleRequest(makeRequest("pane.close", { taskId: makeTask().id, runId: "run-0123456789ab" }))).ok).toBe(true);
 		expect(vi.mocked(closePaneRun).mock.calls[0][1]).toBe("run-0123456789ab");
 	});
-
-	it("needs a task, and says so", async () => {
-		const resp = await handleRequest(makeRequest("pane.list", {}));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
 });
 
 describe("agent.spawn account boundary", () => {
-	it.each(["account-b", "", null])("rejects a socket-supplied account override %j", async (accountId) => {
-		const resp = await handleRequest(makeRequest("agent.spawn", {
-			taskId: "test-task", agentId: "builtin-codex", configId: "codex-default", accountId,
-		}));
-		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("Account selection is not supported") });
+	it("rejects a socket-supplied account override, even an empty or null one", async () => {
+		for (const accountId of ["account-b", "", null]) {
+			const resp = await handleRequest(makeRequest("agent.spawn", {
+				taskId: "test-task", agentId: "builtin-codex", configId: "codex-default", accountId,
+			}));
+			expect(resp, String(accountId)).toMatchObject({ ok: false, error: expect.stringContaining("Account selection is not supported") });
+		}
 	});
 });
 
@@ -817,29 +783,41 @@ describe("handleRequest dispatch", () => {
 		expect(resp.id).toBe("req-1");
 	});
 
-	it("returns ok with data for valid method", async () => {
-		const projects = [makeProject()];
-		vi.mocked(data.loadProjects).mockResolvedValue(projects);
-
-		const resp = await handleRequest(makeRequest("projects.list"));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(projects);
+	it("refuses a request missing a required parameter, naming it", async () => {
+		const cases: Array<[string, Record<string, unknown>, string]> = [
+			["tasks.list", {}, "projectId is required"],
+			["task.show", {}, "taskId is required"],
+			["task.create", { title: "New" }, "projectId is required"],
+			["task.create", { projectId: "proj-1" }, "title is required"],
+			["task.update", {}, "taskId is required"],
+			["task.move", { newStatus: "todo" }, "taskId is required"],
+			["task.move", { taskId: "t1" }, "newStatus is required"],
+			["note.add", { content: "hi" }, "taskId is required"],
+			["note.add", { taskId: "t1" }, "content is required"],
+			["note.list", {}, "taskId is required"],
+			["note.delete", { noteId: "n1" }, "taskId is required"],
+			["note.delete", { taskId: "t1" }, "noteId is required"],
+			["label.list", {}, "projectId is required"],
+			["label.create", { name: "bug" }, "projectId is required"],
+			["label.create", { projectId: "proj-1" }, "name is required"],
+			["label.delete", { labelId: "lbl-1" }, "projectId is required"],
+			["label.delete", { projectId: "proj-1" }, "labelId is required"],
+			["task.setLabels", { projectId: "proj-1", labelIds: [] }, "taskId is required"],
+			["task.setLabels", { taskId: "t1", labelIds: [] }, "projectId is required"],
+			["task.setLabels", { taskId: "t1", projectId: "proj-1", labelIds: "not-array" }, "labelIds must be an array"],
+			["pane.list", {}, "taskId is required"],
+		];
+		for (const [method, params, error] of cases) {
+			const resp = await handleRequest(makeRequest(method, params));
+			expect(resp, `${method} ${JSON.stringify(params)}`).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+		}
 	});
 
-	it("catches handler errors and returns error response", async () => {
-		vi.mocked(data.loadProjects).mockRejectedValue(new Error("DB failed"));
-
-		const resp = await handleRequest(makeRequest("projects.list"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toBe("DB failed");
-	});
-
-	it("handles non-Error throws gracefully", async () => {
-		vi.mocked(data.loadProjects).mockRejectedValue("string error");
-
-		const resp = await handleRequest(makeRequest("projects.list"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toBe("string error");
+	it("turns an Error or a non-Error throw from a handler into an error response", async () => {
+		vi.mocked(data.loadProjects).mockRejectedValueOnce(new Error("DB failed"));
+		expect(await handleRequest(makeRequest("projects.list"))).toMatchObject({ ok: false, error: "DB failed" });
+		vi.mocked(data.loadProjects).mockRejectedValueOnce("string error");
+		expect(await handleRequest(makeRequest("projects.list"))).toMatchObject({ ok: false, error: "string error" });
 	});
 });
 
@@ -893,40 +871,42 @@ describe("task.agentHook", () => {
 		},
 	);
 
-	it("gates an omp pane from its approval until the extension marks the approval's end", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-		const hook = (event: string, extra: Record<string, unknown> = {}) => handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id, projectId: project.id, harness: "omp", paneId: "%7", event, ...extra,
-		}));
-		try {
-			await hook("PermissionRequest");
-			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(true);
-			await hook("PostToolUse");
-			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(true);
-			await hook("PostToolUse", { promptEnd: true });
-			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(false);
-		} finally {
-			agentPromptLedger.reset();
+	it("gates an omp pane until the extension marks the approval's end; frees an agy pane on its own approval's end", async () => {
+		{
+			const project = makeProject();
+			const task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			const hook = (event: string, extra: Record<string, unknown> = {}) => handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, harness: "omp", paneId: "%7", event, ...extra,
+			}));
+			try {
+				await hook("PermissionRequest");
+				expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(true);
+				await hook("PostToolUse");
+				expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(true);
+				await hook("PostToolUse", { promptEnd: true });
+				expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(false);
+			} finally {
+				agentPromptLedger.reset();
+			}
 		}
-	});
-
-	it("lets an agy pane's messages through when its approval ends, though another pane still waits", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-		const hook = (paneId: string, event: string) => handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id, projectId: project.id, harness: "agy", paneId, event,
-		}));
-		try {
-			await hook("%7", "PermissionRequest");
-			await hook("%8", "PermissionRequest");
-			await hook("%7", "PostToolUse");
-			expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(false);
-			expect(agentPromptLedger.isPromptOpen(task.id, "%8")).toBe(true);
-		} finally {
-			agentPromptLedger.reset();
+		vi.clearAllMocks();
+		{
+			const project = makeProject();
+			const task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			const hook = (paneId: string, event: string) => handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, harness: "agy", paneId, event,
+			}));
+			try {
+				await hook("%7", "PermissionRequest");
+				await hook("%8", "PermissionRequest");
+				await hook("%7", "PostToolUse");
+				expect(agentPromptLedger.isPromptOpen(task.id, "%7")).toBe(false);
+				expect(agentPromptLedger.isPromptOpen(task.id, "%8")).toBe(true);
+			} finally {
+				agentPromptLedger.reset();
+			}
 		}
 	});
 
@@ -955,10 +935,12 @@ describe("task.agentHook", () => {
 		}
 	});
 
-	it("parks a Codex Stop that waits on an approval reply in user-questions and names the reply", async () => {
+	it("parks a Codex Stop that waits on an approval reply in user-questions, names the reply, and raises exactly one badge", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
 		mockAtomicHookUpdate(project, task);
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push);
 
 		const response = await handleRequest(makeRequest("task.agentHook", {
 			taskId: task.id, projectId: project.id, sessionId: "approval-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
@@ -966,19 +948,7 @@ describe("task.agentHook", () => {
 
 		expect((response.data as Task).status).toBe("user-questions");
 		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
-	});
-
-	it("raises exactly one badge for an approval hold: the move leaves it to the hold's own reason", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-		const push = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(push);
-
-		await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id, projectId: project.id, sessionId: "one-badge-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
-		}));
-
+		// The move leaves the badge to the hold's own reason.
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: true }));
 		expect(push.mock.calls.filter(([name]) => name === "cliAttention")).toHaveLength(1);
 	});
@@ -995,29 +965,31 @@ describe("task.agentHook", () => {
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: false }));
 	});
 
-	it("never reopens a finished task for a late approval-hold Stop", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "completed" });
-		mockAtomicHookUpdate(project, task);
+	it("never reopens a finished task for a late approval-hold Stop, but still badges one already in user-questions", async () => {
+		{
+			const project = makeProject();
+			const task = makeTask({ status: "completed" });
+			mockAtomicHookUpdate(project, task);
 
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id, projectId: project.id, sessionId: "late-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
-		}));
+			const response = await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, sessionId: "late-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+			}));
 
-		expect((response.data as Task).status).toBe("completed");
-		expect(notifyFromCliDesktop).not.toHaveBeenCalled();
-	});
+			expect((response.data as Task).status).toBe("completed");
+			expect(notifyFromCliDesktop).not.toHaveBeenCalled();
+		}
+		vi.clearAllMocks();
+		{
+			const project = makeProject();
+			const task = makeTask({ status: "user-questions" });
+			mockAtomicHookUpdate(project, task);
 
-	it("still badges an approval hold when the task already waits in user-questions", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "user-questions" });
-		mockAtomicHookUpdate(project, task);
+			await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, sessionId: "parked-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+			}));
 
-		await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id, projectId: project.id, sessionId: "parked-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
-		}));
-
-		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
+			expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
+		}
 	});
 
 	it("returns a reviewer parked on an approval hold to review-by-ai on its next prompt", async () => {
@@ -1083,19 +1055,21 @@ describe("task.agentHook", () => {
 		});
 	});
 
-	it.each(["Interrupt", "SessionEnd"])("releases a blocking question on %s", async event => {
-		const project = makeProject();
-		let task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-		const params = { taskId: task.id, projectId: project.id, sessionId: `cancel-${event}` };
-		const question = await handleRequest(makeRequest("task.agentHook", {
-			...params, event: "PreToolUse", toolName: "request_user_input", toolUseId: "q",
-		}));
-		task = question.data as Task;
-		expect(task.status).toBe("user-questions");
-		mockAtomicHookUpdate(project, task);
-		const cancelled = await handleRequest(makeRequest("task.agentHook", { ...params, event }));
-		expect((cancelled.data as Task).status).toBe("review-by-user");
+	it("releases a blocking question on Interrupt and on SessionEnd", async () => {
+		for (const event of ["Interrupt", "SessionEnd"]) {
+			const project = makeProject();
+			let task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			const params = { taskId: task.id, projectId: project.id, sessionId: `cancel-${event}` };
+			const question = await handleRequest(makeRequest("task.agentHook", {
+				...params, event: "PreToolUse", toolName: "request_user_input", toolUseId: "q",
+			}));
+			task = question.data as Task;
+			expect(task.status, event).toBe("user-questions");
+			mockAtomicHookUpdate(project, task);
+			const cancelled = await handleRequest(makeRequest("task.agentHook", { ...params, event }));
+			expect((cancelled.data as Task).status, event).toBe("review-by-user");
+		}
 	});
 
 	it("logs hook order and status decisions without question or answer content", async () => {
@@ -1140,46 +1114,25 @@ describe("task.agentHook", () => {
 		}));
 	});
 
-	it("moves a resumed turn to in-progress", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "review-by-user" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "UserPromptSubmit",
-		}));
-
-		expect((response.data as Task).status).toBe("in-progress");
-	});
-
-	it("moves an approval request to user-questions", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "PermissionRequest",
-		}));
-
-		expect((response.data as Task).status).toBe("user-questions");
-	});
-
-	it("returns to in-progress after an approved tool finishes", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "user-questions" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "PostToolUse",
-		}));
-
-		expect((response.data as Task).status).toBe("in-progress");
+	it("maps each plain lifecycle event to its column", async () => {
+		const cases: Array<[event: string, from: Task["status"], autoReview: boolean, to: Task["status"]]> = [
+			["UserPromptSubmit", "review-by-user", false, "in-progress"],
+			["PermissionRequest", "in-progress", false, "user-questions"],
+			["PostToolUse", "user-questions", false, "in-progress"],
+			["Stop", "in-progress", false, "review-by-user"],
+			["Stop", "in-progress", true, "review-by-ai"],
+			["Stop", "review-by-ai", true, "review-by-user"],
+			["Stop", "user-questions", true, "user-questions"],
+		];
+		for (const [event, from, autoReviewEnabled, to] of cases) {
+			const project = makeProject({ autoReviewEnabled });
+			const task = makeTask({ status: from });
+			mockAtomicHookUpdate(project, task);
+			const response = await handleRequest(makeRequest("task.agentHook", { taskId: task.id, projectId: project.id, event }));
+			expect((response.data as Task).status, `${event} from ${from}, autoReview=${autoReviewEnabled}`).toBe(to);
+		}
+		// The automatic-review Stop goes through moveTask's guarded move.
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "review-by-ai", ifStatus: "in-progress,user-questions" }));
 	});
 
 	it("restores review-by-ai after a review agent approval finishes", async () => {
@@ -1228,98 +1181,15 @@ describe("task.agentHook", () => {
 		);
 	});
 
-	it("moves a normal Stop directly to review-by-user", async () => {
-		const project = makeProject({ autoReviewEnabled: false });
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "Stop",
-		}));
-
-		expect((response.data as Task).status).toBe("review-by-user");
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
-			newStatus: "review-by-user",
-		}));
-	});
-
-	it("moves a primary-agent Stop to review-by-ai when auto-review is enabled", async () => {
-		const project = makeProject({ autoReviewEnabled: true });
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "Stop",
-		}));
-
-		expect((response.data as Task).status).toBe("review-by-ai");
-	});
-
 	// #2127: a coordinator, an audit and a PR review have no diff of their own to review.
-	it.each(["coordinator", "pr-review", "board-cleanup"] as const)(
-		"keeps a %s task out of automatic AI review on Stop",
-		async (taskType) => {
+	it("keeps coordinator, pr-review and board-cleanup tasks out of automatic AI review on Stop", async () => {
+		for (const taskType of ["coordinator", "pr-review", "board-cleanup"] as const) {
 			const project = makeProject({ autoReviewEnabled: true });
 			const task = makeTask({ status: "in-progress", taskType });
 			mockAtomicHookUpdate(project, task);
-
-			const response = await handleRequest(makeRequest("task.agentHook", {
-				taskId: task.id,
-				projectId: project.id,
-				event: "Stop",
-			}));
-
-			expect((response.data as Task).status).toBe("review-by-user");
-		},
-	);
-
-	it("moves a review-agent Stop to review-by-user in one atomic mutation", async () => {
-		const project = makeProject({ autoReviewEnabled: true });
-		const task = makeTask({ status: "review-by-ai" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "Stop",
-		}));
-
-		expect((response.data as Task).status).toBe("review-by-user");
-	});
-
-	it("does not overwrite an explicit user-questions status on Stop", async () => {
-		const project = makeProject({ autoReviewEnabled: true });
-		const task = makeTask({ status: "user-questions" });
-		mockAtomicHookUpdate(project, task);
-
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "Stop",
-		}));
-
-		expect((response.data as Task).status).toBe("user-questions");
-	});
-
-	it("routes the automatic review Stop transition through moveTask", async () => {
-		const project = makeProject({ autoReviewEnabled: true });
-		const task = makeTask({ status: "in-progress" });
-		mockAtomicHookUpdate(project, task);
-
-		await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id,
-			projectId: project.id,
-			event: "Stop",
-		}));
-
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
-			newStatus: "review-by-ai",
-			ifStatus: "in-progress,user-questions",
-		}));
+			const response = await handleRequest(makeRequest("task.agentHook", { taskId: task.id, projectId: project.id, event: "Stop" }));
+			expect((response.data as Task).status, taskType).toBe("review-by-user");
+		}
 	});
 
 	it("rejects unknown lifecycle events", async () => {
@@ -1335,81 +1205,6 @@ describe("task.agentHook", () => {
 		}));
 
 		expect(response.error).toContain("Unsupported status hook event");
-	});
-
-	function mockStatefulHookUpdate(project: Project, initial: Task): { get: () => Task } {
-		let stored = initial;
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockImplementation(async () => [stored]);
-		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _t, mutator: any) => {
-			const { updates, result } = await mutator(stored);
-			stored = { ...stored, ...updates };
-			return { task: stored, result };
-		});
-		return { get: () => stored };
-	}
-
-	type Pane = NonNullable<Task["sessionState"]>["panes"][number];
-	const codexPane = (paneId: string | null, sessionId: string | null): Pane =>
-		({ paneId, agentCmd: "codex", sessionId, agentId: null, configId: null });
-
-	it("captures the Codex session id onto the pane matching $TMUX_PANE", async () => {
-		const project = makeProject();
-		const store = mockStatefulHookUpdate(project, makeTask({
-			status: "in-progress",
-			sessionState: { panes: [codexPane("%1", null), codexPane("%2", null)] },
-		}));
-
-		await handleRequest(makeRequest("task.agentHook", {
-			taskId: store.get().id,
-			projectId: project.id,
-			event: "SessionStart",
-			sessionId: "codex-sess-2",
-			paneId: "%2",
-		}));
-
-		const panes = store.get().sessionState?.panes ?? [];
-		expect(panes[0]?.sessionId).toBeNull();
-		expect(panes[1]?.sessionId).toBe("codex-sess-2");
-	});
-
-	it("adopts the lone null-paneId (main) pane when no stored paneId matches", async () => {
-		const project = makeProject();
-		const store = mockStatefulHookUpdate(project, makeTask({
-			status: "in-progress",
-			sessionState: { panes: [codexPane(null, null)] },
-		}));
-
-		await handleRequest(makeRequest("task.agentHook", {
-			taskId: store.get().id,
-			projectId: project.id,
-			event: "UserPromptSubmit",
-			sessionId: "codex-main",
-			paneId: "%7",
-		}));
-
-		const main = store.get().sessionState?.panes?.[0];
-		expect(main?.paneId).toBe("%7");
-		expect(main?.sessionId).toBe("codex-main");
-	});
-
-	it("does not capture when paneId is ambiguous (multiple null-paneId panes)", async () => {
-		const project = makeProject();
-		const store = mockStatefulHookUpdate(project, makeTask({
-			status: "in-progress",
-			sessionState: { panes: [codexPane(null, null), codexPane(null, null)] },
-		}));
-
-		await handleRequest(makeRequest("task.agentHook", {
-			taskId: store.get().id,
-			projectId: project.id,
-			event: "SessionStart",
-			sessionId: "codex-x",
-			paneId: "%9",
-		}));
-
-		const panes = store.get().sessionState?.panes ?? [];
-		expect(panes.every((p) => p.sessionId === null)).toBe(true);
 	});
 });
 
@@ -1428,44 +1223,41 @@ describe("hooks never activate a To Do task", () => {
 		return { project, task };
 	}
 
-	it.each(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"])(
-		"task.agentHook %s on a To Do task moves nothing (Codex/OMP/Copilot)", async (event) => {
+	it("no task.agentHook event, a pending question included, moves a To Do task (Codex/OMP/Copilot)", async () => {
+		const events: Array<[string, string]> = [
+			...["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"].map((e) => [e, "Bash"] as [string, string]),
+			["PreToolUse", "request_user_input"],
+		];
+		for (const [event, toolName] of events) {
 			const { project, task } = stubTodo();
 			const response = await handleRequest(makeRequest("task.agentHook", {
-				taskId: task.id, projectId: project.id, sessionId: `todo-${event}`, event, toolName: "Bash", toolUseId: "t1",
+				taskId: task.id, projectId: project.id, sessionId: `todo-${event}-${toolName}`, event, toolName, toolUseId: "t1",
+			}));
+			expect(response.ok, `${event} ${toolName}`).toBe(true);
+		}
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(activateTask).not.toHaveBeenCalled();
+	});
+
+	it("neither task.claudeStopFailure nor a task.move from the task's OWN agent (Claude hooks) moves a To Do task", async () => {
+		{
+			const { project, task } = stubTodo();
+			const response = await handleRequest(makeRequest("task.claudeStopFailure", {
+				taskId: task.id, projectId: project.id, error: "server_error",
 			}));
 			expect(response.ok).toBe(true);
 			expect(moveTask).not.toHaveBeenCalled();
-			expect(activateTask).not.toHaveBeenCalled();
-		},
-	);
-
-	it("a pending question on a To Do task moves nothing either", async () => {
-		const { project, task } = stubTodo();
-		const response = await handleRequest(makeRequest("task.agentHook", {
-			taskId: task.id, projectId: project.id, sessionId: "todo-question", event: "PreToolUse", toolName: "request_user_input", toolUseId: "q1",
-		}));
-		expect(response.ok).toBe(true);
-		expect(moveTask).not.toHaveBeenCalled();
-	});
-
-	it("task.move from the task's OWN agent into an active column is a silent no-op (Claude hooks)", async () => {
-		const { project, task } = stubTodo();
-		const response = await handleRequest(makeRequest("task.move", {
-			taskId: task.id, projectId: project.id, newStatus: "in-progress", ifStatusNot: "review-by-ai", sourceTaskId: task.id,
-		}));
-		expect(response.ok).toBe(true);
-		expect(response.data).toEqual(task);
-		expect(moveTask).not.toHaveBeenCalled();
-	});
-
-	it("task.claudeStopFailure on a To Do task moves nothing", async () => {
-		const { project, task } = stubTodo();
-		const response = await handleRequest(makeRequest("task.claudeStopFailure", {
-			taskId: task.id, projectId: project.id, error: "server_error",
-		}));
-		expect(response.ok).toBe(true);
-		expect(moveTask).not.toHaveBeenCalled();
+		}
+		vi.clearAllMocks();
+		{
+			const { project, task } = stubTodo();
+			const response = await handleRequest(makeRequest("task.move", {
+				taskId: task.id, projectId: project.id, newStatus: "in-progress", ifStatusNot: "review-by-ai", sourceTaskId: task.id,
+			}));
+			expect(response.ok).toBe(true);
+			expect(response.data).toEqual(task);
+			expect(moveTask).not.toHaveBeenCalled();
+		}
 	});
 
 	it("an explicit out-of-task task.move keeps today's start, marked explicitLaunch", async () => {
@@ -1516,35 +1308,37 @@ describe("task.claudeStopFailure", () => {
 		expect(badges[0]![1]).not.toHaveProperty("kind");
 	});
 
-	it("still badges when the task is already in user-questions", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "user-questions" });
-		stub(project, task);
+	it("still badges a task already in user-questions, and leaves a finished task alone", async () => {
+		{
+			const project = makeProject();
+			const task = makeTask({ status: "user-questions" });
+			stub(project, task);
 
-		await handleRequest(makeRequest("task.claudeStopFailure", {
-			taskId: task.id,
-			projectId: project.id,
-			error: "server_error",
-		}));
+			await handleRequest(makeRequest("task.claudeStopFailure", {
+				taskId: task.id,
+				projectId: project.id,
+				error: "server_error",
+			}));
 
-		expect(moveTask).not.toHaveBeenCalled();
-		expect(notifyFromCliDesktop).toHaveBeenCalled();
-	});
+			expect(moveTask).not.toHaveBeenCalled();
+			expect(notifyFromCliDesktop).toHaveBeenCalled();
+		}
+		vi.clearAllMocks();
+		{
+			const project = makeProject();
+			const task = makeTask({ status: "completed" });
+			stub(project, task);
 
-	it("leaves a finished task alone", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "completed" });
-		stub(project, task);
+			const response = await handleRequest(makeRequest("task.claudeStopFailure", {
+				taskId: task.id,
+				projectId: project.id,
+				error: "rate_limit",
+			}));
 
-		const response = await handleRequest(makeRequest("task.claudeStopFailure", {
-			taskId: task.id,
-			projectId: project.id,
-			error: "rate_limit",
-		}));
-
-		expect((response.data as { moved: boolean }).moved).toBe(false);
-		expect(moveTask).not.toHaveBeenCalled();
-		expect(notifyFromCliDesktop).not.toHaveBeenCalled();
+			expect((response.data as { moved: boolean }).moved).toBe(false);
+			expect(moveTask).not.toHaveBeenCalled();
+			expect(notifyFromCliDesktop).not.toHaveBeenCalled();
+		}
 	});
 
 	it("queues the badge under focus mode instead of dropping it", async () => {
@@ -1568,14 +1362,6 @@ describe("task.claudeStopFailure", () => {
 });
 
 describe("projects.list", () => {
-	it("returns all projects", async () => {
-		const projects = [makeProject({ id: "p1" }), makeProject({ id: "p2" })];
-		vi.mocked(data.loadProjects).mockResolvedValue(projects);
-
-		const resp = await handleRequest(makeRequest("projects.list"));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(projects);
-	});
 
 	it("merges virtual (Operations) boards into the list", async () => {
 		const git = makeProject({ id: "p1" });
@@ -1590,110 +1376,93 @@ describe("projects.list", () => {
 });
 
 describe("projects.add / projects.clone / spaces.*", () => {
-	it("hands projects.add its flags, dropping anything that is not a string list", async () => {
-		const { registerProject } = await import("../project-registration");
+	it("hands projects.add its flags (dropping non-string lists) and projects.clone its URL, folder and name", async () => {
+		{
+			const { registerProject } = await import("../project-registration");
 
-		const resp = await handleRequest(makeRequest("projects.add", {
-			path: "/repos/app", init: true, spaces: ["Work / Side", 7], newSpaces: "not-a-list", noSpace: "yes",
-		}));
+			const resp = await handleRequest(makeRequest("projects.add", {
+				path: "/repos/app", init: true, spaces: ["Work / Side", 7], newSpaces: "not-a-list", noSpace: "yes",
+			}));
 
-		expect(resp.ok).toBe(true);
-		expect(registerProject).toHaveBeenCalledWith({
-			path: "/repos/app", name: undefined, init: true, spaces: ["Work / Side"], newSpaces: [], noSpace: false,
-		});
+			expect(resp.ok).toBe(true);
+			expect(registerProject).toHaveBeenCalledWith({
+				path: "/repos/app", name: undefined, init: true, spaces: ["Work / Side"], newSpaces: [], noSpace: false,
+			});
+		}
+		vi.clearAllMocks();
+		{
+			const { cloneProject } = await import("../project-registration");
+
+			await handleRequest(makeRequest("projects.clone", { url: "https://example.com/g/r.git", dir: "/clones", name: "r" }));
+
+			expect(cloneProject).toHaveBeenCalledWith({
+				url: "https://example.com/g/r.git", dir: "/clones", name: "r", spaces: [], newSpaces: [], noSpace: false,
+			});
+		}
 	});
 
-	it("hands projects.clone its URL, folder and name", async () => {
-		const { cloneProject } = await import("../project-registration");
+	it("rejects an unknown spaces.change mode and a missing project, and routes spaces.change and spaces.create", async () => {
+		{
+			const bad = await handleRequest(makeRequest("spaces.change", { projectId: "p1", mode: "move", spaces: [] }));
+			expect(bad.ok).toBe(false);
+			expect(bad.error).toContain("Invalid mode");
 
-		await handleRequest(makeRequest("projects.clone", { url: "https://example.com/g/r.git", dir: "/clones", name: "r" }));
+			const noProject = await handleRequest(makeRequest("spaces.change", { mode: "add", spaces: ["A"] }));
+			expect(noProject.ok).toBe(false);
+			expect(noProject.error).toContain("projectId is required");
+		}
+		vi.clearAllMocks();
+		{
+			const { changeProjectSpaces, createSpaceWith } = await import("../project-registration");
 
-		expect(cloneProject).toHaveBeenCalledWith({
-			url: "https://example.com/g/r.git", dir: "/clones", name: "r", spaces: [], newSpaces: [], noSpace: false,
-		});
-	});
+			await handleRequest(makeRequest("spaces.change", { projectId: "p1", mode: "remove", spaces: ["A"] }));
+			await handleRequest(makeRequest("spaces.create", { name: "Side", projectIds: ["p1"] }));
 
-	it("rejects an unknown spaces.change mode and a missing project", async () => {
-		const bad = await handleRequest(makeRequest("spaces.change", { projectId: "p1", mode: "move", spaces: [] }));
-		expect(bad.ok).toBe(false);
-		expect(bad.error).toContain("Invalid mode");
-
-		const noProject = await handleRequest(makeRequest("spaces.change", { mode: "add", spaces: ["A"] }));
-		expect(noProject.ok).toBe(false);
-		expect(noProject.error).toContain("projectId is required");
-	});
-
-	it("routes spaces.change and spaces.create", async () => {
-		const { changeProjectSpaces, createSpaceWith } = await import("../project-registration");
-
-		await handleRequest(makeRequest("spaces.change", { projectId: "p1", mode: "remove", spaces: ["A"] }));
-		await handleRequest(makeRequest("spaces.create", { name: "Side", projectIds: ["p1"] }));
-
-		expect(changeProjectSpaces).toHaveBeenCalledWith({ projectId: "p1", mode: "remove", spaces: ["A"] });
-		expect(createSpaceWith).toHaveBeenCalledWith({ name: "Side", projectIds: ["p1"] });
+			expect(changeProjectSpaces).toHaveBeenCalledWith({ projectId: "p1", mode: "remove", spaces: ["A"] });
+			expect(createSpaceWith).toHaveBeenCalledWith({ name: "Side", projectIds: ["p1"] });
+		}
 	});
 });
 
 describe("tasks.list", () => {
-	it("errors when projectId is missing", async () => {
-		const resp = await handleRequest(makeRequest("tasks.list"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("projectId is required");
-	});
 
-	it("returns all tasks for a project", async () => {
-		const project = makeProject();
-		const tasks = [makeTask({ id: "t1" }), makeTask({ id: "t2" })];
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
-
-		const resp = await handleRequest(makeRequest("tasks.list", { projectId: "proj-1" }));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(tasks);
-	});
-
-	it("filters tasks by status", async () => {
-		const project = makeProject();
+	it("returns a project's tasks, filters by status, and rejects an unknown status", async () => {
 		const tasks = [
 			makeTask({ id: "t1", status: "todo" }),
 			makeTask({ id: "t2", status: "in-progress" }),
 		];
-		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
 		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
 
-		const resp = await handleRequest(
-			makeRequest("tasks.list", { projectId: "proj-1", status: "todo" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual([tasks[0]]);
-	});
-
-	it("errors on invalid status", async () => {
-		const project = makeProject();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(
-			makeRequest("tasks.list", { projectId: "proj-1", status: "bogus" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Invalid status: bogus");
+		const all = await handleRequest(makeRequest("tasks.list", { projectId: "proj-1" }));
+		expect(all.data).toEqual(tasks);
+		const todo = await handleRequest(makeRequest("tasks.list", { projectId: "proj-1", status: "todo" }));
+		expect(todo.data).toEqual([tasks[0]]);
+		const bogus = await handleRequest(makeRequest("tasks.list", { projectId: "proj-1", status: "bogus" }));
+		expect(bogus.ok).toBe(false);
+		expect(bogus.error).toContain("Invalid status: bogus");
 	});
 });
 
 describe("task.update — priority", () => {
-	it("rejects a garbage priority value", async () => {
+	it("rejects a garbage priority on update and on create, and an update with nothing to change", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 
-		const resp = await handleRequest(
+		const update = await handleRequest(
 			makeRequest("task.update", { taskId: "task-abc12345", projectId: "proj-1", priority: "urgent" }),
 		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Invalid priority");
+		expect(update.ok).toBe(false);
+		expect(update.error).toContain("Invalid priority");
 		expect(data.setTaskPriority).not.toHaveBeenCalled();
+		const create = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "X", priority: "P9" }));
+		expect(create.ok).toBe(false);
+		expect(create.error).toContain("Invalid priority");
+		const nothing = await handleRequest(makeRequest("task.update", { taskId: "task-abc12345", projectId: "proj-1" }));
+		expect(nothing.ok).toBe(false);
+		expect(nothing.error).toContain("Nothing to update");
 	});
 
 	it("accepts a case-insensitive priority and writes it to this task", async () => {
@@ -1713,19 +1482,6 @@ describe("task.update — priority", () => {
 		expect(data.setTaskPriority).toHaveBeenCalledWith(project, task.id, "P0");
 		expect(pushFn).toHaveBeenCalledTimes(1);
 		expect((resp.data as { task: Task }).task.priority).toBe("P0");
-	});
-
-	it("errors when nothing (no title/description/priority) is provided", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: "task-abc12345", projectId: "proj-1" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Nothing to update");
 	});
 });
 
@@ -1765,14 +1521,12 @@ describe("task.update / task.create: start after", () => {
 		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12" }));
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("never start");
-		expect(data.updateTask).not.toHaveBeenCalled();
-	});
 
-	it("rejects an unknown --until", async () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([prereq, waiting]);
-		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12", until: "soon" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("--until must be one of completed, merged");
+		const until = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12", until: "soon" }));
+		expect(until.ok).toBe(false);
+		expect(until.error).toContain("--until must be one of completed, merged");
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("clears it with noStartAfter", async () => {
@@ -1783,14 +1537,10 @@ describe("task.update / task.create: start after", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, armed.id, { launchAfter: null });
 	});
 
-	it("task.create with a missing prerequisite creates nothing", async () => {
+	it("task.create refuses a missing or cancelled prerequisite before the task exists", async () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([waiting]);
-		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:99" }));
-		expect(resp.ok).toBe(false);
-		expect(createTask).not.toHaveBeenCalled();
-	});
-
-	it("task.create refuses a condition before the task exists", async () => {
+		const missing = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:99" }));
+		expect(missing.ok).toBe(false);
 		const cancelled = { ...prereq, status: "cancelled" as const };
 		vi.mocked(data.loadTasks).mockResolvedValue([cancelled, waiting]);
 		vi.mocked(createTask).mockResolvedValue(waiting);
@@ -1877,50 +1627,7 @@ describe("task dependencies over the socket", () => {
 	});
 });
 
-describe("task.create — priority", () => {
-	it("passes an explicit priority through to creation", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "todo", priority: "P1" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(createTask).mockResolvedValue(task);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.create", { projectId: "proj-1", title: "Urgent", priority: "P1" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Urgent", priority: "P1" });
-	});
-
-	it("rejects a garbage priority on create", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject());
-		const resp = await handleRequest(
-			makeRequest("task.create", { projectId: "proj-1", title: "X", priority: "P9" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Invalid priority");
-	});
-});
-
 describe("task.show", () => {
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(makeRequest("task.show"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("resolves within the project when projectId is given", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "task-abc12345", projectId: "proj-1" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(task);
-	});
 
 	describe("a qualified seq ref", () => {
 		const mine = makeProject();
@@ -1977,20 +1684,11 @@ describe("task.show", () => {
 		expect(resp.ok).toBe(true);
 		expect((resp.data as Task).branchName).toBe("chore/dev3-example");
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { branchName: "chore/dev3-example" });
-	});
 
-	it("does not touch the stored branch when it already matches the worktree", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(existsSync).mockReturnValue(true);
+		// A stored branch that already matches the worktree is left alone.
+		vi.mocked(data.updateTask).mockClear();
 		vi.mocked(git.getCurrentBranch).mockResolvedValue(task.branchName);
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "task-abc12345", projectId: "proj-1" }),
-		);
-		expect(resp.ok).toBe(true);
+		await handleRequest(makeRequest("task.show", { taskId: "task-abc12345", projectId: "proj-1" }));
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
@@ -2003,18 +1701,6 @@ describe("task.show", () => {
 		const resp = await handleRequest(
 			makeRequest("task.show", { taskId: "seq:42", projectId: "proj-1" }),
 		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(task);
-	});
-
-	it("resolves a seq:<N> reference across projects", async () => {
-		const project = makeProject();
-		const task = makeTask({ seq: 42 });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:42" }));
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
 	});
@@ -2072,20 +1758,12 @@ describe("task.show", () => {
 		expect(resp.error).toContain("--project proj-b");
 		// The stranger's task must not leak out as a result.
 		expect(resp.data).toBeUndefined();
-	});
 
-	it("stays quiet about other boards when no board carries the ref", async () => {
-		const projectA = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
-		const projectB = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
-		vi.mocked(data.getProject).mockResolvedValue(projectA);
-		vi.mocked(data.loadProjects).mockResolvedValue([projectA, projectB]);
-		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		// With no board carrying the ref, the miss names no other board.
 		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:130", projectId: "proj-a" }));
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).not.toContain("does resolve on");
+		const none = await handleRequest(makeRequest("task.show", { taskId: "seq:130", projectId: "proj-a" }));
+		expect(none.ok).toBe(false);
+		expect(none.error).not.toContain("does resolve on");
 	});
 
 	it("resolves the caller's own task when two boards share the seq", async () => {
@@ -2122,81 +1800,30 @@ describe("task.show", () => {
 		expect(resp.error).toContain("dev3 tasks list");
 	});
 
-	it("resolves task across projects when no projectId given", async () => {
+	it("resolves an id, an 8+ char prefix and a seq:<N> across projects; refuses short, ambiguous and unknown refs", async () => {
 		const project = makeProject();
-		const task = makeTask();
+		const task = makeTask({ id: "task-abc12345-aaaa-uuid", seq: 42 });
+		const sibling = makeTask({ id: "task-abc12345-bbbb-uuid", seq: 2 });
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task, sibling]);
 
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "task-abc12345" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(task);
-	});
+		for (const ref of [task.id, "task-abc12345-a", "seq:42"]) {
+			const resp = await handleRequest(makeRequest("task.show", { taskId: ref }));
+			expect(resp.data, ref).toEqual(task);
+		}
+		const misses: Array<[string, string]> = [["task-ab", "Task not found"], ["task-abc12345", "Ambiguous"], ["nonexistent", "Task not found"]];
+		for (const [ref, error] of misses) {
+			const resp = await handleRequest(makeRequest("task.show", { taskId: ref }));
+			expect(resp, ref).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+		}
 
-	it("resolves a task that lives on a virtual (Operations) board", async () => {
-		// No git projects — the task only exists on a virtual board, which must be scanned.
+		// A task that lives only on a virtual (Operations) board is scanned too.
 		const ops = makeProject({ id: "ops", kind: "virtual", builtin: true });
-		const task = makeTask({ id: "task-abc12345" });
 		vi.mocked(data.loadProjects).mockResolvedValue([]);
 		vi.mocked(data.loadVirtualProjects).mockResolvedValue([ops]);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(makeRequest("task.show", { taskId: "task-abc12345" }));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(task);
-	});
-
-	it("matches by prefix across projects", async () => {
-		const project = makeProject();
-		const task = makeTask({ id: "task-abc12345-full-uuid" });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "task-abc1" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(task);
-	});
-
-	it("rejects short prefix (less than 8 chars)", async () => {
-		const project = makeProject();
-		const task = makeTask({ id: "task-abc12345-full-uuid" });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "task-ab" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Task not found");
-	});
-
-	it("errors on ambiguous prefix across projects", async () => {
-		const project = makeProject();
-		const task1 = makeTask({ id: "task-abc12345-aaaa-uuid" });
-		const task2 = makeTask({ id: "task-abc12345-bbbb-uuid", seq: 2 });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task1, task2]);
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "task-abc12345" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Ambiguous");
-	});
-
-	it("errors when task not found across projects", async () => {
-		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "nonexistent" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Task not found");
+		expect((await handleRequest(makeRequest("task.show", { taskId: "task-abc12345" }))).data).toEqual(task);
 	});
 
 	it("skips projects with broken task files during cross-project resolution", async () => {
@@ -2217,24 +1844,45 @@ describe("task.show", () => {
 });
 
 describe("devServer.*", () => {
-	it("starts a dev server for a task in the current project", async () => {
-		const project = makeProject();
-		const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
-		const status = { taskId: task.id, running: true, devSessionName: "dev3-dev-task-abc1" };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(runDevServer).mockResolvedValue(status as any);
+	it("starts a dev server in the background, and restarts via restartDevServer, not a bare start", async () => {
+		{
+			const project = makeProject();
+			const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
+			const status = { taskId: task.id, running: true, devSessionName: "dev3-dev-task-abc1" };
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(runDevServer).mockResolvedValue(status as any);
 
-		const resp = await handleRequest(makeRequest("devServer.start", {
-			projectId: "proj-1",
-			taskId: "task-abc1",
-		}));
+			const resp = await handleRequest(makeRequest("devServer.start", {
+				projectId: "proj-1",
+				taskId: "task-abc1",
+			}));
 
-		expect(resp.ok).toBe(true);
-		expect(runDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
-		// A CLI start never carries `focus`, so its pane opens in the background.
-		expect(vi.mocked(runDevServer).mock.calls[0][0]).not.toHaveProperty("focus");
-		expect(resp.data).toEqual(status);
+			expect(resp.ok).toBe(true);
+			expect(runDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+			// A CLI start never carries `focus`, so its pane opens in the background.
+			expect(vi.mocked(runDevServer).mock.calls[0][0]).not.toHaveProperty("focus");
+			expect(resp.data).toEqual(status);
+		}
+		vi.clearAllMocks();
+		{
+			const project = makeProject();
+			const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
+			const status = { taskId: task.id, running: true, devSessionName: "dev3-dev-task-abc1" };
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(restartDevServer).mockResolvedValue(status as any);
+
+			const resp = await handleRequest(makeRequest("devServer.restart", {
+				projectId: "proj-1",
+				taskId: "task-abc1",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect(restartDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+			expect(runDevServer).not.toHaveBeenCalled();
+			expect(resp.data).toEqual(status);
+		}
 	});
 
 	it("stops a dev server by resolving task across projects", async () => {
@@ -2250,58 +1898,16 @@ describe("devServer.*", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(stopDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
-	});
 
-	it("restarts via restartDevServer (stop → delay → start), not a bare start", async () => {
-		const project = makeProject();
-		const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
-		const status = { taskId: task.id, running: true, devSessionName: "dev3-dev-task-abc1" };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(restartDevServer).mockResolvedValue(status as any);
-
-		const resp = await handleRequest(makeRequest("devServer.restart", {
-			projectId: "proj-1",
-			taskId: "task-abc1",
-		}));
-
-		expect(resp.ok).toBe(true);
-		expect(restartDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
-		expect(runDevServer).not.toHaveBeenCalled();
-		expect(resp.data).toEqual(status);
-	});
-
-	it("returns current dev server status", async () => {
-		const project = makeProject();
-		const task = makeTask();
 		const status = { taskId: task.id, running: false, ports: [] };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(getDevServerStatus).mockResolvedValue(status as any);
-
-		const resp = await handleRequest(makeRequest("devServer.status", {
-			projectId: "proj-1",
-			taskId: task.id,
-		}));
-
-		expect(resp.ok).toBe(true);
+		const shown = await handleRequest(makeRequest("devServer.status", { taskId: task.id }));
 		expect(getDevServerStatus).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
-		expect(resp.data).toEqual(status);
+		expect(shown.data).toEqual(status);
 	});
 });
 
 describe("task.create", () => {
-	it("errors when projectId is missing", async () => {
-		const resp = await handleRequest(makeRequest("task.create", { title: "New" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("projectId is required");
-	});
-
-	it("errors when title is missing", async () => {
-		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("title is required");
-	});
 
 	it("creates task with title only (no description) and pushes message", async () => {
 		const project = makeProject();
@@ -2318,6 +1924,10 @@ describe("task.create", () => {
 		expect(resp.ok).toBe(true);
 		expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "New task" });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task });
+
+		// No window to push to is not an error.
+		vi.mocked(getPushMessage).mockReturnValue(null);
+		expect((await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "New task" }))).ok).toBe(true);
 	});
 
 	it("creates task with description and sets customTitle", async () => {
@@ -2342,19 +1952,6 @@ describe("task.create", () => {
 		expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Long detailed description\nwith multiple lines" });
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Short title" });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: updatedTask });
-	});
-
-	it("does not crash when pushMessage is null", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "todo" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(createTask).mockResolvedValue(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.create", { projectId: "proj-1", title: "New task" }),
-		);
-		expect(resp.ok).toBe(true);
 	});
 
 	describe("origin", () => {
@@ -2390,17 +1987,13 @@ describe("task.create", () => {
 			expect(vi.mocked(createTask).mock.calls[0]![0].origin).toEqual({ kind: "task", taskId: variant2.id, projectId: "proj-2" });
 		});
 
-		it("falls back to the user when the creator cannot be resolved, and still creates", async () => {
+		it("records the user when the creator cannot be resolved (still creating) and outside any task context", async () => {
 			wireBoards();
 			const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "gone-123" }));
 			expect(resp.ok).toBe(true);
 			expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Child" });
-		});
-
-		it("records the user outside any task context", async () => {
-			wireBoards();
 			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Mine" }));
-			expect(vi.mocked(createTask).mock.calls[0]![0]).not.toHaveProperty("origin");
+			expect(vi.mocked(createTask).mock.calls[1]![0]).not.toHaveProperty("origin");
 		});
 
 		it("gives refs written from another board that board's project", async () => {
@@ -2437,13 +2030,11 @@ describe("task.create", () => {
 			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [] : [child]));
 			const orphan = await handleRequest(makeRequest("task.show", { taskId: "child-11", projectId: "proj-1" }));
 			expect(orphan.data).toMatchObject({ originParent: null });
-		});
 
-		it("task.show adds nothing for a task the user created", async () => {
-			wireBoards();
+			// A task the user created gets no originParent at all.
 			vi.mocked(data.loadTasks).mockResolvedValue([makeTask()]);
-			const shown = await handleRequest(makeRequest("task.show", { taskId: "task-abc", projectId: "proj-1" }));
-			expect(shown.data).not.toHaveProperty("originParent");
+			const mine = await handleRequest(makeRequest("task.show", { taskId: "task-abc", projectId: "proj-1" }));
+			expect(mine.data).not.toHaveProperty("originParent");
 		});
 
 		it("task.children lists direct children of the whole variant group across projects", async () => {
@@ -2499,7 +2090,11 @@ describe("task.create", () => {
 			expect(created()).not.toHaveProperty("epicId");
 		});
 
-		it("gives no epic outside a task context or when the creator is gone", async () => {
+		it("gives no epic outside a task context, when the creator is gone, or with --no-epic", async () => {
+			wire(payments.id);
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0", noEpic: true }));
+			expect(created()).not.toHaveProperty("epicId");
+			vi.mocked(createTask).mockClear();
 			wire(payments.id);
 			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Mine" }));
 			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Orphan", sourceTaskId: "gone-123" }));
@@ -2511,12 +2106,6 @@ describe("task.create", () => {
 			epicStore.epics.push({ id: "epicother-000-1111-2222-333333333333", name: "Other", color: "#14b8a6", archived: false, createdAt: 0 });
 			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0", epic: "other" }));
 			expect(created().epicId).toBe("epicother-000-1111-2222-333333333333");
-		});
-
-		it("--no-epic opts out of an inherited epic", async () => {
-			wire(payments.id);
-			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0", noEpic: true }));
-			expect(created()).not.toHaveProperty("epicId");
 		});
 
 		it("refuses an unknown or archived --epic with the coded error and creates nothing", async () => {
@@ -2662,21 +2251,12 @@ describe("task.create", () => {
 			expect(vi.mocked(createTask).mock.calls[0]![0]).toMatchObject({ priority: "P0", taskType: "coordinator" });
 		});
 
-		it("treats standard as no type at all", async () => {
+		it("treats standard as no type at all, and rejects an unknown type creating nothing", async () => {
 			wireCreate();
-
-			const resp = await handleRequest(makeRequest("task.create", {
-				projectId: "proj-1",
-				title: "Ordinary task",
-				taskType: "standard",
-			}));
-
-			expect(resp.ok).toBe(true);
+			const standard = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Ordinary task", taskType: "standard" }));
+			expect(standard.ok).toBe(true);
 			expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Ordinary task" });
-		});
-
-		it("rejects an unknown type and creates nothing", async () => {
-			wireCreate();
+			vi.mocked(createTask).mockClear();
 
 			const resp = await handleRequest(makeRequest("task.create", {
 				projectId: "proj-1",
@@ -2735,11 +2315,16 @@ describe("task.create", () => {
 
 			expect(resp.ok).toBe(true);
 			expect(vi.mocked(createTask).mock.calls[0]![0]).toMatchObject({ existingBranch: "origin/feat/x" });
+
+			// Neither flag: no existingBranch key at all.
+			vi.mocked(resolveTaskStartRef).mockResolvedValue(undefined);
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Ordinary" }));
+			expect(vi.mocked(createTask).mock.calls[1]![0]).not.toHaveProperty("existingBranch");
 		});
 
 		it("creates NOTHING when the ref does not resolve", async () => {
 			wireCreate();
-			vi.mocked(resolveTaskStartRef).mockRejectedValue(new Error(`${TASK_REF_UNRESOLVED_PREFIX}no pull request 999 in this project.`));
+			vi.mocked(resolveTaskStartRef).mockRejectedValueOnce(new Error(`${TASK_REF_UNRESOLVED_PREFIX}no pull request 999 in this project.`));
 
 			const resp = await handleRequest(makeRequest("task.create", {
 				projectId: "proj-1",
@@ -2750,15 +2335,6 @@ describe("task.create", () => {
 			expect(resp.ok).toBe(false);
 			expect(resp.error).toContain(TASK_REF_UNRESOLVED_PREFIX);
 			expect(createTask).not.toHaveBeenCalled();
-		});
-
-		it("sends no existingBranch key at all when neither flag was passed", async () => {
-			wireCreate();
-			vi.mocked(resolveTaskStartRef).mockResolvedValue(undefined);
-
-			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Ordinary" }));
-
-			expect(vi.mocked(createTask).mock.calls[0]![0]).not.toHaveProperty("existingBranch");
 		});
 	});
 });
@@ -2789,7 +2365,7 @@ describe("ui.show-image", () => {
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
 		expect(pushFn).toHaveBeenCalledWith(
 			"cliShowImage",
-			expect.objectContaining({ taskId: task.id, newCount: 2, taskSeq: task.seq, projectName: project.name }),
+			expect.objectContaining({ taskId: task.id, newCount: 2, taskSeq: task.seq, projectName: project.name, newKind: "image" }),
 		);
 	});
 
@@ -2886,16 +2462,6 @@ describe("ui.show-image", () => {
 	it("no longer answers ui.show-video", async () => {
 		const resp = await handleRequest(makeRequest("ui.show-video", { taskId: "t", images: [{ path: "/tmp/a.mp4" }] }));
 		expect(resp.ok).toBe(false);
-	});
-
-	it("ui.show-image still labels its arrivals as images", async () => {
-		const project = makeProject();
-		const task = makeTask({ seq: 5 });
-		const pushFn = vi.fn();
-		wireShowImage(project, task, pushFn);
-		await handleRequest(makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: ["/tmp/a.png"] }));
-		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
-		expect(cliPush?.[1].newKind).toBe("image");
 	});
 
 	it("accepts the images:[{path,caption}] shape and threads per-image captions", async () => {
@@ -3248,43 +2814,45 @@ describe("ui.show-artifact", () => {
 });
 
 describe("artifact.template-dir", () => {
-	it("provisions the starter on demand and answers with its path", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		const { provisionArtifactStarter } = await import("../artifact-template");
+	it("provisions the starter on demand and answers with its path, or reports the failure instead of inventing one", async () => {
+		{
+			const project = makeProject();
+			const task = makeTask();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			const { provisionArtifactStarter } = await import("../artifact-template");
 
-		const resp = await handleRequest(makeRequest("artifact.template-dir", {
-			taskId: task.id,
-			projectId: project.id,
-			worktreePath: "/wt-container/worktree",
-		}));
+			const resp = await handleRequest(makeRequest("artifact.template-dir", {
+				taskId: task.id,
+				projectId: project.id,
+				worktreePath: "/wt-container/worktree",
+			}));
 
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ dir: "/wt-container/artifact-template-v1", mode: "on", taskId: task.id });
-		expect(provisionArtifactStarter).toHaveBeenCalledWith(project, task, { worktreePath: "/wt-container/worktree" });
-	});
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toMatchObject({ dir: "/wt-container/artifact-template-v1", mode: "on", taskId: task.id });
+			expect(provisionArtifactStarter).toHaveBeenCalledWith(project, task, { worktreePath: "/wt-container/worktree" });
+		}
+		vi.clearAllMocks();
+		{
+			const project = makeProject();
+			const task = makeTask();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			const { provisionArtifactStarter } = await import("../artifact-template");
+			vi.mocked(provisionArtifactStarter).mockImplementationOnce(() => {
+				throw new Error("Bundled dev3 artifact template not found");
+			});
 
-	it("reports the provisioning failure instead of inventing a path", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		const { provisionArtifactStarter } = await import("../artifact-template");
-		vi.mocked(provisionArtifactStarter).mockImplementationOnce(() => {
-			throw new Error("Bundled dev3 artifact template not found");
-		});
+			const resp = await handleRequest(makeRequest("artifact.template-dir", { taskId: task.id, projectId: project.id }));
 
-		const resp = await handleRequest(makeRequest("artifact.template-dir", { taskId: task.id, projectId: project.id }));
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("artifact template not found");
+			expect(resp.ok).toBe(false);
+			expect(resp.error).toContain("artifact template not found");
+		}
 	});
 });
 
 describe("ui control (notify / attention / state)", () => {
-	it("ui.notify: pushes a cliToast without a task", async () => {
+	it("ui.notify: pushes a cliToast without a task, keeps a custom duration, and logs null provenance", async () => {
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
@@ -3297,27 +2865,33 @@ describe("ui control (notify / attention / state)", () => {
 			message: "hello",
 			level: "info",
 		});
-	});
+		// A task-less row records null provenance, never a guess.
+		const row = vi.mocked(appendNotificationLog).mock.calls[0][0];
+		expect(row).toMatchObject({ taskId: null, taskSeq: null, projectId: null, sourceTaskId: null, sourceSeq: null });
+		expect(row).not.toHaveProperty("sourceSessionId");
+		expect(row).not.toHaveProperty("sourceTitle");
 
-	it("ui.notify: preserves a custom toast duration", async () => {
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "brief", level: "info", durationMs: 2_000 }));
-
-		expect(resp.ok).toBe(true);
+		await handleRequest(makeRequest("ui.notify", { message: "brief", level: "info", durationMs: 2_000 }));
 		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ message: "brief", durationMs: 2_000 }));
 	});
 
-	it("ui.notify: rejects an invalid custom toast duration", async () => {
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "brief", durationMs: 31_000 }));
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("durationMs must be between 2000ms and 30000ms");
+	it("ui.notify: rejects a bad duration, level, empty message or task-less --desktop, and logs none of them", async () => {
+		const cases: Array<[Record<string, unknown>, string]> = [
+			[{ message: "brief", durationMs: 31_000 }, "durationMs must be between 2000ms and 30000ms"],
+			[{ message: "x", level: "warning" }, "Invalid level"],
+			[{ message: "   " }, "message is required"],
+			[{ message: "x", desktop: true }, "requires a task"],
+		];
+		for (const [params, error] of cases) {
+			const resp = await handleRequest(makeRequest("ui.notify", params));
+			expect(resp, error).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+		}
+		expect(appendNotificationLog).not.toHaveBeenCalled();
 	});
 
-	it("ui.notify: queues the cliToast during notification suppression", async () => {
+	it("ui.notify: queues the cliToast during suppression and logs what held it back", async () => {
 		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+		vi.mocked(activeNotificationSuppression).mockReturnValue(["focusMode"]);
 
 		const resp = await handleRequest(makeRequest("ui.notify", { message: "hello", level: "info" }));
 
@@ -3329,20 +2903,53 @@ describe("ui control (notify / attention / state)", () => {
 			message: "hello",
 			level: "info",
 		});
+		expect(appendNotificationLog).toHaveBeenCalledWith(
+			expect.objectContaining({ outcome: "queued", suppressedBy: ["focusMode"] }),
+		);
 	});
 
-	it("ui.notify: resolves the task so the toast is clickable", async () => {
+	it("ui.notify: focus mode queues the toast instead of pushing it", async () => {
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "hi" }));
+		expect(resp.data).toMatchObject({ delivered: true, queued: true });
+		expect(pushFn).not.toHaveBeenCalled();
+		expect(setFocusMode).toHaveBeenCalledWith(true);
+	});
+
+	it("ui.notify: resolves the task so the toast is clickable, and logs target and caller", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		const pushFn = vi.fn();
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
 		const resp = await handleRequest(
-			makeRequest("ui.notify", { message: "done", level: "success", taskId: task.id, projectId: project.id }),
+			makeRequest("ui.notify", {
+				message: "done", level: "success", taskId: task.id, projectId: project.id,
+				sourceTaskId: task.id, sourceSessionId: "session-abc",
+			}),
 		);
 		expect(resp.ok).toBe(true);
+		expect(appendNotificationLog).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mode: "toast",
+				level: "success",
+				message: "done",
+				outcome: "delivered",
+				taskId: task.id,
+				taskSeq: task.seq,
+				projectId: project.id,
+				sourceTaskId: task.id,
+				sourceSeq: task.seq,
+				sourceSessionId: "session-abc",
+			}),
+		);
 		expect(pushFn).toHaveBeenCalledWith(
 			"cliToast",
 			expect.objectContaining({
@@ -3374,93 +2981,8 @@ describe("ui control (notify / attention / state)", () => {
 				projectName: project.name,
 			}),
 		);
-	});
-
-	it("ui.notify: --desktop without a task errors", async () => {
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "x", desktop: true }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("requires a task");
-	});
-
-	it("ui.notify: rejects an invalid level", async () => {
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "x", level: "warning" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Invalid level");
-	});
-
-	it("ui.notify: rejects an empty message", async () => {
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "   " }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("message is required");
-	});
-
-	it("ui.notify: focus mode queues the toast", async () => {
-		const pushFn = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
-		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
-
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "hi" }));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ delivered: true, queued: true });
-		expect(pushFn).not.toHaveBeenCalled();
-		expect(setFocusMode).toHaveBeenCalledWith(true);
-	});
-
-	it("ui.notify: records a delivered toast with its target and caller", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		await handleRequest(
-			makeRequest("ui.notify", {
-				message: "build green",
-				level: "success",
-				taskId: task.id,
-				projectId: project.id,
-				sourceTaskId: task.id,
-				sourceSessionId: "session-abc",
-			}),
-		);
-
 		expect(appendNotificationLog).toHaveBeenCalledWith(
-			expect.objectContaining({
-				mode: "toast",
-				level: "success",
-				message: "build green",
-				outcome: "delivered",
-				taskId: task.id,
-				taskSeq: task.seq,
-				projectId: project.id,
-				sourceTaskId: task.id,
-				sourceSeq: task.seq,
-				sourceSessionId: "session-abc",
-			}),
-		);
-	});
-
-	it("ui.notify: records a task-less notification with null provenance, never a guess", async () => {
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		await handleRequest(makeRequest("ui.notify", { message: "hello", level: "info" }));
-
-		const row = vi.mocked(appendNotificationLog).mock.calls[0][0];
-		expect(row).toMatchObject({ taskId: null, taskSeq: null, projectId: null, sourceTaskId: null, sourceSeq: null });
-		expect(row).not.toHaveProperty("sourceSessionId");
-		expect(row).not.toHaveProperty("sourceTitle");
-	});
-
-	it("ui.notify: records a queued row naming what held it back", async () => {
-		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
-		vi.mocked(activeNotificationSuppression).mockReturnValue(["focusMode"]);
-
-		await handleRequest(makeRequest("ui.notify", { message: "later", level: "info" }));
-
-		expect(appendNotificationLog).toHaveBeenCalledWith(
-			expect.objectContaining({ outcome: "queued", suppressedBy: ["focusMode"] }),
+			expect.objectContaining({ mode: "desktop", outcome: "delivered", taskId: task.id }),
 		);
 	});
 
@@ -3497,59 +3019,39 @@ describe("ui control (notify / attention / state)", () => {
 		expect(appendNotificationLog).not.toHaveBeenCalled();
 	});
 
-	it("ui.notify: --desktop records the desktop surface", async () => {
-		const project = makeProject();
-		const task = makeTask({ seq: 7 });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+	it("ui.attention: pushes cliAttention for the resolved task, and queues it under focus mode", async () => {
+		{
+			const project = makeProject();
+			const task = makeTask();
+			const pushFn = vi.fn();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
-		await handleRequest(
-			makeRequest("ui.notify", { message: "needs you", desktop: true, taskId: task.id, projectId: project.id }),
-		);
+			const resp = await handleRequest(
+				makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "PR ready" }),
+			);
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toMatchObject({ delivered: true, taskId: task.id });
+			expect(pushFn).toHaveBeenCalledWith("cliAttention", { taskId: task.id, reason: "PR ready" });
+		}
+		vi.clearAllMocks();
+		{
+			const project = makeProject();
+			const task = makeTask();
+			const pushFn = vi.fn();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(getPushMessage).mockReturnValue(pushFn);
+			vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+			vi.mocked(isNotificationSuppressed).mockReturnValue(true);
 
-		expect(appendNotificationLog).toHaveBeenCalledWith(
-			expect.objectContaining({ mode: "desktop", outcome: "delivered", taskId: task.id }),
-		);
-	});
-
-	it("ui.notify: a rejected request writes nothing", async () => {
-		await handleRequest(makeRequest("ui.notify", { message: "   " }));
-		await handleRequest(makeRequest("ui.notify", { message: "x", level: "warning" }));
-
-		expect(appendNotificationLog).not.toHaveBeenCalled();
-	});
-
-	it("ui.attention: focus mode queues the badge", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		const pushFn = vi.fn();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
-		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
-
-		const resp = await handleRequest(makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "x" }));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ delivered: true, queued: true });
-		expect(pushFn).not.toHaveBeenCalled();
-		expect(pushCliAttention).toHaveBeenCalledWith({ taskId: task.id, projectId: task.projectId, reason: "x" });
-	});
-
-	it("ui.attention: pushes cliAttention for the resolved task", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		const pushFn = vi.fn();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const resp = await handleRequest(
-			makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "PR ready" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ delivered: true, taskId: task.id });
-		expect(pushFn).toHaveBeenCalledWith("cliAttention", { taskId: task.id, reason: "PR ready" });
+			const resp = await handleRequest(makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "x" }));
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toMatchObject({ delivered: true, queued: true });
+			expect(pushFn).not.toHaveBeenCalled();
+			expect(pushCliAttention).toHaveBeenCalledWith({ taskId: task.id, projectId: task.projectId, reason: "x" });
+		}
 	});
 
 	it("ui.attention --clear: lowers the badge even while focus mode suppresses new ones", async () => {
@@ -3587,37 +3089,13 @@ describe("ui control (notify / attention / state)", () => {
 			userIdleSeconds: 7,
 			tmux: null,
 		});
-	});
 
-	it("ui.state: includes the tmux layout when a taskId is given", async () => {
-		vi.mocked(isAppForeground).mockReturnValue(false);
-		vi.mocked(getActiveContext).mockReturnValue({ projectId: null, taskId: null });
-
-		const resp = await handleRequest(makeRequest("ui.state", { taskId: "task-abc" }));
-		expect(resp.ok).toBe(true);
-		expect((resp.data as { tmux: unknown }).tmux).toMatchObject({ sessionName: "dev3-task1234", exists: false });
+		const withTask = await handleRequest(makeRequest("ui.state", { taskId: "task-abc" }));
+		expect((withTask.data as { tmux: unknown }).tmux).toMatchObject({ sessionName: "dev3-task1234", exists: false });
 	});
 });
 
 describe("task.update", () => {
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(makeRequest("task.update"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("errors when nothing to update", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: task.id, projectId: "proj-1" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Nothing to update");
-	});
 
 	it("updates title with projectId", async () => {
 		const project = makeProject();
@@ -3633,24 +3111,12 @@ describe("task.update", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Updated" });
+		const result = resp.data as { task: Task; titlePreserved: boolean };
+		expect(result.task.id).toBe(task.id);
+		expect(result.titlePreserved).toBe(false);
 	});
 
-	it("opts a task in to self-completion when another task asks", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, selfCompletion: true });
-
-		const resp = await handleRequest(makeRequest("task.update", {
-			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: "some-coordinator-task",
-		}));
-
-		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { selfCompletion: true });
-	});
-
-	it("tells the user when an agent grants self-completion", async () => {
+	it("opts a task in to self-completion when another task asks, and tells the user", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		const pushFn = vi.fn();
@@ -3659,10 +3125,12 @@ describe("task.update", () => {
 		vi.mocked(data.updateTask).mockResolvedValue({ ...task, selfCompletion: true });
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
-		await handleRequest(makeRequest("task.update", {
+		const resp = await handleRequest(makeRequest("task.update", {
 			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: "some-coordinator-task",
 		}));
 
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { selfCompletion: true });
 		expect(pushFn).toHaveBeenCalledWith("manualCompletionChanged", expect.objectContaining({ taskId: task.id, selfCompletion: true }));
 		expect(clearMergeNotification).toHaveBeenCalledWith(task.id);
 	});
@@ -3710,26 +3178,6 @@ describe("task.update", () => {
 			taskTitle: "Test task",
 			projectName: project.name,
 		});
-	});
-
-	it("accepts a manual-completion update when the value is already set", async () => {
-		const project = makeProject();
-		const task = makeTask({ manualCompletion: true });
-		const pushFn = vi.fn();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-
-		const resp = await handleRequest(makeRequest("task.update", {
-			taskId: task.id,
-			projectId: project.id,
-			manualCompletion: true,
-		}));
-
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual({ task, titlePreserved: false });
-		expect(data.updateTask).not.toHaveBeenCalled();
-		expect(pushFn).not.toHaveBeenCalled();
 	});
 
 	// The hole the coordinator flagged: flipping the field alone would leave a card
@@ -3780,41 +3228,27 @@ describe("task.update", () => {
 			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain("no longer carries a special role");
 		});
 
-		it("swaps one role's preamble for the other without leaving the old brief", async () => {
-			const project = makeProject();
-			const task = makeTask({
-				taskType: "coordinator",
-				description: withPresetPrompt("look at this branch", COORDINATOR_PROMPT),
-			});
-			vi.mocked(data.getProject).mockResolvedValue(project);
-			vi.mocked(data.loadTasks).mockResolvedValue([task]);
-			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
-
-			const resp = await handleRequest(makeRequest("task.update", {
-				taskId: task.id,
-				projectId: project.id,
-				taskType: "pr-review",
-			}));
-
-			expect(resp.ok).toBe(true);
-			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
-			expect(updates.taskType).toBe("pr-review");
-			expect(updates.description!.startsWith(DEFAULT_PR_REVIEW_PROMPT)).toBe(true);
-			expect(updates.description).not.toContain(COORDINATOR_PROMPT);
-			expect(updates.description!.endsWith("look at this branch")).toBe(true);
-		});
-
-		it("replaces a coordinator brief with cleanup and delivers the correct new brief", async () => {
-			const project = makeProject();
-			const task = makeTask({ taskType: "coordinator", description: withPresetPrompt("Audit this board.", COORDINATOR_PROMPT) });
-			vi.mocked(data.getProject).mockResolvedValue(project);
-			vi.mocked(data.loadTasks).mockResolvedValue([task]);
-			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
-			const resp = await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: project.id, taskType: "board-cleanup" }));
-			expect(resp.ok).toBe(true);
-			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
-			expect(updates.description).toBe(withPresetPrompt("Audit this board.", BOARD_CLEANUP_PROMPT));
-			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain("a BOARD CLEANUP adviser");
+		it("swaps one role's brief for another, leaving no trace of the old one and delivering the new", async () => {
+			const swaps: Array<[Task["taskType"], string, string]> = [
+				["pr-review", DEFAULT_PR_REVIEW_PROMPT, DEFAULT_PR_REVIEW_PROMPT.slice(0, 40)],
+				["board-cleanup", BOARD_CLEANUP_PROMPT, "a BOARD CLEANUP adviser"],
+			];
+			for (const [taskType, brief, delivered] of swaps) {
+				vi.mocked(data.updateTask).mockClear();
+				vi.mocked(deliverAgentPrompt).mockClear();
+				const project = makeProject();
+				const task = makeTask({ taskType: "coordinator", description: withPresetPrompt("look at this branch", COORDINATOR_PROMPT) });
+				vi.mocked(data.getProject).mockResolvedValue(project);
+				vi.mocked(data.loadTasks).mockResolvedValue([task]);
+				vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+				const resp = await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: project.id, taskType }));
+				expect(resp.ok, String(taskType)).toBe(true);
+				const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+				expect(updates.taskType).toBe(taskType);
+				expect(updates.description).toBe(withPresetPrompt("look at this branch", brief));
+				expect(updates.description).not.toContain(COORDINATOR_PROMPT);
+				expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain(delivered);
+			}
 		});
 
 		it("says plainly when there is no session to tell", async () => {
@@ -3913,7 +3347,7 @@ describe("task.update", () => {
 			expect(deliverAgentPrompt).not.toHaveBeenCalled();
 		});
 
-		it("rejects an unknown type without writing anything", async () => {
+		it("rejects an unknown type, and skips the type the task already has, without writing anything", async () => {
 			const project = makeProject();
 			const task = makeTask();
 			vi.mocked(data.getProject).mockResolvedValue(project);
@@ -3926,159 +3360,14 @@ describe("task.update", () => {
 			}));
 
 			expect(resp.ok).toBe(false);
-			expect(data.updateTask).not.toHaveBeenCalled();
-		});
 
-		it("writes nothing when the task already has that type", async () => {
-			const project = makeProject();
-			const task = makeTask({ taskType: "coordinator" });
-			vi.mocked(data.getProject).mockResolvedValue(project);
-			vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-			const resp = await handleRequest(makeRequest("task.update", {
-				taskId: task.id,
-				projectId: project.id,
-				taskType: "coordinator",
-			}));
-
-			expect(resp.ok).toBe(true);
+			// The type the task already has: nothing to write, nobody to tell.
+			vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ taskType: "coordinator" })]);
+			const same = await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: project.id, taskType: "coordinator" }));
+			expect(same.ok).toBe(true);
 			expect(data.updateTask).not.toHaveBeenCalled();
 			expect(deliverAgentPrompt).not.toHaveBeenCalled();
 		});
-	});
-
-	it("auto-generates title from description", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		const updated = { ...task, description: "Long desc", title: "Long desc" };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "Long desc" }),
-		);
-		expect(resp.ok).toBe(true);
-		const call = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(call.description).toBe("Long desc");
-		expect(call.title).toBeDefined();
-	});
-
-	it("clears the scratch flag when the description becomes a real task prompt", async () => {
-		const project = makeProject();
-		const task = makeTask({ scratch: true, description: "Scratch — 15:50" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({
-			...task,
-			description: "Plan HTML artifacts",
-			scratch: false,
-		});
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", {
-				taskId: task.id,
-				projectId: "proj-1",
-				description: "Plan HTML artifacts",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(vi.mocked(data.updateTask).mock.calls[0][2]).toEqual(expect.objectContaining({
-			description: "Plan HTML artifacts",
-			scratch: false,
-		}));
-	});
-
-	it("clears the scratch flag when the title becomes a real task title", async () => {
-		const project = makeProject();
-		const task = makeTask({ scratch: true, description: "Scratch — 15:50" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({
-			...task,
-			customTitle: "Plan HTML artifacts",
-			scratch: false,
-		});
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", {
-				taskId: task.id,
-				projectId: "proj-1",
-				title: "Plan HTML artifacts",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(vi.mocked(data.updateTask).mock.calls[0][2]).toEqual(expect.objectContaining({
-			customTitle: "Plan HTML artifacts",
-			scratch: false,
-		}));
-	});
-
-	it("does not auto-generate title when explicit title provided", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: "Explicit", description: "Desc" });
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		await handleRequest(
-			makeRequest("task.update", {
-				taskId: task.id,
-				projectId: "proj-1",
-				title: "Explicit",
-				description: "Desc",
-			}),
-		);
-		const call = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(call.customTitle).toBe("Explicit");
-	});
-
-	it("resolves task across projects when no projectId", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, title: "New" });
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: task.id, title: "New" }),
-		);
-		expect(resp.ok).toBe(true);
-	});
-
-	it("errors when task not found", async () => {
-		const project = makeProject();
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: "nope", projectId: "proj-1", title: "X" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Task not found");
-	});
-
-	it("clears customTitle when title is empty string", async () => {
-		const project = makeProject();
-		const task = makeTask({ customTitle: "Old custom" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: null });
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "" }),
-		);
-		expect(resp.ok).toBe(true);
-		const call = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(call.customTitle).toBeNull();
 	});
 
 	it("qualifies refs in a description written from a task on another board", async () => {
@@ -4150,23 +3439,6 @@ describe("task.update", () => {
 
 		await handleRequest(makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "After seq:3 lands", sourceTaskId: writer.id }));
 		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).toMatchObject({ customTitle: "After seq:3 lands" });
-	});
-
-	it("does not recompute auto-title from description when task has customTitle", async () => {
-		const project = makeProject();
-		const task = makeTask({ customTitle: "My custom title" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, description: "New desc" });
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "New desc" }),
-		);
-		expect(resp.ok).toBe(true);
-		const call = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(call.description).toBe("New desc");
-		expect(call.title).toBeUndefined();
 	});
 
 	// Issue #564 — agent following its skill must not overwrite a title the user
@@ -4292,123 +3564,54 @@ describe("task.update", () => {
 		expect(call.customTitle).toBeNull();
 		expect(call.titleEditedByUser).toBe(false);
 	});
-
-	it("returns task in new envelope shape", async () => {
-		const project = makeProject();
-		const task = makeTask();
-		const updated = { ...task, customTitle: "Updated" };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "Updated" }),
-		);
-		expect(resp.ok).toBe(true);
-		const result = resp.data as { task: Task; titlePreserved: boolean };
-		expect(result.task.id).toBe(task.id);
-		expect(result.titlePreserved).toBe(false);
-	});
 });
 
-describe("note.add", () => {
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(makeRequest("note.add", { content: "hi" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("errors when content is missing", async () => {
-		const resp = await handleRequest(makeRequest("note.add", { taskId: "t1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("content is required");
-	});
-
-	// note.add now recomputes the notes array inside the per-task lock via
-	// updateTaskWith (avoids the lost-update race), so the tests wire that mutator
-	// and assert on the resulting task instead of a pre-lock updateTask snapshot.
-	function wireUpdateTaskWith(task: Task): void {
+// Note rules (sources, concurrency, prefix and not-found handling) are pinned on a
+// real board in board-operations-notes/parity; these check the socket adapter.
+describe("note.* — the socket adapter", () => {
+	// The note verbs recompute the notes array inside the per-task lock via updateTaskWith.
+	function wire(task: Task): void {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(null);
 		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
 			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
 			return { task: { ...task, ...updates }, result } as never;
 		});
 	}
+	const note = (id: string, content = "A"): TaskNote => ({ id, content, source: "ai", createdAt: "", updatedAt: "" });
 
-	it("adds note with default source ai", async () => {
-		const project = makeProject();
-		const task = makeTask({ notes: [] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
+	it("note.add appends after existing notes with source ai by default, or the given source", async () => {
+		const existing = { ...note("note-existing", "Old note"), source: "user" as const };
+		wire(makeTask({ notes: [existing] }));
 
-		const resp = await handleRequest(
-			makeRequest("note.add", { taskId: task.id, projectId: "proj-1", content: "Hello" }),
-		);
-		expect(resp.ok).toBe(true);
-		const notes = (resp.data as Task).notes ?? [];
-		expect(notes).toHaveLength(1);
-		expect(notes[0].content).toBe("Hello");
-		expect(notes[0].source).toBe("ai");
-	});
-
-	it("adds note with explicit source", async () => {
-		const project = makeProject();
-		const task = makeTask({ notes: [] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("note.add", {
-				taskId: task.id,
-				projectId: "proj-1",
-				content: "From user",
-				source: "user",
-			}),
-		);
-		const notes = (resp.data as Task).notes ?? [];
-		expect(notes[0].source).toBe("user");
-	});
-
-	it("appends to existing notes", async () => {
-		const existingNote: TaskNote = {
-			id: "note-existing",
-			content: "Old note",
-			source: "user",
-			createdAt: "2025-01-01T00:00:00Z",
-			updatedAt: "2025-01-01T00:00:00Z",
-		};
-		const project = makeProject();
-		const task = makeTask({ notes: [existingNote] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("note.add", { taskId: task.id, projectId: "proj-1", content: "New" }),
-		);
+		const resp = await handleRequest(makeRequest("note.add", { taskId: makeTask().id, projectId: "proj-1", content: "Hello" }));
 		const notes = (resp.data as Task).notes ?? [];
 		expect(notes).toHaveLength(2);
-		expect(notes[0]).toEqual(existingNote);
-		expect(notes[1].content).toBe("New");
+		expect(notes[0]).toEqual(existing);
+		expect(notes[1]).toMatchObject({ content: "Hello", source: "ai" });
+
+		const explicit = await handleRequest(makeRequest("note.add", { taskId: makeTask().id, projectId: "proj-1", content: "From user", source: "user" }));
+		expect(((explicit.data as Task).notes ?? [])[1]?.source).toBe("user");
 	});
 
-	it("resolves across projects when no projectId", async () => {
-		const project = makeProject();
-		const task = makeTask({ notes: [] });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
+	it("note.list returns the task's notes, or an empty list", async () => {
+		const notes = [note("n1")];
+		wire(makeTask({ notes }));
+		expect((await handleRequest(makeRequest("note.list", { taskId: makeTask().id, projectId: "proj-1" }))).data).toEqual(notes);
+		wire(makeTask({ notes: undefined }));
+		expect((await handleRequest(makeRequest("note.list", { taskId: makeTask().id, projectId: "proj-1" }))).data).toEqual([]);
+	});
 
-		const resp = await handleRequest(
-			makeRequest("note.add", { taskId: task.id, content: "Cross-project" }),
-		);
-		expect(resp.ok).toBe(true);
+	it("note.delete removes by full id or prefix, and refuses an ambiguous prefix", async () => {
+		for (const ref of ["note-full-uuid-1234", "note-full"]) {
+			wire(makeTask({ notes: [note("note-full-uuid-1234")] }));
+			const resp = await handleRequest(makeRequest("note.delete", { taskId: makeTask().id, projectId: "proj-1", noteId: ref }));
+			expect((resp.data as Task).notes, ref).toHaveLength(0);
+		}
+		wire(makeTask({ notes: [note("note-abcd-1234-aaaa"), note("note-abcd-1234-bbbb")] }));
+		const ambiguous = await handleRequest(makeRequest("note.delete", { taskId: makeTask().id, projectId: "proj-1", noteId: "note-abcd-1234" }));
+		expect(ambiguous).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous") });
 	});
 });
 
@@ -4500,798 +3703,99 @@ describe("cross-board note and overview refs", () => {
 	});
 });
 
-describe("note.list", () => {
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(makeRequest("note.list"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("returns notes with projectId", async () => {
-		const notes: TaskNote[] = [
-			{ id: "n1", content: "A", source: "ai", createdAt: "", updatedAt: "" },
-		];
-		const project = makeProject();
-		const task = makeTask({ notes });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("note.list", { taskId: task.id, projectId: "proj-1" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(notes);
-	});
-
-	it("returns empty array when no notes", async () => {
-		const project = makeProject();
-		const task = makeTask({ notes: undefined });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("note.list", { taskId: task.id, projectId: "proj-1" }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual([]);
-	});
-
-	it("resolves across projects when no projectId", async () => {
-		const project = makeProject();
-		const task = makeTask({ notes: [] });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("note.list", { taskId: task.id }),
-		);
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual([]);
-	});
-});
-
-describe("note.delete", () => {
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(makeRequest("note.delete", { noteId: "n1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("errors when noteId is missing", async () => {
-		const resp = await handleRequest(makeRequest("note.delete", { taskId: "t1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("noteId is required");
-	});
-
-	// note.delete recomputes the surviving notes inside the per-task lock via
-	// updateTaskWith, so success-path tests wire that mutator against the seeded task.
-	function wireUpdateTaskWith(task: Task): void {
-		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
-			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
-			return { task: { ...task, ...updates }, result } as never;
-		});
-	}
-
-	it("deletes note by full ID", async () => {
-		const note: TaskNote = {
-			id: "note-full-uuid-1234",
-			content: "To delete",
-			source: "ai",
-			createdAt: "",
-			updatedAt: "",
-		};
-		const project = makeProject();
-		const task = makeTask({ notes: [note] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("note.delete", {
-				taskId: task.id,
-				projectId: "proj-1",
-				noteId: "note-full-uuid-1234",
-			}),
-		);
-		expect(resp.ok).toBe(true);
-		expect((resp.data as Task).notes).toHaveLength(0);
-	});
-
-	it("deletes note by prefix", async () => {
-		const note: TaskNote = {
-			id: "note-abcd-1234-5678",
-			content: "To delete",
-			source: "ai",
-			createdAt: "",
-			updatedAt: "",
-		};
-		const project = makeProject();
-		const task = makeTask({ notes: [note] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("note.delete", { taskId: task.id, projectId: "proj-1", noteId: "note-abcd" }),
-		);
-		expect(resp.ok).toBe(true);
-	});
-
-	it("errors on ambiguous note prefix", async () => {
-		const note1: TaskNote = { id: "note-abcd-1234-aaaa", content: "A", source: "ai", createdAt: "", updatedAt: "" };
-		const note2: TaskNote = { id: "note-abcd-1234-bbbb", content: "B", source: "ai", createdAt: "", updatedAt: "" };
-		const project = makeProject();
-		const task = makeTask({ notes: [note1, note2] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("note.delete", { taskId: task.id, projectId: "proj-1", noteId: "note-abcd-1234" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Ambiguous");
-	});
-
-	it("errors when note not found", async () => {
-		const project = makeProject();
-		const task = makeTask({ notes: [] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("note.delete", { taskId: task.id, projectId: "proj-1", noteId: "nope" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Note not found");
-	});
-
-	it("resolves across projects when no projectId", async () => {
-		const note: TaskNote = {
-			id: "note-cross",
-			content: "X",
-			source: "ai",
-			createdAt: "",
-			updatedAt: "",
-		};
-		const project = makeProject();
-		const task = makeTask({ notes: [note] });
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		wireUpdateTaskWith(task);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("note.delete", { taskId: task.id, noteId: "note-cross" }),
-		);
-		expect(resp.ok).toBe(true);
-	});
-});
-
+// moveTask itself is mocked here (see the top-level beforeEach); these pin what
+// the socket hands it and the checks the adapter makes before calling it.
 describe("task.move", () => {
-	function mockDestructiveMoveTask(): void {
-		vi.mocked(moveTask).mockImplementation(async ({ taskId, projectId, newStatus }: any) => {
-			const project = await data.getProject(projectId);
-			const tasks = await data.loadTasks(project);
-			const task = tasks.find((candidate) => candidate.id === taskId);
-			if (!task) throw new Error(`Task not found: ${taskId}`);
-
-			try {
-				pty.destroySession(task.id, task.tmuxSocket ?? undefined);
-			} catch {}
-			try {
-				await runCleanupScript(task, project, {
-					fromStatus: task.status,
-					toStatus: newStatus,
-				});
-			} catch {}
-			try {
-				await git.removeWorktree(project, task);
-			} catch {}
-			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
-
-			return data.updateTask(project, task.id, {
-				status: newStatus,
-				worktreePath: null,
-				branchName: null,
-				customColumnId: null,
-			});
-		});
-	}
-
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(makeRequest("task.move", { newStatus: "todo" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("errors when newStatus is missing", async () => {
-		const resp = await handleRequest(makeRequest("task.move", { taskId: "t1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("newStatus is required");
-	});
-
-	it("errors on invalid status", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
+	function wire(task: Task, project = makeProject()): void {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+	}
 
-		const resp = await handleRequest(
-			makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: "bogus" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Invalid status: \"bogus\"");
+	it("refuses an unknown status and a disallowed transition", async () => {
+		wire(makeTask({ status: "in-progress" }));
+		const bogus = await handleRequest(makeRequest("task.move", { taskId: makeTask().id, projectId: "proj-1", newStatus: "bogus" }));
+		expect(bogus).toMatchObject({ ok: false, error: expect.stringContaining("Invalid status: \"bogus\"") });
+
+		wire(makeTask({ status: "todo" }));
+		const disallowed = await handleRequest(makeRequest("task.move", { taskId: makeTask().id, projectId: "proj-1", newStatus: "review-by-user" }));
+		expect(disallowed.ok).toBe(false);
+		expect(disallowed.error).toContain("Cannot move task");
+		expect(disallowed.error).toContain("Allowed:");
 	});
 
 	it("returns task unchanged when same status", async () => {
-		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "in-progress",
-			}),
-		);
-		expect(resp.ok).toBe(true);
+		wire(task);
+		const resp = await handleRequest(makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: "in-progress" }));
 		expect(resp.data).toEqual(task);
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
-	it("allows only one concurrent --if-status move to win", async () => {
-		const project = makeProject();
-		let storedTask = makeTask({ status: "in-progress" });
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([{ ...storedTask }]);
-		let moveQueue = Promise.resolve();
-		vi.mocked(moveTask).mockImplementation((params) => {
-			const run = async () => {
-				const allowedStatuses = typeof params.ifStatus === "string"
-					? params.ifStatus.split(",")
-					: null;
-				const blockedStatuses = typeof params.ifStatusNot === "string"
-					? params.ifStatusNot.split(",")
-					: null;
-				if (allowedStatuses && !allowedStatuses.includes(storedTask.status)) {
-					return { ...storedTask };
-				}
-				if (blockedStatuses && blockedStatuses.includes(storedTask.status)) {
-					return { ...storedTask };
-				}
-				storedTask = {
-					...storedTask,
-					...(params.newStatus ? { status: params.newStatus, customColumnId: null } : {}),
-				};
-				return { ...storedTask };
-			};
-			const result = moveQueue.then(run);
-			moveQueue = result.then(() => undefined, () => undefined);
-			return result;
-		});
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const [moveToReview, moveToQuestions] = await Promise.all([
-			handleRequest(makeRequest("task.move", {
-				taskId: storedTask.id,
-				projectId: project.id,
-				newStatus: "review-by-ai",
-				ifStatus: "in-progress",
-			})),
-			handleRequest(makeRequest("task.move", {
-				taskId: storedTask.id,
-				projectId: project.id,
-				newStatus: "user-questions",
-				ifStatus: "in-progress",
-			})),
-		]);
-
-		expect(moveToReview.ok).toBe(true);
-		expect(moveToQuestions.ok).toBe(true);
-		expect(new Set([
-			(moveToReview.data as Task).status,
-			(moveToQuestions.data as Task).status,
-		])).toEqual(new Set([storedTask.status]));
-		expect(["review-by-ai", "user-questions"]).toContain(storedTask.status);
-	});
-
-	it("errors on disallowed transition (todo cannot go to review-by-user)", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "todo" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "review-by-user",
-			}),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Cannot move task");
-		expect(resp.error).toContain("Allowed:");
-	});
-
-	it("active → active: updates status only", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		const updated = { ...task, status: "review-by-user" as const };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "review-by-user",
-			}),
-		);
-			expect(resp.ok).toBe(true);
-			expect(resp.data).toEqual({ ...updated, customColumnId: null });
+	it("hands moveTask an enforced, explicit move from any column, touching no worktree itself", async () => {
+		const moves: Array<[Task["status"], Task["status"]]> = [
+			["in-progress", "review-by-user"], ["todo", "in-progress"], ["completed", "in-progress"], ["cancelled", "in-progress"],
+		];
+		for (const [from, to] of moves) {
+			vi.mocked(moveTask).mockClear();
+			const task = makeTask({ status: from });
+			wire(task);
+			const resp = await handleRequest(makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: to }));
+			expect(resp.ok, `${from} → ${to}`).toBe(true);
 			expect(moveTask).toHaveBeenCalledWith({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus: "review-by-user",
-				ifStatus: undefined,
-				ifStatusNot: undefined,
-				enforceAllowedTransition: true,
-				explicitLaunch: true,
+				taskId: task.id, projectId: "proj-1", newStatus: to,
+				ifStatus: undefined, ifStatusNot: undefined, enforceAllowedTransition: true, explicitLaunch: true,
 			});
+		}
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
 	});
 
-	it("inactive → active (todo → in-progress): creates worktree + PTY", async () => {
-		const project = makeProject();
+	it("passes --if-status-not through, returning the task unchanged when the guard blocks", async () => {
 		const task = makeTask({ status: "todo", worktreePath: null, branchName: null });
-		const wtResult = { worktreePath: "/tmp/new-wt", branchName: "dev3/task-new" };
-		const updated = { ...task, status: "in-progress" as const, ...wtResult };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(activateTask).mockResolvedValue(wtResult);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "in-progress",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(moveTask).toHaveBeenCalledWith({
-			taskId: task.id,
-			projectId: project.id,
-			newStatus: "in-progress",
-			ifStatus: undefined,
-			ifStatusNot: undefined,
-			enforceAllowedTransition: true,
-			explicitLaunch: true,
-		});
+		wire(task);
+		const blocked = await handleRequest(makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: "in-progress", ifStatusNot: "todo" }));
+		expect(blocked.data).toEqual(task);
+		const passing = await handleRequest(makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: "in-progress", ifStatusNot: "completed" }));
+		expect((passing.data as Task).status).toBe("in-progress");
+		expect(vi.mocked(moveTask).mock.calls.map((c) => c[0].ifStatusNot)).toEqual(["todo", "completed"]);
 	});
 
-	it("reopen (completed → in-progress): calls activateTask with isReopen=true", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "completed", description: "Old desc" });
-		const wtResult = { worktreePath: "/tmp/reopen-wt", branchName: "dev3/reopen" };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(activateTask).mockResolvedValue(wtResult);
-		vi.mocked(data.updateTask).mockResolvedValue({
-			...task,
-			status: "in-progress",
-			...wtResult,
-		});
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "in-progress",
-			}),
-		);
-
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
-			taskId: task.id,
-			newStatus: "in-progress",
-		}));
-	});
-
-	it("reopen (cancelled → in-progress): calls activateTask with isReopen=true", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "cancelled", description: "Cancelled desc" });
-		const wtResult = { worktreePath: "/tmp/reopen-wt", branchName: "dev3/reopen" };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(activateTask).mockResolvedValue(wtResult);
-		vi.mocked(data.updateTask).mockResolvedValue({
-			...task,
-			status: "in-progress",
-			...wtResult,
-		});
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "in-progress",
-			}),
-		);
-
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
-			taskId: task.id,
-			newStatus: "in-progress",
-		}));
-	});
-
-	it("blocked guard (todo, --if-status-not todo): does NOT activate worktree, returns unchanged task", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "todo", worktreePath: null, branchName: null });
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		// updateTask is the authoritative guard; if reached with a blocking guard
-		// it would return the unchanged task. The pre-check must prevent activateTask.
-		vi.mocked(data.updateTask).mockResolvedValue(task);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "in-progress",
-				ifStatusNot: "todo",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(task);
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ ifStatusNot: "todo" }));
-	});
-
-	it("passing guard (todo, --if-status-not completed): still activates worktree", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "todo", worktreePath: null, branchName: null });
-		const wtResult = { worktreePath: "/tmp/new-wt", branchName: "dev3/task-new" };
-		const updated = { ...task, status: "in-progress" as const, ...wtResult };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(activateTask).mockResolvedValue(wtResult);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "in-progress",
-				ifStatusNot: "completed",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
-			newStatus: "in-progress",
-			ifStatusNot: "completed",
-		}));
-	});
-
-	it("blocked guard (completed → custom column, --if-status-not completed): does NOT reactivate worktree", async () => {
-		const customColumn = {
-			id: "col-1234abcd-0000-0000-0000-000000000000",
-			name: "Review",
-			color: "#3b82f6",
-			llmInstruction: "",
-		};
-		const project = makeProject({ customColumns: [customColumn] });
+	it("maps a custom column id to customColumnId, and a blocking guard keeps a completed task closed", async () => {
+		const customColumn = { id: "col-1234abcd-0000-0000-0000-000000000000", name: "Review", color: "#3b82f6", llmInstruction: "" };
 		const task = makeTask({ status: "completed", worktreePath: null, branchName: null });
+		wire(task, makeProject({ customColumns: [customColumn] }));
 
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(task);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+		const resp = await handleRequest(makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: customColumn.id, ifStatusNot: "completed" }));
 
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: customColumn.id,
-				ifStatusNot: "completed",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
-			customColumnId: customColumn.id,
-			ifStatusNot: "completed",
-		}));
-	});
-
-	it("active → completed: destroys PTY, runs cleanup, removes worktree", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		const updated = { ...task, status: "completed" as const, worktreePath: null, branchName: null };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-		mockDestructiveMoveTask();
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "completed",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(pty.destroySession).toHaveBeenCalledWith(task.id, undefined);
-		expect(runCleanupScript).toHaveBeenCalledWith(task, project, {
-			fromStatus: "in-progress",
-			toStatus: "completed",
-		});
-		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			status: "completed",
-			worktreePath: null,
-			branchName: null,
-			customColumnId: null,
-		});
-	});
-
-	it("active → completed: emits renderer sound after cleanup finishes", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		const updated = { ...task, status: "completed" as const, worktreePath: null, branchName: null };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-		mockDestructiveMoveTask();
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "completed",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(vi.mocked(emitTaskSound).mock.invocationCallOrder[0]).toBeGreaterThan(
-			vi.mocked(runCleanupScript).mock.invocationCallOrder[0],
-		);
-	});
-
-	it("active → cancelled: same cleanup flow", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		const updated = { ...task, status: "cancelled" as const, worktreePath: null, branchName: null };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-		mockDestructiveMoveTask();
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "cancelled",
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(pty.destroySession).toHaveBeenCalled();
-		expect(runCleanupScript).toHaveBeenCalledWith(task, project, {
-			fromStatus: "in-progress",
-			toStatus: "cancelled",
-		});
-		expect(git.removeWorktree).toHaveBeenCalled();
-	});
-
-	it("non-Git cleanup errors are swallowed during active → completed", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(pty.destroySession).mockImplementation(() => {
-			throw new Error("PTY gone");
-		});
-		vi.mocked(runCleanupScript).mockRejectedValue(new Error("cleanup failed"));
-		vi.mocked(git.removeWorktree).mockResolvedValue({ deleted: [], kept: [] });
-		vi.mocked(data.updateTask).mockResolvedValue({
-			...task,
-			status: "completed",
-			worktreePath: null,
-			branchName: null,
-		});
-		vi.mocked(getPushMessage).mockReturnValue(null);
-		mockDestructiveMoveTask();
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: task.id,
-				projectId: "proj-1",
-				newStatus: "completed",
-			}),
-		);
-		expect(resp.ok).toBe(true);
-	});
-
-	it("resolves across projects when no projectId", async () => {
-		const project = makeProject();
-		const task = makeTask({ status: "in-progress" });
-		const updated = { ...task, status: "review-by-user" as const };
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.move", { taskId: task.id, newStatus: "review-by-user" }),
-		);
-		expect(resp.ok).toBe(true);
-	});
-
-	it("task not found with projectId errors", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject());
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(
-			makeRequest("task.move", {
-				taskId: "nope",
-				projectId: "proj-1",
-				newStatus: "in-progress",
-			}),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Task not found");
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ customColumnId: customColumn.id, ifStatusNot: "completed" }));
 	});
 });
 
-describe("label.list", () => {
-	it("errors when projectId is missing", async () => {
-		const resp = await handleRequest(makeRequest("label.list"));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("projectId is required");
-	});
-
-	it("returns labels from project", async () => {
-		const labels = [
-			{ id: "lbl-1", name: "bug", color: "#ef4444" },
-			{ id: "lbl-2", name: "feature", color: "#14b8a6" },
-		];
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels }));
-
-		const resp = await handleRequest(makeRequest("label.list", { projectId: "proj-1" }));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual(labels);
-	});
-
-	it("returns empty array when project has no labels", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject());
-
-		const resp = await handleRequest(makeRequest("label.list", { projectId: "proj-1" }));
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual([]);
-	});
-});
-
-describe("label.create", () => {
-	// label.create now appends the label inside the project lock via
-	// updateProjectWith (avoids the lost-update race), so tests wire that mutator
-	// against the seeded project.
-	function wireUpdateProjectWith(project: Project): void {
+// Label rules (colour picking, trimming, prefixes, unknown ids, provenance) are pinned
+// on a real board in board-operations-labels/parity; these check the socket adapter.
+describe("label.* / task.setLabels — the socket adapter", () => {
+	function wireProject(project: Project): void {
+		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
 			const { updates, result } = await (mutator as (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>)(project);
 			return { project: { ...project, ...updates }, result } as never;
 		});
 	}
 
-	it("errors when projectId is missing", async () => {
-		const resp = await handleRequest(makeRequest("label.create", { name: "bug" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("projectId is required");
-	});
+	it("label.list returns the project's labels, and label.create adds one with a palette colour", async () => {
+		const labels = [{ id: "lbl-1", name: "bug", color: "#ef4444" }];
+		wireProject(makeProject({ labels }));
+		expect((await handleRequest(makeRequest("label.list", { projectId: "proj-1" }))).data).toEqual(labels);
 
-	it("errors when name is missing", async () => {
-		const resp = await handleRequest(makeRequest("label.create", { projectId: "proj-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("name is required");
-	});
-
-	it("creates label with auto-assigned color", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-		wireUpdateProjectWith(makeProject({ labels: [] }));
+		wireProject(makeProject({ labels: [] }));
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("label.create", { projectId: "proj-1", name: "bug" }),
-		);
-		expect(resp.ok).toBe(true);
-		const label = resp.data as any;
-		expect(label.name).toBe("bug");
-		expect(label.color).toBe("#ef4444"); // First color from palette
-		expect(label.id).toBeDefined();
+		const created = await handleRequest(makeRequest("label.create", { projectId: "proj-1", name: "bug" }));
+		expect(created.data).toMatchObject({ name: "bug", color: "#ef4444", id: expect.any(String) });
 	});
 
-	it("creates label with custom color", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-		wireUpdateProjectWith(makeProject({ labels: [] }));
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("label.create", { projectId: "proj-1", name: "urgent", color: "#ff0000" }),
-		);
-		expect(resp.ok).toBe(true);
-		const label = resp.data as any;
-		expect(label.color).toBe("#ff0000");
-	});
-
-	it("skips colors already used by existing labels", async () => {
-		const existing = [{ id: "lbl-1", name: "bug", color: "#ef4444" }];
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: existing }));
-		wireUpdateProjectWith(makeProject({ labels: existing }));
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("label.create", { projectId: "proj-1", name: "feature" }),
-		);
-		expect(resp.ok).toBe(true);
-		const label = resp.data as any;
-		expect(label.color).toBe("#14b8a6"); // Second color (first was taken)
-	});
-
-	it("trims label name", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-		wireUpdateProjectWith(makeProject({ labels: [] }));
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("label.create", { projectId: "proj-1", name: "  bug  " }),
-		);
-		expect(resp.ok).toBe(true);
-		expect((resp.data as any).name).toBe("bug");
-	});
-});
-
-describe("label.delete", () => {
-	it("errors when projectId is missing", async () => {
-		const resp = await handleRequest(makeRequest("label.delete", { labelId: "lbl-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("projectId is required");
-	});
-
-	it("errors when labelId is missing", async () => {
-		const resp = await handleRequest(makeRequest("label.delete", { projectId: "proj-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("labelId is required");
-	});
-
-	it("deletes label and removes from tasks", async () => {
+	it("label.delete removes the label from the project and only from the tasks carrying it", async () => {
 		const labels = [
 			{ id: "lbl-full-uuid-1234", name: "bug", color: "#ef4444" },
 			{ id: "lbl-2", name: "feature", color: "#14b8a6" },
@@ -5299,33 +3803,18 @@ describe("label.delete", () => {
 		const project = makeProject({ labels });
 		const taskWithLabel = makeTask({ id: "t1", labelIds: ["lbl-full-uuid-1234", "lbl-2"] });
 		const taskWithout = makeTask({ id: "t2", labelIds: [] });
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		// label removal now goes through the project lock (updateProjectWith) so a
-		// concurrent label.create is not clobbered.
-		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
-			const { updates, result } = await (mutator as (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>)(project);
-			return { project: { ...project, ...updates }, result } as never;
-		});
+		// Both the project and the task writes go through their locks, so a concurrent edit is not clobbered.
+		wireProject(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([taskWithLabel, taskWithout]);
 		vi.mocked(data.updateTaskWith).mockResolvedValue({ task: taskWithLabel, result: undefined } as any);
 
-		const resp = await handleRequest(
-			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-full-uuid-1234" }),
-		);
+		const resp = await handleRequest(makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-full" }));
 		expect(resp.ok).toBe(true);
-		// Should remove the deleted label from the project inside the lock. The mutator
-		// recomputes from the CURRENT project, so surviving labels are preserved.
+		// The mutators recompute from the CURRENT project and task, so concurrent changes survive.
 		const projMutator = vi.mocked(data.updateProjectWith).mock.calls[0][1];
-		expect(await projMutator(project)).toEqual({
-			updates: { labels: [labels[1]] },
-			result: true,
-		});
-		// Should update affected task via the locked mutator (no lost-update race)
-		expect(data.updateTaskWith).toHaveBeenCalledWith(expect.objectContaining({ id: project.id }), "t1", expect.any(Function));
-		// Should NOT update task that didn't have the label
+		expect(await projMutator(project)).toEqual({ updates: { labels: [labels[1]] }, result: true });
 		expect(data.updateTaskWith).toHaveBeenCalledTimes(1);
-		// The mutator must recompute labelIds from the CURRENT task, not a stale snapshot
+		expect(data.updateTaskWith).toHaveBeenCalledWith(expect.objectContaining({ id: project.id }), "t1", expect.any(Function));
 		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2];
 		expect(await mutator({ ...taskWithLabel, labelIds: ["lbl-full-uuid-1234", "lbl-2", "lbl-3"] } as any)).toEqual({
 			updates: { labelIds: ["lbl-2", "lbl-3"], userLabelIds: ["lbl-2", "lbl-3"] },
@@ -5333,268 +3822,42 @@ describe("label.delete", () => {
 		});
 	});
 
-	it("matches label by prefix", async () => {
-		const labels = [{ id: "lbl-abcd-1234-5678", name: "bug", color: "#ef4444" }];
-		const project = makeProject({ labels });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
-			const { updates, result } = await (mutator as (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>)(project);
-			return { project: { ...project, ...updates }, result } as never;
-		});
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(
-			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-abcd" }),
-		);
-		expect(resp.ok).toBe(true);
-	});
-
-	it("errors on ambiguous label prefix", async () => {
-		const labels = [
-			{ id: "lbl-abcd-1234-aaaa-5678", name: "bug", color: "#ef4444" },
-			{ id: "lbl-abcd-1234-bbbb-5678", name: "feature", color: "#14b8a6" },
-		];
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels }));
-
-		const resp = await handleRequest(
-			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-abcd-1234" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Ambiguous");
-	});
-
-	it("errors when label not found", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-
-		const resp = await handleRequest(
-			makeRequest("label.delete", { projectId: "proj-1", labelId: "nope" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Label not found");
-	});
-});
-
-describe("task.setLabels", () => {
-	it("errors when taskId is missing", async () => {
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", { projectId: "proj-1", labelIds: [] }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("taskId is required");
-	});
-
-	it("errors when projectId is missing", async () => {
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", { taskId: "t1", labelIds: [] }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("projectId is required");
-	});
-
-	it("errors when labelIds is not an array", async () => {
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", { taskId: "t1", projectId: "proj-1", labelIds: "not-array" }),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("labelIds must be an array");
-	});
-
-	it("resolves a seq:<N> task reference before updating labels", async () => {
-		const project = makeProject({
-			labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }],
-		});
-		const task = makeTask({ seq: 42, labelIds: [] });
-		const updated = { ...task, labelIds: ["lbl-1"] };
-
+	it("task.setLabels sets and clears an agent's labels on a task resolved by id, prefix or seq", async () => {
+		const project = makeProject({ labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }, { id: "lbl-2", name: "feature", color: "#14b8a6" }] });
+		// An agent-owned label: the user's own would survive an agent's clear.
+		const task = makeTask({ seq: 42, labelIds: ["lbl-1"], userLabelIds: [] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId) => {
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId, updates) => {
 			if (taskId !== task.id) throw new Error(`Task not found: ${taskId}`);
-			return updated;
+			return { ...task, ...updates };
 		});
-
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: "seq:42",
-				projectId: project.id,
-				labelIds: ["lbl-1"],
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"], userLabelIds: [] });
-	});
-
-	it("resolves a valid task ID prefix before updating labels", async () => {
-		const project = makeProject({
-			labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }],
-		});
-		const task = makeTask({ labelIds: [] });
-		const updated = { ...task, labelIds: ["lbl-1"] };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId) => {
-			if (taskId !== task.id) throw new Error(`Task not found: ${taskId}`);
-			return updated;
-		});
-
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: task.id.slice(0, 8),
-				projectId: project.id,
-				labelIds: ["lbl-1"],
-			}),
-		);
-
-		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"], userLabelIds: [] });
-	});
-
-	it("rejects an unknown task selector without mutating a task", async () => {
-		const project = makeProject({
-			labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }],
-		});
-		const task = makeTask({ labelIds: [] });
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: "missing-task",
-				projectId: project.id,
-				labelIds: ["lbl-1"],
-			}),
-		);
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("missing-task");
-		expect(data.updateTask).not.toHaveBeenCalled();
-	});
-
-	it("sets labels on task", async () => {
-		const project = makeProject({
-			labels: [
-				{ id: "lbl-1", name: "bug", color: "#ef4444" },
-				{ id: "lbl-2", name: "feature", color: "#14b8a6" },
-			],
-		});
-		const task = makeTask({ labelIds: [] });
-		const updated = { ...task, labelIds: ["lbl-1", "lbl-2"] };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: task.id,
-				projectId: "proj-1",
-				labelIds: ["lbl-1", "lbl-2"],
-			}),
+		for (const ref of [task.id, task.id.slice(0, 8), "seq:42"]) {
+			const resp = await handleRequest(makeRequest("task.setLabels", { taskId: ref, projectId: "proj-1", labelIds: ["lbl-1", "lbl-2"] }));
+			expect(resp.ok, ref).toBe(true);
+		}
+		expect(vi.mocked(data.updateTask).mock.calls.map((c) => c[2])).toEqual(
+			Array(3).fill({ labelIds: ["lbl-1", "lbl-2"], userLabelIds: [] }),
 		);
-		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			labelIds: ["lbl-1", "lbl-2"], userLabelIds: [],
-		});
+		await handleRequest(makeRequest("task.setLabels", { taskId: task.id, projectId: "proj-1", labelIds: [] }));
+		expect(data.updateTask).toHaveBeenLastCalledWith(project, task.id, { labelIds: [], userLabelIds: [] });
 	});
 
-	it("rejects unknown label IDs instead of persisting garbage", async () => {
-		const project = makeProject({
-			labels: [{ id: "lbl-real", name: "bug", color: "#ef4444" }],
-		});
-		const task = makeTask({ labelIds: [] });
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateTask).mockResolvedValue(task);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: task.id,
-				projectId: "proj-1",
-				labelIds: ["lbl-real", "deadbeef-does-not-exist"],
-			}),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Label not found");
-		expect(resp.error).toContain("deadbeef-does-not-exist");
-		// Nothing is persisted when validation fails.
-		expect(data.updateTask).not.toHaveBeenCalled();
-	});
-
-	it("resolves short label ID prefixes to full UUIDs", async () => {
-		const labels = [
-			{ id: "aaaa1111-2222-3333-4444-555555555555", name: "bug", color: "#ef4444" },
-			{ id: "bbbb1111-2222-3333-4444-555555555555", name: "feature", color: "#14b8a6" },
-		];
-		const project = makeProject({ labels });
-		const task = makeTask({ labelIds: [] });
-		const updated = { ...task, labelIds: labels.map((l) => l.id) };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: task.id,
-				projectId: "proj-1",
-				labelIds: ["aaaa1111", "bbbb1111"], // short prefixes
-			}),
-		);
-		expect(resp.ok).toBe(true);
-		// Should resolve to full UUIDs
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			labelIds: [
-				"aaaa1111-2222-3333-4444-555555555555",
-				"bbbb1111-2222-3333-4444-555555555555",
-			],
-			userLabelIds: [],
-		});
-	});
-
-	it("errors on ambiguous label prefix in setLabels", async () => {
-		const labels = [
+	it("task.setLabels refuses an unknown task selector and an ambiguous label prefix, writing nothing", async () => {
+		const project = makeProject({ labels: [
 			{ id: "aaaa1111-2222-3333-4444-aaaaaaaaaaaa", name: "bug", color: "#ef4444" },
 			{ id: "aaaa1111-2222-3333-4444-bbbbbbbbbbbb", name: "feature", color: "#14b8a6" },
-		];
-		const project = makeProject({ labels });
+		] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ labelIds: [] })]);
 
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: "task-abc12345-1111-2222-3333-444444444444",
-				projectId: "proj-1",
-				labelIds: ["aaaa1111-2222-3333"],
-			}),
-		);
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Ambiguous");
-	});
-
-	it("clears labels when empty array provided", async () => {
-		const project = makeProject();
-		// An agent-owned label: the user's own would survive an agent's clear.
-		const task = makeTask({ labelIds: ["lbl-1"], userLabelIds: [] });
-		const updated = { ...task, labelIds: [] };
-
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
-		vi.mocked(getPushMessage).mockReturnValue(null);
-
-		const resp = await handleRequest(
-			makeRequest("task.setLabels", {
-				taskId: task.id,
-				projectId: "proj-1",
-				labelIds: [],
-			}),
-		);
-		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: [], userLabelIds: [] });
+		const unknownTask = await handleRequest(makeRequest("task.setLabels", { taskId: "missing-task", projectId: project.id, labelIds: [project.labels![0]!.id] }));
+		expect(unknownTask).toMatchObject({ ok: false, error: expect.stringContaining("missing-task") });
+		const ambiguous = await handleRequest(makeRequest("task.setLabels", { taskId: makeTask().id, projectId: "proj-1", labelIds: ["aaaa1111-2222-3333"] }));
+		expect(ambiguous).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous") });
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 });
 
@@ -5626,29 +3889,6 @@ describe("startSocketServer", () => {
 		startSocketServer();
 
 		expect(unlinkSync).toHaveBeenCalled();
-	});
-
-	it("cleans up stale sockets for dead processes", () => {
-		const killSpy = vi.spyOn(process, "kill").mockImplementation((pid: number, _signal?: string | number) => {
-			if (pid === 99999) throw new Error("ESRCH");
-			return true;
-		});
-
-		vi.mocked(existsSync).mockReturnValue(true);
-		vi.mocked(readdirSync).mockReturnValue([
-			"99999.sock",
-			"not-a-pid.sock",
-			"readme.txt",
-		] as any);
-
-		startSocketServer();
-
-		// Should have tried to check process 99999
-		expect(killSpy).toHaveBeenCalledWith(99999, 0);
-		// Should have removed the stale socket
-		expect(unlinkSync).toHaveBeenCalledWith("/tmp/test-dev3/sockets/99999.sock");
-
-		killSpy.mockRestore();
 	});
 
 	it("keeps sockets for alive processes", () => {
@@ -5729,19 +3969,6 @@ describe("startSocketServer", () => {
 });
 
 describe("stopSocketServer", () => {
-	it("removes socket file when it exists", () => {
-		// First start the server so socketPath is set
-		vi.mocked(existsSync).mockReturnValue(false);
-		vi.mocked(readdirSync).mockReturnValue([]);
-		(globalThis as any).Bun.listen = vi.fn();
-		startSocketServer();
-
-		vi.clearAllMocks();
-		vi.mocked(existsSync).mockReturnValue(true);
-
-		stopSocketServer();
-		expect(unlinkSync).toHaveBeenCalled();
-	});
 
 	it("does nothing when socket file does not exist", () => {
 		vi.mocked(existsSync).mockReturnValue(false);
@@ -5823,7 +4050,7 @@ describe("socket meta sidecar", () => {
 		expect(unlinked.some((p) => p.endsWith("/999999.meta.json"))).toBe(true);
 	});
 
-	it("removes the meta sidecar on stopSocketServer", () => {
+	it("removes the socket and its meta sidecar on stopSocketServer", () => {
 		vi.clearAllMocks();
 		vi.mocked(existsSync).mockReturnValue(false);
 		vi.mocked(readdirSync).mockReturnValue([]);
@@ -5850,15 +4077,9 @@ describe("vent.add", () => {
 		expect(addVent).toHaveBeenCalledWith("tmux split broken", "details here");
 	});
 
-	it("rejects empty name", async () => {
-		const resp = await handleRequest(makeRequest("vent.add", { name: "", content: "c" }));
-		expect(resp.ok).toBe(false);
-		expect(addVent).not.toHaveBeenCalled();
-	});
-
-	it("rejects empty content", async () => {
-		const resp = await handleRequest(makeRequest("vent.add", { name: "n", content: "" }));
-		expect(resp.ok).toBe(false);
+	it("rejects an empty name or content", async () => {
+		expect((await handleRequest(makeRequest("vent.add", { name: "", content: "c" }))).ok).toBe(false);
+		expect((await handleRequest(makeRequest("vent.add", { name: "n", content: "" }))).ok).toBe(false);
 		expect(addVent).not.toHaveBeenCalled();
 	});
 });
@@ -5899,15 +4120,6 @@ describe("task.open", () => {
 		expect(push).not.toHaveBeenCalled();
 		const { consumePendingDeepLinkNav } = await import("../deep-link-nav");
 		expect(consumePendingDeepLinkNav()).toEqual({ kind: "task", taskId: task.id, projectId: project.id });
-	});
-
-	it("fails on an unknown task", async () => {
-		vi.mocked(data.getProject).mockResolvedValue(makeProject());
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
-
-		const resp = await handleRequest(makeRequest("task.open", { taskId: "nope-1234", projectId: "proj-1" }));
-
-		expect(resp.ok).toBe(false);
 	});
 });
 
@@ -5951,30 +4163,24 @@ describe("message.send — --variant narrows a variant group", () => {
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("matches 2 variant tasks");
 		expect(resp.error).toContain("--variant");
+
+		// Every other command's resolution is untouched by a variantIndex.
+		const show = await handleRequest(makeRequest("task.show", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1 }));
+		expect(show.error).toContain("matches 2 variant tasks");
 	});
 
-	it("fails loudly on an index nobody carries, naming the ones that exist", async () => {
+	it("fails loudly on an unknown index, a seq that is no group, an id ref, or a non-integer index", async () => {
+		const send = (taskId: string, variantIndex: unknown) =>
+			handleRequest(makeRequest("message.send", { subject: "test subject", taskId, projectId: "proj-1", variantIndex, text: "hi" }));
 		scopeTo(group());
-
-		const resp = await handleRequest(
-			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: 5, text: "hi" }),
-		);
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("has no variant 5");
-		expect(resp.error).toContain("Live variants: 1, 2");
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("says the seq is not a group when the only task has no variant index", async () => {
+		const unknown = await send("seq:42", 5);
+		expect(unknown.error).toContain("has no variant 5");
+		expect(unknown.error).toContain("Live variants: 1, 2");
+		expect((await send(V1, 1)).error).toContain("--variant narrows a variant group addressed by seq");
+		expect((await send("seq:42", "one")).error).toContain("expected a non-negative integer");
 		scopeTo([makeTask({ id: V1, seq: 42 })]);
-
-		const resp = await handleRequest(
-			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
-		);
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("not a variant group");
+		expect((await send("seq:42", 1)).error).toContain("not a variant group");
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 
 	it("still resolves a lone survivor by the index it was minted with", async () => {
@@ -5988,28 +4194,6 @@ describe("message.send — --variant narrows a variant group", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ taskId: V1 });
-	});
-
-	it("rejects --variant against an id ref, where it cannot mean anything", async () => {
-		scopeTo(group());
-
-		const resp = await handleRequest(
-			makeRequest("message.send", { subject: "test subject", taskId: V1, projectId: "proj-1", variantIndex: 1, text: "hi" }),
-		);
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("--variant narrows a variant group addressed by seq");
-	});
-
-	it("rejects a non-integer --variant", async () => {
-		scopeTo(group());
-
-		const resp = await handleRequest(
-			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: "one", text: "hi" }),
-		);
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("expected a non-negative integer");
 	});
 
 	it("narrows the same way when the message is scheduled", async () => {
@@ -6046,17 +4230,6 @@ describe("message.send — --variant narrows a variant group", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ taskId: V2 });
 	});
-
-	it("leaves every other command's resolution untouched", async () => {
-		scopeTo(group());
-
-		const resp = await handleRequest(
-			makeRequest("task.show", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1 }),
-		);
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("matches 2 variant tasks");
-	});
 });
 
 describe("events.list — the board's memory channel", () => {
@@ -6083,24 +4256,11 @@ describe("events.list — the board's memory channel", () => {
 		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
 
 		expect(resp.ok).toBe(true);
-		const ids = (resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id);
-		expect(ids.sort()).toEqual(["n-dead", "n-done", "n-live"]);
-	});
-
-	it("carries the owning task's seq, title and status on every event", async () => {
-		const now = new Date().toISOString();
-		vi.mocked(data.loadTasks).mockResolvedValue([
-			makeTask({ id: "t-done", seq: 1738, title: "Add dev3 events", status: "completed", notes: [note("n1", now)] }),
-		]);
-
-		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
-
-		expect((resp.data as { events: unknown[] }).events[0]).toMatchObject({
-			kind: "note",
-			seq: 1738,
-			taskTitle: "Add dev3 events",
-			taskStatus: "completed",
-			projectName: "Test Project",
+		const events = (resp.data as { events: Array<{ id: string }> }).events;
+		expect(events.map((e) => e.id).sort()).toEqual(["n-dead", "n-done", "n-live"]);
+		// Every event carries its owning task's seq, title and status.
+		expect(events.find((e) => e.id === "n-done")).toMatchObject({
+			kind: "note", seq: 2, taskTitle: "Test task", taskStatus: "completed", projectName: "Test Project",
 		});
 	});
 
@@ -6147,18 +4307,12 @@ describe("events.list — the board's memory channel", () => {
 		expect(sel.events.map((e) => e.id)).toEqual(["cafe0001"]);
 		// Handed back so a quiet sweep started from an id still leaves a position.
 		expect(sel.from).toBe("2026-08-29T10:00:00.000");
-	});
 
-	it("fails an id that resolves to nothing instead of answering with a quiet board", async () => {
-		vi.mocked(data.loadTasks).mockResolvedValue([
-			makeTask({ id: "t1", notes: [note("8eb2da3d", "2026-08-29T10:00:00.000Z")] }),
-		]);
-
-		const resp = await handleRequest(makeRequest("events.list", { cursorId: "deadbeef", limit: 100 }));
-
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("event-cursor-unresolved:");
-		expect(resp.error).toContain("deadbeef");
+		// An id that resolves to nothing fails instead of answering with a quiet board.
+		const miss = await handleRequest(makeRequest("events.list", { cursorId: "deadbeef", limit: 100 }));
+		expect(miss.ok).toBe(false);
+		expect(miss.error).toContain("event-cursor-unresolved:");
+		expect(miss.error).toContain("deadbeef");
 	});
 
 	it("counts the cap instead of truncating in silence", async () => {
@@ -6180,29 +4334,19 @@ describe("events.list — the board's memory channel", () => {
 		expect(sel.matched).toBe(12);
 	});
 
-	it("keeps reading the other boards when one project is unreadable", async () => {
+	it("keeps reading the other boards when one is unreadable, and skips a note with an unreadable timestamp", async () => {
 		const alpha = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
 		const beta = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
 		vi.mocked(data.loadProjects).mockResolvedValue([alpha, beta]);
 		vi.mocked(data.loadTasks).mockImplementation(async (p) => {
 			if (p.id === "proj-a") throw new Error("tasks.json is corrupt");
-			return [makeTask({ id: "t-b", projectId: "proj-b", notes: [note("n-b", new Date().toISOString())] })];
+			return [makeTask({ id: "t-b", projectId: "proj-b", createdAt: "not a date", notes: [note("n-bad", "not a date"), note("n-b", new Date().toISOString())] })];
 		});
 
 		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
 
 		expect(resp.ok).toBe(true);
 		expect((resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n-b"]);
-	});
-
-	it("skips a note whose timestamp cannot be read rather than dating it to 1970", async () => {
-		vi.mocked(data.loadTasks).mockResolvedValue([
-			makeTask({ id: "t1", createdAt: "not a date", notes: [note("n-bad", "not a date"), note("n-ok", new Date().toISOString())] }),
-		]);
-
-		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
-
-		expect((resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n-ok"]);
 	});
 
 	describe("movements — the second kind", () => {
@@ -6257,24 +4401,6 @@ describe("events.list — the board's memory channel", () => {
 			expect((await read()).events.map((e) => e.id)).toEqual(["n1", "aaaa0001"]);
 			expect((await read("note")).events.map((e) => e.id)).toEqual(["n1"]);
 			expect((await read("move")).events.map((e) => e.id)).toEqual(["aaaa0001"]);
-		});
-
-		it("advances over movements: same cursor, same board, nothing new", async () => {
-			const tasks = [makeTask({ id: "t1", movements: [move("aaaa0001", "2026-08-29T10:00:00.000Z")] })];
-			vi.mocked(data.loadTasks).mockResolvedValue(tasks);
-
-			const first = await handleRequest(makeRequest("events.list", { cursor: "2026-01-01T00:00:00.000Z", limit: 100, kind: "move" }));
-			expect((first.data as { cursor: string }).cursor).toBe("2026-08-29T10:00:00.000");
-
-			const second = await handleRequest(makeRequest("events.list", { cursor: "2026-08-29T10:00:00.000Z", limit: 100, kind: "move" }));
-			expect((second.data as { events: unknown[] }).events).toHaveLength(0);
-
-			tasks[0] = makeTask({
-				id: "t1",
-				movements: [move("aaaa0001", "2026-08-29T10:00:00.000Z"), move("aaaa0002", "2026-08-29T12:00:00.000Z")],
-			});
-			const third = await handleRequest(makeRequest("events.list", { cursor: "2026-08-29T10:00:00.000Z", limit: 100, kind: "move" }));
-			expect((third.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["aaaa0002"]);
 		});
 
 		it("names the custom column rather than the status hiding under it", async () => {
@@ -6397,17 +4523,14 @@ describe("message.send — the sender's role travels to the envelope", () => {
 		);
 	}
 
-	it("stamps role coordinator when a coordinator task sends", async () => {
+	it("stamps role coordinator when a coordinator task sends, and no role for an ordinary one", async () => {
 		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1, taskType: "coordinator" }));
 		expect(resp.ok).toBe(true);
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0]?.[3]).toMatchObject({ taskId: SENDER, role: "coordinator" });
-	});
-
-	it("stamps no role for an ordinary task", async () => {
 		await sendFrom(makeTask({ id: SENDER, seq: 1 }));
-		const source = vi.mocked(sendMessageImmediately).mock.calls[0]?.[3];
-		expect(source).toMatchObject({ taskId: SENDER });
-		expect(source).not.toHaveProperty("role");
+		const ordinary = vi.mocked(sendMessageImmediately).mock.calls[1]?.[3];
+		expect(ordinary).toMatchObject({ taskId: SENDER });
+		expect(ordinary).not.toHaveProperty("role");
 	});
 
 	it("stamps the sending agent from the pane and pid the CLI reported, so a reply reaches it", async () => {
@@ -6438,18 +4561,13 @@ describe("message.send — the sender's role travels to the envelope", () => {
 		expect(resp.data).toMatchObject({ status: "held", paneId: "%3", agentRole: "review" });
 	});
 
-	it("refuses an old a1. handle with what to do instead, sending nothing", async () => {
+	it("refuses an old a1. handle (with what to do instead) and a malformed handle, sending nothing", async () => {
 		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1 }), { agentHandle: "a1.WyIlMyIsbnVsbCwiZ2VuLTEiLCIzMDNAeCJd" });
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("written by an older dev3");
 		expect(resp.error).toContain("dev3 pane list --task <id>");
-		expect(sendMessageImmediately).not.toHaveBeenCalled();
-	});
-
-	it("refuses a malformed --agent handle before anything is sent", async () => {
-		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1 }), { agentHandle: "%3" });
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("not an agent handle");
+		const malformed = await sendFrom(makeTask({ id: SENDER, seq: 1 }), { agentHandle: "%3" });
+		expect(malformed.error).toContain("not an agent handle");
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 });
@@ -6479,10 +4597,13 @@ describe("Claude approval ownership", () => {
 		return stored.status;
 	}
 
-	it("keeps a parent's approval wait while other agents start and finish tools", async () => {
+	it("keeps a parent's approval wait while other agents start, wait and finish, until the parent resumes", async () => {
 		await hook("PermissionRequest");
-		await hook("PreToolUse", "reader");
+		await hook("PermissionRequest", "reader");
+		await hook("PreToolUse", "other");
+		expect(await hook("PostToolUse", "other")).toBe("user-questions");
 		expect(await hook("PostToolUse", "reader")).toBe("user-questions");
+		// PermissionRequest provides no tool_use_id: any tool of the same owner clears its wait.
 		expect(await hook("PostToolUse")).toBe("in-progress");
 	});
 
@@ -6493,16 +4614,11 @@ describe("Claude approval ownership", () => {
 		expect(await hook("PreToolUse", "reader")).toBe("in-progress");
 	});
 
-	it.each(["PostToolUseFailure", "SubagentStop", "TeammateIdle"])("clears an owner's wait after %s", async event => {
-		await hook("PermissionRequest", "reader");
-		expect(await hook(event, "reader")).toBe("in-progress");
-	});
-
-	it("keeps independent waits visible until every owner resumes", async () => {
-		await hook("PermissionRequest");
-		await hook("PermissionRequest", "reader");
-		expect(await hook("PostToolUse", "reader")).toBe("user-questions");
-		expect(await hook("PostToolUse")).toBe("in-progress");
+	it("clears an owner's wait after PostToolUseFailure, SubagentStop and TeammateIdle", async () => {
+		for (const event of ["PostToolUseFailure", "SubagentStop", "TeammateIdle"]) {
+			await hook("PermissionRequest", "reader");
+			expect(await hook(event, "reader"), event).toBe("in-progress");
+		}
 	});
 
 	it("restores AI review after a background approval", async () => {
@@ -6516,22 +4632,27 @@ describe("Claude approval ownership", () => {
 		expect(await hook("PreToolUse", "teammate")).toBe("in-progress");
 	});
 
-	it.each(["SubagentStop", "TeammateIdle"])("returns to the parent's stopped lane on the final %s", async event => {
-		stored = { ...stored, status: "review-by-user" };
-		await hook("PreToolUse", "first");
-		await hook("PostToolUse", "second");
-		expect(await hook(event, "first")).toBe("in-progress");
-		expect(await hook(event, "second")).toBe("review-by-user");
+	it("returns to the parent's stopped lane on the final SubagentStop or TeammateIdle", async () => {
+		for (const event of ["SubagentStop", "TeammateIdle"]) {
+			stored = { ...stored, status: "review-by-user" };
+			await hook("PreToolUse", "first", event);
+			await hook("PostToolUse", "second", event);
+			expect(await hook(event, "first", event), event).toBe("in-progress");
+			expect(await hook(event, "second", event), event).toBe("review-by-user");
+		}
 	});
 
-	it.each(["review-by-user", "review-by-ai"] as const)("records parent Stop during a child approval, then restores %s", async stopTarget => {
-		await hook("PermissionRequest", "reader");
-		const response = await handleRequest(makeRequest("task.claudeTurnEnded", {
-			taskId: stored.id, projectId: project.id, sessionId: "session-1", paneId: "%1", stopTarget,
-		}));
-		expect(response.ok).toBe(true);
-		expect(stored.status).toBe("user-questions");
-		expect(await hook("SubagentStop", "reader")).toBe(stopTarget);
+	it("records a parent Stop during a child approval, then restores its review-by-user or review-by-ai target", async () => {
+		for (const stopTarget of ["review-by-user", "review-by-ai"] as const) {
+			stored = { ...stored, status: "in-progress" };
+			await hook("PermissionRequest", "reader", stopTarget);
+			const response = await handleRequest(makeRequest("task.claudeTurnEnded", {
+				taskId: stored.id, projectId: project.id, sessionId: stopTarget, paneId: "%1", stopTarget,
+			}));
+			expect(response.ok).toBe(true);
+			expect(stored.status, stopTarget).toBe("user-questions");
+			expect(await hook("SubagentStop", "reader", stopTarget), stopTarget).toBe(stopTarget);
+		}
 	});
 
 	it("keeps working when the parent stops before its active child", async () => {
@@ -6561,11 +4682,5 @@ describe("Claude approval ownership", () => {
 		await hook("PermissionRequest", "reader", "first");
 		expect(await hook("PostToolUse", "reader", "second")).toBe("user-questions");
 		expect(await hook("PostToolUse", "reader", "first")).toBe("in-progress");
-	});
-
-	it("documents that parallel tools in one parent share approval ownership", async () => {
-		await hook("PermissionRequest");
-		// PermissionRequest provides no tool_use_id: a sibling in the same owner can clear this wait.
-		expect(await hook("PostToolUse")).toBe("in-progress");
 	});
 });

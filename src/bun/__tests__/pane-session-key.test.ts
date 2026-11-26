@@ -12,6 +12,9 @@ describe("pane-session-key", () => {
 		const key = paneSessionKey("task-abc", "pane-3");
 		const parsed = parsePaneSessionKey(key);
 		expect(parsed).toEqual({ taskId: "task-abc", paneId: "pane-3" });
+		// A real dev3-task-<uuid> composite round-trips too.
+		const taskId = "dev3-task-00000000-0000-4000-8000-000000000001";
+		expect(parsePaneSessionKey(paneSessionKey(taskId, "pane-2"))).toEqual({ taskId, paneId: "pane-2" });
 	});
 
 	it("the separator must stay URL-safe: a key needs no escaping in ?session=", () => {
@@ -21,30 +24,9 @@ describe("pane-session-key", () => {
 		expect(urlSafe).toBe(true);
 	});
 
-	it("the separator ~ does not appear in task UUIDs or pane ids", () => {
-		const uuid = "00000000-0000-4000-8000-000000000001";
-		const paneId = "pane-12";
-		expect(uuid).not.toContain("~");
-		expect(paneId).not.toContain("~");
-	});
-
-	it("returns null for a bare task id (first pane uses bare taskId)", () => {
-		expect(parsePaneSessionKey("task-abc")).toBeNull();
-	});
-
-	it("returns null for an empty string", () => {
-		expect(parsePaneSessionKey("")).toBeNull();
-	});
-
-	it("returns null for a key that starts with the separator", () => {
-		expect(parsePaneSessionKey("~pane-1")).toBeNull();
-	});
-
-	it("handles a composite key built from a real dev3-task-<uuid>", () => {
-		const taskId = "dev3-task-00000000-0000-4000-8000-000000000001";
-		const paneId = "pane-2";
-		const key = paneSessionKey(taskId, paneId);
-		const parsed = parsePaneSessionKey(key);
-		expect(parsed).toEqual({ taskId, paneId });
+	it("returns null for a bare task id (the first pane's key), an empty string, and a leading separator", () => {
+		expect(parsePaneSessionKey("task-abc"), "bare").toBeNull();
+		expect(parsePaneSessionKey(""), "empty").toBeNull();
+		expect(parsePaneSessionKey("~pane-1"), "leading separator").toBeNull();
 	});
 });

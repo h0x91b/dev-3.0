@@ -49,13 +49,19 @@ import { createTestRepo, cleanup, g, type TestRepo } from "./git-test-helpers";
 const TRUNCATED_TITLE = "The game draws its own cursor (`drawCursor()` in `src/render/draw-world.ts`,…";
 
 describe("buildMergeCommitMessage", () => {
-	it("reuses a single commit's message verbatim, subject and body", () => {
+	it("reuses a single (non-empty) commit's message verbatim, subject and body", () => {
 		const message = "Hide the OS pointer over the canvas\n\nThe canvas draws its own cursor.";
 		expect(buildMergeCommitMessage({
 			commits: [message],
 			taskTitle: TRUNCATED_TITLE,
 			branchName: "feat/cursor",
 		})).toBe(`${message}\n`);
+		// Empty commit messages are ignored.
+		expect(buildMergeCommitMessage({
+			commits: ["", "   \n\n", "Real work here"],
+			taskTitle: TRUNCATED_TITLE,
+			branchName: "feat/x",
+		})).toBe("Real work here\n");
 	});
 
 	it("uses the task title as subject and the commit subjects as body", () => {
@@ -76,78 +82,32 @@ describe("buildMergeCommitMessage", () => {
 		expect(message.split("\n")[0]).toBe("Add the cursor sprite");
 	});
 
-	// Separate from the long real-world title above: a SHORT title ending in the
-	// ellipsis must be rejected for the mark alone, not because it is over-long.
-	it("rejects a short title that still ends in an ellipsis", () => {
-		const message = buildMergeCommitMessage({
-			commits: ["First commit", "Second commit"],
-			taskTitle: "The game draws its own…",
-			branchName: "feat/x",
-		});
-		expect(message.split("\n")[0]).toBe("First commit");
+	// A SHORT title ending in the ellipsis is rejected for the mark alone, not for
+	// being over-long; scratch placeholders and over-long titles yield too.
+	it("yields an ellipsis, three-dot, scratch or over-long title to the first commit subject", () => {
+		for (const taskTitle of [
+			"The game draws its own…",
+			"если мы в проекте что уже в спейсе каком-то то дефолт вью...",
+			"Scratch — 14:32",
+			`First commit ${"x".repeat(80)}`,
+		]) {
+			const message = buildMergeCommitMessage({ commits: ["First commit", "Second commit"], taskTitle, branchName: "feat/x" });
+			expect(message.split("\n")[0], taskTitle).toBe("First commit");
+		}
 	});
 
-	it("rejects an ASCII three-dot truncation too", () => {
-		const message = buildMergeCommitMessage({
-			commits: ["First commit", "Second commit"],
-			taskTitle: "если мы в проекте что уже в спейсе каком-то то дефолт вью...",
-			branchName: "feat/x",
-		});
-		expect(message.split("\n")[0]).toBe("First commit");
-	});
-
-	it("rejects a scratch placeholder title", () => {
-		const message = buildMergeCommitMessage({
-			commits: ["Rename the pane", "Fix the label"],
-			taskTitle: "Scratch — 14:32",
-			branchName: "chore/scratch",
-		});
-		expect(message.split("\n")[0]).toBe("Rename the pane");
-	});
-
-	it("yields an over-long title to a commit subject", () => {
+	it("with no commit to borrow from, uses the title on one line, untouched and never truncated, else the branch", () => {
 		const long = `Do the thing ${"x".repeat(80)}`;
-		const message = buildMergeCommitMessage({
-			commits: ["Do the thing", "Then the other thing"],
-			taskTitle: long,
-			branchName: "feat/x",
-		});
-		expect(message.split("\n")[0]).toBe("Do the thing");
-	});
-
-	it("keeps an over-long title in full when there is no commit to borrow from", () => {
-		const long = `Do the thing ${"x".repeat(80)}`;
-		const message = buildMergeCommitMessage({ commits: [], taskTitle: long, branchName: "feat/x" });
-		// Never truncated: an unabbreviated long subject is readable, a chopped one is not.
-		expect(message).toBe(`${long}\n`);
-	});
-
-	it("keeps a subject on one line when the title carries a newline", () => {
-		const message = buildMergeCommitMessage({
-			commits: [],
-			taskTitle: "Hide the OS cursor\nand draw ours instead",
-			branchName: "feat/cursor",
-		});
-		expect(message).toBe("Hide the OS cursor\n");
-	});
-
-	it("passes backticks and quotes through untouched", () => {
-		const title = "Fix `drawCursor()` and the \"quoted\" $HOME thing";
-		expect(buildMergeCommitMessage({ commits: [], taskTitle: title, branchName: "feat/x" }))
-			.toBe(`${title}\n`);
-	});
-
-	it("falls back to the branch name when there is neither a commit nor a usable title", () => {
-		expect(buildMergeCommitMessage({ commits: [], taskTitle: "   ", branchName: "feat/x" }))
-			.toBe("Merge feat/x\n");
-	});
-
-	it("ignores empty commit messages", () => {
-		expect(buildMergeCommitMessage({
-			commits: ["", "   \n\n", "Real work here"],
-			taskTitle: TRUNCATED_TITLE,
-			branchName: "feat/x",
-		})).toBe("Real work here\n");
+		const quoted = "Fix `drawCursor()` and the \"quoted\" $HOME thing";
+		const cases: Array<[string, string]> = [
+			[long, `${long}\n`],
+			["Hide the OS cursor\nand draw ours instead", "Hide the OS cursor\n"],
+			[quoted, `${quoted}\n`],
+			["   ", "Merge feat/x\n"],
+		];
+		for (const [taskTitle, expected] of cases) {
+			expect(buildMergeCommitMessage({ commits: [], taskTitle, branchName: "feat/x" }), taskTitle).toBe(expected);
+		}
 	});
 
 	it("always ends in exactly one newline and never a blank subject", () => {
@@ -180,31 +140,14 @@ describe("listBranchCommitMessages", { timeout: 30_000 }, () => {
 		g(`git commit --allow-empty -m "${subject}"${body ? ` -m "${body}"` : ""}`, repo.local);
 	}
 
-	it("returns the branch's own commits, oldest first, with their bodies", async () => {
+	it("returns the branch's own commits, oldest first, with their bodies, excluding base history", async () => {
 		g("git checkout -b feature", repo.local);
-		commit("First thing", "Why the first thing.");
+		expect(await listBranchCommitMessages(repo.local, "main")).toEqual([]);
+		commit("First thing", "With a body\n\nand a blank line inside it.");
 		commit("Second thing");
 
 		const messages = await listBranchCommitMessages(repo.local, "main");
-		expect(messages).toEqual(["First thing\n\nWhy the first thing.", "Second thing"]);
-	});
-
-	it("returns one message for a single-commit branch and excludes base history", async () => {
-		g("git checkout -b feature", repo.local);
-		commit("Only commit", "With a body\n\nand a blank line inside it.");
-
-		const messages = await listBranchCommitMessages(repo.local, "main");
-		expect(messages).toEqual(["Only commit\n\nWith a body\n\nand a blank line inside it."]);
-	});
-
-	it("returns nothing for a branch with zero commits", async () => {
-		g("git checkout -b feature", repo.local);
-		expect(await listBranchCommitMessages(repo.local, "main")).toEqual([]);
-	});
-
-	it("returns nothing when the base ref does not resolve", async () => {
-		g("git checkout -b feature", repo.local);
-		commit("Some work");
+		expect(messages).toEqual(["First thing\n\nWith a body\n\nand a blank line inside it.", "Second thing"]);
 		expect(await listBranchCommitMessages(repo.local, "origin/nope")).toEqual([]);
 	});
 
@@ -260,14 +203,10 @@ describe("the merge handler's call site", () => {
 		.map((file) => ({ file, args: messageCallArgs(readFileSync(file, "utf-8")) }))
 		.filter(({ file, args }) => args.length > 0 && !file.endsWith("git-op-script.ts"));
 
-	it("has exactly one caller, in the git-operations handler", () => {
+	it("has exactly one caller, in the git-operations handler, and it builds every message with buildMergeCommitMessage", () => {
 		expect(callers.map((c) => c.file.slice(BUN_DIR.length + 1))).toEqual([
 			join("rpc-handlers", "git-operations.ts"),
 		]);
-	});
-
-	it("builds every message with buildMergeCommitMessage", () => {
-		expect(callers.length).toBeGreaterThan(0);
 		for (const { file, args } of callers) {
 			for (const arg of args) {
 				expect(arg, `${file} passes a raw message to writeMergeCommitMessage`)

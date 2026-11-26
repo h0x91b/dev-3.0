@@ -565,16 +565,13 @@ describe("account login manager", () => {
 });
 
 describe("loginArgv", () => {
-	it("execs directly on POSIX", () => {
-		expect(loginArgv("/opt/bin/claude", ["/login"], "linux", {})).toEqual(["/opt/bin/claude", "/login"]);
-	});
-
-	it("routes a Windows npm .cmd shim through cmd.exe and a .ps1 through PowerShell", () => {
-		expect(loginArgv("C:\\npm\\codex.cmd", ["login"], "win32", { ComSpec: "C:\\Windows\\System32\\cmd.exe" })).toEqual([
+	it("execs directly on POSIX and routes Windows .cmd/.ps1 shims through their shells", () => {
+		expect(loginArgv("/opt/bin/claude", ["/login"], "linux", {}), "execs directly on POSIX").toEqual(["/opt/bin/claude", "/login"]);
+		expect(loginArgv("C:\\npm\\codex.cmd", ["login"], "win32", { ComSpec: "C:\\Windows\\System32\\cmd.exe" }), "routes a Windows npm .cmd shim through cmd.exe and a .ps1 through PowerShell").toEqual([
 			"C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "C:\\npm\\codex.cmd", "login",
 		]);
-		expect(loginArgv("C:\\npm\\codex.ps1", ["login"], "win32", {})[0]).toBe("powershell.exe");
-		expect(loginArgv("C:\\bin\\claude.exe", ["/login"], "win32", {})).toEqual(["C:\\bin\\claude.exe", "/login"]);
+		expect(loginArgv("C:\\npm\\codex.ps1", ["login"], "win32", {})[0], "routes a Windows npm .cmd shim through cmd.exe and a .ps1 through PowerShell").toBe("powershell.exe");
+		expect(loginArgv("C:\\bin\\claude.exe", ["/login"], "win32", {}), "routes a Windows npm .cmd shim through cmd.exe and a .ps1 through PowerShell").toEqual(["C:\\bin\\claude.exe", "/login"]);
 	});
 });
 
@@ -607,25 +604,19 @@ describe("loginEnv", () => {
 });
 
 describe("resolveLoginExecutable with a custom executable", () => {
-	it("throws for a broken custom path instead of finding the CLI on PATH", async () => {
+	it("throws for a broken strict custom path, falls back to PATH for a pre-strict one, uses a working one", async () => {
 		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" }, strictAgentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
-		await expect(resolveLoginExecutable("claude", "node")).rejects.toThrow("/definitely/not/here/claude");
-	});
-
-	it("falls back to PATH for a gone custom path saved before paths became strict", async () => {
+		await expect(resolveLoginExecutable("claude", "node"), "throws for a broken custom path instead of finding the CLI on PATH").rejects.toThrow("/definitely/not/here/claude");
 		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
 		const bun = Bun as unknown as { which?: unknown };
 		const original = bun.which;
 		bun.which = vi.fn(() => "/on/path/claude");
 		try {
-			expect(await resolveLoginExecutable("claude", "claude")).toBe("/on/path/claude");
+			expect(await resolveLoginExecutable("claude", "claude"), "falls back to PATH for a gone custom path saved before paths became strict").toBe("/on/path/claude");
 		} finally {
 			bun.which = original;
 		}
-	});
-
-	it("uses a working custom path", async () => {
 		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": process.execPath } } as never);
-		expect(await resolveLoginExecutable("claude", "claude")).toBe(process.execPath);
+		expect(await resolveLoginExecutable("claude", "claude"), "uses a working custom path").toBe(process.execPath);
 	});
 });

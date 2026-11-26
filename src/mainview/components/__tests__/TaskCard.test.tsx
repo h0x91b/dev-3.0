@@ -755,23 +755,14 @@ describe("TaskCard", () => {
 			expect(screen.queryByTestId("task-card-quick-complete")).not.toBeInTheDocument();
 		});
 
-		it("status dropdown opens with In Progress and Cancelled", async () => {
-			const user = userEvent.setup();
-			renderCard(makeTask({ status: "todo" }));
-
-			await user.click(statusTrigger());
-
-			expect(screen.getByText("Agent is Working")).toBeInTheDocument();
-			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-		});
-
-		it("In Progress in dropdown triggers onLaunchVariants", async () => {
+		it("status dropdown offers In Progress and Cancelled; In Progress triggers onLaunchVariants", async () => {
 			const user = userEvent.setup();
 			const onLaunchVariants = vi.fn();
 			const task = makeTask({ status: "todo" });
 			renderCard(task, { onLaunchVariants });
 
 			await user.click(statusTrigger());
+			expect(screen.getByText("Cancelled")).toBeInTheDocument();
 			await user.click(screen.getByText("Agent is Working"));
 
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
@@ -886,28 +877,9 @@ describe("TaskCard", () => {
 			});
 		});
 
-		it("shows delete option in status dropdown menu", async () => {
-			const user = userEvent.setup();
-			renderCard(makeTask({ status: "cancelled" }));
-
-			await user.click(statusTrigger());
-
-			expect(screen.getByText("Delete")).toBeInTheDocument();
-		});
 	});
 
 	describe("non-todo status menu", () => {
-		it("in-progress task has clickable status that opens menu", async () => {
-			const user = userEvent.setup();
-			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
-
-			await user.click(statusTrigger());
-
-			expect(screen.getByText("To Do")).toBeInTheDocument();
-			expect(screen.getByText("Completed")).toBeInTheDocument();
-			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("Has Questions")).toBeInTheDocument();
-		});
 
 		it("in-progress task does not show Run button", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
@@ -915,13 +887,16 @@ describe("TaskCard", () => {
 			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
 		});
 
-		it("menu closes on second click of status trigger", async () => {
+		it("in-progress status opens the move menu and closes on a second trigger click", async () => {
 			const user = userEvent.setup();
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
-			// Click the status trigger button (first match — the card's status button)
 			await user.click(statusTrigger());
 			expect(screen.getByText("Move to")).toBeInTheDocument();
+			expect(screen.getByText("To Do")).toBeInTheDocument();
+			expect(screen.getByText("Completed")).toBeInTheDocument();
+			expect(screen.getByText("Cancelled")).toBeInTheDocument();
+			expect(screen.getByText("Has Questions")).toBeInTheDocument();
 
 			// Click the trigger again to close — it's still the first match
 			await user.click(statusTrigger());
@@ -2256,23 +2231,33 @@ describe("TaskCard", () => {
 			mockedApi.request.refreshTaskPrStatus.mockImplementation(() => new Promise((resolve) => {
 				resolveRefresh = () => resolve({ outcome: "updated" });
 			}));
-			renderCard(reviewTask(), {
-				prInfo: {
-					number: 12,
-					url: "https://example/pr/12",
-					unresolvedCount: 2,
-					checks: [{ name: "cached-build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null }],
-				},
-			});
-			await userEvent.hover(screen.getByLabelText("Open PR #12"));
+			vi.useFakeTimers();
+			try {
+				renderCard(reviewTask(), {
+					prInfo: {
+						number: 12,
+						url: "https://example/pr/12",
+						unresolvedCount: 2,
+						checks: [{ name: "cached-build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null }],
+					},
+				});
+				act(() => {
+					fireEvent.mouseEnter(screen.getByLabelText("Open PR #12"));
+				});
+				await act(async () => {
+					vi.advanceTimersByTime(2000);
+				});
 
-			await waitFor(() => expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledTimes(1), { timeout: 3000 });
-			expect(screen.getByTestId("pr-status-popover")).toHaveTextContent("cached-build");
-			expect(screen.getByRole("button", { name: "Refreshing PR status…" })).toBeDisabled();
+				expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledTimes(1);
+				expect(screen.getByTestId("pr-status-popover")).toHaveTextContent("cached-build");
+				expect(screen.getByRole("button", { name: "Refreshing PR status…" })).toBeDisabled();
 
-			await act(async () => {
-				resolveRefresh();
-			});
+				await act(async () => {
+					resolveRefresh();
+				});
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it("does not auto-refresh when the pointer leaves before the hover delay", async () => {

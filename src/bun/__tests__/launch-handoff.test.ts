@@ -13,44 +13,37 @@ import electrobunConfig from "../../../electrobun.config";
 const BUNDLE = "/opt/dev3/Resources/app/views";
 
 describe("shouldTryLaunchHandoff", () => {
-	it("hands off an ordinary Linux desktop launch", () => {
-		expect(shouldTryLaunchHandoff({ platform: "linux", env: {} })).toBe(true);
-	});
-
-	it.each(["darwin", "win32"] as const)("leaves %s launches exactly as they were", (platform) => {
-		expect(shouldTryLaunchHandoff({ platform, env: {} })).toBe(false);
-	});
-
-	it("never hands off a guest instance launched from a task pane", () => {
-		expect(shouldTryLaunchHandoff({ platform: "linux", env: { DEV3_TASK_ID: "task-uuid" } })).toBe(false);
-	});
-
-	it("never hands off a dev launch", () => {
-		expect(shouldTryLaunchHandoff({ platform: "linux", env: { DEV3_FRESH_START: "1" } })).toBe(false);
+	it("hands off only an ordinary Linux desktop launch — never macOS/Windows, a task-pane guest or a dev launch", () => {
+		const cases: Array<[name: string, platform: NodeJS.Platform, env: Record<string, string>, expected: boolean]> = [
+			["ordinary Linux launch", "linux", {}, true],
+			["darwin left as it was", "darwin", {}, false],
+			["win32 left as it was", "win32", {}, false],
+			["guest instance from a task pane", "linux", { DEV3_TASK_ID: "task-uuid" }, false],
+			["dev launch", "linux", { DEV3_FRESH_START: "1" }, false],
+		];
+		for (const [name, platform, env, expected] of cases) {
+			expect(shouldTryLaunchHandoff({ platform, env }), name).toBe(expected);
+		}
 	});
 });
 
 describe("decideLaunchActivation", () => {
 	const base = { platform: "linux" as const, bundle: BUNDLE, ownBundle: BUNDLE, hostTaskId: null, windowCount: 0 };
 
-	it("reopens a window when the last one was closed", () => {
+	it("reopens a window when the last one was closed, and raises an existing one instead of adding one", () => {
 		expect(decideLaunchActivation(base)).toEqual({ activated: true, open: true });
-	});
-
-	it("raises an existing window instead of adding one when windows are open", () => {
 		expect(decideLaunchActivation({ ...base, windowCount: 2 })).toEqual({ activated: true, open: false });
 	});
 
-	it("declines a launch of a different install (a dev build or another channel)", () => {
-		expect(decideLaunchActivation({ ...base, bundle: "/home/me/dev-3.0/build/views" })).toMatchObject({ activated: false, reason: "other-install" });
-	});
-
-	it("declines when this instance is itself a guest of a task", () => {
-		expect(decideLaunchActivation({ ...base, hostTaskId: "task-uuid" })).toMatchObject({ activated: false, reason: "guest-instance" });
-	});
-
-	it("declines off Linux", () => {
-		expect(decideLaunchActivation({ ...base, platform: "darwin" })).toMatchObject({ activated: false, reason: "platform" });
+	it("declines another install (a dev build or another channel), a guest-of-a-task instance, and off Linux", () => {
+		const cases: Array<[Partial<Parameters<typeof decideLaunchActivation>[0]>, string]> = [
+			[{ bundle: "/home/me/dev-3.0/build/views" }, "other-install"],
+			[{ hostTaskId: "task-uuid" }, "guest-instance"],
+			[{ platform: "darwin" }, "platform"],
+		];
+		for (const [over, reason] of cases) {
+			expect(decideLaunchActivation({ ...base, ...over }), reason).toMatchObject({ activated: false, reason });
+		}
 	});
 });
 
@@ -61,15 +54,11 @@ describe("handleLaunchActivate", () => {
 		expect(handleLaunchActivate({ bundle: BUNDLE })).toEqual({ activated: false, reason: "no-window-host" });
 	});
 
-	it("passes the newcomer's bundle to the installed host", () => {
+	it("passes the newcomer's bundle to the installed host, and declines a request that names none", () => {
 		const host = vi.fn(() => ({ activated: true }));
 		setLaunchActivationHost(host);
 		expect(handleLaunchActivate({ bundle: BUNDLE })).toEqual({ activated: true });
 		expect(host).toHaveBeenCalledWith(BUNDLE);
-	});
-
-	it("declines a request that names no bundle", () => {
-		setLaunchActivationHost(() => ({ activated: true }));
 		expect(handleLaunchActivate({})).toEqual({ activated: false, reason: "no-bundle" });
 	});
 });
@@ -87,9 +76,10 @@ describe("handOffToRunningInstance", () => {
 		expect(request.mock.calls[0][1]).toMatchObject({ method: LAUNCH_ACTIVATE_METHOD, params: { bundle: BUNDLE } });
 	});
 
-	it("launches normally when nothing is running", async () => {
-		const request = vi.fn<PeerRequest>();
+	it("launches normally when nothing is running, ignoring loopback endpoint records", async () => {
+		const request = vi.fn<PeerRequest>(() => reply({ activated: true }));
 		await expect(handOffToRunningInstance({ peers: () => [], request, bundle: BUNDLE })).resolves.toBeNull();
+		await expect(handOffToRunningInstance({ peers: () => ["/s/9.endpoint.json"], request, bundle: BUNDLE })).resolves.toBeNull();
 		expect(request).not.toHaveBeenCalled();
 	});
 
@@ -106,12 +96,6 @@ describe("handOffToRunningInstance", () => {
 		const peers = () => ["/s/1.sock", "/s/2.sock", "/s/3.sock"];
 		await expect(handOffToRunningInstance({ peers, request, bundle: BUNDLE })).resolves.toBeNull();
 		expect(request).toHaveBeenCalledTimes(3);
-	});
-
-	it("ignores loopback endpoint records", async () => {
-		const request = vi.fn<PeerRequest>(() => reply({ activated: true }));
-		await expect(handOffToRunningInstance({ peers: () => ["/s/9.endpoint.json"], request, bundle: BUNDLE })).resolves.toBeNull();
-		expect(request).not.toHaveBeenCalled();
 	});
 });
 

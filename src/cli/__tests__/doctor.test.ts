@@ -66,14 +66,10 @@ describe("dev3 doctor — collectChecks", () => {
 		expect(results.every((r) => r.status === "ok")).toBe(true);
 	});
 
-	it("fails when the data dir is missing", () => {
-		const deps = healthyDeps({ existsSync: (p) => p !== `${HOME}/.dev3.0` && healthyDeps().existsSync(p) });
-		expect(byLabel(collectChecks(deps), "data dir").status).toBe("fail");
-	});
-
-	it("fails when the data dir is not writable", () => {
-		const deps = healthyDeps({ isWritable: () => false });
-		expect(byLabel(collectChecks(deps), "data dir").status).toBe("fail");
+	it("fails when the data dir is missing or not writable", () => {
+		const missing = healthyDeps({ existsSync: (p) => p !== `${HOME}/.dev3.0` && healthyDeps().existsSync(p) });
+		expect(byLabel(collectChecks(missing), "data dir").status).toBe("fail");
+		expect(byLabel(collectChecks(healthyDeps({ isWritable: () => false })), "data dir").status).toBe("fail");
 	});
 
 	it("warns with a reinstall recipe when the app bundle is gone (macOS)", () => {
@@ -82,11 +78,7 @@ describe("dev3 doctor — collectChecks", () => {
 		const check = byLabel(collectChecks(deps), "desktop app");
 		expect(check.status).toBe("warn");
 		expect(check.hints?.join("\n")).toContain("brew install --cask h0x91b/dev3/dev3");
-	});
-
-	it("skips the bundle check on Linux", () => {
-		const deps = healthyDeps({ platform: "linux" });
-		expect(byLabel(collectChecks(deps), "desktop app").status).toBe("ok");
+		expect(byLabel(collectChecks(healthyDeps({ platform: "linux" })), "desktop app").status, "skipped on Linux").toBe("ok");
 	});
 
 	it("warns when CLI and app bundle versions differ", () => {
@@ -176,17 +168,15 @@ describe("dev3 doctor — collectChecks", () => {
 		const check = byLabel(collectChecks(deps), "tmux binary");
 		expect(check.status).toBe("ok");
 		expect(check.detail).toContain(`bundled ${BUNDLED_APP_TMUX}`);
-	});
 
-	it("identifies the bundled tmux next to the CLI binary (tarball/libexec layout)", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
+		// Tarball/libexec layout: the bundled tmux sits next to the CLI binary.
+		const cliDeps = healthyDeps({
 			realpath: (p) => (p === EXEC ? `${HOME}/cli/dev3` : KEG),
 			isExecutableFile: (p) => p === BUNDLED_CLI_TMUX || base.isExecutableFile(p),
 		});
-		const check = byLabel(collectChecks(deps), "tmux binary");
-		expect(check.status).toBe("ok");
-		expect(check.detail).toContain(`bundled ${BUNDLED_CLI_TMUX}`);
+		const cliCheck = byLabel(collectChecks(cliDeps), "tmux binary");
+		expect(cliCheck.status).toBe("ok");
+		expect(cliCheck.detail).toContain(`bundled ${BUNDLED_CLI_TMUX}`);
 	});
 
 	it("skips a bundled tmux that does not identify itself as tmux and reports the keg", () => {
@@ -230,28 +220,14 @@ describe("dev3 doctor — collectChecks", () => {
 		expect(check.status).toBe("fail");
 	});
 
-	it("warns when the keg is absent and PATH tmux is the known-bad 3.7", () => {
+	it("with the keg absent, accepts a healthy PATH tmux and warns on the known-bad 3.7", () => {
 		const base = healthyDeps();
-		const deps = healthyDeps({
+		const withPathTmux = (version: string) => healthyDeps({
 			existsSync: (p) => p !== KEG && base.existsSync(p),
-			exec: (cmd, args) => {
-				if (cmd === "tmux") return { status: 0, stdout: "tmux 3.7b\n" };
-				return base.exec(cmd, args);
-			},
+			exec: (cmd, args) => (cmd === "tmux" ? { status: 0, stdout: `tmux ${version}\n` } : base.exec(cmd, args)),
 		});
-		expect(byLabel(collectChecks(deps), "tmux binary").status).toBe("warn");
-	});
-
-	it("accepts keg absence with a healthy PATH tmux", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			existsSync: (p) => p !== KEG && base.existsSync(p),
-			exec: (cmd, args) => {
-				if (cmd === "tmux") return { status: 0, stdout: "tmux 3.6a\n" };
-				return base.exec(cmd, args);
-			},
-		});
-		expect(byLabel(collectChecks(deps), "tmux binary").status).toBe("ok");
+		expect(byLabel(collectChecks(withPathTmux("3.7b")), "tmux binary").status).toBe("warn");
+		expect(byLabel(collectChecks(withPathTmux("3.6a")), "tmux binary").status).toBe("ok");
 	});
 
 	it("fails on a leftover Caskroom dir when the cask itself is not installed", () => {
@@ -280,29 +256,16 @@ describe("dev3 doctor — collectChecks", () => {
 		expect(check.detail).toContain("normal after in-app updates");
 	});
 
-	it("warns about the accidental headless formula next to the desktop app", () => {
+	it("warns about the headless formula next to the desktop app, but accepts it on a headless box", () => {
 		const base = healthyDeps();
-		const deps = healthyDeps({
-			exec: (cmd, args) => {
-				if (cmd === "brew" && args.includes("--formula")) return { status: 0, stdout: "dev3 1.30.0\n" };
-				return base.exec(cmd, args);
-			},
+		const withFormula = (platform: NodeJS.Platform) => healthyDeps({
+			platform,
+			exec: (cmd, args) => (cmd === "brew" && args.includes("--formula") ? { status: 0, stdout: "dev3 1.30.0\n" } : base.exec(cmd, args)),
 		});
-		const check = byLabel(collectChecks(deps), "homebrew formula");
+		const check = byLabel(collectChecks(withFormula("darwin")), "homebrew formula");
 		expect(check.status).toBe("warn");
 		expect(check.hints?.[0]).toContain("brew uninstall --formula dev3");
-	});
-
-	it("accepts the formula as legitimate when there is no desktop app (headless box)", () => {
-		const base = healthyDeps();
-		const deps = healthyDeps({
-			platform: "linux",
-			exec: (cmd, args) => {
-				if (cmd === "brew" && args.includes("--formula")) return { status: 0, stdout: "dev3 1.30.0\n" };
-				return base.exec(cmd, args);
-			},
-		});
-		expect(byLabel(collectChecks(deps), "homebrew formula").status).toBe("ok");
+		expect(byLabel(collectChecks(withFormula("linux")), "homebrew formula").status).toBe("ok");
 	});
 
 	it("skips brew checks entirely when brew is not installed", () => {
@@ -328,11 +291,7 @@ describe("dev3 doctor — renderChecks", () => {
 		expect(out).toContain("✗ tmux shim");
 		expect(out).toContain("    ↳ rm ~/.dev3.0/bin/tmux");
 		expect(out).toContain("1 problem, 0 warnings.");
-	});
-
-	it("prints the healthy summary when nothing is wrong", () => {
-		const out = renderChecks([{ label: "data dir", status: "ok", detail: "fine" }]);
-		expect(out).toContain("Everything looks healthy.");
+		expect(renderChecks([{ label: "data dir", status: "ok", detail: "fine" }])).toContain("Everything looks healthy.");
 	});
 });
 
@@ -352,12 +311,10 @@ describe("dev3 doctor — handleDoctor", () => {
 		writeSpy.mockRestore();
 	});
 
-	it("exits 0 on a healthy install", async () => {
+	it("exits 0 on a healthy install and the doctor-problems code when a check fails", async () => {
 		await expect(handleDoctor({ flags: {}, positional: [] }, healthyDeps())).rejects.toThrow("exit");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_SUCCESS);
-	});
 
-	it("exits with the doctor-problems code when a check fails", async () => {
 		const deps = healthyDeps({
 			realpath: () => {
 				throw new Error("ELOOP");

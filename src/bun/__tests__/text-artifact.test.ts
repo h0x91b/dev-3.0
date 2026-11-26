@@ -7,7 +7,7 @@ function render(markdown: string): string {
 }
 
 describe("textArtifactHtml — Markdown extras", () => {
-	it("numbers footnotes by first reference, links both ways and leaves unknown labels as text", () => {
+	it("numbers footnotes by first reference (afresh on every render), links both ways and leaves unknown labels as text", () => {
 		const html = render(["Claim[^a], again[^a], other[^b], missing[^zz].", "", "[^b]: Second", "    continued.", "[^a]: First **note**."].join("\n"));
 
 		expect(html).toContain('<a href="#fn-1" id="fnref-1"');
@@ -17,9 +17,7 @@ describe("textArtifactHtml — Markdown extras", () => {
 		expect(html).toContain('<li id="fn-1">First <strong>note</strong>. <a class="dev3-fnback" href="#fnref-1"');
 		expect(html).toContain('<li id="fn-2">Second continued.');
 		expect(html).not.toContain("[^b]:");
-	});
 
-	it("starts footnote numbering afresh on every render", () => {
 		render("One[^x]\n\n[^x]: note");
 		expect(render("Two[^y]\n\n[^y]: note")).toContain('href="#fn-1"');
 	});

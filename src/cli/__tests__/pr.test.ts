@@ -145,44 +145,57 @@ function forkRepo(
 }
 
 describe("dev3 pr create — fork contributors", () => {
-	it("pushes to the only other remote when origin is not writable, and opens the PR on origin's repo", async () => {
-		const { deps: d, calls } = deps();
+	it("pushes to the only other remote when origin is not writable, and opens the PR on origin's repo (GHE host kept)", async () => {
+		const cases = [
+			{ urls: undefined, repo: "--repo acme/app" },
+			{ urls: { origin: "https://ghe.example.com/acme/app.git", fork: "ssh://git@ghe.example.com:2222/me/app.git" }, repo: "--repo ghe.example.com/acme/app" },
+		];
+		for (const { urls, repo } of cases) {
+			stdoutOutput = "";
+			const { deps: d, calls } = deps();
 
-		await handlePr("create", args({ title: "T" }), null, forkRepo(d));
+			await handlePr("create", args({ title: "T" }), null, forkRepo(d, urls ? { urls } : {}));
 
-		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
-		const create = ran(calls, "gh", ["pr", "create"])!;
-		expect(create.args.join(" ")).toContain("--repo acme/app");
-		expect(create.args.join(" ")).toContain("--head me:feat/thing");
-		expect(stdoutOutput).toContain("feat/thing → fork");
+			expect(ran(calls, "git", ["push", "--set-upstream", "fork"]), repo).toBeDefined();
+			const create = ran(calls, "gh", ["pr", "create"])!;
+			expect(create.args.join(" "), repo).toContain(repo);
+			expect(create.args.join(" "), repo).toContain("--head me:feat/thing");
+			expect(stdoutOutput, repo).toContain("feat/thing → fork");
+		}
 	});
 
-	it("never pushes unasked to a remote GitHub does not call a fork of origin", async () => {
-		const { deps: d, calls } = deps();
+	it("never guesses a push remote: not a non-fork remote, not one of several", async () => {
+		const cases = [
+			{ name: "not a fork", opts: { parent: "/" } },
+			{ name: "several other remotes", opts: { remotes: "fork\nmirror\norigin\n" } },
+		];
+		for (const { name, opts } of cases) {
+			stderrOutput = "";
+			const { deps: d, calls } = deps();
 
-		await expect(handlePr("create", args({ title: "T" }), null, forkRepo(d, { parent: "/" }))).rejects.toThrow(/EXIT_/);
+			await expect(handlePr("create", args({ title: "T" }), null, forkRepo(d, opts)), name).rejects.toThrow(/EXIT_/);
 
-		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeUndefined();
-		expect(stderrOutput).toContain("remote.pushDefault");
+			expect(ran(calls, "git", ["push", "--set-upstream", "fork"]), name).toBeUndefined();
+			expect(ran(calls, "gh", ["pr", "create"]), name).toBeUndefined();
+			expect(stderrOutput, name).toContain("remote.pushDefault");
+		}
 	});
 
-	it("prefers the branch's pushRemote over remote.pushDefault and never tries origin first", async () => {
-		const { deps: d, calls } = deps();
-		const config = { "branch.feat/thing.pushRemote": "fork", "remote.pushDefault": "mirror" };
+	it("prefers the branch's pushRemote over remote.pushDefault, falls back to pushDefault, and never tries origin first", async () => {
+		const cases: Array<Record<string, string>> = [
+			{ "branch.feat/thing.pushRemote": "fork", "remote.pushDefault": "mirror" },
+			{ "remote.pushDefault": "fork" },
+		];
+		for (const config of cases) {
+			const { deps: d, calls } = deps();
 
-		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { config }));
+			await handlePr("create", args({ title: "T" }), null, forkRepo(d, { config }));
 
-		expect(ran(calls, "git", ["push", "--set-upstream", "origin"])).toBeUndefined();
-		expect(ran(calls, "git", ["push", "--set-upstream", "mirror"])).toBeUndefined();
-		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
-	});
-
-	it("falls back to remote.pushDefault when the branch names no pushRemote", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { config: { "remote.pushDefault": "fork" } }));
-
-		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
+			const label = JSON.stringify(config);
+			expect(ran(calls, "git", ["push", "--set-upstream", "origin"]), label).toBeUndefined();
+			expect(ran(calls, "git", ["push", "--set-upstream", "mirror"]), label).toBeUndefined();
+			expect(ran(calls, "git", ["push", "--set-upstream", "fork"]), label).toBeDefined();
+		}
 	});
 
 	it("names the owner of the push URL, not the fetch URL", async () => {
@@ -203,48 +216,28 @@ describe("dev3 pr create — fork contributors", () => {
 		expect(ran(calls, "gh", ["pr", "create"])!.args.join(" ")).toContain("--head me:feat/thing");
 	});
 
-	it("adds no fork head when the configured remote is origin's own repository", async () => {
-		const { deps: d, calls } = deps();
-		const urls = { origin: "https://github.com/acme/app", alias: "git@github.com:acme/app.git" };
+	it("adds no --repo/--head for an ordinary origin push or a remote that is origin's own repository", async () => {
+		const cases = [
+			{ name: "origin writable", opts: { originDenied: false } },
+			{
+				name: "alias of origin",
+				opts: { urls: { origin: "https://github.com/acme/app", alias: "git@github.com:acme/app.git" }, config: { "remote.pushDefault": "alias" } },
+			},
+		];
+		for (const { name, opts } of cases) {
+			const { deps: d, calls } = deps();
 
-		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { urls, config: { "remote.pushDefault": "alias" } }));
+			await handlePr("create", args({ title: "T" }), null, forkRepo(d, opts));
 
-		const create = ran(calls, "gh", ["pr", "create"])!;
-		expect(create.args).not.toContain("--repo");
-		expect(create.args).not.toContain("--head");
-	});
-
-	it("keeps a GitHub Enterprise host in --repo", async () => {
-		const { deps: d, calls } = deps();
-		const urls = { origin: "https://ghe.example.com/acme/app.git", fork: "ssh://git@ghe.example.com:2222/me/app.git" };
-
-		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { urls }));
-
-		expect(ran(calls, "gh", ["pr", "create"])!.args.join(" ")).toContain("--repo ghe.example.com/acme/app");
-	});
-
-	it("does not guess between several other remotes and says how to name the fork", async () => {
-		const { deps: d, calls } = deps();
-
-		await expect(handlePr("create", args({ title: "T" }), null, forkRepo(d, { remotes: "fork\nmirror\norigin\n" }))).rejects.toThrow(/EXIT_/);
-
-		expect(stderrOutput).toContain("remote.pushDefault");
-		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
-	});
-
-	it("keeps an ordinary push to origin free of --repo and --head", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { originDenied: false }));
-
-		const create = ran(calls, "gh", ["pr", "create"])!;
-		expect(create.args).not.toContain("--repo");
-		expect(create.args).not.toContain("--head");
+			const create = ran(calls, "gh", ["pr", "create"])!;
+			expect(create.args, name).not.toContain("--repo");
+			expect(create.args, name).not.toContain("--head");
+		}
 	});
 });
 
 describe("dev3 pr create — merge watch", () => {
-	it("subscribes the task's agent to the merge so it is woken to request completion", async () => {
+	it("subscribes the task's agent to the merge, and never outside a task", async () => {
 		const watchUntilMerged = vi.fn(async () => true);
 		const context = ctx();
 
@@ -253,6 +246,10 @@ describe("dev3 pr create — merge watch", () => {
 		expect(watchUntilMerged).toHaveBeenCalledWith(context);
 		expect(stdoutOutput).toContain("until merged");
 		expect(stdoutOutput).not.toContain("Waiting on CI or merge?");
+
+		watchUntilMerged.mockClear();
+		await handlePr("create", args({ title: "T" }), null, deps({}, { watchUntilMerged }).deps);
+		expect(watchUntilMerged).not.toHaveBeenCalled();
 	});
 
 	it("arms the watch before auto-merge, so a refused auto-merge still leaves the PR watched", async () => {
@@ -264,15 +261,7 @@ describe("dev3 pr create — merge watch", () => {
 		expect(watchUntilMerged).toHaveBeenCalled();
 	});
 
-	it("never subscribes outside a task", async () => {
-		const watchUntilMerged = vi.fn(async () => true);
-
-		await handlePr("create", args({ title: "T" }), null, deps({}, { watchUntilMerged }).deps);
-
-		expect(watchUntilMerged).not.toHaveBeenCalled();
-	});
-
-	it("asks the app for the branch's own PR with until merged, from this agent", async () => {
+	it("asks the app for the branch's own PR with until merged, from this agent; reports no watch when unreachable", async () => {
 		mockSendRequest.mockResolvedValue({ ok: true, data: { prNumber: 42 } } as never);
 
 		expect(await realPrDeps.watchUntilMerged(ctx())).toBe(true);
@@ -282,31 +271,34 @@ describe("dev3 pr create — merge watch", () => {
 		expect(method).toBe("pr.watch.add");
 		expect(params).toMatchObject({ taskId: "task-1", projectId: "proj-1", until: "merged", sourceTaskId: "task-1" });
 		expect(params).not.toHaveProperty("prNumber");
-	});
 
-	it("reports no watch when the app is unreachable", async () => {
 		mockSendRequest.mockRejectedValue(new Error("ECONNREFUSED"));
 		expect(await realPrDeps.watchUntilMerged(ctx())).toBe(false);
 	});
 });
 
 describe("dev3 pr create — happy path", () => {
-	it("pushes the branch, opens the pull request, and prints its URL", async () => {
-		const { deps: d, calls } = deps();
+	it("pushes the branch, opens the pull request, and prints its URL even amid gh chatter", async () => {
+		const { deps: d, calls } = deps({
+			"gh pr create": ok(`Creating pull request for feat/thing into main\n\n${PR_URL}\n`),
+		});
 
-		await handlePr("create", args({ title: "Add a thing", description: "Why it exists" }), null, d);
+		await handlePr("create", args({ title: "Add a thing", description: "Why it exists", draft: "true" }), null, d);
 
 		expect(ran(calls, "git", ["push", "--set-upstream", "origin", "feat/thing:refs/heads/feat/thing"])).toBeDefined();
 		const create = ran(calls, "gh", ["pr", "create"])!;
 		expect(create.args).toContain("Add a thing");
 		expect(create.args).toContain("Why it exists");
+		expect(create.args).toContain("--draft");
 		expect(create.cwd).toBe(CWD);
 		expect(stdoutOutput).toContain("feat/thing → origin");
 		expect(stdoutOutput).toContain(PR_URL);
 	});
 
-	it("points a task's agent at `dev3 pr watch` after the URL, and not outside a task", async () => {
-		await handlePr("create", args({ title: "T" }), ctx(), deps().deps);
+	it("in a task runs in its worktree and points the agent at `dev3 pr watch` after the URL; not outside a task", async () => {
+		const { deps: d, calls } = deps({}, { cwd: "/somewhere/else" });
+		await handlePr("create", args({ title: "T" }), ctx({ worktreePath: "/wt" }), d);
+		expect(ran(calls, "git", ["push"])!.cwd).toBe("/wt");
 		expect(stdoutOutput).toContain("dev3 pr watch");
 		expect(stdoutOutput.indexOf(PR_URL)).toBeLessThan(stdoutOutput.indexOf("dev3 pr watch"));
 
@@ -326,32 +318,6 @@ describe("dev3 pr create — happy path", () => {
 		expect(stdoutOutput).not.toContain("dev3 pr watch");
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
-
-	it("finds the URL even when gh prints chatter around it", async () => {
-		const { deps: d } = deps({
-			"gh pr create": ok(`Creating pull request for feat/thing into main\n\n${PR_URL}\n`),
-		});
-
-		await handlePr("create", args({ title: "T" }), null, d);
-
-		expect(stdoutOutput).toContain(PR_URL);
-	});
-
-	it("runs in the task's worktree, not the process cwd", async () => {
-		const { deps: d, calls } = deps({}, { cwd: "/somewhere/else" });
-
-		await handlePr("create", args({ title: "T" }), ctx({ worktreePath: "/wt" }), d);
-
-		expect(ran(calls, "git", ["push"])!.cwd).toBe("/wt");
-	});
-
-	it("passes --draft through", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T", draft: "true" }), null, d);
-
-		expect(ran(calls, "gh", ["pr", "create"])!.args).toContain("--draft");
-	});
 });
 
 describe("dev3 pr create — --assignee", () => {
@@ -363,42 +329,30 @@ describe("dev3 pr create — --assignee", () => {
 		return out;
 	}
 
-	it("adds no --assignee to gh when the flag is absent", async () => {
-		const { deps: d, calls } = deps();
+	it("passes none, one, or repeated and comma-separated logins through to gh", async () => {
+		const cases: Array<[string[], string[]]> = [
+			[[], []],
+			[["--assignee", "octocat"], ["octocat"]],
+			[["--assignee", "alice, bob", "--assignee", "@me"], ["alice", "bob", "@me"]],
+		];
+		for (const [flag, expected] of cases) {
+			const { deps: d, calls } = deps();
 
-		await handlePr("create", args({ title: "T", description: "B", base: "main", draft: "true" }), ctx(), d);
+			await handlePr("create", parseArgs(["--title", "T", ...flag]), null, d);
 
-		expect(ran(calls, "gh", ["pr", "create"])!.args).not.toContain("--assignee");
+			expect(assigneeArgs(ran(calls, "gh", ["pr", "create"])), JSON.stringify(flag)).toEqual(expected);
+		}
 	});
 
-	it("passes one login through to gh", async () => {
-		const { deps: d, calls } = deps();
+	it("refuses --assignee with no login (bare, or only separators) before pushing", async () => {
+		for (const flag of [["--assignee"], ["--assignee", ","]]) {
+			const { deps: d, calls } = deps();
 
-		await handlePr("create", parseArgs(["--title", "T", "--assignee", "octocat"]), null, d);
+			await expect(handlePr("create", parseArgs(["--title", "T", ...flag]), null, d), JSON.stringify(flag)).rejects.toThrow("EXIT_3");
 
-		expect(assigneeArgs(ran(calls, "gh", ["pr", "create"]))).toEqual(["octocat"]);
-	});
-
-	it("accepts it repeated and comma-separated, like gh", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr(
-			"create",
-			parseArgs(["--title", "T", "--assignee", "alice, bob", "--assignee", "@me"]),
-			null,
-			d,
-		);
-
-		expect(assigneeArgs(ran(calls, "gh", ["pr", "create"]))).toEqual(["alice", "bob", "@me"]);
-	});
-
-	it.each([[["--assignee"]], [["--assignee", ","]]])("refuses %j with no login before pushing", async (flag) => {
-		const { deps: d, calls } = deps();
-
-		await expect(handlePr("create", parseArgs(["--title", "T", ...flag]), null, d)).rejects.toThrow("EXIT_3");
-
-		expect(ran(calls, "git", ["push"])).toBeUndefined();
-		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
+			expect(ran(calls, "git", ["push"]), JSON.stringify(flag)).toBeUndefined();
+			expect(ran(calls, "gh", ["pr", "create"]), JSON.stringify(flag)).toBeUndefined();
+		}
 	});
 });
 
@@ -412,22 +366,14 @@ describe("dev3 pr create — gh must be installed and logged in", () => {
 		expect(stderrOutput).toContain("gh auth login");
 	});
 
-	it("exits 23 and pushes nothing when gh is not authenticated", async () => {
+	it("exits 23 when gh is not authenticated, checking auth before touching git at all", async () => {
 		const { deps: d, calls } = deps({ "gh auth status": fail("You are not logged into any GitHub hosts"), "gh api user": fail(LOGGED_OUT_PROBE) });
 
 		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_23");
 
-		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(calls.every((c) => c.command === "gh")).toBe(true);
 		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
 		expect(stderrOutput).toContain("not authenticated");
-	});
-
-	it("checks auth before touching git at all", async () => {
-		const { deps: d, calls } = deps({ "gh auth status": fail("logged out"), "gh api user": fail(LOGGED_OUT_PROBE) });
-
-		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_23");
-
-		expect(calls.every((c) => c.command === "gh")).toBe(true);
 	});
 });
 
@@ -524,112 +470,79 @@ describe("dev3 pr create — the origin-task footer", () => {
 		expect(body).toContain("open.html?task=task-1");
 	});
 
-	it("omits the footer outside a task worktree", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T", description: "Body" }), null, d);
-
-		expect(bodyOf(calls)).toBe("Body");
-	});
-
-	it("omits the footer when the user turned it off", async () => {
-		const { deps: d, calls } = deps({}, { originTaskLinkEnabled: () => false });
-
-		await handlePr("create", args({ title: "T", description: "Body" }), ctx(), d);
-
-		expect(bodyOf(calls)).toBe("Body");
-	});
-
 	// A dev3:// link is dead anywhere the scheme is not registered, and a PR body
 	// is public — so the host decides before the preference does.
-	it("omits the footer where no dev3:// handler exists", async () => {
-		const { deps: d, calls } = deps({}, { platform: "linux" });
+	it("omits the footer outside a task, when turned off, and where no dev3:// handler exists; empty body without --description", async () => {
+		const cases: Array<{ name: string; context: CliContext | null; overrides: Partial<PrDeps>; description?: string; body: string }> = [
+			{ name: "outside a task", context: null, overrides: {}, description: "Body", body: "Body" },
+			{ name: "turned off", context: ctx(), overrides: { originTaskLinkEnabled: () => false }, description: "Body", body: "Body" },
+			{ name: "linux host", context: ctx(), overrides: { platform: "linux" }, description: "Body", body: "Body" },
+			{ name: "no description", context: null, overrides: {}, body: "" },
+		];
+		for (const { name, context, overrides, description, body } of cases) {
+			const { deps: d, calls } = deps({}, overrides);
 
-		await handlePr("create", args({ title: "T", description: "Body" }), ctx(), d);
+			await handlePr("create", args(description ? { title: "T", description } : { title: "T" }), context, d);
 
-		expect(bodyOf(calls)).toBe("Body");
-	});
-
-	it("sends an empty body when --description is absent", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T" }), null, d);
-
-		expect(bodyOf(calls)).toBe("");
+			expect(bodyOf(calls), name).toBe(body);
+		}
 	});
 });
 
 describe("dev3 pr create — the base branch", () => {
-	it("defaults to the base branch the task was created from", async () => {
+	it("defaults to the task's base branch, lets --base win, and omits --base with neither", async () => {
 		mockReadTask.mockReturnValue({ baseBranch: "develop" });
-		const { deps: d, calls } = deps();
+		const baseOf = (call: Call) => call.args[call.args.indexOf("--base") + 1];
 
-		await handlePr("create", args({ title: "T" }), ctx(), d);
-
-		const create = ran(calls, "gh", ["pr", "create"])!;
-		expect(create.args[create.args.indexOf("--base") + 1]).toBe("develop");
+		const first = deps();
+		await handlePr("create", args({ title: "T" }), ctx(), first.deps);
+		expect(baseOf(ran(first.calls, "gh", ["pr", "create"])!)).toBe("develop");
 		expect(stdoutOutput).toContain("develop");
+
+		const second = deps();
+		await handlePr("create", args({ title: "T", base: "release/9" }), ctx(), second.deps);
+		expect(baseOf(ran(second.calls, "gh", ["pr", "create"])!)).toBe("release/9");
+
+		const third = deps();
+		await handlePr("create", args({ title: "T" }), null, third.deps);
+		expect(ran(third.calls, "gh", ["pr", "create"])!.args).not.toContain("--base");
 	});
 
-	it("lets --base win over the task's base branch", async () => {
-		mockReadTask.mockReturnValue({ baseBranch: "develop" });
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T", base: "release/9" }), ctx(), d);
-
-		const create = ran(calls, "gh", ["pr", "create"])!;
-		expect(create.args[create.args.indexOf("--base") + 1]).toBe("release/9");
-	});
-
-	it("omits --base entirely with no task context and no flag", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T" }), null, d);
-
-		expect(ran(calls, "gh", ["pr", "create"])!.args).not.toContain("--base");
-	});
-
-	it("refuses when the checked-out branch IS the base branch", async () => {
+	it("refuses when the checked-out branch IS the base branch; in a shared folder without telling it to branch", async () => {
 		mockReadTask.mockReturnValue({ baseBranch: "main" });
-		const { deps: d, calls } = deps({ "git rev-parse": ok("main\n") });
+		const cases = [
+			{ name: "worktree", project: null, contains: "Create a branch", absent: "do not create or switch a branch here" },
+			{ name: "shared folder", project: { id: "p", name: "P", path: "/p", gitWorkflow: false }, contains: "do not create or switch a branch here", absent: "Create a branch" },
+		];
+		for (const { name, project, contains, absent } of cases) {
+			stderrOutput = "";
+			mockReadProject.mockReturnValue(project as never);
+			const { deps: d, calls } = deps({ "git rev-parse": ok("main\n") });
 
-		await expect(handlePr("create", args({ title: "T" }), ctx(), d)).rejects.toThrow("EXIT_1");
+			await expect(handlePr("create", args({ title: "T" }), ctx(), d), name).rejects.toThrow("EXIT_1");
 
-		expect(ran(calls, "git", ["push"])).toBeUndefined();
-		expect(stderrOutput).toContain("base branch");
-		expect(stderrOutput).toContain("Create a branch");
-	});
-
-	it("in a shared folder, does not tell the agent to create a branch there", async () => {
-		mockReadTask.mockReturnValue({ baseBranch: "main" });
-		mockReadProject.mockReturnValue({ id: "p", name: "P", path: "/p", gitWorkflow: false });
-		const { deps: d, calls } = deps({ "git rev-parse": ok("main\n") });
-
-		await expect(handlePr("create", args({ title: "T" }), ctx(), d)).rejects.toThrow("EXIT_1");
-
-		expect(ran(calls, "git", ["push"])).toBeUndefined();
-		expect(stderrOutput).toContain("do not create or switch a branch here");
-		expect(stderrOutput).not.toContain("Create a branch");
+			expect(ran(calls, "git", ["push"]), name).toBeUndefined();
+			expect(stderrOutput, name).toContain("base branch");
+			expect(stderrOutput, name).toContain(contains);
+			expect(stderrOutput, name).not.toContain(absent);
+		}
 	});
 });
 
 describe("dev3 pr create — auto-merge", () => {
-	it("squashes by default", async () => {
-		const { deps: d, calls } = deps();
+	it("never enables auto-merge unless asked, squashes by default, and accepts a named strategy", async () => {
+		const unasked = deps();
+		await handlePr("create", args({ title: "T" }), null, unasked.deps);
+		expect(ran(unasked.calls, "gh", ["pr", "merge"])).toBeUndefined();
 
-		await handlePr("create", args({ title: "T", "auto-merge": "true" }), null, d);
-
-		const merge = ran(calls, "gh", ["pr", "merge"])!;
-		expect(merge.args).toEqual(["pr", "merge", "--auto", "--squash", PR_URL]);
+		const squash = deps();
+		await handlePr("create", args({ title: "T", "auto-merge": "true" }), null, squash.deps);
+		expect(ran(squash.calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--auto", "--squash", PR_URL]);
 		expect(stdoutOutput).toContain("Auto-merge   enabled (squash)");
-	});
 
-	it("accepts a named strategy", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T", "auto-merge": "rebase" }), null, d);
-
-		expect(ran(calls, "gh", ["pr", "merge"])!.args).toContain("--rebase");
+		const rebase = deps();
+		await handlePr("create", args({ title: "T", "auto-merge": "rebase" }), null, rebase.deps);
+		expect(ran(rebase.calls, "gh", ["pr", "merge"])!.args).toContain("--rebase");
 	});
 
 	it("rejects a strategy gh does not have", async () => {
@@ -638,14 +551,6 @@ describe("dev3 pr create — auto-merge", () => {
 		await expect(handlePr("create", args({ title: "T", "auto-merge": "fastforward" }), null, d)).rejects.toThrow("EXIT_3");
 
 		expect(calls).toEqual([]);
-	});
-
-	it("never enables auto-merge unless asked", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T" }), null, d);
-
-		expect(ran(calls, "gh", ["pr", "merge"])).toBeUndefined();
 	});
 
 	// The pull request is already open at this point: reporting only the failure
@@ -661,39 +566,28 @@ describe("dev3 pr create — auto-merge", () => {
 });
 
 describe("dev3 pr auto-merge", () => {
-	it("squashes the current branch's pull request by default", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("auto-merge", args(), null, d);
-
-		expect(ran(calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--auto", "--squash"]);
-		expect(stdoutOutput).toContain("Auto-merge   enabled (squash)");
-	});
-
-	it("accepts a strategy and an explicit pull request", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("auto-merge", { positional: ["1722"], flags: { strategy: "rebase" } }, null, d);
-
-		expect(ran(calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--auto", "--rebase", "1722"]);
-		expect(stdoutOutput).toContain("on 1722");
-	});
-
-	it("clears auto-merge with --off", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("auto-merge", args({ off: "true" }), null, d);
-
-		expect(ran(calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--disable-auto"]);
-		expect(stdoutOutput).toContain("cleared");
-	});
-
-	it("runs in the task's worktree", async () => {
+	it("squashes the current branch's PR by default in the task's worktree, without touching git", async () => {
 		const { deps: d, calls } = deps({}, { cwd: "/somewhere/else" });
 
 		await handlePr("auto-merge", args(), ctx({ worktreePath: "/wt" }), d);
 
-		expect(ran(calls, "gh", ["pr", "merge"])!.cwd).toBe("/wt");
+		const merge = ran(calls, "gh", ["pr", "merge"])!;
+		expect(merge.args).toEqual(["pr", "merge", "--auto", "--squash"]);
+		expect(merge.cwd).toBe("/wt");
+		expect(calls.every((c) => c.command === "gh")).toBe(true);
+		expect(stdoutOutput).toContain("Auto-merge   enabled (squash)");
+	});
+
+	it("accepts a strategy and an explicit pull request, and clears with --off", async () => {
+		const explicit = deps();
+		await handlePr("auto-merge", { positional: ["1722"], flags: { strategy: "rebase" } }, null, explicit.deps);
+		expect(ran(explicit.calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--auto", "--rebase", "1722"]);
+		expect(stdoutOutput).toContain("on 1722");
+
+		const off = deps();
+		await handlePr("auto-merge", args({ off: "true" }), null, off.deps);
+		expect(ran(off.calls, "gh", ["pr", "merge"])!.args).toEqual(["pr", "merge", "--disable-auto"]);
+		expect(stdoutOutput).toContain("cleared");
 	});
 
 	it("needs an authenticated gh too", async () => {
@@ -704,17 +598,14 @@ describe("dev3 pr auto-merge", () => {
 		expect(ran(calls, "gh", ["pr", "merge"])).toBeUndefined();
 	});
 
-	it("rejects --off together with --strategy", async () => {
-		const { deps: d, calls } = deps();
+	it("rejects --off together with --strategy, and a strategy gh does not have", async () => {
+		for (const flags of [{ off: "true", strategy: "squash" }, { strategy: "fastforward" }] as Array<Record<string, string>>) {
+			const { deps: d, calls } = deps();
 
-		await expect(handlePr("auto-merge", args({ off: "true", strategy: "squash" }), null, d)).rejects.toThrow("EXIT_3");
+			await expect(handlePr("auto-merge", args(flags), null, d), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
 
-		expect(calls).toEqual([]);
-	});
-
-	it("rejects a strategy gh does not have", async () => {
-		const { deps: d } = deps();
-		await expect(handlePr("auto-merge", args({ strategy: "fastforward" }), null, d)).rejects.toThrow("EXIT_3");
+			expect(calls, JSON.stringify(flags)).toEqual([]);
+		}
 	});
 
 	/**
@@ -740,77 +631,52 @@ describe("dev3 pr auto-merge", () => {
 
 		expect(stderrOutput).toContain("not mergeable");
 	});
-
-	it("never touches git — the pull request already exists", async () => {
-		const { deps: d, calls } = deps();
-
-		await handlePr("auto-merge", args(), null, d);
-
-		expect(calls.every((c) => c.command === "gh")).toBe(true);
-	});
 });
 
 describe("dev3 pr create — refusals", () => {
-	it("requires --title", async () => {
-		const { deps: d, calls } = deps();
+	it("exits 3 before running anything on usage errors", async () => {
+		const cases: Array<{ name: string; sub: string | undefined; flags: Record<string, string> }> = [
+			{ name: "missing --title", sub: "create", flags: { description: "b" } },
+			{ name: "blank --title", sub: "create", flags: { title: "   " } },
+			{ name: "unknown flag", sub: "create", flags: { title: "T", bogus: "1" } },
+			{ name: "unknown subcommand", sub: "list", flags: {} },
+			{ name: "missing subcommand", sub: undefined, flags: { title: "T" } },
+		];
+		for (const { name, sub, flags } of cases) {
+			const { deps: d, calls } = deps();
 
-		await expect(handlePr("create", args({ description: "b" }), null, d)).rejects.toThrow("EXIT_3");
-		expect(calls).toEqual([]);
-	});
+			await expect(handlePr(sub, args(flags), null, d), name).rejects.toThrow("EXIT_3");
 
-	it("rejects a blank --title", async () => {
-		const { deps: d } = deps();
-		await expect(handlePr("create", args({ title: "   " }), null, d)).rejects.toThrow("EXIT_3");
-	});
-
-	it("rejects unknown flags", async () => {
-		const { deps: d } = deps();
-		await expect(handlePr("create", args({ title: "T", bogus: "1" }), null, d)).rejects.toThrow("EXIT_3");
+			expect(calls, name).toEqual([]);
+		}
 	});
 
 	// Same value-eating trap as `--off`: a switch that got a value was mistyped.
-	it("refuses --draft with a value", async () => {
-		const { deps: d, calls } = deps();
+	it("refuses --draft with a value and --description with no value", async () => {
+		for (const flags of [{ title: "T", draft: "yes" }, { title: "T", description: "true" }] as Array<Record<string, string>>) {
+			const { deps: d, calls } = deps();
 
-		await expect(handlePr("create", args({ title: "T", draft: "yes" }), null, d)).rejects.toThrow("EXIT_3");
+			await expect(handlePr("create", args(flags), null, d), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
 
-		expect(calls).toEqual([]);
-	});
-
-	it("refuses --description with no value", async () => {
-		const { deps: d, calls } = deps();
-
-		await expect(handlePr("create", args({ title: "T", description: "true" }), null, d)).rejects.toThrow("EXIT_3");
-
-		expect(calls).toEqual([]);
+			expect(calls, JSON.stringify(flags)).toEqual([]);
+		}
 		expect(stderrOutput).toContain("--description needs a value");
 	});
 
-	it("rejects an unknown subcommand", async () => {
-		const { deps: d } = deps();
-		await expect(handlePr("list", args({}), null, d)).rejects.toThrow("EXIT_3");
-	});
+	it("refuses on a detached HEAD and reports a git failure outside a repository, without pushing", async () => {
+		const cases = [
+			{ result: ok("HEAD\n"), message: "detached" },
+			{ result: fail("fatal: not a git repository"), message: "not a git repository" },
+		];
+		for (const { result, message } of cases) {
+			stderrOutput = "";
+			const { deps: d, calls } = deps({ "git rev-parse": result });
 
-	it("rejects a missing subcommand", async () => {
-		const { deps: d } = deps();
-		await expect(handlePr(undefined, args({ title: "T" }), null, d)).rejects.toThrow("EXIT_3");
-	});
+			await expect(handlePr("create", args({ title: "T" }), null, d), message).rejects.toThrow("EXIT_1");
 
-	it("refuses on a detached HEAD", async () => {
-		const { deps: d, calls } = deps({ "git rev-parse": ok("HEAD\n") });
-
-		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_1");
-
-		expect(ran(calls, "git", ["push"])).toBeUndefined();
-		expect(stderrOutput).toContain("detached");
-	});
-
-	it("reports a git failure outside a repository", async () => {
-		const { deps: d } = deps({ "git rev-parse": fail("fatal: not a git repository") });
-
-		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_1");
-
-		expect(stderrOutput).toContain("not a git repository");
+			expect(ran(calls, "git", ["push"]), message).toBeUndefined();
+			expect(stderrOutput).toContain(message);
+		}
 	});
 
 	it("stops before gh when the push fails", async () => {
@@ -820,14 +686,6 @@ describe("dev3 pr create — refusals", () => {
 
 		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
 		expect(stderrOutput).toContain("non-fast-forward");
-	});
-
-	it("surfaces what gh said when creation fails", async () => {
-		const { deps: d } = deps({ "gh pr create": fail("a pull request for branch feat/thing already exists") });
-
-		await expect(handlePr("create", args({ title: "T" }), null, d)).rejects.toThrow("EXIT_1");
-
-		expect(stderrOutput).toContain("already exists");
 	});
 });
 
@@ -880,24 +738,18 @@ describe("dev3 pr — the project's GitHub account", () => {
 		expect(ran(calls, "gh", ["pr", "merge"])?.env?.GH_TOKEN).toBeUndefined();
 	});
 
-	it("leaves the active account alone when the project names none", async () => {
+	it("skips the token lookup when the project names no account or the caller exported a token", async () => {
 		withAccount(null);
-		const { deps: d, calls } = deps();
+		const none = deps();
+		await handlePr("create", args({ title: "T" }), ctx(), none.deps);
+		expect(ran(none.calls, "gh", ["auth", "token"])).toBeUndefined();
+		expect(ran(none.calls, "gh", ["pr", "create"])?.env).toBeUndefined();
 
-		await handlePr("create", args({ title: "T" }), ctx(), d);
-
-		expect(ran(calls, "gh", ["auth", "token"])).toBeUndefined();
-		expect(ran(calls, "gh", ["pr", "create"])?.env).toBeUndefined();
-	});
-
-	it("lets a token the caller exported win over the project setting", async () => {
 		withAccount("work-bot");
 		process.env.GH_TOKEN = "caller-token";
-		const { deps: d, calls } = deps();
-
-		await handlePr("create", args({ title: "T" }), ctx(), d);
-
-		expect(ran(calls, "gh", ["auth", "token"])).toBeUndefined();
+		const exported = deps();
+		await handlePr("create", args({ title: "T" }), ctx(), exported.deps);
+		expect(ran(exported.calls, "gh", ["auth", "token"])).toBeUndefined();
 	});
 
 	it("refuses before pushing, exit 23, when gh has no token for that account", async () => {

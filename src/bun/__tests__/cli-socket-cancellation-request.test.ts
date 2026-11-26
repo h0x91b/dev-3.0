@@ -142,15 +142,12 @@ beforeEach(() => {
 });
 
 describe("task.requestCancellation", () => {
-	it("errors when the task is already cancelled", async () => {
+	it("errors when the task is already cancelled, or when no app window is connected", async () => {
 		setupTask(makeTask({ status: "cancelled" }));
+		const cancelled = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		expect(cancelled.ok).toBe(false);
+		expect(cancelled.error).toContain("already cancelled");
 
-		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
-		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("already cancelled");
-	});
-
-	it("errors when no app window is connected", async () => {
 		setupTask(makeTask());
 		vi.mocked(getPushMessage).mockReturnValue(null);
 

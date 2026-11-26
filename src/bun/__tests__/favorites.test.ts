@@ -15,11 +15,9 @@ function fav(agentId: string, configId: string, uses = 0, lastUsedAt = 0): Favor
 
 describe("isFavorite", () => {
 	const favs = [fav("claude", "sonnet"), fav("codex", "high")];
-	it("matches on both agentId and configId", () => {
+	it("matches on both agentId and configId, and is false when either half differs", () => {
 		expect(isFavorite(favs, "claude", "sonnet")).toBe(true);
 		expect(isFavorite(favs, "codex", "high")).toBe(true);
-	});
-	it("is false when either half differs", () => {
 		expect(isFavorite(favs, "claude", "high")).toBe(false);
 		expect(isFavorite(favs, "gemini", "sonnet")).toBe(false);
 		expect(isFavorite([], "claude", "sonnet")).toBe(false);
@@ -27,12 +25,9 @@ describe("isFavorite", () => {
 });
 
 describe("toggleFavorite — add / remove", () => {
-	it("adds a new favorite with uses=0 and lastUsedAt=now", () => {
-		const next = toggleFavorite([], "claude", "sonnet", 1000);
-		expect(next).toEqual([fav("claude", "sonnet", 0, 1000)]);
-	});
-	it("appends new favorites in insertion order", () => {
+	it("adds a new favorite with uses=0 and lastUsedAt=now, appending in insertion order", () => {
 		let favs = toggleFavorite([], "claude", "sonnet", 1000);
+		expect(favs).toEqual([fav("claude", "sonnet", 0, 1000)]);
 		favs = toggleFavorite(favs, "codex", "high", 2000);
 		expect(favs.map((f) => f.configId)).toEqual(["sonnet", "high"]);
 	});
@@ -57,7 +52,7 @@ describe("toggleFavorite — eviction at MAX_FAVORITES", () => {
 		);
 	}
 
-	it("evicts the lowest-uses existing entry, keeps the list at the cap", () => {
+	it("evicts the lowest-uses existing entry, never the just-added one, keeping the list at the cap", () => {
 		const next = toggleFavorite(fullList(), "codex", "new", 9999);
 		expect(next).toHaveLength(MAX_FAVORITES);
 		expect(isFavorite(next, "codex", "new")).toBe(true);
@@ -76,24 +71,16 @@ describe("toggleFavorite — eviction at MAX_FAVORITES", () => {
 		expect(isFavorite(next, "a", "new")).toBe(true);
 		expect(isFavorite(next, "b", "added")).toBe(true);
 	});
-
-	it("protects the just-added entry even when every existing entry has uses>0", () => {
-		// All existing have uses >= 1; the new entry (uses=0) must NOT be the victim.
-		const next = toggleFavorite(fullList(), "codex", "fresh", 9999);
-		expect(isFavorite(next, "codex", "fresh")).toBe(true);
-	});
 });
 
 describe("recordFavoriteUsage", () => {
-	it("increments uses and updates lastUsedAt for a matching favorite", () => {
+	it("increments uses and updates lastUsedAt for a matching favorite, and is a no-op otherwise", () => {
 		const favs = [fav("claude", "sonnet", 3, 100), fav("codex", "high", 0, 50)];
 		const next = recordFavoriteUsage(favs, "claude", "sonnet", 777);
 		expect(next[0]).toEqual(fav("claude", "sonnet", 4, 777));
 		expect(next[1]).toEqual(fav("codex", "high", 0, 50));
-	});
-	it("returns the same reference (no-op) when the pair is not a favorite", () => {
-		const favs = [fav("claude", "sonnet", 3, 100)];
-		expect(recordFavoriteUsage(favs, "codex", "high", 777)).toBe(favs);
+		// A pair that is not a favorite is a no-op returning the same reference.
+		expect(recordFavoriteUsage(favs, "gemini", "high", 777)).toBe(favs);
 	});
 });
 

@@ -28,7 +28,9 @@ function seedHome() {
 }
 
 describe("copyHomeDataIntoProject", () => {
-	it("copies the tree, writes ignore files and leaves the source intact", async () => {
+	it("copes with no home data yet, then copies the tree, writes ignore files and leaves the source intact", async () => {
+		expect(await copyHomeDataIntoProject(home, project)).toBe(0);
+		expect(existsSync(inProjectDataDir(project))).toBe(false);
 		const src = seedHome();
 		expect(await copyHomeDataIntoProject(home, project)).toBe(2);
 		expect(readFileSync(join(inProjectDataDir(project), "tasks.json"), "utf8")).toBe("[1]");
@@ -51,26 +53,16 @@ describe("copyHomeDataIntoProject", () => {
 		expect(existsSync(join(backups, stamp, "task-blobs"))).toBe(false);
 	});
 
-	it("never carries one side's switch backups to the other", async () => {
+	it("never carries one side's switch backups or a held tasks-file lock to the other", async () => {
 		const dir = seedHome();
 		mkdirSync(join(dir, STORAGE_SWITCH_BACKUPS_DIR, "1"), { recursive: true });
 		writeFileSync(join(dir, STORAGE_SWITCH_BACKUPS_DIR, "1", "tasks.json"), "[0]");
-		await copyHomeDataIntoProject(home, project);
-		expect(existsSync(join(inProjectDataDir(project), STORAGE_SWITCH_BACKUPS_DIR))).toBe(false);
-	});
-
-	it("never copies a held tasks-file lock into the project", async () => {
-		const dir = seedHome();
 		mkdirSync(join(dir, "tasks.json.lock"));
 		await copyHomeDataIntoProject(home, project);
+		expect(existsSync(join(inProjectDataDir(project), STORAGE_SWITCH_BACKUPS_DIR))).toBe(false);
 		expect(existsSync(join(inProjectDataDir(project), "tasks.json"))).toBe(true);
 		expect(existsSync(join(inProjectDataDir(project), "tasks.json.lock"))).toBe(false);
 		expect(existsSync(join(dir, "tasks.json.lock"))).toBe(true);
-	});
-
-	it("copes with a project that has no home data yet", async () => {
-		expect(await copyHomeDataIntoProject(home, project)).toBe(0);
-		expect(existsSync(inProjectDataDir(project))).toBe(false);
 	});
 });
 
@@ -117,10 +109,8 @@ describe("restamping unstarted tasks", () => {
 });
 
 describe("storageSwitchBlocker", () => {
-	it("blocks a virtual board", () => {
+	it("blocks a virtual board, and preparing and non-idle tasks only", () => {
 		expect(storageSwitchBlocker({ kind: "virtual" }, [])).toEqual({ reason: "virtual" });
-	});
-	it("blocks preparing and non-idle tasks only", () => {
 		const tasks = [
 			{ preparing: true },
 			{ runtimeState: { runtime: "running" } },

@@ -54,12 +54,10 @@ function readJson(path: string): Record<string, any> {
 }
 
 describe("agy hook commands", () => {
-	it("guards the POSIX command on DEV3_TASK_ID and still answers JSON when it skips", () => {
+	it("guards the POSIX command on DEV3_TASK_ID (still answering JSON when it skips) and keeps Windows bare", () => {
 		expect(agyHookCommand("SessionStart", POSIX))
 			.toBe(`sh -c '[ -z "$DEV3_TASK_ID" ] && echo {} || exec ~/.dev3.0/bin/dev3 hook agy SessionStart'`);
-	});
-
-	it("keeps the bare command on Windows, where a POSIX guard is not valid", () => {
+		// A POSIX guard is not valid on Windows.
 		expect(agyHookCommand("Stop", WINDOWS)).toBe("\"C:/dev3/dev3.exe\" hook agy Stop");
 	});
 
@@ -136,7 +134,10 @@ describe("writeAgyHooks", () => {
 });
 
 describe("setupAgentHooks for agy", () => {
-	it("writes the hooks and the dev3 skill into a worktree and excludes them from git", async () => {
+	it("writes the hooks and the dev3 skill into a worktree, keeps the user's other skills, and excludes them from git", async () => {
+		mkdirSync(join(worktree, ".agents", "skills", "mine"), { recursive: true });
+		writeFileSync(join(worktree, ".agents", "skills", "mine", "SKILL.md"), "mine");
+
 		const launch = await setupAgentHooks(worktree, "agy");
 
 		expect(launch).toBeNull();
@@ -144,15 +145,12 @@ describe("setupAgentHooks for agy", () => {
 		const skill = readFileSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"), "utf-8");
 		expect(skill).toContain("name: dev3");
 		expect(skill).toContain("native hooks into every agy pane");
-		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: true, skill: true });
-	});
-
-	it("tells the agent to run the bare `dev3`, which a launcher's HOME cannot misplace", async () => {
-		await setupAgentHooks(worktree, "agy");
-		const skill = readFileSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"), "utf-8");
+		// The bare `dev3` is what a launcher's HOME cannot misplace.
 		expect(skill).toContain("- `dev3 --help`");
 		expect(skill).toContain("- `dev3 current`");
 		expect(skill).not.toContain("~/.dev3.0/bin/dev3 --help");
+		expect(readFileSync(join(worktree, ".agents", "skills", "mine", "SKILL.md"), "utf-8")).toBe("mine");
+		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: true, skill: true });
 	});
 
 	it("excludes only what it wrote: an unreadable user hooks.json is left to the user", async () => {
@@ -186,13 +184,6 @@ describe("setupAgentHooks for agy", () => {
 	it("resolves a wrapper through its declared family", async () => {
 		await setupAgentHooks(worktree, "ant", { family: "agy" });
 		expect(existsSync(join(worktree, ".agents", "hooks.json"))).toBe(true);
-	});
-
-	it("keeps another skill the user has under .agents/skills", async () => {
-		mkdirSync(join(worktree, ".agents", "skills", "mine"), { recursive: true });
-		writeFileSync(join(worktree, ".agents", "skills", "mine", "SKILL.md"), "mine");
-		await setupAgentHooks(worktree, "agy");
-		expect(readFileSync(join(worktree, ".agents", "skills", "mine", "SKILL.md"), "utf-8")).toBe("mine");
 	});
 
 	it("writes nothing in a folder dev3 does not own", async () => {
@@ -235,13 +226,14 @@ describe("setupAgentHooks for agy in a repo that tracks the config", () => {
 		git("git init -q -b main");
 	});
 
-	it("leaves a tracked hooks.json exactly as it is and writes no hooks for the task", async () => {
+	it("leaves a tracked hooks.json exactly as it is, writes no hooks for the task, but still writes the skill", async () => {
 		track(".agents/hooks.json", MINE);
 
 		await setupAgentHooks(worktree, "agy");
 
 		expect(readFileSync(join(worktree, ".agents", "hooks.json"), "utf-8")).toBe(MINE);
 		expect(git("git status --porcelain").toString()).not.toContain("hooks.json");
+		expect(existsSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"))).toBe(true);
 		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: false, skill: true });
 	});
 
@@ -273,12 +265,6 @@ describe("setupAgentHooks for agy in a repo that tracks the config", () => {
 		expect(existsSync(join(worktree, ".agents", "hooks.json"))).toBe(true);
 	});
 
-	it("still writes the skill when only the hooks file is tracked", async () => {
-		track(".agents/hooks.json", MINE);
-		await setupAgentHooks(worktree, "agy");
-		expect(existsSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"))).toBe(true);
-	});
-
 	it("leaves a tracked dev3 skill alone and still writes the hooks", async () => {
 		track(".agents/skills/dev3/SKILL.md", "the team's own skill\n");
 
@@ -286,16 +272,5 @@ describe("setupAgentHooks for agy in a repo that tracks the config", () => {
 
 		expect(readFileSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"), "utf-8")).toBe("the team's own skill\n");
 		expect(readJson(join(worktree, ".agents", "hooks.json")).dev3).toBeDefined();
-	});
-
-	it("keeps merging into an UNTRACKED hooks.json that already exists", async () => {
-		mkdirSync(join(worktree, ".agents"), { recursive: true });
-		writeFileSync(join(worktree, ".agents", "hooks.json"), MINE);
-
-		await setupAgentHooks(worktree, "agy");
-
-		const after = readJson(join(worktree, ".agents", "hooks.json"));
-		expect(after.mine).toEqual(JSON.parse(MINE).mine);
-		expect(after.dev3.SessionStart).toBeDefined();
 	});
 });

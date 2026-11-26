@@ -63,11 +63,8 @@ describe("findMissingLaunchAgent", () => {
 		});
 	});
 
-	it("leaves an installed harness alone", async () => {
-		expect(await findMissingLaunchAgent([{ agentId: "builtin-claude", configId: null }])).toBeNull();
-	});
-
-	it("finds the missing one in a mixed group", async () => {
+	it("leaves an installed harness alone, and finds the missing one in a mixed group", async () => {
+		expect(await findMissingLaunchAgent([{ agentId: "builtin-claude", configId: null }]), "installed").toBeNull();
 		const missing = await findMissingLaunchAgent([
 			{ agentId: "builtin-claude", configId: null },
 			{ agentId: "builtin-omp", configId: null },
@@ -80,14 +77,22 @@ describe("findMissingLaunchAgent", () => {
 		expect((await findMissingLaunchAgent([{ agentId: null, configId: null }]))?.agentId).toBe("builtin-omp");
 	});
 
-	it("judges a preset's own base command, not its agent's", async () => {
+	it("judges a preset's own base command, not its agent's, and a path-shaped one by that path, not a same-named binary on PATH", async () => {
 		const missing = await findMissingLaunchAgent([{ agentId: "builtin-claude", configId: "claude-wrapper" }]);
-		expect(missing?.binaryName).toBe("my-claude");
+		expect(missing?.binaryName, "preset override").toBe("my-claude");
+
+		getAllAgentsSpy.mockResolvedValueOnce([{ ...claudeAgent, baseCommand: "/nowhere/dev3-test/claude" }]);
+		const pathShaped = await findMissingLaunchAgent([{ agentId: "builtin-claude", configId: "claude-default" }]);
+		expect(pathShaped?.binaryName, "path-shaped").toBe("claude");
 	});
 
-	it("honours a custom binary path saved for that agent", async () => {
+	it("honours a custom binary path saved for that agent, and a gone pre-strict one falls back to PATH", async () => {
 		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": process.execPath } } as never);
-		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
+		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }]), "working custom path").toBeNull();
+
+		installedBinaries.add("omp");
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": "/gone/omp" } } as never);
+		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }]), "gone pre-strict path").toBeNull();
 	});
 
 	it("reports the agent missing when its custom path is broken, even though the binary is on PATH", async () => {
@@ -96,17 +101,7 @@ describe("findMissingLaunchAgent", () => {
 		expect((await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }]))?.agentId).toBe("builtin-omp");
 	});
 
-	it("does not block on a gone custom path saved before paths became strict: the launch uses PATH", async () => {
-		installedBinaries.add("omp");
-		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": "/gone/omp" } } as never);
-		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
-	});
 
-	it("judges a path-shaped command by that path, not by a same-named binary on PATH", async () => {
-		getAllAgentsSpy.mockResolvedValueOnce([{ ...claudeAgent, baseCommand: "/nowhere/dev3-test/claude" }]);
-		const missing = await findMissingLaunchAgent([{ agentId: "builtin-claude", configId: "claude-default" }]);
-		expect(missing?.binaryName).toBe("claude");
-	});
 
 	// GitHub issue #2218: the executable is `opencode`, never `opencode mini`.
 	describe.skipIf(process.platform === "win32")("a base command with more than the executable", () => {
@@ -149,10 +144,12 @@ describe("findMissingLaunchAgent", () => {
 		});
 	});
 
-	it("never blocks when the PATH lookup throws", async () => {
+	it("never blocks when the PATH lookup throws or the probe itself fails", async () => {
 		const { resolveBinaryPath } = await import("../rpc-handlers/shared-pure");
 		vi.mocked(resolveBinaryPath).mockImplementationOnce(() => { throw new Error("which crashed"); });
-		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
+		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }]), "PATH lookup throws").toBeNull();
+		getAllAgentsSpy.mockRejectedValueOnce(new Error("agents.json unreadable"));
+		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }]), "probe fails").toBeNull();
 	});
 
 	it("leaves no unhandled rejection when settings throw synchronously", async () => {
@@ -170,10 +167,6 @@ describe("findMissingLaunchAgent", () => {
 		}
 	});
 
-	it("never blocks when the probe itself fails", async () => {
-		getAllAgentsSpy.mockRejectedValueOnce(new Error("agents.json unreadable"));
-		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
-	});
 });
 
 describe("assertLaunchAgentsInstalled", () => {

@@ -1,6 +1,6 @@
 import { artifactVersions, latestArtifactVersion } from "./artifact-versions";
 import { liveViewerEntry } from "./live-artifact";
-import { getTaskTitle, isSharedAudio, isSharedVideo, type LiveArtifact, type SharedArtifact, type SharedImage, type Task, type TaskStatus } from "./types";
+import { getTaskTitle, isDeletableSharedMedia, isSharedAudio, isSharedVideo, type LiveArtifact, type SharedArtifact, type SharedImage, type Task, type TaskStatus } from "./types";
 
 /**
  * The Library is a read-only projection of the output records every task already holds
@@ -35,8 +35,10 @@ export interface LibraryItem {
 	goneBytes: number;
 	versions: number;
 	unread: boolean;
-	/** The stored file is gone (pruned or deleted); the record outlived it. Set by the host. */
+	/** The stored file is gone (pruned or lost); the record outlived it. Set by the host. */
 	missing: boolean;
+	/** The user deleted the stored file to free disk; the record stays as a tombstone. Not `missing`. */
+	removedAt?: number;
 	live: boolean;
 	/** Position in the task's own artifact list, so the viewer opens on it with its siblings. */
 	order: number;
@@ -98,7 +100,8 @@ export function taskLibraryItems(project: ProjectRef, task: Task): LibraryItem[]
 			caption: image.caption,
 			name: image.name,
 			createdAt: image.createdAt,
-			bytes: image.bytes,
+			bytes: image.removedAt ? 0 : image.bytes,
+			removedAt: image.removedAt,
 			versions: 1,
 			unread: image.isUnread === true,
 			live: false,
@@ -149,6 +152,7 @@ export function taskLibraryItems(project: ProjectRef, task: Task): LibraryItem[]
  * versions and assets are checked one by one: the retention pruner removes them independently.
  */
 export function applyLibraryPresence(item: LibraryItem, exists: (path: string) => boolean): LibraryItem {
+	if (item.removedAt) return item;
 	if (item.image) {
 		if (exists(item.image.storedPath)) return item;
 		return { ...item, missing: true, bytes: 0, goneBytes: item.image.bytes };
@@ -175,7 +179,7 @@ export function mergeTaskLibraryItems(previous: readonly LibraryItem[], fresh: r
 	const known = new Map(previous.map((item) => [item.key, item]));
 	return fresh.map((item) => {
 		const prior = known.get(item.key);
-		if (!prior || prior.versions !== item.versions || prior.createdAt !== item.createdAt) return item;
+		if (!prior || prior.versions !== item.versions || prior.createdAt !== item.createdAt || prior.removedAt !== item.removedAt) return item;
 		return { ...item, bytes: prior.bytes, goneBytes: prior.goneBytes, missing: prior.missing };
 	});
 }
@@ -189,6 +193,24 @@ export function replaceTaskLibraryItems(all: readonly LibraryItem[], projectId: 
 }
 
 // ── Renderer-side helpers (pure) ────────────────────────────────────────────
+
+/** A clip whose stored file the user can delete to free disk (images and reports cannot be). */
+export function isLibraryItemDeletable(item: LibraryItem): boolean {
+	return item.image != null && !item.missing && !item.removedAt && isDeletableSharedMedia(item.image);
+}
+
+/** Deletable items grouped per task, the unit the delete RPC works on. */
+export function libraryDeleteGroups(items: readonly LibraryItem[]): { projectId: string; taskId: string; items: SharedImage[] }[] {
+	const groups = new Map<string, { projectId: string; taskId: string; items: SharedImage[] }>();
+	for (const item of items) {
+		if (!isLibraryItemDeletable(item)) continue;
+		const id = `${item.projectId}:${item.taskId}`;
+		const group = groups.get(id) ?? { projectId: item.projectId, taskId: item.taskId, items: [] };
+		group.items.push(item.image!);
+		groups.set(id, group);
+	}
+	return [...groups.values()];
+}
 
 export type LibrarySort = "newest" | "oldest" | "largest";
 
@@ -273,6 +295,7 @@ export interface LibrarySummary {
 	count: number;
 	bytes: number;
 	unseen: number;
+	/** Items with any file already gone (the record or an older version); `goneBytes` is their size. */
 	missing: number;
 	goneBytes: number;
 }
@@ -286,7 +309,8 @@ export function summarizeLibrary(items: readonly LibraryItem[]): LibrarySummary 
 		bytes += item.bytes;
 		goneBytes += item.goneBytes;
 		if (item.unread) unseen += 1;
-		if (item.missing) missing += 1;
+		// Counted with the same rule as `goneBytes`, so "N removed (X)" describes one set of items.
+		if (item.missing || item.goneBytes > 0) missing += 1;
 	}
 	return { count: items.length, bytes, unseen, missing, goneBytes };
 }

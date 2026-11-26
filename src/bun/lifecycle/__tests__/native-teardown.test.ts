@@ -147,14 +147,13 @@ beforeEach(() => {
 });
 
 describe("destroyTaskPty", () => {
-	it("stops the native tree for a task marked native", async () => {
+	it("stops the native tree for a task marked native, and keeps the tmux teardown for an unmarked one", async () => {
 		await executeLifecycleEffect(effect("destroyTaskPty"), context(task({ terminalBackend: "native" })));
 
 		expect(pty.destroyNativeTaskSession).toHaveBeenCalledWith(TASK_ID);
 		expect(pty.destroySession).not.toHaveBeenCalled();
-	});
 
-	it("keeps the tmux teardown for an unmarked task", async () => {
+		vi.clearAllMocks();
 		await executeLifecycleEffect(effect("destroyTaskPty"), context(task()));
 
 		expect(pty.destroySession).toHaveBeenCalledWith(TASK_ID, "dev3");
@@ -166,14 +165,12 @@ describe("killDevServer", () => {
 	// A native task hosts its dev server in an auxiliary pane rather than a tmux
 	// session, so teardown must still run — skipping it here leaked the whole
 	// dev-server process tree, ports included.
-	it("tears the dev server down for a native task too", async () => {
+	it("tears the dev server down for a native task too, and for an unmarked task", async () => {
 		const nativeTask = task({ terminalBackend: "native" });
 		await executeLifecycleEffect(effect("killDevServer"), context(nativeTask));
 
 		expect(killDevServerSession).toHaveBeenCalledWith(nativeTask, "dev3", "/tmp/wt");
-	});
 
-	it("still tears the dev session down for an unmarked task", async () => {
 		const tmuxTask = task();
 		await executeLifecycleEffect(effect("killDevServer"), context(tmuxTask));
 
@@ -287,18 +284,18 @@ describe("native teardown ordering", () => {
 		recordSideEffects();
 	});
 
-	it.each([
-		["completed" as const],
-		["cancelled" as const],
-	])("stops the native tree before cleanup and worktree removal when moving to %s", async (terminalStatus) => {
-		const run = await runTeardown(activeState("in-progress"), {
-			type: "moveRequested",
-			target: { status: terminalStatus },
-			runId: "run-1",
-		}, nativeTask());
+	it("stops the native tree before cleanup and worktree removal when moving to completed or cancelled", async () => {
+		for (const terminalStatus of ["completed", "cancelled"] as const) {
+			recordSideEffects();
+			const run = await runTeardown(activeState("in-progress"), {
+				type: "moveRequested",
+				target: { status: terminalStatus },
+				runId: "run-1",
+			}, nativeTask());
 
-		expect(run.error).toBeNull();
-		expect(run.order).toEqual(["askAgentToExit", "stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
+			expect(run.error, terminalStatus).toBeNull();
+			expect(run.order, terminalStatus).toEqual(["askAgentToExit", "stopNative", "cleanupScript", "diffStats", "removeWorktree"]);
+		}
 	});
 
 	it("stops the native tree before cleanup when a preparation is cancelled", async () => {

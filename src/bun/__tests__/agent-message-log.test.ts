@@ -70,20 +70,17 @@ describe("row serialisation", () => {
 		expect(parsed).toMatchObject({ v: 1, fromSeq: 1141, toSeq: 1650, body: "check CI and continue" });
 	});
 
-	it("clamps an oversized row to the ceiling and keeps the metadata", () => {
+	it("clamps an oversized row to the ceiling, keeps the metadata, and never cuts a multi-byte character", () => {
 		const line = serializeAgentMessageLogRow(makeRow({ body: "x".repeat(AGENT_MESSAGE_LOG_MAX_ROW_BYTES * 3) }));
 		expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(AGENT_MESSAGE_LOG_MAX_ROW_BYTES);
 		const parsed = parseAgentMessageLogRow(line);
 		// The body shrank; who spoke to whom and how it went survived intact.
 		expect(parsed?.body.endsWith(AGENT_MESSAGE_LOG_TRUNCATION_MARK)).toBe(true);
 		expect(parsed).toMatchObject({ toSeq: 1650, fromSeq: 1141, status: "delivered" });
-	});
 
-	it("never cuts a multi-byte character in half", () => {
-		const line = serializeAgentMessageLogRow(makeRow({ body: "ы".repeat(AGENT_MESSAGE_LOG_MAX_ROW_BYTES) }));
-		const parsed = parseAgentMessageLogRow(line);
-		expect(parsed).not.toBeNull();
-		expect(parsed?.body).not.toContain("�");
+		const cyrillic = parseAgentMessageLogRow(serializeAgentMessageLogRow(makeRow({ body: "ы".repeat(AGENT_MESSAGE_LOG_MAX_ROW_BYTES) })));
+		expect(cyrillic).not.toBeNull();
+		expect(cyrillic?.body).not.toContain("\uFFFD");
 	});
 
 	it("rejects a torn or junk line instead of throwing", () => {
@@ -96,7 +93,8 @@ describe("row serialisation", () => {
 });
 
 describe("append and read", () => {
-	it("appends into a day-file beside tasks.json and reads it back newest-first", () => {
+	it("appends into a day-file beside tasks.json and reads it back newest-first, across days", () => {
+		expect(readAgentMessageLog(project), "never sent a message").toEqual({ rows: [], oldestDay: null, retentionDays: DEFAULT_LOG_RETENTION_DAYS, hasMore: false });
 		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow({ body: "first" }), day);
 		appendAgentMessageLog(project, makeRow({ body: "second" }), day);
@@ -110,14 +108,11 @@ describe("append and read", () => {
 		expect(page.oldestDay).toBe("2026-08-23");
 		expect(page.retentionDays).toBe(DEFAULT_LOG_RETENTION_DAYS);
 		expect(page.hasMore).toBe(false);
-	});
 
-	it("orders across days, newest day first", () => {
 		appendAgentMessageLog(project, makeRow({ body: "older" }), new Date(2026, 7, 21, 9, 0, 0));
-		appendAgentMessageLog(project, makeRow({ body: "newer" }), new Date(2026, 7, 22, 9, 0, 0));
-		const page = readAgentMessageLog(project);
-		expect(page.rows.map((r) => r.body)).toEqual(["newer", "older"]);
-		expect(page.oldestDay).toBe("2026-08-21");
+		const acrossDays = readAgentMessageLog(project);
+		expect(acrossDays.rows.map((r) => r.body)).toEqual(["second", "first", "older"]);
+		expect(acrossDays.oldestDay).toBe("2026-08-21");
 	});
 
 	it("honours the limit and says older rows remain", () => {
@@ -138,7 +133,7 @@ describe("append and read", () => {
 		expect(page.rows.map((r) => r.body)).toEqual(["second", "first"]);
 	});
 
-	it("stores the subject on disk and reads it back", () => {
+	it("stores the subject on disk, keeps it when a huge body is clamped, and reads a pre-subject row without one", () => {
 		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow({ subject: "PR 1577 merged, main green" }), day);
 
@@ -147,34 +142,23 @@ describe("append and read", () => {
 		const raw = readFileSync(`${messageLogDir(project)}/2026-08-23.jsonl`, "utf8");
 		expect(JSON.parse(raw.trim()).subject).toBe("PR 1577 merged, main green");
 		expect(readAgentMessageLog(project).rows[0]?.subject).toBe("PR 1577 merged, main green");
-	});
 
-	it("keeps the subject when a huge body is clamped away", () => {
-		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(
 			project,
 			makeRow({ subject: "backfill finished", body: "x".repeat(AGENT_MESSAGE_LOG_MAX_ROW_BYTES * 2) }),
 			day,
 		);
-		const row = readAgentMessageLog(project).rows[0]!;
-		expect(row.subject).toBe("backfill finished");
-		expect(row.body.endsWith(AGENT_MESSAGE_LOG_TRUNCATION_MARK)).toBe(true);
-	});
+		const clamped = readAgentMessageLog(project).rows[0]!;
+		expect(clamped.subject, "clamped body").toBe("backfill finished");
+		expect(clamped.body.endsWith(AGENT_MESSAGE_LOG_TRUNCATION_MARK)).toBe(true);
 
-	it("reads a row written before subjects existed, with no subject on it", () => {
-		const day = new Date(2026, 7, 23, 12, 0, 0);
 		const { subject: _dropped, ...legacy } = makeRow({ body: "an old message" }) as AgentMessageLogInput & {
 			subject?: string;
 		};
 		appendAgentMessageLog(project, legacy, day);
-		const row = readAgentMessageLog(project).rows[0]!;
-		expect(row.subject).toBeUndefined();
-		expect(row.body).toBe("an old message");
-	});
-
-	it("answers an empty page for a project that has never sent a message", () => {
-		const page = readAgentMessageLog(project);
-		expect(page).toEqual({ rows: [], oldestDay: null, retentionDays: DEFAULT_LOG_RETENTION_DAYS, hasMore: false });
+		const old = readAgentMessageLog(project).rows[0]!;
+		expect(old.subject, "legacy row").toBeUndefined();
+		expect(old.body).toBe("an old message");
 	});
 
 	it("survives an unwritable log directory without throwing", () => {
@@ -195,39 +179,22 @@ describe("hook delivery receipts", () => {
 		expect(parseAgentMessageLogRow(serializeAgentMessageLogReceipt(receipt("m-1", "2026-08-23T12:00:09.000Z")))).toBeNull();
 	});
 
-	it("folds a receipt into its message's row: one row, delivered through the hook", () => {
+	it("folds a receipt into its message's row, even one written before the row, and leaves an unreceipted message as written", () => {
 		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "report" }), day);
 		appendAgentMessageLogReceipt(project, receipt("m-1", "2026-08-23T12:00:09.000Z"), day);
-		const page = readAgentMessageLog(project);
-		expect(page.rows).toHaveLength(1);
-		expect(page.rows[0]).toMatchObject({ messageId: "m-1", body: "report", status: "delivered", deliveredVia: "hook", deliveredAt: "2026-08-23T12:00:09.000Z" });
-	});
+		// The hook can claim while the row is still being logged.
+		appendAgentMessageLogReceipt(project, receipt("m-3", "2026-08-23T12:00:10.000Z"), day);
+		appendAgentMessageLog(project, makeRow({ messageId: "m-3", status: "held", body: "raced" }), day);
+		appendAgentMessageLog(project, makeRow({ messageId: "m-2", status: "held", body: "typed" }), day);
+		appendAgentMessageLogReceipt(project, receipt("other", "2026-08-23T12:00:11.000Z"), day);
 
-	it("folds across a day boundary and never counts a receipt against the limit", () => {
-		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "late night" }), new Date(2026, 7, 22, 23, 59, 50));
-		appendAgentMessageLogReceipt(project, receipt("m-1", "2026-08-23T00:00:05.000Z"), new Date(2026, 7, 23, 0, 0, 5));
-		const page = readAgentMessageLog(project, 1);
-		expect(page.rows.map((r) => [r.body, r.status])).toEqual([["late night", "delivered"]]);
-		expect(page.hasMore).toBe(false);
-	});
-
-	it("folds a receipt written before its row: the hook can claim while the row is still being logged", () => {
-		const day = new Date(2026, 7, 23, 12, 0, 0);
-		appendAgentMessageLogReceipt(project, receipt("m-1", "2026-08-23T12:00:01.000Z"), day);
-		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "raced" }), day);
-		const page = readAgentMessageLog(project);
-		expect(page.rows).toHaveLength(1);
-		expect(page.rows[0]).toMatchObject({ messageId: "m-1", status: "delivered", deliveredVia: "hook" });
-	});
-
-	it("leaves a typed message without a receipt exactly as written", () => {
-		const day = new Date(2026, 7, 23, 12, 0, 0);
-		appendAgentMessageLog(project, makeRow({ messageId: "m-2", status: "held" }), day);
-		appendAgentMessageLogReceipt(project, receipt("other", "2026-08-23T12:00:09.000Z"), day);
-		const [row] = readAgentMessageLog(project).rows;
-		expect(row?.status).toBe("held");
-		expect(row).not.toHaveProperty("deliveredVia");
+		const rows = readAgentMessageLog(project).rows;
+		expect(rows.map((r) => r.messageId)).toEqual(["m-2", "m-3", "m-1"]);
+		expect(rows[2], "receipt after row").toMatchObject({ messageId: "m-1", body: "report", status: "delivered", deliveredVia: "hook", deliveredAt: "2026-08-23T12:00:09.000Z" });
+		expect(rows[1], "receipt before row").toMatchObject({ messageId: "m-3", status: "delivered", deliveredVia: "hook" });
+		expect(rows[0]?.status, "no receipt").toBe("held");
+		expect(rows[0]).not.toHaveProperty("deliveredVia");
 	});
 });
 
@@ -263,18 +230,13 @@ describe("retention", () => {
 		expect(readdirSync(messageLogDir(project))).toEqual([`${stampOf(89)}.jsonl`]);
 	});
 
-	it("deletes nothing for a window beyond the Date range", () => {
+	it("deletes nothing for a window beyond the Date range, or when the history is kept forever", () => {
 		mkdirSync(messageLogDir(project), { recursive: true });
 		writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow()));
-		expect(pruneAgentMessageLog(project, 1e9, new Date(2026, 7, 23))).toBe(0);
-		expect(readdirSync(messageLogDir(project))).toEqual(["2001-01-01.jsonl"]);
-	});
-
-	it("deletes nothing when the history is kept forever", () => {
-		mkdirSync(messageLogDir(project), { recursive: true });
-		writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow()));
-		expect(pruneAgentMessageLog(project, null, new Date(2026, 7, 23))).toBe(0);
-		expect(readdirSync(messageLogDir(project))).toEqual(["2001-01-01.jsonl"]);
+		for (const [name, retention] of [["beyond the Date range", 1e9], ["forever", null]] as const) {
+			expect(pruneAgentMessageLog(project, retention, new Date(2026, 7, 23)), name).toBe(0);
+			expect(readdirSync(messageLogDir(project)), name).toEqual(["2001-01-01.jsonl"]);
+		}
 	});
 
 	it("reads the configured retention for the daily prune and for the page", () => {
@@ -334,14 +296,18 @@ describe("retention", () => {
 
 
 describe("durable append notifications", () => {
-	it.each(["delivered", "held", "unconfirmed", "not-delivered"] as const)("announces %s only after its row is readable", (status) => {
-		push.mockImplementation((name, payload) => {
-			expect(name).toBe("agentMessageLogChanged");
-			expect(payload).toEqual({ projectId: project.id });
-			expect(readAgentMessageLog(project).rows[0].status).toBe(status);
-		});
-		appendAgentMessageLog(project, makeRow({ status }));
-		expect(push).toHaveBeenCalledTimes(1);
+	it("announces every status only after its row is readable", () => {
+		for (const status of ["delivered", "held", "unconfirmed", "not-delivered"] as const) {
+			push.mockReset();
+			rmSync(messageLogDir(project), { recursive: true, force: true });
+			push.mockImplementation((name, payload) => {
+				expect(name).toBe("agentMessageLogChanged");
+				expect(payload).toEqual({ projectId: project.id });
+				expect(readAgentMessageLog(project).rows[0].status, status).toBe(status);
+			});
+			appendAgentMessageLog(project, makeRow({ status }));
+			expect(push, status).toHaveBeenCalledTimes(1);
+		}
 	});
 
 	it("does not announce an append that failed", () => {

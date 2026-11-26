@@ -24,18 +24,13 @@ describe("bun feature-flag cache", () => {
 		expect(FEATURE_FLAG_KEYS).toEqual([]);
 		expect(FEATURE_FLAGS).toEqual({});
 		expect(FEATURE_FLAG_DEFAULTS).toEqual({});
+		// The 5-minute cadence stays for whichever flag comes next.
+		expect(FEATURE_FLAG_REFRESH_MS).toBe(5 * 60 * 1000);
 	});
 
-	it("reports an empty set rather than throwing on an empty registry", () => {
+	it("reports an empty set rather than throwing, and ignores keys the app does not declare", () => {
 		expect(getAllFeatureFlags()).toEqual({});
-	});
-
-	it("ignores keys the app does not declare, however many arrive", () => {
 		setFeatureFlags({ "remote-terminal-latency": true, "some-other-flag": true });
 		expect(getAllFeatureFlags()).toEqual({});
-	});
-
-	it("keeps the 5-minute cadence for whichever flag comes next", () => {
-		expect(FEATURE_FLAG_REFRESH_MS).toBe(5 * 60 * 1000);
 	});
 });

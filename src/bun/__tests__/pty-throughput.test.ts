@@ -40,6 +40,11 @@ describe("createRollingRate", () => {
 
 		clock.advance(ROLLING_WINDOW_MS);
 		expect(rate.read()).toEqual({ a: 5, b: 1 });
+
+		// Each read is a copy, so a caller cannot corrupt the next one.
+		const first = rate.read();
+		first.a = 999;
+		expect(rate.read().a).toBe(5);
 	});
 
 	it("scales a window that stayed open too long instead of overstating it", () => {
@@ -75,18 +80,6 @@ describe("createRollingRate", () => {
 
 		expect(rate.read().a).toBe(0);
 	});
-
-	it("hands out a copy, so a caller cannot corrupt the next read", () => {
-		const clock = fakeClock();
-		const rate = createRollingRate(["a"] as const, clock.now);
-		rate.add("a", 7);
-		clock.advance(ROLLING_WINDOW_MS);
-
-		const first = rate.read();
-		first.a = 999;
-
-		expect(rate.read().a).toBe(7);
-	});
 });
 
 describe("pty throughput counters", () => {
@@ -101,13 +94,12 @@ describe("pty throughput counters", () => {
 		expect(snap["session-b"].queued).toBe(0);
 	});
 
-	it("counts one flush once per viewer, because each one costs its own send", () => {
+	it("creates flush and drop counters at zero until their rate window closes", () => {
 		noteFlush("s", 1000, 3);
+		noteDrop("s", 5 * 1024 * 1024);
 
 		// The rate window has not closed, but the counters exist and start at zero.
-		const snap = throughputSnapshot();
-		expect(snap["s"].bytesOut).toBe(0);
-		expect(snap["s"].messages).toBe(0);
+		expect(throughputSnapshot()["s"]).toMatchObject({ bytesOut: 0, messages: 0, drops: 0, droppedBytes: 0 });
 	});
 
 	it("remembers the high-water marks a one-second poll would miss", () => {
@@ -125,23 +117,13 @@ describe("pty throughput counters", () => {
 		expect(snap["s"].windowMs).toBe(16);
 	});
 
-	it("records a discarded backlog separately from what was sent", () => {
-		noteDrop("s", 5 * 1024 * 1024);
-		const snap = throughputSnapshot();
-		// Same window rule as the rest — the counter exists, the rate is not due yet.
-		expect(snap["s"]).toMatchObject({ drops: 0, droppedBytes: 0 });
-	});
-
-	it("drops a session's counters when the session goes away", () => {
+	it("reports nothing before any session produced, and drops a session's counters when it goes away", () => {
+		expect(throughputSnapshot()).toEqual({});
 		noteBytesIn("gone", 1);
 		expect(throughputSnapshot()).toHaveProperty("gone");
 
 		forgetSession("gone");
 
 		expect(throughputSnapshot()).not.toHaveProperty("gone");
-	});
-
-	it("reports nothing at all before any session has produced", () => {
-		expect(throughputSnapshot()).toEqual({});
 	});
 });

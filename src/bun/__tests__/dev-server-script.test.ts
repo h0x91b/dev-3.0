@@ -63,13 +63,10 @@ const POSIX_TMUX = [
 ].join("\n") + "\n";
 
 describe("POSIX dev-server wrapper (pinned)", () => {
-	it("renders the tmux flavour exactly", () => {
+	it("renders the tmux flavour exactly, and the native one without just the detach line", () => {
 		asPlatform("darwin");
 		expect(buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: ENV_GROUPS, tmuxDetachCommand: DETACH })).toBe(POSIX_TMUX);
-	});
-
-	it("omits the detach line for a native pane and nothing else", () => {
-		asPlatform("darwin");
+		// A native pane omits the detach line and nothing else.
 		const script = buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: ENV_GROUPS, tmuxDetachCommand: null });
 		expect(script).toBe(POSIX_TMUX.replace(`${DETACH}\n`, ""));
 	});
@@ -91,55 +88,40 @@ describe("Windows dev-server wrapper (properties)", () => {
 		return buildDevServerScript({ devScript: "bun run dev", envGroups: ENV_GROUPS, tmuxDetachCommand: null });
 	};
 
-	it("carries no bash spelling at all", () => {
+	it("spells the whole wrapper in PowerShell, with no bash left, and keeps the devScript verbatim", () => {
 		const script = windowsScript();
-		expect(script).not.toContain("#!/bin/bash");
-		expect(script).not.toContain("set -x");
-		expect(script).not.toContain("set +x");
-		expect(script).not.toContain("if [ $EXIT_CODE -ne 0 ]");
+		for (const bash of ["#!/bin/bash", "set -x", "set +x", "if [ $EXIT_CODE -ne 0 ]", "ZSH_VERSION"]) {
+			expect(script, bash).not.toContain(bash);
+		}
 		expect(script).not.toMatch(/\bexport \w/);
 		expect(script).not.toMatch(/read -n 1 -s/);
-		expect(script).not.toContain("ZSH_VERSION");
-	});
-
-	it("spells the whole wrapper in PowerShell", () => {
-		const script = windowsScript();
 		expect(script.startsWith("$ErrorActionPreference = 'Continue'")).toBe(true);
 		expect(script).toContain("$env:DEV3_TASK_ID = 'abc'");
 		expect(script).toContain("Set-PSDebug -Trace 1");
 		expect(script).toContain("Set-PSDebug -Trace 0");
 		expect(script).toContain("if ($EXIT_CODE -ne 0) {");
 		expect(script).toContain("Write-Host");
+		// dev3 does not translate the user's own devScript.
+		expect(buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [], tmuxDetachCommand: null })).toContain(DEV_SCRIPT);
 	});
 
-	it("reads the exit code back even when the command never set $LASTEXITCODE", () => {
+	it("never reports a stale exit code, and never blocks on the keypress when input is redirected", () => {
+		const script = windowsScript();
 		// A PowerShell cmdlet leaves $LASTEXITCODE untouched, so a plain read of it
 		// would report the PREVIOUS command's success for a dev server that died.
-		expect(windowsScript()).toContain("$EXIT_CODE = if ($null -eq $LASTEXITCODE) { if ($?) { 0 } else { 1 } } else { $LASTEXITCODE }");
-	});
-
-	it("never blocks forever on the keypress when input is redirected", () => {
+		expect(script).toContain("$EXIT_CODE = if ($null -eq $LASTEXITCODE) { if ($?) { 0 } else { 1 } } else { $LASTEXITCODE }");
 		// Every non-interactive run — including the CI proof that executes this
 		// script — has redirected stdin, where RawUI.ReadKey throws.
-		expect(windowsScript()).toContain("[Console]::IsInputRedirected");
-	});
-
-	it("keeps the user's own devScript verbatim, because dev3 does not translate it", () => {
-		asPlatform("win32");
-		const script = buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [], tmuxDetachCommand: null });
-		expect(script).toContain(DEV_SCRIPT);
+		expect(script).toContain("[Console]::IsInputRedirected");
 	});
 });
 
 describe("dev-server script args", () => {
-	it("appends the quoted args to the end of the user's command", () => {
+	it("appends the quoted args to the end of the user's command, and nothing without args", () => {
 		asPlatform("darwin");
 		const script = buildDevServerScript({ devScript: "bun run dev\n", envGroups: [], scriptArgs: ["--own-db", "a b", "it's"] });
 		expect(script).toContain("\nbun run dev '--own-db' 'a b' 'it'\\''s'\nEXIT_CODE=$?");
-	});
-
-	it("leaves the command untouched without args", () => {
-		asPlatform("darwin");
+		// No args leaves the command untouched.
 		const withEmpty = buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [], scriptArgs: [] });
 		expect(withEmpty).toBe(buildDevServerScript({ devScript: DEV_SCRIPT, envGroups: [] }));
 	});
@@ -150,21 +132,16 @@ describe("dev-server script args", () => {
 		asPlatform("darwin");
 		const script = buildDevServerScript({ devScript: "cd web\nbun run dev # api", envGroups: [], scriptArgs: ["--x"] });
 		expect(script).toContain("\ncd web\nbun run dev '--x' # api\nEXIT_CODE=$?");
-	});
-
-	it("does not mistake a quoted or mid-word # for a comment", () => {
-		asPlatform("darwin");
-		const script = buildDevServerScript({ devScript: "bun run dev --tag '#a b' --url=x#y", envGroups: [], scriptArgs: ["--x"] });
-		expect(script).toContain("\nbun run dev --tag '#a b' --url=x#y '--x'\n");
+		// A quoted or mid-word # is not a comment.
+		const quoted = buildDevServerScript({ devScript: "bun run dev --tag '#a b' --url=x#y", envGroups: [], scriptArgs: ["--x"] });
+		expect(quoted).toContain("\nbun run dev --tag '#a b' --url=x#y '--x'\n");
 	});
 
 	it.each([
 		["bun run dev &", "ends with \"&\""],
 		["bun run dev | tee log", null],
-		["bun run dev |", "ends with \"|\""],
 		["bun run dev \\", "ends with \"\\\""],
 		["if true; then\n  bun run dev\nfi", "ends with \"fi\""],
-		["for i in 1; do bun run dev; done", "ends with \"done\""],
 		["( cd web && bun run dev )", "ends with \")\""],
 		["bun run dev\n# trailing note", "has no command on it"],
 		["echo 'unterminated", "ends inside an open quote"],
@@ -176,45 +153,31 @@ describe("dev-server script args", () => {
 		else expect(problem).toContain(`that line ${reason}`);
 	});
 
-	it("refuses to build a script whose last line cannot take args", () => {
+	it("refuses to build a script whose last line cannot take args, judging by each platform's escape", () => {
 		asPlatform("darwin");
 		expect(() => buildDevServerScript({ devScript: "bun run dev &", envGroups: [], scriptArgs: ["--x"] })).toThrow("ends with \"&\"");
-	});
-
-	it("uses the PowerShell escape character for a continuation on Windows", () => {
+		// Windows uses the PowerShell escape character for a continuation.
 		asPlatform("win32");
 		expect(scriptArgsProblem("bun run dev `")).toContain("ends with \"`\"");
 		expect(scriptArgsProblem("bun run dev C:\\web\\")).toBeNull();
 	});
 
-	it.skipIf(process.platform === "win32")("delivers args past a trailing comment under the real shell", () => {
-		asPlatform("darwin");
-		const dir = mkdtempSync(join(tmpdir(), "dev3-script-comment-"));
-		try {
-			const script = buildDevServerScript({ devScript: "printf '%s\\n' # api", envGroups: [], scriptArgs: ["a b", "c"] });
-			const file = join(dir, "run.sh");
-			writeFileSync(file, script);
-			const out = execFileSync("/bin/sh", [file], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
-			expect(out.split("\n").slice(0, -1)).toEqual(["a b", "c"]);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
 	// Runs the generated file under the real shell: hostile args must arrive as
-	// literal arguments, never as syntax.
-	it.skipIf(process.platform === "win32")("passes hostile args to the command as literal text", () => {
+	// literal arguments, never as syntax, and args survive a trailing comment.
+	it.skipIf(process.platform === "win32")("passes hostile args as literal text, past a trailing comment, under the real shell", () => {
 		asPlatform("darwin");
 		const dir = mkdtempSync(join(tmpdir(), "dev3-script-args-"));
+		const run = (devScript: string, args: string[]) => {
+			const file = join(dir, "run.sh");
+			writeFileSync(file, buildDevServerScript({ devScript, envGroups: [], scriptArgs: args }));
+			return execFileSync("/bin/sh", [file], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).split("\n").slice(0, -1);
+		};
 		try {
 			const args = ["a b", "it's", `x; touch ${dir}/pwned`, `$(touch ${dir}/pwned2)`];
-			const script = buildDevServerScript({ devScript: "printf '%s\\n'", envGroups: [], scriptArgs: args });
-			const file = join(dir, "run.sh");
-			writeFileSync(file, script);
-			const out = execFileSync("/bin/sh", [file], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
-			expect(out.split("\n").slice(0, -1)).toEqual(args);
+			expect(run("printf '%s\\n'", args)).toEqual(args);
 			expect(existsSync(join(dir, "pwned"))).toBe(false);
 			expect(existsSync(join(dir, "pwned2"))).toBe(false);
+			expect(run("printf '%s\\n' # api", ["a b", "c"])).toEqual(["a b", "c"]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

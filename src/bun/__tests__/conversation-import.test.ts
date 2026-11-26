@@ -152,27 +152,15 @@ afterEach(() => {
 });
 
 describe("classifyClaudeTranscript", () => {
-	it("names a titled main conversation, its branch and its turns", () => {
+	it("names a main conversation, its branch and its turns, titled by Claude or not", () => {
 		const file = seedConversation("s1", { title: "Fix the parser", gitBranch: "feat/x", prompts: ["one", "two"] });
 		const classified = classifyClaudeTranscript(readFileSync(file, "utf-8"));
 		expect(classified).toMatchObject({ kind: "main", title: "Fix the parser", gitBranch: "feat/x", turns: 2 });
-	});
 
-	it("calls a sidechain file a subagent run, whatever its first record was", () => {
-		const file = seedConversation("s2", { sidechain: true });
-		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).kind).toBe("subagent");
-	});
-
-	it("calls a file with an agent-setting record a teammate run", () => {
-		const file = seedConversation("s3", { teammate: true });
-		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).kind).toBe("teammate");
-	});
-
-	// `ai-title` is optional and often missing (221 of 829 files on the machine this
-	// was measured on). A session the human spoke in is a main session either way.
-	it("still names a main conversation Claude never titled, after the first request", () => {
-		const file = seedConversation("s4", { title: null, prompts: ["Fix the parser", "now the renderer"] });
-		expect(classifyClaudeTranscript(readFileSync(file, "utf-8"))).toMatchObject({
+		// `ai-title` is optional and often missing (221 of 829 files on the machine this
+		// was measured on). A session the human spoke in is a main session either way.
+		const untitled = seedConversation("s4", { title: null, prompts: ["Fix the parser", "now the renderer"] });
+		expect(classifyClaudeTranscript(readFileSync(untitled, "utf-8"))).toMatchObject({
 			kind: "main",
 			title: null,
 			firstRequest: "Fix the parser",
@@ -180,15 +168,16 @@ describe("classifyClaudeTranscript", () => {
 		});
 	});
 
-	it("calls a transcript nobody ever spoke in empty", () => {
-		const file = seedConversation("s5", { title: null, prompts: [] });
-		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).kind).toBe("empty");
+	it("tells subagent, teammate and empty transcripts apart from a main one", () => {
+		const kindOf = (file: string) => classifyClaudeTranscript(readFileSync(file, "utf-8")).kind;
+		expect(kindOf(seedConversation("s2", { sidechain: true })), "sidechain").toBe("subagent");
+		expect(kindOf(seedConversation("s3", { teammate: true })), "agent-setting").toBe("teammate");
+		expect(kindOf(seedConversation("s5", { title: null, prompts: [] })), "nobody spoke").toBe("empty");
 	});
 
 	// The harness echoes a slash command back into the `user` role. It is neither a
-	// turn nor a title — a card called `<command-name>/clear</command-name>` is not
-	// a card anybody can read.
-	it("ignores the wrappers Claude writes into the user role itself", () => {
+	// turn nor a title; agent-to-agent traffic, also tag-wrapped, still is a turn.
+	it("ignores the wrappers Claude writes into the user role, but keeps agent-to-agent traffic", () => {
 		const file = seedConversation("s6", {
 			title: null,
 			prompts: ["<command-name>/clear</command-name>", "<bash-input>ls</bash-input>", "Fix the parser"],
@@ -198,16 +187,13 @@ describe("classifyClaudeTranscript", () => {
 			firstRequest: "Fix the parser",
 			turns: 1,
 		});
-	});
-
-	it("keeps agent-to-agent traffic, which also arrives in the user role wrapped in a tag", () => {
-		const file = seedConversation("s7", { title: null, prompts: ["<dev3-ai-message>\n<from-task>seq:7</from-task>\n</dev3-ai-message>"] });
-		expect(classifyClaudeTranscript(readFileSync(file, "utf-8")).turns).toBe(1);
+		const agent = seedConversation("s7", { title: null, prompts: ["<dev3-ai-message>\n<from-task>seq:7</from-task>\n</dev3-ai-message>"] });
+		expect(classifyClaudeTranscript(readFileSync(agent, "utf-8")).turns).toBe(1);
 	});
 });
 
 describe("scanImportableConversations", () => {
-	it("offers a titled conversation that ran in the project", () => {
+	it("offers a titled conversation that ran in the project, filed by age", () => {
 		seedConversation("s1", { title: "Fix the parser", gitBranch: "feat/x", ageDays: 1 });
 		expect(scan()).toMatchObject([{
 			sessionId: "s1",
@@ -217,9 +203,8 @@ describe("scanImportableConversations", () => {
 			turns: 1,
 			targetStatus: "user-questions",
 		}]);
-	});
 
-	it("files work from the last week into Has Questions and older work into Completed", () => {
+		// Work from the last week files into Has Questions, older work into Completed.
 		seedConversation("recent", { ageDays: 3 });
 		seedConversation("old", { ageDays: 40 });
 		const byId = new Map(scan().map((c) => [c.sessionId, c.targetStatus]));
@@ -227,10 +212,16 @@ describe("scanImportableConversations", () => {
 		expect(byId.get("old")).toBe("completed");
 	});
 
-	it("offers nothing for subagent, teammate or empty transcripts", () => {
+	it("offers nothing for subagent, teammate, empty, wrapper-only or id-less transcripts", () => {
 		seedConversation("sub", { sidechain: true });
 		seedConversation("team", { teammate: true });
 		seedConversation("silent", { title: null, prompts: [] });
+		seedConversation("commands", { title: null, prompts: ["<command-name>/clear</command-name>"] });
+		const dir = join(home, ".claude", "projects", claudeEncodePath(project));
+		writeFileSync(
+			join(dir, "no-id.jsonl"),
+			`${JSON.stringify({ type: "user", cwd: project, message: { role: "user", content: [{ type: "text", text: "Fix it" }] } })}\n`,
+		);
 		expect(scan()).toEqual([]);
 	});
 
@@ -247,21 +238,13 @@ describe("scanImportableConversations", () => {
 		}]);
 	});
 
-	it("offers an untitled desktop-app session the same way", () => {
-		seedConversation("desk", { title: null, entrypoint: "claude-desktop", prompts: ["Upgrade the Kafka client"] });
-		expect(scan()).toMatchObject([{ sessionId: "desk", title: "Upgrade the Kafka client", titledFromRequest: true }]);
-	});
-
-	it("marks a session Claude did title as not titled from the request", () => {
-		seedConversation("named", { title: "Fix the parser" });
-		expect(scan()).toMatchObject([{ title: "Fix the parser", titledFromRequest: false }]);
-	});
-
-	it("offers titled and untitled sessions together, and never one twice", () => {
+	it("offers titled and untitled sessions together, newest first, and never one twice", () => {
 		seedConversation("named", { title: "Fix the parser", ageDays: 1 });
 		seedConversation("bare", { title: null, prompts: ["Rework the importer"], ageDays: 2 });
-		seedConversation("older", { title: null, prompts: ["Something older"], ageDays: 3 });
-		expect(scan().map((c) => c.sessionId)).toEqual(["named", "bare", "older"]);
+		seedConversation("older", { title: null, prompts: ["Something older"], ageDays: 20 });
+		const all = scan();
+		expect(all.map((c) => c.sessionId)).toEqual(["named", "bare", "older"]);
+		expect(all[0]).toMatchObject({ title: "Fix the parser", titledFromRequest: false });
 		expect(scan({ importedSessionIds: ["bare"] }).map((c) => c.sessionId)).toEqual(["named", "older"]);
 	});
 
@@ -273,105 +256,52 @@ describe("scanImportableConversations", () => {
 		expect(scan().map((c) => [c.sessionId, c.title])).toEqual([["torn", "Fix the parser"]]);
 	});
 
-	it("skips a transcript that never recorded a session id", () => {
-		const dir = join(home, ".claude", "projects", claudeEncodePath(project));
-		mkdirSync(dir, { recursive: true });
-		writeFileSync(
-			join(dir, "no-id.jsonl"),
-			`${JSON.stringify({ type: "user", cwd: project, message: { role: "user", content: [{ type: "text", text: "Fix it" }] } })}\n`,
-		);
-		expect(scan()).toEqual([]);
-	});
-
-	it("skips a session whose only user records are harness wrappers", () => {
-		seedConversation("commands", { title: null, prompts: ["<command-name>/clear</command-name>"] });
-		expect(scan()).toEqual([]);
-	});
-
-	it("never offers a conversation that ran inside a dev3 worktree", () => {
+	it("never offers a conversation that ran inside a dev3 worktree, default or redirected home", () => {
 		const worktree = join(home, ".dev3.0", "worktrees", "code-dev-3-0", "abcd1234", "worktree");
 		mkdirSync(worktree, { recursive: true });
 		seedConversation("inside-dev3", { workingDir: worktree, cwd: worktree });
 		// Even asked about the dev3 path directly, which no project may ever be.
 		expect(scanImportableConversations({ projectPath: worktree, home, nowMs: NOW })).toEqual([]);
 		expect(scan()).toEqual([]);
-	});
 
-	it("never offers a conversation from a redirected instance's worktrees either", () => {
 		// A `--qa` board keeps its worktrees under its own DEV3_HOME, which is not
 		// `~/.dev3.0` at all — its own work must stay just as invisible.
 		const scoped = join(home, "qa-root");
-		const worktree = join(scoped, "worktrees", "code-dev-3-0", "abcd1234", "worktree");
-		mkdirSync(worktree, { recursive: true });
-		seedConversation("inside-qa", { workingDir: worktree, cwd: worktree });
+		const qaWorktree = join(scoped, "worktrees", "code-dev-3-0", "abcd1234", "worktree");
+		mkdirSync(qaWorktree, { recursive: true });
+		seedConversation("inside-qa", { workingDir: qaWorktree, cwd: qaWorktree });
 		expect(scan({ dev3Home: scoped })).toEqual([]);
 	});
 
-	it("does not let a project claim a sibling whose name merely starts the same", () => {
+	it("offers a live subdirectory session, but not a sibling whose name merely starts the same, nor a gone or unrecorded cwd", () => {
 		const sibling = join(home, "code", "dev-3.0-scratch");
 		mkdirSync(sibling, { recursive: true });
 		seedConversation("sibling", { workingDir: sibling, cwd: sibling });
-		expect(scan()).toEqual([]);
-	});
-
-	it("offers a session that ran in a subdirectory of the project", () => {
-		const sub = join(project, "packages", "cli");
-		mkdirSync(sub, { recursive: true });
-		seedConversation("deep", { workingDir: sub, cwd: sub });
-		expect(scan()).toMatchObject([{ sessionId: "deep", workingDir: sub }]);
-	});
-
-	it("skips a subdirectory session whose working directory is gone", () => {
+		const deep = join(project, "packages", "cli");
+		mkdirSync(deep, { recursive: true });
+		seedConversation("deep", { workingDir: deep, cwd: deep });
 		const gone = join(project, "deleted-worktree");
 		seedConversation("vanished", { workingDir: gone, cwd: gone });
-		expect(scan()).toEqual([]);
-	});
-
-	it("skips a subdirectory session whose records never recorded a cwd", () => {
 		const sub = join(project, "packages", "web");
 		mkdirSync(sub, { recursive: true });
 		seedConversation("nocwd", { workingDir: sub, cwd: null });
-		expect(scan()).toEqual([]);
+		expect(scan()).toMatchObject([{ sessionId: "deep", workingDir: deep }]);
 	});
 
-	it("finds a conversation that ran under a dev3 agent account", () => {
-		const account = join(home, ".dev3.0", "agent-accounts", "claude", "acc-1");
-		seedConversation("second-account", { configDir: account, title: "Work from another login" });
-		expect(scan().map((c) => c.title)).toEqual(["Work from another login"]);
-	});
-
-	it("does not report the home store twice through a symlinked account", () => {
-		seedConversation("only-once", { title: "One row" });
+	it("finds a conversation under a dev3 agent account, but the home store only once through a symlink", () => {
 		const accounts = join(home, ".dev3.0", "agent-accounts", "claude");
-		mkdirSync(accounts, { recursive: true });
+		seedConversation("second-account", { configDir: join(accounts, "acc-1"), title: "Work from another login", ageDays: 1 });
+		seedConversation("only-once", { title: "One row", ageDays: 2 });
 		symlinkSync(join(home, ".claude"), join(accounts, "mine"));
-		expect(scan()).toHaveLength(1);
+		expect(scan().map((c) => c.title)).toEqual(["Work from another login", "One row"]);
 	});
 
-	it("never offers a session that was already imported", () => {
-		seedConversation("s1");
-		seedConversation("s2");
-		expect(scan({ importedSessionIds: ["s1"] }).map((c) => c.sessionId)).toEqual(["s2"]);
-	});
-
-	it("returns the newest conversation first", () => {
-		seedConversation("older", { ageDays: 20 });
-		seedConversation("newer", { ageDays: 2 });
-		expect(scan().map((c) => c.sessionId)).toEqual(["newer", "older"]);
-	});
-
-	it("finds the conversation when the stored project path carries a trailing slash", () => {
-		// A store name is the encoding of a cwd, which never has one, and the
-		// encoding maps `/` to `-` — so `…app/` encodes to a directory that exists
-		// nowhere and the scan quietly returns nothing.
-		seedConversation("s1", { title: "Fix the parser" });
-		expect(scan({ projectPath: `${project}/` }).map((c) => c.sessionId)).toEqual(["s1"]);
-	});
-
-	it("finds the conversation when the project is registered through a symlink", () => {
+	it("finds the conversation when the project path carries a trailing slash or a symlink", () => {
+		// A store name is the encoding of a cwd, which never has a trailing slash; and
 		// Claude records the PHYSICAL working directory, while the folder picker
 		// stored whichever link the user browsed through.
 		seedConversation("s1", { title: "Fix the parser", workingDir: realpathSync(project) });
+		expect(scan({ projectPath: `${project}/` }).map((c) => c.sessionId)).toEqual(["s1"]);
 		const link = join(home, "linked-project");
 		symlinkSync(project, link);
 		expect(scan({ projectPath: link }).map((c) => c.sessionId)).toEqual(["s1"]);
@@ -396,13 +326,10 @@ describe("isCodexInjectedUserText", () => {
 		}
 	});
 
-	// The rule that a blanket "starts with a tag" test got wrong: this is a message
-	// a person's board really sent, and dropping it loses a real turn.
-	it("keeps agent-to-agent traffic, which arrives in the user role wrapped in a tag", () => {
+	// The rule that a blanket "starts with a tag" test got wrong: agent-to-agent
+	// traffic is a message a person's board really sent, and dropping it loses a turn.
+	it("keeps agent-to-agent traffic and ordinary prose, including prose that opens with a heading", () => {
 		expect(isCodexInjectedUserText("<dev3-ai-message>\n<from-task>seq:1141</from-task>\n</dev3-ai-message>")).toBe(false);
-	});
-
-	it("keeps ordinary prose, including prose that opens with a heading", () => {
 		expect(isCodexInjectedUserText("please fix the parser")).toBe(false);
 		expect(isCodexInjectedUserText("# My own notes\n\nfix the parser")).toBe(false);
 	});
@@ -416,18 +343,16 @@ describe("codexHeaderFrom", () => {
 
 	// A header that did not fit the read budget arrives without its newline. Half a
 	// JSON object must never be guessed at.
-	it("reports nothing when the head holds no complete line", () => {
+	it("reports nothing for a head with no complete line or no session_meta", () => {
 		expect(codexHeaderFrom('{"type":"session_meta","payload":{"id":"s1"')).toBeNull();
-	});
-
-	it("reports nothing for a file that does not open with a session_meta", () => {
 		expect(codexHeaderFrom('{"type":"response_item","payload":{}}\n')).toBeNull();
 	});
 });
 
 describe("titleFromFirstRequest", () => {
-	it("takes the first non-empty line of the request", () => {
+	it("takes the first non-empty line of the request, and has none without a request", () => {
 		expect(titleFromFirstRequest("\n\nFix the parser\nand then the renderer")).toBe("Fix the parser");
+		expect(titleFromFirstRequest(null)).toBeNull();
 	});
 
 	it("cuts an over-long request at the width a task title has", () => {
@@ -435,15 +360,15 @@ describe("titleFromFirstRequest", () => {
 		expect(title).toHaveLength(80);
 		expect(title?.endsWith("…")).toBe(true);
 	});
-
-	it("has no title for a session the human never spoke in", () => {
-		expect(titleFromFirstRequest(null)).toBeNull();
-	});
 });
 
 describe("classifyCodexRollout", () => {
-	it("counts only what the human asked for, and names the session after the first of them", () => {
-		const file = seedRollout("s1", { gitBranch: "feat/x", prompts: ["Fix the parser", "now the renderer"] });
+	it("counts only what the human asked for, not injected context, and names the session after the first", () => {
+		const file = seedRollout("s1", {
+			gitBranch: "feat/x",
+			injected: ["# AGENTS.md instructions for /x", "<environment_context>\n</environment_context>"],
+			prompts: ["Fix the parser", "now the renderer"],
+		});
 		expect(classifyCodexRollout(readFileSync(file, "utf-8"))).toEqual({
 			sessionId: "s1",
 			cwd: project,
@@ -452,18 +377,10 @@ describe("classifyCodexRollout", () => {
 			turns: 2,
 		});
 	});
-
-	it("does not count Codex's own injected context as a turn", () => {
-		const file = seedRollout("s2", {
-			injected: ["# AGENTS.md instructions for /x", "<environment_context>\n</environment_context>"],
-			prompts: ["Fix the parser"],
-		});
-		expect(classifyCodexRollout(readFileSync(file, "utf-8")).turns).toBe(1);
-	});
 });
 
 describe("scanImportableConversations, Codex rollouts", () => {
-	it("offers a rollout that ran in the project, titled after the first request", () => {
+	it("offers a rollout that ran in the project, titled after the first request, until imported", () => {
 		seedRollout("c1", { prompts: ["Fix the parser"], gitBranch: "feat/x", ageDays: 1 });
 		expect(scan()).toMatchObject([{
 			source: "codex",
@@ -474,59 +391,39 @@ describe("scanImportableConversations, Codex rollouts", () => {
 			turns: 1,
 			targetStatus: "user-questions",
 		}]);
+		expect(scan({ importedSessionIds: ["c1"] })).toEqual([]);
 	});
 
-	it("offers Claude and Codex side by side, newest first", () => {
+	it("offers Claude and Codex side by side, newest first, including agent-account rollouts", () => {
 		seedConversation("s1", { ageDays: 9 });
 		seedRollout("c1", { ageDays: 2 });
 		expect(scan().map((c) => [c.source, c.sessionId])).toEqual([["codex", "c1"], ["claude", "s1"]]);
+
+		// A rollout under a dev3 agent account is found too.
+		seedRollout("c2", { codexHome: join(home, ".dev3.0", "agent-accounts", "codex", "acct-1"), ageDays: 20 });
+		expect(scan().map((c) => c.sessionId)).toEqual(["c1", "s1", "c2"]);
 	});
 
-	it("finds a rollout that ran under a dev3 agent account", () => {
-		seedRollout("c2", { codexHome: join(home, ".dev3.0", "agent-accounts", "codex", "acct-1") });
-		expect(scan().map((c) => c.sessionId)).toEqual(["c2"]);
-	});
-
-	it("never offers a rollout that ran inside a dev3 worktree", () => {
+	it("offers a subdirectory rollout, never one from a dev3 worktree or a same-prefix sibling", () => {
 		const worktree = join(home, ".dev3.0", "worktrees", "slug", "abc", "worktree");
 		mkdirSync(worktree, { recursive: true });
 		seedRollout("c3", { workingDir: worktree });
-		expect(scan()).toEqual([]);
-	});
-
-	it("does not let a project claim a sibling whose name merely starts the same", () => {
 		const sibling = `${project}-scratch`;
 		mkdirSync(sibling, { recursive: true });
 		seedRollout("c4", { workingDir: sibling });
-		expect(scan()).toEqual([]);
-	});
-
-	it("offers a rollout that ran in a subdirectory of the project", () => {
+		// A subdirectory of the project, by contrast, is offered.
 		const inner = join(project, "packages", "cli");
 		mkdirSync(inner, { recursive: true });
 		seedRollout("c5", { workingDir: inner });
 		expect(scan()).toMatchObject([{ sessionId: "c5", workingDir: inner }]);
 	});
 
-	it("skips a rollout whose header recorded no working directory", () => {
-		seedRollout("c6", { cwd: null });
-		expect(scan()).toEqual([]);
-	});
-
-	it("skips a file that is not a rollout at all", () => {
-		seedRollout("c7", { headerless: true });
-		expect(scan()).toEqual([]);
-	});
-
 	// A session that only ever received injected context has nothing to name a card
 	// after, and nothing in it for anyone to pick up.
-	it("skips a rollout the human never spoke in", () => {
+	it("skips a rollout with no cwd, no header, or no human turn", () => {
+		seedRollout("c6", { cwd: null });
+		seedRollout("c7", { headerless: true });
 		seedRollout("c8", { prompts: [] });
 		expect(scan()).toEqual([]);
-	});
-
-	it("never offers a rollout that was already imported", () => {
-		seedRollout("c9");
-		expect(scan({ importedSessionIds: ["c9"] })).toEqual([]);
 	});
 });

@@ -33,19 +33,18 @@ function sample(): RawSessionJournal {
 }
 
 describe("session-journal helpers", () => {
-	it("recognizes a raw session journal", () => {
+	it("recognizes a raw session journal and counts decoded output bytes across encodings", () => {
 		expect(isRawSessionJournal(sample())).toBe(true);
 		expect(isRawSessionJournal({ schema: "other" })).toBe(false);
+		expect(journalOutputByteLength(sample())).toBe("boot".length + "after".length);
 	});
 
-	it("splits events at the detach boundary", () => {
+	it("splits events at the detach boundary and converts a journal into a fixture with a post-detach section", () => {
 		const { events, afterReplay } = splitAtDetach(sample());
 		expect(events).toHaveLength(2);
 		expect(afterReplay).toHaveLength(1);
 		expect(afterReplay[0]).toEqual({ type: "output", encoding: "utf8", data: "after" });
-	});
 
-	it("converts a journal into a harness fixture with a post-detach section", () => {
 		const fixture = journalToFixture(sample(), "real-claude", {
 			expected: { activeBuffer: "normal" },
 			expectedAfterReplay: { dimensions: { cols: 100, rows: 30 } },
@@ -55,9 +54,5 @@ describe("session-journal helpers", () => {
 		expect(fixture.events).toHaveLength(2);
 		expect(fixture.afterReplay).toHaveLength(1);
 		expect(fixture.provenance?.platform).toContain("Windows");
-	});
-
-	it("counts decoded output bytes across encodings", () => {
-		expect(journalOutputByteLength(sample())).toBe("boot".length + "after".length);
 	});
 });

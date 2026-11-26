@@ -85,32 +85,24 @@ describe("doctor --processes inventory", () => {
 		]);
 	});
 
-	it("reports an unreadable session directory as unknown instead of hiding it", () => {
+	it("reports an unreadable session directory or a foreign schema as unknown instead of hiding it", () => {
 		const rows = collectNativeProcesses(deps({ [SESSION]: "{ not json" }));
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toMatchObject({ sessionId: SESSION, state: "unknown", seq: null, pid: null });
+		// A foreign schema version is unknown too, never adopted.
+		const foreign = collectNativeProcesses(deps({ [SESSION]: record({ schemaVersion: 99 }) }));
+		expect(foreign[0]!.state).toBe("unknown");
 	});
 
-	it("treats a foreign schema version as unknown, never adopting it", () => {
-		const rows = collectNativeProcesses(deps({ [SESSION]: record({ schemaVersion: 99 }) }));
-		expect(rows[0]!.state).toBe("unknown");
-	});
-
-	it("has no task number for a session with no identity block (pre-1383 or non-task)", () => {
+	it("has no task number for a session with no identity block (pre-1383 or non-task), but keeps its pane", () => {
 		const rows = collectNativeProcesses(deps({ [SESSION]: record({ identity: undefined }) }, [501, 502]));
 		expect(rows.every((r) => r.seq === null)).toBe(true);
 		expect(renderNativeProcesses(rows)).toContain("—");
-	});
-
-	it("still names the pane of a pre-1383 record, from its session id", () => {
-		const rows = collectNativeProcesses(deps({ [SESSION]: record({ identity: undefined }) }, [501, 502]));
+		// A pre-1383 record still names its pane from the session id; a bare id carries none.
 		expect(rows.every((r) => r.paneId === "pane-1")).toBe(true);
-	});
-
-	it("has no pane for a session id that carries none", () => {
 		const bare = "dev3-task-11111111-2222-3333-4444-555555555555";
-		const rows = collectNativeProcesses(deps({ [bare]: record({ sessionId: bare, identity: undefined }) }));
-		expect(rows.every((r) => r.paneId === null)).toBe(true);
+		const bareRows = collectNativeProcesses(deps({ [bare]: record({ sessionId: bare, identity: undefined }) }));
+		expect(bareRows.every((r) => r.paneId === null)).toBe(true);
 	});
 
 	it("returns nothing when the native session root does not exist", () => {
@@ -126,7 +118,7 @@ describe("doctor --processes inventory", () => {
 		).toEqual([]);
 	});
 
-	it("orders by task number numerically, host before its shell", () => {
+	it("orders by task number numerically, host before its shell, unidentified last", () => {
 		const rows = collectNativeProcesses(
 			deps({
 				[OTHER]: record({ sessionId: OTHER, identity: { seq: "205", paneId: "pane-3" } }),
@@ -134,14 +126,13 @@ describe("doctor --processes inventory", () => {
 			}),
 		);
 		expect(rows.map((r) => `${r.seq}:${r.role}`)).toEqual(["205:host", "205:shell", "1383:host", "1383:shell"]);
-	});
 
-	it("sorts unidentified sessions last", () => {
-		const rows = collectNativeProcesses(
+		// Unidentified sessions sort last.
+		const mixed = collectNativeProcesses(
 			deps({ [SESSION]: record({ identity: undefined }), [OTHER]: record({ sessionId: OTHER }) }),
 		);
-		expect(rows[0]!.seq).toBe("1383");
-		expect(rows[rows.length - 1]!.seq).toBeNull();
+		expect(mixed[0]!.seq).toBe("1383");
+		expect(mixed[mixed.length - 1]!.seq).toBeNull();
 	});
 });
 
@@ -191,11 +182,8 @@ describe("doctor --processes output is safe to paste into a bug report", () => {
 });
 
 describe("doctor --processes rendering", () => {
-	it("says so plainly when there is nothing to list", () => {
+	it("renders one aligned row per process under a stable header, and says so plainly when there is nothing", () => {
 		expect(renderNativeProcesses([])).toBe("No native terminal sessions on this machine.\n");
-	});
-
-	it("renders one aligned row per process under a stable header", () => {
 		const rows = collectNativeProcesses(deps({ [SESSION]: record() }, [501, 502]));
 		const lines = renderNativeProcesses(rows).trimEnd().split("\n");
 		expect(lines[0]).toMatch(/^\s*TASK\s+PANE\s+ROLE\s+PID\s+PARENT\s+EXECUTABLE\s+STATE$/);

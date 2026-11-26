@@ -44,38 +44,30 @@ function recorder() {
 }
 
 describe("held message epilogue", () => {
-	it("types the trailer after the message and before the Enter", async () => {
+	it("types the trailer after the message and before the Enter, and nothing extra without one", async () => {
 		const { order, message } = recorder();
 		holdAgentMessage(KEY, message("msg", "board"), {});
-
 		await vi.runAllTimersAsync();
-
 		expect(order).toEqual(["msg", "board", "enter"]);
+
+		order.length = 0;
+		holdAgentMessage(KEY, message("plain"), {});
+		await vi.runAllTimersAsync();
+		expect(order, "no trailer").toEqual(["plain", "enter"]);
 	});
 
 	// Three peers reporting at once is one turn for the receiver. Three boards in
-	// it would be three copies of the same table.
-	it("types ONE trailer for a burst of three messages", async () => {
+	// it would be three copies of the same table. The newest registration carries
+	// the freshest pane pin, exactly as `submit` does, so its trailer wins.
+	it("types ONE trailer for a burst of three messages: the newest registration's", async () => {
 		const { order, message } = recorder();
-		holdAgentMessage(KEY, message("a", "board"), {});
-		holdAgentMessage(KEY, message("b", "board"), {});
-		holdAgentMessage(KEY, message("c", "board"), {});
+		holdAgentMessage(KEY, message("a", "board-a"), {});
+		holdAgentMessage(KEY, message("b", "board-b"), {});
+		holdAgentMessage(KEY, message("c", "board-c"), {});
 
 		await vi.runAllTimersAsync();
 
-		expect(order).toEqual(["a", "b", "c", "board", "enter"]);
-		expect(order.filter((s) => s === "board")).toHaveLength(1);
-	});
-
-	// The newest registration carries the freshest pane pin, exactly as `submit` does.
-	it("uses the newest registration's trailer", async () => {
-		const { order, message } = recorder();
-		holdAgentMessage(KEY, message("a", "old-board"), {});
-		holdAgentMessage(KEY, message("b", "new-board"), {});
-
-		await vi.runAllTimersAsync();
-
-		expect(order).toEqual(["a", "b", "new-board", "enter"]);
+		expect(order).toEqual(["a", "b", "c", "board-c", "enter"]);
 	});
 
 	it("still sends the Enter when the trailer throws", async () => {
@@ -105,15 +97,6 @@ describe("held message epilogue", () => {
 		await vi.runAllTimersAsync();
 
 		expect(order).toEqual([]);
-	});
-
-	it("behaves exactly as before for a message with no trailer", async () => {
-		const { order, message } = recorder();
-		holdAgentMessage(KEY, message("msg"), {});
-
-		await vi.runAllTimersAsync();
-
-		expect(order).toEqual(["msg", "enter"]);
 	});
 
 	it("keeps the order when the user's own Enter releases the burst early", async () => {

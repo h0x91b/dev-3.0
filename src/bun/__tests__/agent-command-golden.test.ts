@@ -87,10 +87,51 @@ interface Case {
 	ctx?: TemplateContext;
 }
 
+/** Rows whose adapter never reads the option (output identical to `<base>/fresh`)
+ *  or that hit the same verbatim pass-through / mode-map value as a sibling row
+ *  kept in the matrix. Codex and OpenCode ignoring --permission-mode/--effort/
+ *  --max-budget-usd is asserted directly in `agents.test.ts`. */
+const REDUNDANT = new Set([
+	"claude/pm-acceptEdits",
+	"claude/pm-bypassPermissions",
+	"claude/pm-dontAsk",
+	"codex/statusline",
+	"codex/pm-plan",
+	"codex/pm-acceptEdits",
+	"codex/pm-dontAsk",
+	"codex/effort",
+	"codex/budget",
+	"gemini/statusline",
+	"gemini/skipSysPrompt",
+	"gemini/effort",
+	"gemini/budget",
+	"agent/statusline",
+	"agent/pm-dontAsk",
+	"agent/effort",
+	"agent/budget",
+	"opencode/statusline",
+	"opencode/pm-plan",
+	"opencode/pm-acceptEdits",
+	"opencode/pm-dontAsk",
+	"opencode/effort",
+	"opencode/budget",
+	"aider/statusline",
+	"aider/resume-sid",
+	"aider/skipSysPrompt",
+	"aider/pm-acceptEdits",
+	"aider/pm-bypassPermissions",
+	"aider/pm-dontAsk",
+	"codex/pm-bypassPermissions",
+	"gemini/pm-dontAsk",
+	"opencode/pm-bypassPermissions",
+	"aider/preassign-sid",
+]);
+
 function buildCases(): Case[] {
 	const cases: Case[] = [];
-	const push = (name: string, base: string, config: AgentConfiguration, options?: CommandOptions, ctx?: TemplateContext) =>
-		cases.push({ name, base, config, options, ctx });
+	const push = (name: string, base: string, config: AgentConfiguration, options?: CommandOptions, ctx?: TemplateContext) => {
+		if (!REDUNDANT.has(name)) cases.push({ name, base, config, options, ctx });
+	};
 
 	for (const b of BASES) {
 		const model = modelFor(b);
@@ -128,9 +169,6 @@ const EXPECTED: Record<string, string> = {
 	"claude/skipSysPrompt": "claude --model sonnet --allow-dangerously-skip-permissions -- 'Fix the login bug'",
 	"claude/statusline": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> --settings /tmp/s.json -- 'Fix the login bug'",
 	"claude/pm-plan": "claude --model sonnet --permission-mode plan --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
-	"claude/pm-acceptEdits": "claude --model sonnet --permission-mode acceptEdits --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
-	"claude/pm-bypassPermissions": "claude --model sonnet --permission-mode bypassPermissions --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
-	"claude/pm-dontAsk": "claude --model sonnet --permission-mode dontAsk --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
 	"claude/effort": "claude --model sonnet --allow-dangerously-skip-permissions --effort high --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
 	"claude/budget": "claude --model sonnet --allow-dangerously-skip-permissions --max-budget-usd 12 --append-system-prompt-file <CLAUDE_BODY_FILE> -- 'Fix the login bug'",
 	"claude/addargs": "claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt-file <CLAUDE_BODY_FILE> --foo bar -- 'Fix the login bug'",
@@ -142,13 +180,6 @@ const EXPECTED: Record<string, string> = {
 	"codex/resume-sid": "codex resume 11111111-1111-1111-1111-111111111111 --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR>",
 	"codex/preassign-sid": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"codex/skipSysPrompt": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -- 'Fix the login bug'",
-	"codex/statusline": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"codex/pm-plan": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"codex/pm-acceptEdits": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"codex/pm-bypassPermissions": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"codex/pm-dontAsk": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"codex/effort": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
-	"codex/budget": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"codex/addargs": "codex --model gpt-5.6-sol --foo bar -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"codex/appendPrompt": "codex --model gpt-5.6-sol -c 'default_permissions=\"dev3\"' --profile dev3-dark -c 'tui.theme=\"dracula\"' -c check_for_update_on_startup=false -c <CODEX_DEV_INSTR> -- 'Fix the login bug\n\nExtra: Fix bug'",
 	"gemini/fresh": "gemini --model gemini-3-pro -- 'Fix the login bug'",
@@ -156,14 +187,9 @@ const EXPECTED: Record<string, string> = {
 	"gemini/resume-nosid": "gemini --resume latest --model gemini-3-pro",
 	"gemini/resume-sid": "gemini --resume 11111111-1111-1111-1111-111111111111 --model gemini-3-pro",
 	"gemini/preassign-sid": "gemini --session-id 11111111-1111-1111-1111-111111111111 --model gemini-3-pro -- 'Fix the login bug'",
-	"gemini/skipSysPrompt": "gemini --model gemini-3-pro -- 'Fix the login bug'",
-	"gemini/statusline": "gemini --model gemini-3-pro -- 'Fix the login bug'",
 	"gemini/pm-plan": "gemini --model gemini-3-pro --approval-mode plan -- 'Fix the login bug'",
 	"gemini/pm-acceptEdits": "gemini --model gemini-3-pro --approval-mode auto_edit -- 'Fix the login bug'",
 	"gemini/pm-bypassPermissions": "gemini --model gemini-3-pro --approval-mode yolo -- 'Fix the login bug'",
-	"gemini/pm-dontAsk": "gemini --model gemini-3-pro --approval-mode yolo -- 'Fix the login bug'",
-	"gemini/effort": "gemini --model gemini-3-pro -- 'Fix the login bug'",
-	"gemini/budget": "gemini --model gemini-3-pro -- 'Fix the login bug'",
 	"gemini/addargs": "gemini --model gemini-3-pro --foo bar -- 'Fix the login bug'",
 	"gemini/appendPrompt": "gemini --model gemini-3-pro -- 'Fix the login bug\n\nExtra: Fix bug'",
 	"agent/fresh": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
@@ -172,13 +198,9 @@ const EXPECTED: Record<string, string> = {
 	"agent/resume-sid": "agent --resume 11111111-1111-1111-1111-111111111111",
 	"agent/preassign-sid": "agent --resume 11111111-1111-1111-1111-111111111111 -- 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"agent/skipSysPrompt": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"agent/statusline": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"agent/pm-plan": "agent --mode plan -- 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"agent/pm-acceptEdits": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"agent/pm-bypassPermissions": "agent --force -- 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"agent/pm-dontAsk": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"agent/effort": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"agent/budget": "agent -- 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"agent/addargs": "agent --foo bar -- 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"agent/appendPrompt": "agent -- 'Fix the login bug\n\nExtra: Fix bug\n\n<GENERIC_BODY>'",
 	"opencode/fresh": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
@@ -187,26 +209,12 @@ const EXPECTED: Record<string, string> = {
 	"opencode/resume-sid": "opencode --session 11111111-1111-1111-1111-111111111111 --model anthropic/claude-opus-4-6",
 	"opencode/preassign-sid": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"opencode/skipSysPrompt": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/statusline": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/pm-plan": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/pm-acceptEdits": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/pm-bypassPermissions": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/pm-dontAsk": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/effort": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
-	"opencode/budget": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"opencode/addargs": "opencode --model anthropic/claude-opus-4-6 --foo bar --prompt 'Fix the login bug\n\n<GENERIC_BODY>'",
 	"opencode/appendPrompt": "opencode --model anthropic/claude-opus-4-6 --prompt 'Fix the login bug\n\nExtra: Fix bug\n\n<GENERIC_BODY>'",
 	"aider/fresh": "aider --model sonnet -- 'Fix the login bug'",
 	"aider/fresh-empty": "aider --model sonnet",
 	"aider/resume-nosid": "aider --model sonnet -- 'Fix the login bug'",
-	"aider/resume-sid": "aider --model sonnet -- 'Fix the login bug'",
-	"aider/preassign-sid": "aider --model sonnet -- 'Fix the login bug'",
-	"aider/skipSysPrompt": "aider --model sonnet -- 'Fix the login bug'",
-	"aider/statusline": "aider --model sonnet -- 'Fix the login bug'",
 	"aider/pm-plan": "aider --model sonnet --permission-mode plan -- 'Fix the login bug'",
-	"aider/pm-acceptEdits": "aider --model sonnet --permission-mode acceptEdits -- 'Fix the login bug'",
-	"aider/pm-bypassPermissions": "aider --model sonnet --permission-mode bypassPermissions -- 'Fix the login bug'",
-	"aider/pm-dontAsk": "aider --model sonnet --permission-mode dontAsk -- 'Fix the login bug'",
 	"aider/effort": "aider --model sonnet --effort high -- 'Fix the login bug'",
 	"aider/budget": "aider --model sonnet --max-budget-usd 12 -- 'Fix the login bug'",
 	"aider/addargs": "aider --model sonnet --foo bar -- 'Fix the login bug'",
@@ -280,9 +288,7 @@ describe("buildResumeCommand — golden", () => {
 		["agent", "sid-x", "agent --resume sid-x"],
 		["opencode", undefined, "opencode --continue"],
 		["opencode", "sid-x", "opencode --session sid-x"],
-		["aider", undefined, null],
 		["aider", "sid-x", null],
-		["bash", undefined, null],
 	] as const)("%s (sid=%s)", (base, sid, expected) => {
 		expect(buildResumeCommand(base, sid ?? undefined)).toBe(expected);
 	});

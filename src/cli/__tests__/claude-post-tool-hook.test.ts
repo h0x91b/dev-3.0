@@ -95,6 +95,13 @@ describe("handleClaudePostTool", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", {
 			taskId: "task-1", projectId: "project-1", event: "PostToolUse", sessionId: "session-1", agentId: "agent-7", toolName: "Bash",
 		});
+
+		// It names the call it reports on, a subagent's too, so dev3 can close its prompt.
+		await handleClaudePostTool(JSON.stringify({ ...PAYLOAD, tool_use_id: "toolu_9", agent_id: "agent-a" }), SOCKET, CONTEXT, PANE_ENV);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.claudePostToolUse", {
+			taskId: "task-1", projectId: "project-1", event: "PostToolUse", sessionId: "session-1",
+			toolName: "Bash", toolUseId: "toolu_9", agentId: "agent-a",
+		});
 	});
 
 	it("never asks for mail from a `claude -p` run inside the pane: it is not the pane's conversation", async () => {
@@ -104,9 +111,11 @@ describe("handleClaudePostTool", () => {
 		expect(params).not.toHaveProperty("paneId");
 	});
 
-	it.each([' {"hook_event_name":"PostToolUse","agent_id":42}', "not json", "null", "[]", "{}", '{"hook_event_name":"PreToolUse"}'])("does not move status or drain mail for malformed or unrelated payload %s", async raw => {
-		await handleClaudePostTool(raw, SOCKET, CONTEXT, PANE_ENV);
-		expect(mockSend).not.toHaveBeenCalled();
+	it("does not move status or drain mail for malformed or unrelated payloads", async () => {
+		for (const raw of [' {"hook_event_name":"PostToolUse","agent_id":42}', "not json", "null", "[]", "{}", '{"hook_event_name":"PreToolUse"}']) {
+			await handleClaudePostTool(raw, SOCKET, CONTEXT, PANE_ENV);
+			expect(mockSend, raw).not.toHaveBeenCalled();
+		}
 	});
 
 	it("shows the user a notice line, since hook context never appears in the pane", async () => {
@@ -134,19 +143,5 @@ describe("handleClaudePostTool", () => {
 		await expect(handleClaudePostTool(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, PANE_ENV)).resolves.toBeUndefined();
 		expect(stdout).toBe("");
 		expect(stderr).toContain("connect ENOENT");
-	});
-
-	it("names the call it reports on, a subagent's too, so dev3 can close its prompt", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-		await handleClaudePostTool(JSON.stringify({ ...PAYLOAD, tool_use_id: "toolu_9", agent_id: "agent-a" }), SOCKET, CONTEXT, PANE_ENV);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", {
-			taskId: "task-1",
-			projectId: "project-1",
-			event: "PostToolUse",
-			sessionId: "session-1",
-			toolName: "Bash",
-			toolUseId: "toolu_9",
-			agentId: "agent-a",
-		});
 	});
 });

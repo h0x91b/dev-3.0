@@ -101,7 +101,7 @@ beforeEach(() => {
 });
 
 describe("tasks read cache", () => {
-	it("serves repeated loads from cache without re-reading the file", async () => {
+	it("serves repeated loads from cache as independent copies, without re-reading the file", async () => {
 		const project = makeProject();
 		writeTasksFile([makeTask()]);
 
@@ -114,14 +114,8 @@ describe("tasks read cache", () => {
 		expect(second[0].id).toBe("t1");
 		// Cache hit: no second disk read.
 		expect(loadingTasksLogCount()).toBe(1);
-	});
 
-	it("cache hits return independent copies", async () => {
-		const project = makeProject();
-		writeTasksFile([makeTask()]);
-
-		const first = await loadTasks(project);
-		const second = await loadTasks(project);
+		// Cache hits return independent copies.
 		expect(second).not.toBe(first);
 		expect(second[0]).not.toBe(first[0]);
 
@@ -132,7 +126,7 @@ describe("tasks read cache", () => {
 		expect(third[0].title).toBe("task one");
 	});
 
-	it("re-reads after saveTasks invalidates the cache", async () => {
+	it("re-reads after saveTasks or an external write changes the file", async () => {
 		const project = makeProject();
 		writeTasksFile([makeTask()]);
 
@@ -141,19 +135,12 @@ describe("tasks read cache", () => {
 
 		const reloaded = await loadTasks(project);
 		expect(reloaded).toHaveLength(2);
-	});
 
-	it("re-reads after an external write changes the file", async () => {
-		const project = makeProject();
-		writeTasksFile([makeTask()]);
-
-		await loadTasks(project);
 		writeTasksFile([makeTask(), makeTask({ id: "t2", seq: 2 }), makeTask({ id: "t3", seq: 3 })]);
 		// Force a distinct mtime in case writes land within the same clock tick.
 		utimesSync(`${HOME}/data/${SLUG}/tasks.json`, new Date(), new Date(Date.now() + 5000));
 
-		const reloaded = await loadTasks(project);
-		expect(reloaded).toHaveLength(3);
+		expect(await loadTasks(project)).toHaveLength(3);
 	});
 
 	// Every write in data.ts lands via atomicWriteFile's rename(), so a replaced
@@ -203,19 +190,13 @@ describe("projects read cache", () => {
 		const second = await loadProjects();
 		expect(second).toHaveLength(1);
 		expect(loadingProjectsLogCount()).toBe(1);
+		second[0].name = "mutated"; // cache hits are independent copies
+		expect((await loadProjects())[0].name).toBe("cache-project");
+		expect(loadingProjectsLogCount()).toBe(1);
 
 		writeProjectsFile([makeProject(), makeProject({ id: "p2", path: "/tmp/dev3-cache-project-2" })]);
 		utimesSync(`${HOME}/projects.json`, new Date(), new Date(Date.now() + 5000));
 		const third = await loadProjects();
 		expect(third).toHaveLength(2);
-	});
-
-	it("cache hits return independent project copies", async () => {
-		writeProjectsFile([makeProject()]);
-
-		const first = await loadProjects();
-		first[0].name = "mutated";
-		const second = await loadProjects();
-		expect(second[0].name).toBe("cache-project");
 	});
 });

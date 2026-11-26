@@ -556,6 +556,11 @@ function bridgeLockedWrites(): void {
 beforeEach(async () => {
 	await _resetLifecycleActorsForTest();
 	bridgeLockedWrites();
+	// A created session exists, as in real tmux. Without this, a test that stubbed the
+	// pre-launch probe to false made every launch poll ~1 s for a session that never came.
+	vi.mocked(pty.createSession).mockImplementation(() => {
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+	});
 });
 
 // ---- Test helpers ----
@@ -8235,6 +8240,7 @@ describe("handlers.getPtyUrl", () => {
 		setPushMessage(push);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
 		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(tmuxAlive);
+		vi.mocked(pty.createSession).mockImplementation(() => {}); // the session never appears
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -14580,6 +14586,7 @@ describe("launchTaskPty", () => {
 		const project = makeProject();
 		const task = makeTask();
 		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		vi.mocked(pty.createSession).mockImplementation(() => {}); // the session never appears
 
 		try {
 			const launch = launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
@@ -14600,6 +14607,7 @@ describe("launchTaskPty", () => {
 		const project = makeProject();
 		const task = makeTask();
 		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		vi.mocked(pty.createSession).mockImplementation(() => {}); // the session never appears
 		const mismatchSpy = vi.spyOn(tmux, "serverVersionMismatch").mockReturnValue({
 			clientVersion: "3.6a",
 			serverVersion: "3.7a",

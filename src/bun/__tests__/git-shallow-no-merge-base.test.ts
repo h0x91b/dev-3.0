@@ -69,7 +69,7 @@ describe("git against a compare ref with no merge base", () => {
 		cleanup(repo);
 	}, REAL_GIT_TIMEOUT_MS);
 
-	it("reports the counts as unknown instead of git's degraded answer", async () => {
+	it("reports the counts as unknown instead of git's degraded answer, and the diff as unmeasurable rather than empty", async () => {
 		shallowRepoWithEarlyBranch(repo.local);
 
 		// What git says on its own, and what the bar used to print verbatim: both
@@ -83,6 +83,16 @@ describe("git against a compare ref with no merge base", () => {
 			behind: 0,
 			baseUnreachable: true,
 		});
+
+		// The branch diff is empty-because-unmeasurable, not "no changes".
+		const diff = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "main" });
+		expect(diff.fallbackReason).toBe("no-merge-base");
+		expect(diff.files).toEqual([]);
+		expect(diff.summary).toEqual({ files: 0, insertions: 0, deletions: 0 });
+
+		// A compare ref that is absent stays distinct from one with no merge base.
+		const absent = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "origin/does-not-exist" });
+		expect(absent.fallbackReason).toBe("missing-compare-ref");
 	}, REAL_GIT_TIMEOUT_MS);
 
 	it("still counts normally when the fork point is reachable", async () => {
@@ -96,26 +106,5 @@ describe("git against a compare ref with no merge base", () => {
 			behind: 1,
 			baseUnreachable: false,
 		});
-	}, REAL_GIT_TIMEOUT_MS);
-
-	it("names the branch diff empty-because-unmeasurable, not 'no changes'", async () => {
-		shallowRepoWithEarlyBranch(repo.local);
-
-		const diff = await getTaskDiff(repo.local, "branch", { baseBranch: "main", compareRef: "main" });
-
-		expect(diff.fallbackReason).toBe("no-merge-base");
-		expect(diff.files).toEqual([]);
-		expect(diff.summary).toEqual({ files: 0, insertions: 0, deletions: 0 });
-	}, REAL_GIT_TIMEOUT_MS);
-
-	it("keeps a compare ref that is absent distinct from one with no merge base", async () => {
-		shallowRepoWithEarlyBranch(repo.local);
-
-		const diff = await getTaskDiff(repo.local, "branch", {
-			baseBranch: "main",
-			compareRef: "origin/does-not-exist",
-		});
-
-		expect(diff.fallbackReason).toBe("missing-compare-ref");
 	}, REAL_GIT_TIMEOUT_MS);
 });

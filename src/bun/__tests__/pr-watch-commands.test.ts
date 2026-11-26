@@ -49,12 +49,16 @@ beforeEach(() => {
 });
 
 describe("pr.watch.add", () => {
-	it("looks up the open PR of the branch, records its identity and stores the watch at the local HEAD", async () => {
+	it("looks up the open PR of the branch, records its identity and stores the watch at the local HEAD and remote tip", async () => {
+		vi.mocked(git.getRemoteBranchTips).mockResolvedValue({ tips: ["9".repeat(40)], ambiguous: false });
 		const res = await add();
 
 		expect(persistTaskPrIdentity).toHaveBeenCalledWith(project, task, 7, "https://github.com/a/b/pull/7");
-		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ until: "ci", prNumber: 7, headSha: HEAD });
+		expect(git.getRemoteBranchTips).toHaveBeenCalledWith("/wt", "feat/x");
+		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ until: "ci", prNumber: 7, headSha: HEAD, tipsAtSubscribe: ["9".repeat(40)] });
 		expect(res).toMatchObject({ prNumber: 7, until: "ci" });
+		// The poll schedule is reset so the next tick checks the PR.
+		expect(runtime.prNextDue).toBeUndefined();
 	});
 
 	it("rejects every Operations task, worktree mode included, instead of storing a watch that never fires", async () => {
@@ -63,18 +67,6 @@ describe("pr.watch.add", () => {
 
 		await expect(add()).rejects.toThrow("PR watch is not available for Operations tasks yet — check the PR with gh.");
 		expect(addPrWatch).not.toHaveBeenCalled();
-	});
-
-	it("records the branch's authoritative remote tip at subscribe time", async () => {
-		vi.mocked(git.getRemoteBranchTips).mockResolvedValue({ tips: ["9".repeat(40)], ambiguous: false });
-		await add();
-		expect(git.getRemoteBranchTips).toHaveBeenCalledWith("/wt", "feat/x");
-		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ tipsAtSubscribe: ["9".repeat(40)] });
-	});
-
-	it("resets the poll schedule so the next tick checks the PR", async () => {
-		await add();
-		expect(runtime.prNextDue).toBeUndefined();
 	});
 
 	it("prefers the open PR of the branch over a stale one recorded on the task", async () => {
@@ -96,14 +88,16 @@ describe("pr.watch.add", () => {
 		expect(persistTaskPrIdentity).toHaveBeenCalledWith(project, task, 7, "https://github.com/a/b/pull/7");
 	});
 
-	it("pins --pr of another PR of the repository to its number, at GitHub's head, without adopting it", async () => {
+	it("pins --pr of another PR of the repository to its number, at GitHub's head, without adopting it, bound to the calling agent", async () => {
+		const author = { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" };
+		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author });
 		vi.mocked(github.readTaskPullRequest).mockResolvedValue(prByNumber(2111));
 
-		const res = await add({ prNumber: 2111, until: "merged" });
+		const res = await add({ prNumber: 2111, until: "merged", sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
 
 		expect(vi.mocked(github.readTaskPullRequest).mock.calls[0].slice(1)).toEqual(["/wt", "", 2111, { timeoutMs: PR_WATCH_GH_TIMEOUT_MS, force: true }]);
 		const stored = vi.mocked(addPrWatch).mock.calls[0][2];
-		expect(stored).toMatchObject({ until: "merged", prNumber: 2111, headSha: FORK_HEAD, pinned: true });
+		expect(stored).toMatchObject({ until: "merged", prNumber: 2111, headSha: FORK_HEAD, pinned: true, author });
 		expect(stored).not.toHaveProperty("tipsAtSubscribe");
 		expect(persistTaskPrIdentity).not.toHaveBeenCalled();
 		expect(git.getHeadSha).not.toHaveBeenCalled();
@@ -130,26 +124,14 @@ describe("pr.watch.add", () => {
 		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ prNumber: 2111, pinned: true });
 	});
 
-	it("binds a pinned watch to the calling agent like any other", async () => {
-		const author = { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" };
-		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author });
-		vi.mocked(github.readTaskPullRequest).mockResolvedValue(prByNumber(2111));
-
-		await add({ prNumber: 2111, sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
-
-		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ pinned: true, author });
-	});
-
-	for (const state of ["MERGED", "CLOSED"]) {
-		it(`refuses --pr of a PR that is already ${state.toLowerCase()}, and stores nothing`, async () => {
+	it("refuses --pr of a PR that is already merged or closed, and stores nothing", async () => {
+		for (const [state, word] of [["MERGED", "merged"], ["CLOSED", "closed"]]) {
 			vi.mocked(github.readTaskPullRequest).mockResolvedValue(prByNumber(2111, { state }));
-
-			await expect(add({ prNumber: 2111 })).rejects.toThrow(`${PR_WATCH_PR_FINISHED_PREFIX}Pull request <pr:2111> is already ${state === "MERGED" ? "merged" : "closed"}`);
-
-			expect(addPrWatch).not.toHaveBeenCalled();
-			expect(persistTaskPrIdentity).not.toHaveBeenCalled();
-		});
-	}
+			await expect(add({ prNumber: 2111 }), state).rejects.toThrow(`${PR_WATCH_PR_FINISHED_PREFIX}Pull request <pr:2111> is already ${word}`);
+		}
+		expect(addPrWatch).not.toHaveBeenCalled();
+		expect(persistTaskPrIdentity).not.toHaveBeenCalled();
+	});
 
 	it("refuses --pr of a PR the repository does not have (or GitHub did not answer) with the no-PR prefix", async () => {
 		vi.mocked(github.readTaskPullRequest).mockResolvedValue(null);
@@ -180,47 +162,39 @@ describe("pr.watch.add", () => {
 		expect(addPrWatch).not.toHaveBeenCalled();
 	});
 
-	it("caps its gh call, and points at --pr when the branch has no open PR", async () => {
+	it("caps its gh call and forces a fresh lookup (a PR opened seconds ago is not hidden by a cached \"no PR\"), and points at --pr when the branch has none", async () => {
 		await add();
 		expect(vi.mocked(github.findOpenPullRequest).mock.calls[0][3]).toEqual({ timeoutMs: PR_WATCH_GH_TIMEOUT_MS, force: true });
 		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
 		await expect(add()).rejects.toThrow("--pr <N>");
 	});
 
-	it("forces a fresh PR lookup, so a PR opened seconds ago is not hidden by a cached \"no PR\"", async () => {
-		await add();
-		expect(vi.mocked(github.findOpenPullRequest).mock.calls[0][3]).toMatchObject({ force: true });
-	});
-
-	it("binds the watch to the calling agent only for the caller's own task", async () => {
+	it("binds the watch to the calling agent only for the caller's own task, naming an unidentified subscriber otherwise", async () => {
 		const author = { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" };
 		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author });
 
-		await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
+		const own = await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
 		expect(captureSenderAgent).toHaveBeenCalledWith(task, "%3", 99, { generation: true, tmuxEnv: null, envTaskId: null });
 		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ author });
+		expect(own).not.toHaveProperty("unidentifiedSubscriber");
 
-		await add({ sourceTaskId: "someone-else", sourcePaneId: "%3", sourcePid: 99 });
+		// A command from outside the task is not checked, and says so.
+		const outside = await add({ sourceTaskId: "someone-else", sourcePaneId: "%3", sourcePid: 99 });
+		expect(captureSenderAgent).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(addPrWatch).mock.calls[1][2]).not.toHaveProperty("author");
+		expect(outside).toHaveProperty("unidentifiedSubscriber");
 	});
 
-	it("names no unidentified subscriber when the calling agent is identified", async () => {
-		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author: { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" } });
-		expect(await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 })).not.toHaveProperty("unidentifiedSubscriber");
-	});
-
-	it("says plainly when no subscriber was identified, with the reason", async () => {
+	it("says plainly when no subscriber was identified, with the reason, except where identity is unsupported", async () => {
 		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: false, reason: "no-agent", detail: "no agent process runs dev3 here" });
 
 		const res = await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
 
 		expect(res).toMatchObject({ unidentifiedSubscriber: "no agent process runs dev3 here" });
 		expect(vi.mocked(addPrWatch).mock.calls[0][2]).not.toHaveProperty("author");
-	});
 
-	it("stays silent about the subscriber where identity is unsupported (Windows)", async () => {
+		// ...but stays silent where identity is unsupported (Windows).
 		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: false, reason: "unsupported", detail: "agent identity cannot be verified on Windows yet" });
-
 		expect(await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 })).not.toHaveProperty("unidentifiedSubscriber");
 	});
 
@@ -228,20 +202,6 @@ describe("pr.watch.add", () => {
 		await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99, sourceTmux: "/tmp/tmux-1/dev3,42,0", sourceEnvTaskId: "t1" });
 
 		expect(captureSenderAgent).toHaveBeenCalledWith(task, "%3", 99, { generation: true, tmuxEnv: "/tmp/tmux-1/dev3,42,0", envTaskId: "t1" });
-	});
-
-	it("says so too when the command came from outside the task", async () => {
-		const res = await add({ sourceTaskId: "someone-else", sourcePaneId: "%3", sourcePid: 99 });
-
-		expect(captureSenderAgent).not.toHaveBeenCalled();
-		expect(res).toHaveProperty("unidentifiedSubscriber");
-	});
-
-	it("fails with the no-PR prefix when the branch has no open PR, and stores nothing", async () => {
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
-		await expect(add()).rejects.toThrow(PR_WATCH_NO_PR_PREFIX);
-		expect(addPrWatch).not.toHaveBeenCalled();
-		expect(persistTaskPrIdentity).not.toHaveBeenCalled();
 	});
 
 	it("rejects an unknown kind and a task with no worktree", async () => {
@@ -252,25 +212,22 @@ describe("pr.watch.add", () => {
 });
 
 describe("pr.watch.off and pr.watch.list", () => {
-	it("reports how many watches were removed", async () => {
+	it("reports how many watches were removed, and removes only one PR's watches with --pr", async () => {
 		expect(await prWatchHandlers["pr.watch.off"]({ taskId: "t1", projectId: "p1" })).toMatchObject({ removed: 2 });
 		expect(vi.mocked(clearPrWatches).mock.calls[0][2]).toBeUndefined();
-	});
-
-	it("removes only the watches of one PR with --pr", async () => {
 		await prWatchHandlers["pr.watch.off"]({ taskId: "t1", projectId: "p1", prNumber: 2111 });
-		expect(vi.mocked(clearPrWatches).mock.calls[0][2]).toBe(2111);
+		expect(vi.mocked(clearPrWatches).mock.calls[1][2]).toBe(2111);
 	});
 
-	it("lists watches with a short head", async () => {
-		task = { ...task, prWatches: [{ id: "w", until: "merged", prNumber: 7, headSha: HEAD, createdAt: "2026-10-22T10:00:00.000Z" }] } as Task;
+	it("lists watches with a short head, marking a pinned one", async () => {
+		task = { ...task, prWatches: [
+			{ id: "w", until: "merged", prNumber: 7, headSha: HEAD, createdAt: "2026-10-22T10:00:00.000Z" },
+			{ id: "w2", until: "ci", prNumber: 2111, headSha: HEAD, createdAt: "2026-10-31T10:00:00.000Z", pinned: true },
+		] } as Task;
 		const res = (await prWatchHandlers["pr.watch.list"]({ taskId: "t1", projectId: "p1" })) as { watches: unknown[] };
-		expect(res.watches).toEqual([{ until: "merged", prNumber: 7, headSha: "aaaaaaa", createdAt: "2026-10-22T10:00:00.000Z" }]);
-	});
-
-	it("marks a pinned watch in the listing", async () => {
-		task = { ...task, prWatches: [{ id: "w", until: "ci", prNumber: 2111, headSha: HEAD, createdAt: "2026-10-31T10:00:00.000Z", pinned: true }] } as Task;
-		const res = (await prWatchHandlers["pr.watch.list"]({ taskId: "t1", projectId: "p1" })) as { watches: unknown[] };
-		expect(res.watches).toEqual([{ until: "ci", prNumber: 2111, headSha: "aaaaaaa", createdAt: "2026-10-31T10:00:00.000Z", pinned: true }]);
+		expect(res.watches).toEqual([
+			{ until: "merged", prNumber: 7, headSha: "aaaaaaa", createdAt: "2026-10-22T10:00:00.000Z" },
+			{ until: "ci", prNumber: 2111, headSha: "aaaaaaa", createdAt: "2026-10-31T10:00:00.000Z", pinned: true },
+		]);
 	});
 });

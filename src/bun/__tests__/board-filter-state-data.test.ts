@@ -23,15 +23,9 @@ beforeEach(() => {
 });
 
 describe("board filter state on disk", () => {
-	it("keeps a project's file in its existing data dir", async () => {
-		expect(await boardFilterStatePath({ kind: "project", id: "p1" })).toBe(`${DEV3_HOME}/data/Users-me-src-app/board-filters.json`);
-	});
-
-	it("keeps a space's file in a new directory of its own", async () => {
-		expect(await boardFilterStatePath({ kind: "space", id: "sp_1" })).toBe(`${DEV3_HOME}/space-board-filters/sp_1.json`);
-	});
-
-	it("refuses a space id that would leave that directory", async () => {
+	it("keeps a project's file in its data dir and a space's in a directory of its own, refusing an escaping space id", async () => {
+		expect(await boardFilterStatePath({ kind: "project", id: "p1" }), "project").toBe(`${DEV3_HOME}/data/Users-me-src-app/board-filters.json`);
+		expect(await boardFilterStatePath({ kind: "space", id: "sp_1" }), "space").toBe(`${DEV3_HOME}/space-board-filters/sp_1.json`);
 		await expect(boardFilterStatePath({ kind: "space", id: "../../etc" })).rejects.toThrow(/Invalid space id/);
 	});
 
@@ -46,29 +40,21 @@ describe("board filter state on disk", () => {
 		expect(await loadBoardFilterState({ kind: "space", id: "sp_1" })).toEqual({ visibility: "active" });
 	});
 
-	it("reads a legacy statuses file as the default visibility", async () => {
+	it("reads a legacy statuses file or a torn file as the default instead of failing the board", async () => {
 		mkdirSync(`${DEV3_HOME}/space-board-filters`, { recursive: true });
-		writeFileSync(`${DEV3_HOME}/space-board-filters/sp_1.json`, JSON.stringify({ statuses: ["todo"] }));
-		expect(await loadBoardFilterState({ kind: "space", id: "sp_1" })).toEqual({ visibility: "all" });
-	});
-
-	it("treats a torn file as the default instead of failing the board", async () => {
-		mkdirSync(`${DEV3_HOME}/space-board-filters`, { recursive: true });
-		writeFileSync(`${DEV3_HOME}/space-board-filters/sp_1.json`, "{ not json");
-		expect(await loadBoardFilterState({ kind: "space", id: "sp_1" })).toEqual({ visibility: "all" });
+		for (const [name, content] of [["legacy statuses", JSON.stringify({ statuses: ["todo"] })], ["torn", "{ not json"]]) {
+			writeFileSync(`${DEV3_HOME}/space-board-filters/sp_1.json`, content);
+			expect(await loadBoardFilterState({ kind: "space", id: "sp_1" }), name).toEqual({ visibility: "all" });
+		}
 	});
 });
 
 describe("normalizeBoardFilterState", () => {
-	it("keeps only the active visibility", () => {
+	it("keeps only the active visibility and falls back to all for any other shape", () => {
 		expect(normalizeBoardFilterState({ visibility: "active" })).toEqual({ visibility: "active" });
 		expect(normalizeBoardFilterState({ visibility: "all" })).toEqual({ visibility: "all" });
-	});
-
-	it("falls back to all for any other shape", () => {
-		expect(normalizeBoardFilterState(null)).toEqual({ visibility: "all" });
-		expect(normalizeBoardFilterState({ visibility: "ACTIVE" })).toEqual({ visibility: "all" });
-		expect(normalizeBoardFilterState({ statuses: ["todo"] })).toEqual({ visibility: "all" });
-		expect(normalizeBoardFilterState("active")).toEqual({ visibility: "all" });
+		for (const other of [null, { visibility: "ACTIVE" }, { statuses: ["todo"] }, "active"]) {
+			expect(normalizeBoardFilterState(other), JSON.stringify(other)).toEqual({ visibility: "all" });
+		}
 	});
 });

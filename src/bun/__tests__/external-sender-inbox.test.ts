@@ -69,7 +69,7 @@ describe("post and wait", () => {
 		expect(result.more).toBe(false);
 	});
 
-	it("skips what the cursor already covered, while a null cursor sees every unacked item again", async () => {
+	it("skips what the cursor already covered, while a null cursor sees every unacked item again, and rejects a cursor it never handed out", async () => {
 		postToSenderInbox(SENDER, reply("one"));
 		const first = await waitForSenderItems(SENDER, {});
 		postToSenderInbox(SENDER, reply("two"));
@@ -77,6 +77,7 @@ describe("post and wait", () => {
 		expect(next.items.map((i) => i.body)).toEqual(["two"]);
 		const again = await waitForSenderItems(SENDER, { cursor: null });
 		expect(again.items.map((i) => i.body)).toEqual(["one", "two"]);
+		await expect(waitForSenderItems(SENDER, { cursor: "garbage" })).rejects.toThrow(/Invalid inbox cursor/);
 	});
 
 	it("pages at 50 and says more are waiting", async () => {
@@ -87,10 +88,6 @@ describe("post and wait", () => {
 		const rest = await waitForSenderItems(SENDER, { cursor: page.cursor });
 		expect(rest.items.map((i) => i.body)).toEqual(["r50", "r51"]);
 		expect(rest.more).toBe(false);
-	});
-
-	it("rejects a cursor it never handed out", async () => {
-		await expect(waitForSenderItems(SENDER, { cursor: "garbage" })).rejects.toThrow(/Invalid inbox cursor/);
 	});
 });
 
@@ -180,11 +177,15 @@ describe("limits", () => {
 		expect(result.items[0]!.body).toBe(body);
 	});
 
-	it("reports a prune notice once, then moves the cursor past it", async () => {
+	it("writes a pruned row before deleting a day-file past 30 days, reports it once, then moves the cursor past it", async () => {
 		mkdirSync(dir(), { recursive: true });
 		const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
-		writeFileSync(`${dir()}/${stamp(old)}.jsonl`, `${JSON.stringify({ v: 1, kind: "item", id: "ancient", at: old.toISOString(), ...reply() })}\n`);
+		const oldFile = `${dir()}/${stamp(old)}.jsonl`;
+		writeFileSync(oldFile, `${JSON.stringify({ v: 1, kind: "item", id: "ancient", at: old.toISOString(), ...reply() })}\n`);
 		pruneSenderInbox(SENDER);
+		// The pruned row is written before the day-file past 30 days is deleted.
+		expect(existsSync(oldFile)).toBe(false);
+		expect(rowsOf(`${dir()}/${stamp(new Date())}.jsonl`)).toEqual([expect.objectContaining({ kind: "pruned", day: stamp(old), unacked: 1 })]);
 		const first = await waitForSenderItems(SENDER, { timeoutMs: 300 });
 		expect(first.items).toEqual([]);
 		expect(first.pruned).toEqual([expect.objectContaining({ day: stamp(old), unacked: 1 })]);
@@ -275,17 +276,6 @@ describe("limits", () => {
 		postToSenderInbox(SENDER, reply("late"));
 		expect(readFileSync(`${dir()}/${stamp(tomorrow)}.jsonl`, "utf8")).toContain('"late"');
 		expect(existsSync(`${dir()}/${stamp(new Date())}.jsonl`)).toBe(false);
-	});
-
-	it("writes a pruned row before deleting a day-file past 30 days", () => {
-		mkdirSync(dir(), { recursive: true });
-		const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
-		const oldFile = `${dir()}/${stamp(old)}.jsonl`;
-		writeFileSync(oldFile, `${JSON.stringify({ v: 1, kind: "item", id: "ancient", at: old.toISOString(), ...reply() })}\n`);
-		pruneSenderInbox(SENDER);
-		expect(existsSync(oldFile)).toBe(false);
-		const rows = rowsOf(`${dir()}/${stamp(new Date())}.jsonl`);
-		expect(rows).toEqual([expect.objectContaining({ kind: "pruned", day: stamp(old), unacked: 1 })]);
 	});
 });
 

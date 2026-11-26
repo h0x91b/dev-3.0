@@ -6,24 +6,16 @@ import { COORDINATOR_PROMPT_LIMIT } from "../../shared/agent-command-line-budget
 const BUILTIN = "Review the code changes on this branch.";
 
 describe("resolvePresetPrompt", () => {
-	it("falls back to the built-in text when nothing is configured", () => {
+	it("falls back built-in → global → project, the most specific layer winning", () => {
 		expect(resolvePresetPrompt(undefined, undefined, BUILTIN)).toBe(BUILTIN);
-	});
-
-	it("uses the global prompt when only that is set", () => {
 		expect(resolvePresetPrompt(undefined, "Global.", BUILTIN)).toBe("Global.");
-	});
-
-	it("lets the project override the global prompt", () => {
 		expect(resolvePresetPrompt("Project.", "Global.", BUILTIN)).toBe("Project.");
 	});
 
-	it("treats a blank value at either layer as unset", () => {
+	it("treats a blank layer as unset but keeps a configured prompt verbatim", () => {
 		expect(resolvePresetPrompt("   \n", "Global.", BUILTIN)).toBe("Global.");
 		expect(resolvePresetPrompt("", "  ", BUILTIN)).toBe(BUILTIN);
-	});
 
-	it("keeps a configured prompt verbatim, trailing whitespace included", () => {
 		expect(resolvePresetPrompt("Project.\n\n", undefined, BUILTIN)).toBe("Project.\n\n");
 	});
 });
@@ -31,17 +23,26 @@ describe("resolvePresetPrompt", () => {
 describe("COORDINATOR_PROMPT", () => {
 	// Each assertion pins a rule the running coordinator prototype (Seq 1141) paid
 	// for with a real incident. Losing one silently is the failure this guards.
-	it("states the no-code line with BOTH halves, so the role is neither blind nor a developer", () => {
+	// The manager rule (2026-10-03): a coordinator that reviews its children's diffs
+	// is a second, unasked code reviewer and slows every task it touches.
+	it("states the no-code line with both halves and delegates instead of reviewing a child's code", () => {
 		expect(COORDINATOR_PROMPT).toContain("NO CODE");
 		expect(COORDINATOR_PROMPT).toMatch(/Allowed[\s\S]*SHA/);
 		expect(COORDINATOR_PROMPT).toMatch(/Not allowed[\s\S]*engineering judgement/);
+
+		expect(COORDINATOR_PROMPT).toMatch(/manager who owns an outcome, delegates, trusts the implementers/);
+		expect(COORDINATOR_PROMPT).toMatch(/Not allowed: an engineering judgement from reading source or diffs/);
+		expect(COORDINATOR_PROMPT).toMatch(/no design review, bug hunt, rewriting, finishing or micromanaging/);
+		expect(COORDINATOR_PROMPT).toMatch(/Needed review is a delegated task, never automatic/);
+		expect(COORDINATOR_PROMPT).toMatch(/state gaps once, no endless rechecks/);
 	});
 
 	// The user's standing default: a coordinator that creates a task and then asks
 	// whether to start it has asked the same question twice — the approval dialog
 	// IS the question. One copy of this text serves both a coordinator's startup
 	// preamble and a mid-conversation /dev3-coordinator promotion.
-	it("defaults to creating AND launching, without a second permission question", () => {
+	// The other half: a decline is a choice, and silence is not a decline.
+	it("defaults to creating AND launching; a decline parks the task and a timeout is neither", () => {
 		expect(COORDINATOR_PROMPT).toContain("CREATING A TASK MEANS STARTING IT");
 		expect(COORDINATOR_PROMPT).toContain("create it and request its launch in the same step");
 		expect(COORDINATOR_PROMPT).toContain("the dialog IS that question");
@@ -54,10 +55,7 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("never start unrelated backlog or re-create a running task");
 		// A launch is not a licence for anything downstream of it.
 		expect(COORDINATOR_PROMPT).toContain("A launch approval grants nothing");
-	});
 
-	// The other half: a decline is a choice, and silence is not a decline.
-	it("treats an explicit decline as a parked task and a timeout as neither", () => {
 		expect(COORDINATOR_PROMPT).toContain(`Exit ${CLI_EXIT_CODE_LAUNCH_DECLINED} is them parking it`);
 		expect(COORDINATOR_PROMPT).toContain("no retry, no asking why or what to change");
 		expect(COORDINATOR_PROMPT).toContain("one line that it stays in To Do");
@@ -67,26 +65,14 @@ describe("COORDINATOR_PROMPT", () => {
 
 	// Seq 1801 read the role as pure traffic control and policed process instead of
 	// finishing anything: the prompt named no goal, no size and no moment to stop.
-	it("names the outcome, the size, the autonomy and the stopping point", () => {
+	// The outcome half: a goal with a checkable criterion, a count that only takes
+	// accepted results, and a check that has to end in a decision, not a re-scheduled timer.
+	it("names a checkable outcome, its size and stopping point, and makes every check end in a decision", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/smallest sufficient change/);
 		expect(COORDINATOR_PROMPT).toMatch(/put extra work in a separate task before implementing it/);
 		expect(COORDINATOR_PROMPT).toContain("SIZE IT TO ONE SMALL, INDEPENDENTLY REVIEWABLE OUTCOME");
 		expect(COORDINATOR_PROMPT).toMatch(/Verify agreed acceptance checks, then stop/);
-	});
 
-	// The manager rule (2026-10-03): a coordinator that reviews its children's diffs
-	// is a second, unasked code reviewer and slows every task it touches.
-	it("delegates and trusts instead of reviewing or finishing a child's code", () => {
-		expect(COORDINATOR_PROMPT).toMatch(/manager who owns an outcome, delegates, trusts the implementers/);
-		expect(COORDINATOR_PROMPT).toMatch(/Not allowed: an engineering judgement from reading source or diffs/);
-		expect(COORDINATOR_PROMPT).toMatch(/no design review, bug hunt, rewriting, finishing or micromanaging/);
-		expect(COORDINATOR_PROMPT).toMatch(/Needed review is a delegated task, never automatic/);
-		expect(COORDINATOR_PROMPT).toMatch(/state gaps once, no endless rechecks/);
-	});
-
-	// The outcome half: a goal with a checkable criterion, a count that only takes
-	// accepted results, and a check that has to end in a decision, not a re-scheduled timer.
-	it("owns a checkable outcome and makes every check end in a decision", () => {
 		expect(COORDINATOR_PROMPT).toContain("TURN THE ASK INTO A CHECKABLE RESULT");
 		expect(COORDINATOR_PROMPT).toMatch(/Count only accepted results, never started, partial or unverified ones; never weaken a criterion/);
 		expect(COORDINATOR_PROMPT).toContain("EVERY CHECK ENDS IN ONE OF THREE");
@@ -96,7 +82,8 @@ describe("COORDINATOR_PROMPT", () => {
 
 	// Seq 2070's ruling (2026-10-03): a coordinator that forwards other tasks' news
 	// and briefs children to report to each other defocuses every task on the board.
-	it("messages a child only to change or unblock its own work", () => {
+	// A description is the first prompt only; terminology spreads through the source.
+	it("messages a child only to change or unblock its own work, never to align wording", () => {
 		expect(COORDINATOR_PROMPT).toContain("MESSAGE A CHILD ONLY TO CHANGE OR UNBLOCK ITS OWN WORK");
 		expect(COORDINATOR_PROMPT).toMatch(/Never news of other tasks, FYI, acks or progress requests/);
 		expect(COORDINATOR_PROMPT).toMatch(/read status from the board, `dev3 events`, `dev3 peek`/);
@@ -106,10 +93,7 @@ describe("COORDINATOR_PROMPT", () => {
 		// The old rules that produced exactly that traffic.
 		expect(COORDINATOR_PROMPT).not.toMatch(/which tasks work nearby/);
 		expect(COORDINATOR_PROMPT).not.toMatch(/file contention/);
-	});
 
-	// A description is the first prompt only; terminology spreads through the source.
-	it("never treats a description edit or a message as the way to align wording", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/A description edit never reaches a running child; shared wording lands in source, picked up on sync/);
 	});
 
@@ -125,19 +109,21 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/rebase|merged PR|CI green/);
 	});
 
-	it("requires every reply to be a self-contained status, without a whole-board recap", () => {
+	// The seq alone is the name, because the board block now supplies it on every
+	// turn. Only a task whose seq a live variant sibling still shares needs the id
+	// — that is the one case where `--task seq:N` does not resolve.
+	it("requires self-contained, non-repeating status replies with canonical task and PR tokens", () => {
 		expect(COORDINATOR_PROMPT).toContain("SELF-CONTAINED STATUS");
 		expect(COORDINATOR_PROMPT).toContain("does not see or read your conversations");
 		expect(COORDINATOR_PROMPT).toMatch(/no whole-board recap unless asked/);
 		expect(COORDINATOR_PROMPT).not.toMatch(/End every message with the board/);
-	});
 
-	// The seq alone is the name, because the board block now supplies it on every
-	// turn. Only a task whose seq a live variant sibling still shares needs the id
-	// — that is the one case where `--task seq:N` does not resolve.
-	it("requires the canonical task and PR tokens, and a shared seq by its id too", () => {
 		expect(COORDINATOR_PROMPT).toContain("NAME TASKS AS <seq:N> (<seq:proj/N> off-board), PRs as <pr:N>");
 		expect(COORDINATOR_PROMPT).toContain("Shared seq: <seq:N> v<i> (id): use that id.");
+
+		expect(COORDINATOR_PROMPT).toContain("NEVER REPEAT A STATUS THE USER ALREADY HAS");
+		expect(COORDINATOR_PROMPT).toMatch(/a short acknowledgement included/);
+		expect(COORDINATOR_PROMPT).toMatch(/Cursors, page counts and opened notes stay in your reasoning/);
 	});
 
 	// Anthropic's safeguards refuse this prompt outright (`[reasoning_extraction]`)
@@ -152,25 +138,21 @@ describe("COORDINATOR_PROMPT", () => {
 	// the coordinator is the only party with the standing to leak between them: it
 	// alone knows the group exists. Each assertion pins one half of the isolation —
 	// nothing about siblings goes IN, and comparisons only come OUT to the user.
-	it("keeps variants isolated: nothing about a sibling reaches a variant", () => {
-		expect(COORDINATOR_PROMPT).toContain("== VARIANTS ==");
-		expect(COORDINATOR_PROMPT).toContain("NEVER TELL A VARIANT THAT A SIBLING EXISTS");
-		expect(COORDINATOR_PROMPT).toMatch(/findings, hypotheses, progress, artefacts, transcript or recommendation/);
-		expect(COORDINATOR_PROMPT).toMatch(/no invitation to inspect or work with one/);
-	});
-
 	// The two rules that would otherwise read as permission: facts travel between
 	// children, and overlaps get resolved by talking to both. Both are for
 	// independent tasks, and a coordinator that applies them to a variant group
 	// destroys the experiment while following the letter of its brief.
-	it("excludes sibling variants from child-to-child facts and overlap work", () => {
+	it("keeps variants isolated: nothing about a sibling reaches a variant, comparisons go to the user only", () => {
+		expect(COORDINATOR_PROMPT).toContain("== VARIANTS ==");
+		expect(COORDINATOR_PROMPT).toContain("NEVER TELL A VARIANT THAT A SIBLING EXISTS");
+		expect(COORDINATOR_PROMPT).toMatch(/findings, hypotheses, progress, artefacts, transcript or recommendation/);
+		expect(COORDINATOR_PROMPT).toMatch(/no invitation to inspect or work with one/);
+
 		expect(COORDINATOR_PROMPT).toMatch(/never to or between variants of one task/);
 		expect(COORDINATOR_PROMPT).toContain("CHILD-TO-CHILD FACTS AND OVERLAP WORK ARE FOR INDEPENDENT TASKS ONLY");
 		expect(COORDINATOR_PROMPT).toMatch(/Address a variant privately by `--variant <i>` or its task id/);
 		expect(COORDINATOR_PROMPT).toMatch(/never fan one summary into variant inboxes/);
-	});
 
-	it("lets the comparison go to the user only, and keeps relays provenance-free", () => {
 		expect(COORDINATOR_PROMPT).toContain("COMPARE THEIR RESULTS FOR THE USER");
 		expect(COORDINATOR_PROMPT).toMatch(/never back into a running variant/);
 		expect(COORDINATOR_PROMPT).toMatch(/with no sibling named as their source/);
@@ -179,13 +161,11 @@ describe("COORDINATOR_PROMPT", () => {
 
 	// A relay used to authorise nothing, so children refused what the user had
 	// granted through the coordinator; it now carries the grant, with its scope.
-	it("tells the coordinator to relay a grant with its scope, not to withhold it", () => {
+	it("relays a grant with its scope and keeps the rules learned from specific failures", () => {
 		expect(COORDINATOR_PROMPT).not.toContain("your relay authorises nothing");
 		expect(COORDINATOR_PROMPT).toMatch(/their words verbatim, the operation, exact targets, limits, the child's seq/);
 		expect(COORDINATOR_PROMPT).toMatch(/anything wider goes back to the user/);
-	});
 
-	it("keeps the four rules that were learned from a specific failure", () => {
 		expect(COORDINATOR_PROMPT).toContain("RELAY THE RULING, NOT YOUR READING OF IT");
 		expect(COORDINATOR_PROMPT).toContain("NEVER ATTRIBUTE WORDS THE USER DID NOT SAY");
 		expect(COORDINATOR_PROMPT).toContain("RELAYED PERMISSION IS SCOPED AND SPENT WHEN USED");
@@ -197,27 +177,21 @@ describe("COORDINATOR_PROMPT", () => {
 	// now rides in on the messages dev3 delivers. The rule that replaced it must
 	// point at the block AND name every gap, or it trades one stale answer for
 	// a confidently stale one.
-	it("points the coordinator at the delivered board instead of a manual re-read", () => {
+	// The gap that matters most: the user types straight into the pane, which no
+	// delivery seam sees, so his turn carries no block at all.
+	// A quiet time is not a screen: peek stays the only way to see what a child
+	// is actually doing, and conflating the two would retire it by accident.
+	it("reads the delivered board, re-reads it when the user types directly, and keeps peek and the fallbacks", () => {
 		expect(COORDINATOR_PROMPT).toContain("<dev3-board>");
 		// Spending a turn on what the block already said is the waste this exists to stop.
 		expect(COORDINATOR_PROMPT).toMatch(/do not spend a turn on `dev3 task list`/);
-	});
 
-	// The gap that matters most: the user types straight into the pane, which no
-	// delivery seam sees, so his turn carries no block at all.
-	it("warns that the user's own message brings no board", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/user typing to you directly brings NO block/);
 		expect(COORDINATOR_PROMPT).toMatch(/re-read the board before you answer/);
-	});
 
-	it("keeps the long-turn and no-harness fallbacks", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/turn has run long/);
 		expect(COORDINATOR_PROMPT).toMatch(/[Nn]o block at all/);
-	});
 
-	// A quiet time is not a screen: peek stays the only way to see what a child
-	// is actually doing, and conflating the two would retire it by accident.
-	it("keeps peek as the way to see what a child is doing", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/`dev3 peek` is still the only way/);
 	});
 
@@ -234,22 +208,18 @@ describe("COORDINATOR_PROMPT", () => {
 	// `dev3 events` (Seq 1738) is a POSITION, not a feed: a coordinator that reads
 	// it as "the last couple of hours" loses exactly the stretch it was away for.
 	// Each assertion below pins one half of that contract.
-	it("makes the events read part of composing a status, with no timer behind it", () => {
+	// The two ways a coordinator silently under-reads: bootstrapping without saying
+	// what was cut off, and papering over a lost cursor with a short window.
+	it("reads events from the saved cursor before a status, bootstrapping a bounded window openly", () => {
 		expect(COORDINATOR_PROMPT).toContain("dev3 events");
 		expect(COORDINATOR_PROMPT).toMatch(/Read events BEFORE composing any substantive status/);
 		expect(COORDINATOR_PROMPT).toMatch(/never a timer, hook, wake-up or poll/);
-	});
 
-	it("starts from the saved cursor and advances only the one the run returned", () => {
 		expect(COORDINATOR_PROMPT).toContain("START AT YOUR SAVED CURSOR");
 		expect(COORDINATOR_PROMPT).toContain("dev3 events --from <cursor>");
 		expect(COORDINATOR_PROMPT).toContain("ADVANCE THE CURSOR ONLY AFTER CONSUMING WHAT CAME BACK");
 		expect(COORDINATOR_PROMPT).toMatch(/store the one the run returned, not one you composed/);
-	});
 
-	// The two ways a coordinator silently under-reads: bootstrapping without saying
-	// what was cut off, and papering over a lost cursor with a short window.
-	it("bootstraps a bounded window openly and refuses a relative window as a substitute", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/NO CURSOR YET\?/);
 		expect(COORDINATOR_PROMPT).toMatch(/bounded WINDOW, not a position/);
 		expect(COORDINATOR_PROMPT).toMatch(/its footer counts what it cut off, say so/);
@@ -259,32 +229,22 @@ describe("COORDINATOR_PROMPT", () => {
 	// `dev3 note show` defaults to the CALLER's task, so an event's note needs the
 	// owning task named — without it a coordinator searches its own notes and gets
 	// "Note not found" for a note that exists.
-	it("drains every capped page and opens the notes that matter in full", () => {
+	// The bullet that said this in prose paid for the outcome rules and is gone; the
+	// invariant it protected is not. The prompt must never name the event kinds: v1
+	// records notes only, board movements came later, and a hardcoded list here would
+	// be false the day the next kind lands.
+	it("drains capped pages, opens notes by owning task, treats a failed read as no answer and never names event kinds", () => {
 		expect(COORDINATOR_PROMPT).toContain("DRAIN THE PAGES");
 		expect(COORDINATOR_PROMPT).toMatch(/Capped at --limit[\s\S]*until nothing is capped/);
 		expect(COORDINATOR_PROMPT).toContain("dev3 note show <id> --task seq:");
 		// Scoped to NOTE rows, and the owning task is what makes the lookup resolve.
 		expect(COORDINATOR_PROMPT).toMatch(/open a NOTE row in full/);
 		expect(COORDINATOR_PROMPT).toMatch(/needs `--task`, or it reads YOUR notes/);
-	});
 
-	it("never reports a failed read as a quiet board", () => {
 		expect(COORDINATOR_PROMPT).toContain("A FAILED READ IS NOT A QUIET BOARD");
 		expect(COORDINATOR_PROMPT).toMatch(/keep the old cursor/);
-	});
 
-	// The bullet that said this in prose paid for the outcome rules and is gone; the
-	// invariant it protected is not. The prompt must never name the event kinds: v1
-	// records notes only, board movements came later, and a hardcoded list here would
-	// be false the day the next kind lands.
-	it("never names the event kinds itself, whatever this build records", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/--kind (all|note|move)\b/);
-	});
-
-	it("bans repeating a status the user already has, acknowledgements included", () => {
-		expect(COORDINATOR_PROMPT).toContain("NEVER REPEAT A STATUS THE USER ALREADY HAS");
-		expect(COORDINATOR_PROMPT).toMatch(/a short acknowledgement included/);
-		expect(COORDINATOR_PROMPT).toMatch(/Cursors, page counts and opened notes stay in your reasoning/);
 	});
 
 	// This preamble is prepended to a coordinator task's DESCRIPTION, which travels
@@ -305,11 +265,9 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(GITLESS_COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);
 	});
 
-	it("never assumes the user's gender — it ships to every install as the default", () => {
+	it("is gender-neutral and English-only, since it ships to every install as the default", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/\b(he|him|his|she|her|hers)\b/i);
-	});
 
-	it("is English-only, so a locale file can never half-translate a behavioural rule", () => {
 		expect(COORDINATOR_PROMPT).not.toMatch(/[Ѐ-ӿ]/);
 	});
 });
@@ -317,23 +275,19 @@ describe("COORDINATOR_PROMPT", () => {
 // A gitless project's tasks may share one folder: there is no rebase, the second
 // writer overwrites the first, and done is a commit, not a merged PR.
 describe("GITLESS_COORDINATOR_PROMPT", () => {
-	it("tells the coordinator to sequence same-file work instead of relying on a rebase", () => {
+	it("sequences same-file work and accepts a commit as done, with no rebase or merged PR", () => {
 		expect(GITLESS_COORDINATOR_PROMPT).toMatch(/Shared folder: never run two tasks on one file at once/);
 		expect(GITLESS_COORDINATOR_PROMPT).not.toMatch(/rebase/);
-	});
 
-	it("accepts a commit as done, not a merged PR", () => {
 		expect(GITLESS_COORDINATOR_PROMPT).toMatch(/seeing it: its commit or saved files/);
 		expect(GITLESS_COORDINATOR_PROMPT).not.toMatch(/merged PR/);
 	});
 
-	it("is the built-in brief only for a project without the git workflow", () => {
+	it("is the built-in brief only without the git workflow, and never replaces a configured prompt", () => {
 		expect(presetPromptForTaskType("coordinator", { gitWorkflow: false }, null)).toBe(GITLESS_COORDINATOR_PROMPT);
 		expect(presetPromptForTaskType("coordinator", { kind: "virtual" }, null)).toBe(GITLESS_COORDINATOR_PROMPT);
 		expect(presetPromptForTaskType("coordinator", {}, null)).toBe(COORDINATOR_PROMPT);
-	});
 
-	it("never replaces a configured prompt", () => {
 		expect(presetPromptForTaskType("coordinator", { gitWorkflow: false }, { coordinatorPrompt: "Mine." })).toBe("Mine.");
 	});
 });
@@ -342,63 +296,55 @@ describe("DEFAULT_PR_REVIEW_PROMPT", () => {
 	// The half of a review task's board identity that only the agent can produce.
 	// dev3 names the card at creation; the verdict and the counts cannot be known
 	// before the review is done, so they have to be asked for here.
-	it("asks for an overview that is a merge verdict plus numbers", () => {
+	it("asks for a merge-verdict overview with counts, ranking findings in the same three buckets", () => {
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("dev3 overview set");
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("Safe to merge");
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("Merge after fixes");
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("Do not merge");
 		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/counts are numbers/);
 		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/Under 500 characters/);
-	});
 
-	// The agent owns the title too, not just the overview: dev3's creation-time
-	// title is a draft built from the PR's own words, and only the agent has read
-	// the diff. A prompt that said "fix it if it looks wrong" got that backwards.
-	it("tells the agent to set the title itself, and spells out the shape", () => {
-		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("dev3 task update --title");
-		expect(DEFAULT_PR_REVIEW_PROMPT).toContain(
-			"Review of #<PR number> from <the author, a readable name> about <what it changes, five words>",
-		);
-		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/Review of #493 from Arseny Pavlenko about pin tmux/);
-	});
-
-	it("calls dev3's creation-time title a draft to be replaced, not a result to keep", () => {
-		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/DRAFT title/);
-		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/Treat it as a draft and replace it/);
-		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/neither is optional/);
-	});
-
-	it("says what to do when there is no pull request to number", () => {
-		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/No pull request\?.*branch name/s);
-	});
-
-	it("ranks findings in the same three buckets the overview counts", () => {
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("blocker, worth fixing,");
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("nitpick");
 		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("`file:line`");
 	});
 
-	it("keeps the review off GitHub and puts it in a note that outlives the worktree", () => {
-		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("never on GitHub");
-		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("dev3 note add");
+	// The agent owns the title too, not just the overview: dev3's creation-time
+	// title is a draft built from the PR's own words, and only the agent has read
+	// the diff. A prompt that said "fix it if it looks wrong" got that backwards.
+	it("has the agent replace dev3's draft title with the spelled-out shape, branch name when there is no PR", () => {
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("dev3 task update --title");
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain(
+			"Review of #<PR number> from <the author, a readable name> about <what it changes, five words>",
+		);
+		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/Review of #493 from Arseny Pavlenko about pin tmux/);
+
+		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/DRAFT title/);
+		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/Treat it as a draft and replace it/);
+		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/neither is optional/);
+
+		expect(DEFAULT_PR_REVIEW_PROMPT).toMatch(/No pull request\?.*branch name/s);
 	});
 
-	it("is English-only, for the same reason the coordinator prompt is", () => {
+	it("keeps the review off GitHub in a durable note, English-only", () => {
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("never on GitHub");
+		expect(DEFAULT_PR_REVIEW_PROMPT).toContain("dev3 note add");
+
 		expect(DEFAULT_PR_REVIEW_PROMPT).not.toMatch(/[Ѐ-ӿ]/);
 	});
 });
 
 describe("reviewTaskTitle", () => {
-	it("reads as one sentence a human can scan on a card", () => {
+	it("reads as one scannable sentence, drops clauses it cannot fill and prefers the PR number over the branch", () => {
 		expect(reviewTaskTitle({ prNumber: 493, author: "Arseny Pavlenko", topic: "Pin tmux to a vendored keg" }))
 			.toBe("Review of #493 from Arseny Pavlenko about Pin tmux to a vendored");
-	});
 
-	it("drops a clause it cannot fill instead of writing a placeholder", () => {
 		expect(reviewTaskTitle({ prNumber: 12, author: null, topic: null })).toBe("Review of #12");
 		expect(reviewTaskTitle({ branch: "feat/x", author: "Ann", topic: null })).toBe("Review of feat/x from Ann");
 		expect(reviewTaskTitle({ prNumber: 12, author: null, topic: "Speed up boot" }))
 			.toBe("Review of #12 about Speed up boot");
+
+		expect(reviewTaskTitle({ prNumber: 7, branch: "feat/x" })).toBe("Review of #7");
 	});
 
 	// "" is the signal that means "keep whatever title the task already has".
@@ -406,26 +352,18 @@ describe("reviewTaskTitle", () => {
 		expect(reviewTaskTitle({})).toBe("");
 		expect(reviewTaskTitle({ branch: "  ", author: "Ann", topic: "x" })).toBe("");
 	});
-
-	it("prefers the pull request number over the branch", () => {
-		expect(reviewTaskTitle({ prNumber: 7, branch: "feat/x" })).toBe("Review of #7");
-	});
 });
 
 describe("reviewTitleTopic", () => {
-	it("spends its five words on the change, not on ceremony", () => {
+	// A trailing "…" is this repo's marker for a title nobody has written yet, so a
+	// condensed topic must never end in one.
+	it("spends five words on the change, never ending in the ellipsis or on dangling punctuation", () => {
 		expect(reviewTitleTopic("feat(remote): serve the board over a tunnel")).toBe("serve the board over a");
 		expect(reviewTitleTopic("fix!: drop the shim")).toBe("drop the shim");
 		expect(reviewTitleTopic("Pin tmux to a vendored keg (#493)")).toBe("Pin tmux to a vendored");
-	});
 
-	// A trailing "…" is this repo's marker for a title nobody has written yet, so a
-	// condensed topic must never end in one.
-	it("never ends in the unnamed-task ellipsis", () => {
 		expect(reviewTitleTopic("one two three four five six seven")).not.toMatch(/…$/);
-	});
 
-	it("does not end on the punctuation that led into the words it dropped", () => {
 		expect(reviewTitleTopic("fix: show branch-merged dialog only once, respect cancel"))
 			.toBe("show branch-merged dialog only once");
 		expect(reviewTitleTopic("Rework the parser and the — lexer")).toBe("Rework the parser and the");
@@ -446,7 +384,7 @@ describe("board cleanup brief", () => {
 		expect(presetPromptSourceForTaskType("board-cleanup", overrides, overrides)).toBe("built-in");
 	});
 
-	it("keeps inspection passive, project-scoped and evidence-driven", () => {
+	it("keeps inspection passive and evidence-driven, with exact chat approval before destructive dialogs", () => {
 		expect(BOARD_CLEANUP_PROMPT).toContain("Scope: this project; all projects ONLY on explicit request");
 		expect(BOARD_CLEANUP_PROMPT).toContain("Operations alone grants no wider scope");
 		expect(BOARD_CLEANUP_PROMPT).toContain("Audit is read-only: no waking, starting, resuming, spawning, messaging, interrupting or mutating other agents/tasks");
@@ -454,9 +392,7 @@ describe("board cleanup brief", () => {
 		for (const action of ["COMPLETE:", "CANCEL:", "KEEP:", "INVESTIGATE:"]) expect(BOARD_CLEANUP_PROMPT).toContain(action);
 		expect(BOARD_CLEANUP_PROMPT).toContain("Age, silence, review status, local commits, tests and open PRs prove nothing");
 		expect(BOARD_CLEANUP_PROMPT).toContain("code PRs merged, no remaining scope/unique work");
-	});
 
-	it("requires exact chat approval before even opening destructive dialogs", () => {
 		expect(BOARD_CLEANUP_PROMPT).toContain("Get exact task/action approval in chat BEFORE destructive requests");
 		expect(BOARD_CLEANUP_PROMPT).toContain("Re-read selected targets, re-check preservation/runtime");
 		expect(BOARD_CLEANUP_PROMPT).toContain("stop if changed");

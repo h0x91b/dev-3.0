@@ -13,11 +13,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 }
 
 describe("taskRunningAgentIds", () => {
-	it("falls back to the main pane when the task picked no agent", () => {
+	it("prefers the task's own pick, falling back to the main pane when the task picked no agent", () => {
 		expect(taskRunningAgentIds(makeTask())).toEqual({ agentId: "builtin-claude", configId: "c2" });
-	});
-
-	it("prefers the task's own pick over the pane", () => {
 		const task = makeTask({ agentId: "builtin-codex", configId: "x1" });
 		expect(taskRunningAgentIds(task)).toEqual({ agentId: "builtin-codex", configId: "x1" });
 	});

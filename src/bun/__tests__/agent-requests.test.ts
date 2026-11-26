@@ -47,68 +47,32 @@ afterEach(() => {
 });
 
 describe("createAgentRequest", () => {
-	it("creates a new pending request with a unique id", () => {
-		const a = createAgentRequest("complete", "task-1", "proj-1");
-		const b = createAgentRequest("complete", "task-2", "proj-1");
-
-		expect(a.requestId).not.toBe(b.requestId);
-	});
-
-	it("joins the existing request for the same task and kind instead of duplicating", () => {
+	it("joins the pending request for the same task and kind, and starts a fresh one per kind, task or after resolution", () => {
 		const first = createAgentRequest("complete", "task-1", "proj-1");
-		const second = createAgentRequest("complete", "task-1", "proj-1");
+		const joined = createAgentRequest("complete", "task-1", "proj-1");
+		expect(joined.requestId, "same task + kind joins").toBe(first.requestId);
+		expect(joined.decision).toBe(first.decision);
+		expect(createAgentRequest("complete", "task-2", "proj-1").requestId, "other task").not.toBe(first.requestId);
+		expect(createAgentRequest("launch", "task-1", "proj-1").requestId, "other kind").not.toBe(first.requestId);
 
-		expect(second.requestId).toBe(first.requestId);
-		expect(second.decision).toBe(first.decision);
-	});
-
-	it("keeps different kinds for the same task independent", () => {
-		const complete = createAgentRequest("complete", "task-1", "proj-1");
-		const launch = createAgentRequest("launch", "task-1", "proj-1");
-
-		expect(launch.requestId).not.toBe(complete.requestId);
-	});
-
-	it("creates a fresh request after the previous one was resolved", () => {
-		const first = createAgentRequest("complete", "task-1", "proj-1");
 		resolveAgentRequest(first.requestId, { approved: false });
-
-		const second = createAgentRequest("complete", "task-1", "proj-1");
-		expect(second.requestId).not.toBe(first.requestId);
+		expect(createAgentRequest("complete", "task-1", "proj-1").requestId, "after resolution").not.toBe(first.requestId);
 	});
 });
 
 describe("resolveAgentRequest", () => {
-	it("resolves the decision promise with approval", async () => {
-		const { requestId, decision } = createAgentRequest("complete", "task-1", "proj-1");
-
-		expect(resolveAgentRequest(requestId, { approved: true })).toBe(true);
-		await expect(decision).resolves.toEqual({ approved: true });
-	});
-
-	it("resolves the decision promise on decline", async () => {
-		const { requestId, decision } = createAgentRequest("complete", "task-1", "proj-1");
-
-		expect(resolveAgentRequest(requestId, { approved: false })).toBe(true);
-		await expect(decision).resolves.toEqual({ approved: false });
-	});
-
-	it("carries the picked launch choice back to the waiter", async () => {
-		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1");
+	it("resolves the decision promise with the answer, launch choice included", async () => {
+		const approved = createAgentRequest("complete", "task-1", "proj-1");
+		const declined = createAgentRequest("complete", "task-2", "proj-1");
+		const picked = createAgentRequest("launch", "task-1", "proj-1");
 		const launch = { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] };
 
-		resolveAgentRequest(requestId, { approved: true, launch });
-		await expect(decision).resolves.toEqual({ approved: true, launch });
-	});
-
-	it("returns false for an unknown requestId", () => {
-		expect(resolveAgentRequest("nope", { approved: true })).toBe(false);
-	});
-
-	it("returns false when resolving the same request twice", () => {
-		const { requestId } = createAgentRequest("complete", "task-1", "proj-1");
-		expect(resolveAgentRequest(requestId, { approved: true })).toBe(true);
-		expect(resolveAgentRequest(requestId, { approved: true })).toBe(false);
+		expect(resolveAgentRequest(approved.requestId, { approved: true })).toBe(true);
+		expect(resolveAgentRequest(declined.requestId, { approved: false })).toBe(true);
+		resolveAgentRequest(picked.requestId, { approved: true, launch });
+		await expect(approved.decision).resolves.toEqual({ approved: true });
+		await expect(declined.decision).resolves.toEqual({ approved: false });
+		await expect(picked.decision).resolves.toEqual({ approved: true, launch });
 	});
 
 	it("broadcasts agentRequestResolved so other clients close their copy of the dialog", () => {
@@ -124,14 +88,13 @@ describe("resolveAgentRequest", () => {
 		});
 	});
 
-	it("does not broadcast for an unknown or already-resolved request", () => {
+	it("returns false and broadcasts nothing for an unknown or already-resolved request", () => {
 		const { requestId } = createAgentRequest("complete", "task-1", "proj-1");
-		resolveAgentRequest(requestId, { approved: false });
+		expect(resolveAgentRequest(requestId, { approved: false })).toBe(true);
 		push.mockClear();
 
-		resolveAgentRequest(requestId, { approved: false });
-		resolveAgentRequest("nope", { approved: false });
-
+		expect(resolveAgentRequest(requestId, { approved: false }), "twice").toBe(false);
+		expect(resolveAgentRequest("nope", { approved: false }), "unknown").toBe(false);
 		expect(push).not.toHaveBeenCalled();
 	});
 
@@ -160,7 +123,7 @@ describe("auto-approval", () => {
 		expect(push).toHaveBeenCalledWith("agentRequestResolved", expect.objectContaining({ requestId }));
 	});
 
-	it("launches with the pick the dialog last reported", async () => {
+	it("launches with the pick the dialog last reported, and ignores a pick for an unknown request", async () => {
 		vi.useFakeTimers();
 		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
 			autoApproveAfterMs: 60_000,
@@ -168,6 +131,7 @@ describe("auto-approval", () => {
 		const launch = { variants: [{ agentId: "builtin-codex", configId: "codex-default", accountId: null }] };
 
 		expect(setAgentRequestLaunchChoice(requestId, launch)).toBe(true);
+		expect(setAgentRequestLaunchChoice("nope", { variants: [{ agentId: null, configId: null }] })).toBe(false);
 		vi.advanceTimersByTime(60_000);
 
 		await expect(decision).resolves.toEqual({ approved: true, launch });
@@ -210,9 +174,6 @@ describe("auto-approval", () => {
 		expect(retry.autoApproveAt).toBe(first.autoApproveAt);
 	});
 
-	it("ignores a choice reported for an unknown request", () => {
-		expect(setAgentRequestLaunchChoice("nope", { variants: [{ agentId: null, configId: null }] })).toBe(false);
-	});
 });
 
 // A dialog lives only as a promise inside a renderer, and the push that draws it
@@ -220,7 +181,7 @@ describe("auto-approval", () => {
 // the request alive and unanswerable for the rest of the app session, because a
 // retrying agent joins the same entry instead of triggering a second push.
 describe("listPendingAgentRequests", () => {
-	it("returns a pending request so a renderer that connects later can redraw it", () => {
+	it("returns a pending request so a renderer that connects later can redraw it, until it is answered", () => {
 		const { requestId } = createAgentRequest("complete", "task-1", "proj-1", {
 			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
 		});
@@ -228,42 +189,20 @@ describe("listPendingAgentRequests", () => {
 		expect(listPendingAgentRequests("complete")).toEqual([
 			{ requestId, taskId: "task-1", projectId: "proj-1", dialog: { taskTitle: "Ship the thing", subject: SUBJECT } },
 		]);
-	});
-
-	it("stops returning a request once it is answered", () => {
-		const { requestId } = createAgentRequest("complete", "task-1", "proj-1", {
-			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
-		});
 		resolveAgentRequest(requestId, { approved: false });
-
 		expect(listPendingAgentRequests("complete")).toEqual([]);
 	});
 
-	it("keeps a joined retry to ONE entry, so the reconnecting renderer draws one dialog", () => {
+	it("keeps a joined retry to ONE entry, does not mix kinds, and omits a request with no dialog to draw", () => {
 		const first = createAgentRequest("complete", "task-1", "proj-1", {
 			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
 		});
-		const retry = createAgentRequest("complete", "task-1", "proj-1", {
-			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
-		});
-
-		expect(retry.requestId).toBe(first.requestId);
-		expect(listPendingAgentRequests("complete")).toHaveLength(1);
-		expect(listPendingAgentRequests("complete")[0].requestId).toBe(first.requestId);
-	});
-
-	it("does not mix the kinds", () => {
-		createAgentRequest("complete", "task-1", "proj-1", { dialog: { taskTitle: "A", subject: SUBJECT } });
+		createAgentRequest("complete", "task-1", "proj-1", { dialog: { taskTitle: "Ship the thing", subject: SUBJECT } });
 		createAgentRequest("launch", "task-2", "proj-1", { dialog: { taskTitle: "B", subject: SUBJECT } });
+		createAgentRequest("complete", "task-3", "proj-1");
 
-		expect(listPendingAgentRequests("complete").map((r) => r.taskId)).toEqual(["task-1"]);
+		expect(listPendingAgentRequests("complete").map((r) => r.requestId)).toEqual([first.requestId]);
 		expect(listPendingAgentRequests("launch").map((r) => r.taskId)).toEqual(["task-2"]);
-	});
-
-	it("omits a request created without a dialog — there would be nothing to draw", () => {
-		createAgentRequest("complete", "task-1", "proj-1");
-
-		expect(listPendingAgentRequests("complete")).toEqual([]);
 	});
 });
 
@@ -321,12 +260,7 @@ describe("the countdown measures time the user was actually given", () => {
 		expect(settled).toBe(true);
 	});
 
-	it("leaves a request with no timer alone rather than inventing a deadline", () => {
-		const { requestId } = createAgentRequest("launch", "task-1", "proj-1");
-		expect(markAgentRequestShown(requestId)).toBeNull();
-	});
-
-	it("keeps the original deadline for a request no client ever draws", async () => {
+	it("keeps the original deadline for a request no client ever draws, and invents none for a request without a timer", async () => {
 		// A closed window must not be able to stall the requesting agent.
 		const { decision } = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 60_000 });
 		let settled = false;
@@ -334,6 +268,9 @@ describe("the countdown measures time the user was actually given", () => {
 		vi.advanceTimersByTime(61_000);
 		await Promise.resolve();
 		expect(settled).toBe(true);
+
+		const { requestId } = createAgentRequest("launch", "task-2", "proj-1");
+		expect(markAgentRequestShown(requestId)).toBeNull();
 	});
 });
 
@@ -344,7 +281,7 @@ describe("a user taking the dialog over", () => {
 		vi.useFakeTimers();
 	});
 
-	it("never auto-approves again, however long the dialog stays open", async () => {
+	it("never auto-approves again, however long the dialog stays open, and tells the other windows to stop", async () => {
 		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
 			autoApproveAfterMs: 60_000,
 		});
@@ -352,18 +289,11 @@ describe("a user taking the dialog over", () => {
 		void decision.then(() => { settled = true; });
 
 		expect(holdAgentRequestAutoApprove(requestId)).toBe(true);
+		expect(push).toHaveBeenCalledWith("agentLaunchAutoApproveHeld", { requestId });
 		vi.advanceTimersByTime(24 * 60 * 60_000);
 		await Promise.resolve();
 
 		expect(settled).toBe(false);
-	});
-
-	it("tells the other windows to stop their countdown", () => {
-		const { requestId } = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 60_000 });
-
-		holdAgentRequestAutoApprove(requestId);
-
-		expect(push).toHaveBeenCalledWith("agentLaunchAutoApproveHeld", { requestId });
 	});
 
 	it("cannot be re-armed by a dialog reporting itself on screen", async () => {
@@ -398,28 +328,19 @@ describe("a user taking the dialog over", () => {
 		expect(settled).toBe(false);
 	});
 
-	it("still answers the blocked agent when the user finally clicks Launch", async () => {
-		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
-			autoApproveAfterMs: 60_000,
-		});
+	it("still answers the blocked agent when the user finally clicks Launch or Decline", async () => {
+		const launched = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 60_000 });
+		const declined = createAgentRequest("launch", "task-2", "proj-1", { autoApproveAfterMs: 60_000 });
 		const launch = { variants: [{ agentId: "builtin-claude", configId: "claude-auto" }] };
 
-		holdAgentRequestAutoApprove(requestId);
+		holdAgentRequestAutoApprove(launched.requestId);
+		holdAgentRequestAutoApprove(declined.requestId);
 		vi.advanceTimersByTime(5 * 60_000);
-		resolveAgentRequest(requestId, { approved: true, launch });
+		resolveAgentRequest(launched.requestId, { approved: true, launch });
+		resolveAgentRequest(declined.requestId, { approved: false });
 
-		await expect(decision).resolves.toEqual({ approved: true, launch });
-	});
-
-	it("still answers with a refusal on Decline", async () => {
-		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
-			autoApproveAfterMs: 60_000,
-		});
-
-		holdAgentRequestAutoApprove(requestId);
-		resolveAgentRequest(requestId, { approved: false });
-
-		await expect(decision).resolves.toEqual({ approved: false });
+		await expect(launched.decision).resolves.toEqual({ approved: true, launch });
+		await expect(declined.decision).resolves.toEqual({ approved: false });
 	});
 
 	it("says nothing happened for a request that had no deadline, or none at all", () => {
@@ -475,6 +396,9 @@ describe("getAgentRequestState / joinAgentRequest", () => {
 
 describe("voidAgentRequestsForTask", () => {
 	it("voids every kind pending for the task — completion and cancellation included — and closes their dialogs", async () => {
+		voidAgentRequestsForTask("task-1");
+		expect(push, "no-op with nothing pending").not.toHaveBeenCalled();
+
 		const kinds = ["complete", "cancel", "reset", "launch"] as const;
 		const requests = kinds.map((kind) => createAgentRequest(kind, "task-1", "proj-1"));
 		const other = createAgentRequest("complete", "task-2", "proj-1");
@@ -485,10 +409,5 @@ describe("voidAgentRequestsForTask", () => {
 		const closed = push.mock.calls.filter(([event]) => event === "agentRequestResolved").map(([, p]) => p.requestId);
 		expect(closed.sort()).toEqual(requests.map((r) => r.requestId).sort());
 		expect(getAgentRequestState("complete", "task-2")).toEqual({ state: "pending", requestId: other.requestId });
-	});
-
-	it("is a no-op for a task with nothing pending", () => {
-		voidAgentRequestsForTask("task-1");
-		expect(push).not.toHaveBeenCalled();
 	});
 });

@@ -155,7 +155,7 @@ async function openRequest(task: Task, params: Record<string, unknown> = {}) {
 }
 
 describe("task.requestReset (T17, T17b)", () => {
-	it("pushes its OWN dialog channel and resets with the consent captured when it opened", async () => {
+	it("pushes its OWN dialog channel even for an out-of-task caller, and resets with the consent captured when it opened", async () => {
 		const task = makeTask({ status: "review-by-user", lifecycleStartedAt: STARTED });
 		const { resp, event, requestId } = await openRequest(task);
 		expect(event).toBe("agentResetRequested");
@@ -205,23 +205,6 @@ describe("task.requestReset (T17, T17b)", () => {
 		await owned.resp;
 	});
 
-	it("an out-of-task caller (no sourceTaskId) still needs the dialog — origin grants no consent", async () => {
-		const { resp, event, requestId } = await openRequest(makeTask());
-		expect(event).toBe("agentResetRequested");
-		resolveAgentRequest(requestId, { approved: false });
-		expect((await resp).data).toEqual({ approved: false });
-		expect(resetTaskToTodo).not.toHaveBeenCalled();
-	});
-
-	it("declined changes nothing (the task's own agent asking)", async () => {
-		const { resp, requestId } = await openRequest(makeTask(), { sourceTaskId: "task-abc12345-1111-2222-3333-444444444444" });
-		resolveAgentRequest(requestId, { approved: false });
-		expect((await resp).data).toEqual({ approved: false });
-		expect(resetTaskToTodo).not.toHaveBeenCalled();
-		// Its own agent waited, so the task only went to Has Questions and back.
-		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "todo" }));
-	});
-
 	it("parks its own agent's task in Has Questions while it waits and puts it back to work on decline", async () => {
 		const own = "task-abc12345-1111-2222-3333-444444444444";
 		let stored = makeTask({ lifecycleStartedAt: STARTED });
@@ -233,6 +216,7 @@ describe("task.requestReset (T17, T17b)", () => {
 		vi.mocked(data.loadTasks).mockImplementation(async () => [{ ...stored }]);
 		await vi.waitFor(() => expect(stored.status).toBe("user-questions"));
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true }));
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "todo" }));
 
 		resolveAgentRequest(requestId, { approved: false });
 
@@ -261,7 +245,7 @@ describe("task.requestReset (T17, T17b)", () => {
 		}
 	});
 
-	it("a clean To Do card, a completed task: plain move, no dialog", async () => {
+	it("a clean To Do card, a completed task: plain move, no dialog; a To Do card with a worktree asks", async () => {
 		for (const task of [makeTask({ status: "todo", worktreePath: null }), makeTask({ status: "completed", worktreePath: null })]) {
 			vi.clearAllMocks();
 			setupTask(task);
@@ -274,20 +258,26 @@ describe("task.requestReset (T17, T17b)", () => {
 			expect(pushFn).not.toHaveBeenCalled();
 			expect(resetTaskToTodo).not.toHaveBeenCalled();
 		}
-	});
 
-	it("a legacy To Do card that still owns a worktree asks, like an active one", async () => {
+		// A legacy To Do card that still owns a worktree asks, like an active one.
 		const { event, requestId, resp } = await openRequest(makeTask({ status: "todo", worktreePath: "/tmp/wt" }));
 		expect(event).toBe("agentResetRequested");
 		resolveAgentRequest(requestId, { approved: false });
 		await resp;
 	});
 
-	it("approval.status knows the reset kind", async () => {
+	it("approval.status knows the reset kind and reports a stale void as stale", async () => {
 		setupTask(makeTask());
 		const resp = await handleRequest({ id: "r", method: "approval.status", params: { taskId: "task-abc12345", projectId: "proj-1", kind: "reset" } });
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ kind: "reset", state: "none" });
+
+		// A stale void is reported as stale.
+		const opened = await openRequest(makeTask({ lifecycleStartedAt: STARTED }));
+		voidAgentRequest("reset", "task-abc12345-1111-2222-3333-444444444444");
+		await opened.resp;
+		const status = await handleRequest({ id: "r", method: "approval.status", params: { taskId: "task-abc12345", projectId: "proj-1", kind: "reset" } });
+		expect(status.data).toMatchObject({ kind: "reset", state: "answered", approved: false, stale: true, resetNeeded: true });
 	});
 });
 
@@ -327,14 +317,6 @@ describe("task.requestReset — joined waiters", () => {
 			expect(resp.error).toContain("worktree is locked");
 		}
 		expect(resetTaskToTodo).toHaveBeenCalledTimes(1);
-	});
-
-	it("a stale void is reported as stale in approval.status", async () => {
-		const { resp } = await openRequest(makeTask({ lifecycleStartedAt: STARTED }));
-		voidAgentRequest("reset", "task-abc12345-1111-2222-3333-444444444444");
-		await resp;
-		const status = await handleRequest({ id: "r", method: "approval.status", params: { taskId: "task-abc12345", projectId: "proj-1", kind: "reset" } });
-		expect(status.data).toMatchObject({ kind: "reset", state: "answered", approved: false, stale: true, resetNeeded: true });
 	});
 
 	it("an answer from another dialog kind cannot settle a reset", async () => {

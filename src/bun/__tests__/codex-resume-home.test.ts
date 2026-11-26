@@ -57,34 +57,21 @@ describe("resolveCodexResumeHome", () => {
 		await expect(resolveCodexResumeHome(ID, [], home)).rejects.toThrow(/multiple|ambiguous/i);
 	});
 
-	it("validates the header rather than trusting a matching filename", async () => {
-		rollout(account("a"), ID, false, OTHER);
-		await expect(resolveCodexResumeHome(ID, [], home)).rejects.toThrow(/header|metadata/i);
-	});
-
-	it("finds a session under the system home", async () => {
+	it("finds a session under the system home and under a custom configured home", async () => {
 		rollout(join(home, ".codex"));
 		expect(await resolveCodexResumeHome(ID, [], home)).toBe(realpathSync(join(home, ".codex")));
-	});
-
-	it("checks a custom configured home", async () => {
+		rmSync(join(home, ".codex"), { recursive: true });
 		const custom = join(home, "custom");
 		rollout(custom);
 		expect(await resolveCodexResumeHome(ID, [custom], home)).toBe(realpathSync(custom));
 	});
 
-	it("deduplicates home aliases and skips directory symlink loops", async () => {
-		rollout(account("a"));
+	it("deduplicates home and file aliases and skips directory symlink loops", async () => {
+		const file = rollout(account("a"));
 		symlinkSync(account("a"), account("alias"), "dir");
 		symlinkSync(join(account("a"), "sessions"), join(account("a"), "sessions", "loop"), "dir");
+		symlinkSync(file, join(account("a"), "sessions", `rollout-alias-${ID}.jsonl`));
 		expect(await resolveCodexResumeHome(ID, [account("alias")], home)).toBe(realpathSync(account("a")));
-	});
-
-	it("deduplicates file aliases", async () => {
-		const file = rollout(account("a"));
-		const alias = join(account("a"), "sessions", `rollout-alias-${ID}.jsonl`);
-		symlinkSync(file, alias);
-		expect(await resolveCodexResumeHome(ID, [], home)).toBe(realpathSync(account("a")));
 	});
 
 	it("rejects distinct account homes sharing one session store", async () => {
@@ -99,22 +86,18 @@ describe("resolveCodexResumeHome", () => {
 		await expect(resolveCodexResumeHome(ID, [], home)).rejects.toThrow(/archived/i);
 	});
 
-	it("rejects corrupt matching metadata", async () => {
-		const file = rollout(account("a"));
-		writeFileSync(file, "{broken\n");
-		await expect(resolveCodexResumeHome(ID, [], home)).rejects.toThrow(/header|metadata/i);
-	});
-
-	it("rejects an interrupted first header", async () => {
-		const file = rollout(account("a"));
-		writeFileSync(file, JSON.stringify({ type: "session_meta", payload: { id: ID } }));
-		await expect(resolveCodexResumeHome(ID, [], home)).rejects.toThrow(/header|metadata/i);
-	});
-
-	it("rejects a metadata header larger than the bounded read", async () => {
-		const file = rollout(account("a"));
-		writeFileSync(file, `${JSON.stringify({ type: "session_meta", payload: { id: ID, padding: "x".repeat(256 * 1024) } })}\n`);
-		await expect(resolveCodexResumeHome(ID, [], home)).rejects.toThrow(/metadata/i);
+	it("validates the header: mismatched id, corrupt, interrupted, or larger than the bounded read", async () => {
+		const file = rollout(account("a"), ID, false, OTHER);
+		const cases: Array<[string, string]> = [
+			["mismatched header id", readFileSync(file, "utf8")],
+			["corrupt", "{broken\n"],
+			["interrupted", JSON.stringify({ type: "session_meta", payload: { id: ID } })],
+			["oversized", `${JSON.stringify({ type: "session_meta", payload: { id: ID, padding: "x".repeat(256 * 1024) } })}\n`],
+		];
+		for (const [label, text] of cases) {
+			writeFileSync(file, text);
+			await expect(resolveCodexResumeHome(ID, [], home), label).rejects.toThrow(/header|metadata/i);
+		}
 	});
 
 	it("does not change session files or account auth", async () => {
@@ -192,14 +175,15 @@ describe("selectCodexConversations", () => {
 			expect(await picked()).toEqual([ID]);
 		});
 
-		it.each([
-			["a subagent thread", { source: { subagent: { thread_spawn: { parent_thread_id: ID } } }, thread_source: "subagent" }],
-			["a codex exec run", { source: "exec", originator: "codex_exec" }],
-			["an IDE thread", { source: "vscode" }],
-			["another worktree whose path starts the same", { cwd: `${WT}-2` }],
-		])("ignores %s even when it is newer", async (_label, payload) => {
+		it("ignores subagent, exec, IDE and prefix-sibling conversations even when they are newer", async () => {
 			conversation(account("a"), ID);
-			conversation(account("b"), OTHER, payload);
+			const noise: Array<Record<string, unknown>> = [
+				{ source: { subagent: { thread_spawn: { parent_thread_id: ID } } }, thread_source: "subagent" },
+				{ source: "exec", originator: "codex_exec" },
+				{ source: "vscode" },
+				{ cwd: `${WT}-2` },
+			];
+			noise.forEach((payload, i) => conversation(account(`noise${i}`), OTHER, payload));
 			expect(await picked()).toEqual([ID]);
 		});
 
@@ -249,13 +233,9 @@ describe("selectCodexConversations", () => {
 			expect(result[0]).toMatchObject({ kind: "selected", sessionId: ID, via: "latest-owned" });
 		});
 
-		it("refuses when another Codex pane of the task is live", async () => {
+		it("refuses when another Codex pane is live, even bound to a newer conversation of its own (F5, no contest)", async () => {
 			conversation(account("a"), ID);
 			expect(await picked({ panes: [pane(), pane({ live: true, resumeNow: false })] })).toEqual(["ambiguous", "not-requested"]);
-		});
-
-		it("refuses when another live pane is bound to a newer conversation of its own (F5, no contest)", async () => {
-			conversation(account("a"), ID);
 			conversation(account("a"), THIRD);
 			const live = { sessionId: THIRD, resumeNow: false };
 			expect(await picked({ panes: [pane(), pane({ ...live, live: true })] })).toEqual(["ambiguous", "not-requested"]);
@@ -318,44 +298,30 @@ describe("selectCodexConversations", () => {
 	});
 
 	describe("reopen", () => {
-		it("resumes a saved id exactly", async () => {
+		it("resumes a saved id exactly, and refuses without one even when a conversation of the worktree exists", async () => {
 			conversation(account("a"), ID);
 			conversation(account("a"), OTHER);
 			expect(await picked({ intent: "reopen", panes: [pane({ sessionId: ID })] })).toEqual([ID]);
-		});
-
-		it("refuses without a saved id even when a conversation of the worktree exists", async () => {
-			conversation(account("a"), ID);
 			const [result] = await select({ intent: "reopen" });
 			expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("codex resume <id>") });
 		});
 	});
 
 	describe("accounts", () => {
-		it("a managed account scans only its own store", async () => {
+		it("a managed account scans only its own store; an unrecorded one with conversations in two stores is ambiguous", async () => {
 			conversation(account("a"), ID);
 			conversation(account("b"), OTHER);
 			expect(await picked({ panes: [pane({ accountId: "a" })] })).toEqual([ID]);
+			expect(await picked()).toEqual(["ambiguous"]);
 		});
 
-		it("null means the non-managed homes, configured ones included, never a managed account", async () => {
+		it("null means the non-managed homes, configured ones included, never a managed account; two of them is ambiguous", async () => {
 			const custom = join(home, "custom");
 			conversation(account("a"), OTHER);
 			conversation(custom, ID);
 			expect(await picked({ panes: [pane({ accountId: null })], additionalHomes: [custom] })).toEqual([ID]);
-		});
-
-		it("null with conversations in two non-managed homes is ambiguous", async () => {
-			const custom = join(home, "custom");
-			conversation(join(home, ".codex"), ID);
-			conversation(custom, OTHER);
+			conversation(join(home, ".codex"), THIRD);
 			expect(await picked({ panes: [pane({ accountId: null })], additionalHomes: [custom] })).toEqual(["ambiguous"]);
-		});
-
-		it("an unrecorded account with conversations in two stores is ambiguous", async () => {
-			conversation(account("a"), ID);
-			conversation(account("b"), OTHER);
-			expect(await picked()).toEqual(["ambiguous"]);
 		});
 
 		it("a saved id stored under another account refuses, on the exact path too", async () => {
@@ -374,55 +340,42 @@ describe("selectCodexConversations", () => {
 		const boundary = (lifecycleStartedAt: string | null, worktreeBirthMs: number | null, floorAt: string | null = null) => ({ lifecycleStartedAt, worktreeBirthMs, floorAt });
 		const minutes = (m: number) => RUN_START + m * 60_000;
 
-		it("rejects a discarded run's conversation after a reset recreated the folder", async () => {
-			conversation(account("a"), ID, {}, -120);
-			expect(await picked({ runBoundary: boundary(new Date(minutes(0)).toISOString(), minutes(0)) })).toEqual(["none"]);
+		it("rejects a discarded run's conversation after a reset, even written again: the start decides, not the mtime", async () => {
+			const old = conversation(account("a"), ID, {}, -120);
+			const afterReset = boundary(new Date(minutes(0)).toISOString(), minutes(0));
+			expect(await picked({ runBoundary: afterReset })).toEqual(["none"]);
+			touch(old);
+			expect(await picked({ runBoundary: afterReset })).toEqual(["none"]);
 		});
 
-		it("accepts a legacy or imported conversation that started before the stamp but after the folder", async () => {
-			conversation(account("a"), ID, {}, 5);
-			expect(await picked({ runBoundary: boundary(new Date(minutes(30)).toISOString(), minutes(0)) })).toEqual([ID]);
-		});
-
-		it("with no stamp, the folder alone bounds the scan", async () => {
-			conversation(account("a"), ID, {}, -200);
-			expect(await picked({ runBoundary: boundary(null, minutes(0)) })).toEqual(["none"]);
-		});
-
-		it("keeps a folder recreated mid-run from hiding the run's conversation", async () => {
+		it("accepts a legacy conversation started before the stamp but after the folder, and one whose folder was recreated mid-run", async () => {
 			conversation(account("a"), ID, {}, 10);
+			expect(await picked({ runBoundary: boundary(new Date(minutes(30)).toISOString(), minutes(0)) })).toEqual([ID]);
 			expect(await picked({ runBoundary: boundary(new Date(minutes(0)).toISOString(), minutes(50)) })).toEqual([ID]);
 		});
 
-		it("rejects a discarded conversation written again after the reset: the start decides, not the mtime", async () => {
-			const old = conversation(account("a"), ID, {}, -120);
-			touch(old);
-			expect(await picked({ runBoundary: boundary(new Date(minutes(0)).toISOString(), minutes(0)) })).toEqual(["none"]);
-		});
-
-		it("treats a missing birthtime as absent and scans nothing when the stamp is absent too", async () => {
+		it("with no stamp, the folder alone bounds the scan; with neither (missing birthtime), nothing is scanned", async () => {
+			conversation(account("a"), ID, {}, -200);
+			expect(await picked({ runBoundary: boundary(null, minutes(0)) })).toEqual(["none"]);
+			rmSync(account("a"), { recursive: true });
 			conversation(account("a"), ID, {}, 10);
 			expect(await picked({ runBoundary: boundary(null, 0) })).toEqual(["none"]);
 			expect(await picked({ runBoundary: boundary(null, null) })).toEqual(["none"]);
 		});
 
-		it.each(["reset", "completion", "restart"])("after a %s, restored folder times cannot bring the ended run back", async () => {
+		it("after a reset/completion/restart, restored folder times cannot bring the ended run back", async () => {
 			// The run ended at minute 60 and wrote the floor; a time-preserving restore
 			// then dragged the folder's birth back before that run began.
 			conversation(account("a"), ID, {}, 20);
 			expect(await picked({ runBoundary: boundary(new Date(minutes(70)).toISOString(), minutes(-500), new Date(minutes(60)).toISOString()) })).toEqual(["none"]);
 		});
 
-		it.each(["reset", "completion", "restart"])("after a %s with folder times restored, a session of the next run is still taken", async () => {
+		it("after the floor, a session of the next run is taken whether or not folder times were restored", async () => {
 			conversation(account("a"), ID, {}, 20);
 			conversation(account("a"), OTHER, {}, 75);
-			expect(await picked({ runBoundary: boundary(new Date(minutes(70)).toISOString(), minutes(-500), new Date(minutes(60)).toISOString()) })).toEqual([OTHER]);
-		});
-
-		it.each(["reset", "completion", "restart"])("after a %s, a new session of the next run is taken", async () => {
-			conversation(account("a"), ID, {}, 20);
-			conversation(account("a"), OTHER, {}, 75);
-			expect(await picked({ runBoundary: boundary(new Date(minutes(70)).toISOString(), minutes(70), new Date(minutes(60)).toISOString()) })).toEqual([OTHER]);
+			for (const birth of [minutes(-500), minutes(70)]) {
+				expect(await picked({ runBoundary: boundary(new Date(minutes(70)).toISOString(), birth, new Date(minutes(60)).toISOString()) }), `birth ${birth}`).toEqual([OTHER]);
+			}
 		});
 
 		it("never applies the boundary to a saved id", async () => {
@@ -453,16 +406,16 @@ describe("isInteractiveCodexConversation", () => {
 		writeFileSync(path, `${JSON.stringify({ type: "session_meta", payload: { id, cwd: "/w", source: "cli", ...payload } })}\n`);
 	}
 
-	it("accepts the user's own TUI conversation", async () => {
+	it("says not yet while the rollout does not exist, then accepts the user's own TUI conversation", async () => {
+		expect(await isInteractiveCodexConversation(ID, [], home)).toBe(false);
 		rolloutWith(account("a"), ID, {});
 		expect(await isInteractiveCodexConversation(ID, [], home)).toBe(true);
 	});
 
-	it.each([
-		["a subagent", { thread_source: "subagent" }],
-		["a codex exec run", { source: "exec" }],
-	])("rejects %s", async (_label, payload) => {
-		rolloutWith(account("a"), ID, payload);
+	it("rejects a subagent and a codex exec run", async () => {
+		rolloutWith(account("a"), ID, { thread_source: "subagent" });
+		expect(await isInteractiveCodexConversation(ID, [], home)).toBe(false);
+		rolloutWith(account("a"), ID, { source: "exec" });
 		expect(await isInteractiveCodexConversation(ID, [], home)).toBe(false);
 	});
 
@@ -471,9 +424,5 @@ describe("isInteractiveCodexConversation", () => {
 		expect(await isInteractiveCodexConversation("codex-sess-2", [], home)).toBe(false);
 		expect(fsGuard.violations).toEqual([]);
 		fsGuard.roots = [home, realpathSync(home)];
-	});
-
-	it("says not yet while the rollout does not exist, so a later hook binds it", async () => {
-		expect(await isInteractiveCodexConversation(ID, [], home)).toBe(false);
 	});
 });

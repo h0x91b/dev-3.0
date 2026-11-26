@@ -139,6 +139,16 @@ function mockMatchMedia(compact: boolean) {
 	mockViewport(compact ? 1024 : 1920);
 }
 
+/** Tooltips open after a 250 ms intent delay: step fake time past it instead of waiting it out. */
+async function hoverTooltip(user: ReturnType<typeof userEvent.setup>, anchor: Element) {
+	await user.hover(anchor);
+	await act(async () => {
+		vi.advanceTimersByTime(300);
+	});
+	const tooltip = screen.getByRole("tooltip");
+	return { tooltip, leave: () => user.unhover(anchor) };
+}
+
 // Default to the roomy layout (button text labels visible). happy-dom's default
 // viewport (1024px) would otherwise trip the compact breakpoint and hide labels.
 beforeEach(() => mockMatchMedia(false));
@@ -345,19 +355,30 @@ describe("TaskHeader", () => {
 			expect(screen.queryByTestId("variant-switcher")).not.toBeInTheDocument();
 		});
 
-		it("renders status button with correct label", async () => {
+		it("draws status, expand and full screen, and keeps labels and metadata off the collapsed bar", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ status: "in-progress" }));
+				renderPanel(makeTask({ status: "in-progress", description: "Some desc", labelIds: ["lbl1", "lbl2", "nonexistent"] }));
 			});
 			expect(screen.getByText("Agent is Working")).toBeInTheDocument();
+			expect(screen.getByLabelText("Expand panel")).toBeInTheDocument();
+			expect(screen.getByLabelText("Full screen")).toBeInTheDocument();
+			// Labels live in the expanded metadata grid and the breadcrumb hover
+			// card; on the bar they only stole width from status and the diff.
+			expect(screen.queryByText("Bug")).not.toBeInTheDocument();
+			expect(screen.queryByText("Feature")).not.toBeInTheDocument();
+			expect(screen.queryByText("nonexistent")).not.toBeInTheDocument();
+			// Description only shows in expanded metadata grid
+			expect(screen.queryByText("Some desc")).not.toBeInTheDocument();
 		});
 
-		it("changes priority from the compact header badge", async () => {
+		it("changes priority from the compact header badge, toasting a failed attempt first", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const task = makeTask({ priority: "P3" });
 			const changedTask = { ...task, priority: "P1" as const };
 			const dispatch = vi.fn();
-			mockedApi.request.setTaskPriority.mockResolvedValue([changedTask]);
+			mockedApi.request.setTaskPriority
+				.mockRejectedValueOnce(new Error("offline"))
+				.mockResolvedValue([changedTask]);
 
 			await act(async () => {
 				renderPanel(task, { dispatch });
@@ -365,6 +386,13 @@ describe("TaskHeader", () => {
 
 			const priorityButton = screen.getByRole("button", { name: "Priority P3 (Low) — change" });
 			await user.click(priorityButton);
+			await user.click(screen.getByRole("menuitemradio", { name: /P1/ }));
+			await waitFor(() => {
+				expect(toast.error).toHaveBeenCalledWith("Failed to set priority: Error: offline", { taskId: "t1" });
+			});
+			expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "updateTask" }));
+
+			await user.click(screen.getByRole("button", { name: "Priority P3 (Low) — change" }));
 			await user.click(screen.getByRole("menuitemradio", { name: /P1/ }));
 
 			expect(mockedApi.request.setTaskPriority).toHaveBeenCalledWith({
@@ -375,48 +403,6 @@ describe("TaskHeader", () => {
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: changedTask });
 		});
 
-		it("shows an error toast when changing priority fails", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.setTaskPriority.mockRejectedValue(new Error("offline"));
-
-			await act(async () => {
-				renderPanel(makeTask({ priority: "P3" }));
-			});
-
-			await user.click(screen.getByRole("button", { name: "Priority P3 (Low) — change" }));
-			await user.click(screen.getByRole("menuitemradio", { name: /P1/ }));
-
-			await waitFor(() => {
-				expect(toast.error).toHaveBeenCalledWith("Failed to set priority: Error: offline", { taskId: "t1" });
-			});
-		});
-
-		it("keeps labels off the collapsed bar", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ labelIds: ["lbl1", "lbl2"] }));
-			});
-			// Labels live in the expanded metadata grid and the breadcrumb hover
-			// card; on the bar they only stole width from status and the diff.
-			expect(screen.queryByText("Bug")).not.toBeInTheDocument();
-			expect(screen.queryByText("Feature")).not.toBeInTheDocument();
-		});
-
-		it("renders diff summary badge in the top row when branch diff stats exist", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 2,
-				diffInsertions: 12,
-				diffDeletions: 4,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask({ labelIds: ["lbl1"] }));
-			});
-
-			expect(screen.getByText("2 files")).toBeInTheDocument();
-			expect(screen.getByText("+12")).toBeInTheDocument();
-			expect(screen.getByText("−4")).toBeInTheDocument();
-		});
 
 		it("hides tests by default and flips them back from the badge's own segment", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -451,28 +437,7 @@ describe("TaskHeader", () => {
 			expect(screen.getByText("+12")).toBeInTheDocument();
 		});
 
-		it("shows changed files popup from the top diff summary badge", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 2,
-				diffInsertions: 12,
-				diffDeletions: 4,
-				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:9,deletions:5}],
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			await user.hover(screen.getByText("2 files").closest("span")!);
-
-			expect(await screen.findByText("Changed files")).toBeInTheDocument();
-			expect(screen.getByText("bun.lock")).toBeInTheDocument();
-			expect(screen.getByText("src/mainview/App.tsx")).toBeInTheDocument();
-		});
-
-		it("opens inline diff when clicking the top diff summary badge", async () => {
+		it("shows the top diff summary badge, opens the branch diff on click and a file's diff from the popup", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const onOpenInlineDiff = vi.fn();
 			mockedApi.request.getBranchStatus.mockResolvedValue({
@@ -480,45 +445,36 @@ describe("TaskHeader", () => {
 				diffFiles: 2,
 				diffInsertions: 12,
 				diffDeletions: 4,
-				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:9,deletions:5}],
+				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:11,deletions:4}],
 			});
 
 			await act(async () => {
 				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
+
+			expect(screen.getByText("2 files")).toBeInTheDocument();
+			expect(screen.getByText("+12")).toBeInTheDocument();
+			expect(screen.getByText("−4")).toBeInTheDocument();
 
 			await user.click(screen.getByText("2 files").closest("button")!);
 
 			// Pinned: the badge counts committed work, so the remembered viewer mode
 			// (default "uncommitted") must not swap in a different scope.
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+			expect(onOpenInlineDiff).toHaveBeenLastCalledWith({
 				mode: "branch",
 				pinMode: true,
 				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
-		});
-
-		it("opens inline diff focused on the selected changed file from the popup", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const onOpenInlineDiff = vi.fn();
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 2,
-				diffInsertions: 12,
-				diffDeletions: 4,
-				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:9,deletions:5}],
-			});
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff });
-			});
 
 			await user.hover(screen.getByText("2 files").closest("span")!);
-			const fileRow = (await screen.findByText("bun.lock")).closest("div")!;
+
+			expect(await screen.findByText("Changed files")).toBeInTheDocument();
+			expect(screen.getByText("src/mainview/App.tsx")).toBeInTheDocument();
+			const fileRow = screen.getByText("bun.lock").closest("div")!;
 			await user.click(within(fileRow).getByRole("button", { name: "Show Diff" }));
 
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+			expect(onOpenInlineDiff).toHaveBeenLastCalledWith({
 				mode: "branch",
 				pinMode: true,
 				compareRef: "origin/main",
@@ -527,7 +483,7 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("keeps a file Open In menu open after leaving the changed files popup", async () => {
+		it("stacks the file-row tooltips above the changed files popup and keeps a file Open In menu open after leaving it", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -545,6 +501,21 @@ describe("TaskHeader", () => {
 			const changedFilesHeader = await screen.findByText("Changed files");
 			const popover = changedFilesHeader.parentElement!;
 			const fileRow = screen.getByText("src/mainview/App.tsx").closest("div")!;
+
+			// The file-row tooltips stack above the popup.
+			const popoverZ = Number(popover.style.zIndex);
+			for (const name of ["Show Diff", "Open in..."]) {
+				const button = within(fileRow).getByRole("button", { name });
+				fireEvent.mouseEnter(button);
+				await act(async () => {
+					vi.advanceTimersByTime(300);
+				});
+				const tooltip = screen.getByRole("tooltip");
+				const tooltipZ = Number(/z-\[(\d+)\]/.exec(tooltip.className)?.[1]);
+				expect(tooltipZ).toBeGreaterThan(popoverZ);
+				fireEvent.mouseLeave(button);
+			}
+
 			await user.click(within(fileRow).getByRole("button", { name: "Open in..." }));
 
 			expect(screen.getAllByText("Open in...").length).toBeGreaterThanOrEqual(2);
@@ -558,48 +529,10 @@ describe("TaskHeader", () => {
 			expect(await screen.findByText("TextMate")).toBeInTheDocument();
 		});
 
-		it("stacks the file-row tooltips above the changed files popup", async () => {
+		it("carries the branch as a labelled chip whose menu has the full name, the copy actions and the compare-ref picker", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 1,
-				diffInsertions: 12,
-				diffDeletions: 4,
-				diffFileStats: [{path:"src/mainview/App.tsx",insertions:10,deletions:3}],
-			});
-
 			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			await user.hover(screen.getByText("1 file").closest("span")!);
-			const popover = (await screen.findByText("Changed files")).parentElement!;
-			const popoverZ = Number(popover.style.zIndex);
-			const fileRow = screen.getByText("src/mainview/App.tsx").closest("div")!;
-
-			for (const name of ["Show Diff", "Open in..."]) {
-				const button = within(fileRow).getByRole("button", { name });
-				fireEvent.mouseEnter(button);
-				await act(async () => {
-					vi.advanceTimersByTime(300);
-				});
-				const tooltip = screen.getByRole("tooltip");
-				const tooltipZ = Number(/z-\[(\d+)\]/.exec(tooltip.className)?.[1]);
-				expect(tooltipZ).toBeGreaterThan(popoverZ);
-				fireEvent.mouseLeave(button);
-			}
-		});
-
-		it("skips unknown label IDs", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ labelIds: ["nonexistent"] }));
-			});
-			expect(screen.queryByText("nonexistent")).not.toBeInTheDocument();
-		});
-
-		it("carries the branch as a labelled chip, the name in its accessible name", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ branchName: "dev3/my-branch" }));
+				renderPanel(makeTask({ branchName: "dev3/my-branch", worktreePath: "/tmp/wt/t1" }), { onOpenInlineDiff: vi.fn() });
 			});
 			// The bar shows the word, not the string: the name is 200px of mono text and
 			// only the chip's name / its menu heading have to carry it.
@@ -607,15 +540,10 @@ describe("TaskHeader", () => {
 			expect(chip).toHaveTextContent("Branch");
 			expect(chip.getAttribute("aria-label")).toContain("dev3/my-branch");
 			expect(screen.queryByText("dev3/my-branch")).not.toBeInTheDocument();
-		});
+			// The bar stays clean; the compare-ref setting lives one click deep.
+			expect(screen.queryByText(/vs origin\/main/)).not.toBeInTheDocument();
 
-		it("opens a menu with the full name and the three copy actions", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ branchName: "dev3/my-branch", worktreePath: "/tmp/wt/t1" }));
-			});
-
-			await user.click(screen.getByTestId("branch-chip"));
+			await user.click(chip);
 
 			const menu = screen.getByRole("menu");
 			expect(menu).toHaveTextContent("dev3/my-branch");
@@ -624,9 +552,27 @@ describe("TaskHeader", () => {
 			expect(within(menu).getByRole("menuitem", { name: "Copy checkout command" })).toBeInTheDocument();
 			// A task without a PR must not offer to copy one.
 			expect(within(menu).queryByRole("menuitem", { name: "Copy PR link" })).not.toBeInTheDocument();
+			expect(menu).toHaveTextContent("Compare against");
+
+			const remote = within(menu).getByRole("menuitemradio", { name: /origin\/main/ });
+			const local = within(menu).getByRole("menuitemradio", { name: /main \(local\)/ });
+			expect(remote).toHaveAttribute("aria-checked", "true");
+			expect(local).toHaveAttribute("aria-checked", "false");
+
+			await user.click(local);
+
+			// Picking a ref refetches the status against it and closes the menu.
+			await waitFor(() => {
+				expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					compareRef: "main",
+				});
+			});
+			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 		});
 
-		it("copies the PR link once the task has a PR", async () => {
+		it("copies the PR link once the task has a PR, and the checkout command, saying so out loud", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const writeText = vi.fn().mockResolvedValue(undefined);
 			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -646,16 +592,6 @@ describe("TaskHeader", () => {
 			await waitFor(() => {
 				expect(vi.mocked(toast.success)).toHaveBeenCalledWith("PR link copied", { taskId: "t1" });
 			});
-		});
-
-		it("copies the checkout command and says so out loud", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const writeText = vi.fn().mockResolvedValue(undefined);
-			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-
-			await act(async () => {
-				renderPanel(makeTask({ branchName: "dev3/my-branch" }));
-			});
 
 			await user.click(screen.getByTestId("branch-chip"));
 			await user.click(screen.getByRole("menuitem", { name: "Copy checkout command" }));
@@ -665,37 +601,6 @@ describe("TaskHeader", () => {
 			// only fires once the clipboard write actually resolved.
 			await waitFor(() => {
 				expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Checkout command copied", { taskId: "t1" });
-			});
-			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-		});
-
-		it("carries the compare-ref picker inside the menu, not in the bar", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ branchName: "dev3/my-branch" }), { onOpenInlineDiff: vi.fn() });
-			});
-
-			// The bar stays clean; the setting lives one click deep.
-			expect(screen.queryByText(/vs origin\/main/)).not.toBeInTheDocument();
-
-			await user.click(screen.getByTestId("branch-chip"));
-			const menu = screen.getByRole("menu");
-			expect(menu).toHaveTextContent("Compare against");
-
-			const remote = within(menu).getByRole("menuitemradio", { name: /origin\/main/ });
-			const local = within(menu).getByRole("menuitemradio", { name: /main \(local\)/ });
-			expect(remote).toHaveAttribute("aria-checked", "true");
-			expect(local).toHaveAttribute("aria-checked", "false");
-
-			await user.click(local);
-
-			// Picking a ref refetches the status against it and closes the menu.
-			await waitFor(() => {
-				expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
-					taskId: "t1",
-					projectId: "p1",
-					compareRef: "main",
-				});
 			});
 			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 		});
@@ -718,27 +623,6 @@ describe("TaskHeader", () => {
 			expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
 		});
 
-		it("does not render metadata grid in collapsed state", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ description: "Some desc" }));
-			});
-			// Description only shows in expanded metadata grid
-			expect(screen.queryByText("Some desc")).not.toBeInTheDocument();
-		});
-
-		it("renders expand button", async () => {
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			expect(screen.getByLabelText("Expand panel")).toBeInTheDocument();
-		});
-
-		it("renders full screen button", async () => {
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			expect(screen.getByLabelText("Full screen")).toBeInTheDocument();
-		});
 	});
 
 	describe("expanded view", () => {
@@ -746,49 +630,44 @@ describe("TaskHeader", () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 		});
 
-		it("renders task seq number", async () => {
+		it("renders seq, labels, branch, description, worktree path, notes and the collapse button", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ seq: 42 }));
+				renderPanel(makeTask({
+					seq: 42,
+					labelIds: ["lbl1", "lbl2"],
+					branchName: "dev3/task-abc",
+					description: "Fix the login bug",
+					worktreePath: "/tmp/wt/abc",
+					notes: [
+						{ id: "n1", content: "AI note content", source: "ai", createdAt: "2025-06-15T10:00:00Z", updatedAt: "2025-06-15T10:00:00Z" },
+						{ id: "n2", content: "User note content", source: "user", createdAt: "2025-06-15T11:00:00Z", updatedAt: "2025-06-15T11:00:00Z" },
+					],
+				}));
 			});
 			expect(screen.getByText("#42")).toBeInTheDocument();
-		});
-
-		it("renders labels in the metadata grid", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ labelIds: ["lbl1", "lbl2"] }));
-			});
 			expect(screen.getByText("Bug")).toBeInTheDocument();
 			expect(screen.getByText("Feature")).toBeInTheDocument();
-		});
-
-		it("renders branch name in metadata", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ branchName: "dev3/task-abc" }));
-			});
 			// The bar carries a chip now, so the metadata grid is the one place the full
 			// name is printed without opening anything.
 			expect(screen.getAllByText("dev3/task-abc").length).toBe(1);
-		});
-
-		it("renders description when present", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ description: "Fix the login bug" }));
-			});
 			expect(screen.getByText("Fix the login bug")).toBeInTheDocument();
+			expect(screen.getByText("/tmp/wt/abc")).toBeInTheDocument();
+			expect(screen.getByLabelText("Collapse panel")).toBeInTheDocument();
+			// AI notes are read-only text, user notes are editable textareas.
+			expect(screen.getByText("AI")).toBeInTheDocument();
+			expect(screen.getByText("AI note content")).toBeInTheDocument();
+			expect(screen.queryByDisplayValue("AI note content")).not.toBeInTheDocument();
+			expect(screen.getByText("User")).toBeInTheDocument();
+			expect(screen.getByDisplayValue("User note content").tagName).toBe("TEXTAREA");
 		});
 
-		it("does not render description row when empty", async () => {
+		it("omits the description row and shows the notes empty state when both are empty", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ description: "" }));
+				renderPanel(makeTask({ description: "", notes: [] }));
 			});
 			expect(screen.queryByText("Description")).not.toBeInTheDocument();
-		});
-
-		it("renders worktree path when present", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ worktreePath: "/tmp/wt/abc" }));
-			});
-			expect(screen.getByText("/tmp/wt/abc")).toBeInTheDocument();
+			expect(screen.getByText("Notes")).toBeInTheDocument();
+			expect(screen.getByText("No notes yet")).toBeInTheDocument();
 		});
 
 		it("copies worktree path to clipboard when clicking copy button", async () => {
@@ -807,78 +686,35 @@ describe("TaskHeader", () => {
 			expect(screen.getAllByText("Copied!").length).toBeGreaterThan(0);
 		});
 
-		it("renders notes section with empty state", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ notes: [] }));
-			});
-			expect(screen.getByText("Notes")).toBeInTheDocument();
-			expect(screen.getByText("No notes yet")).toBeInTheDocument();
-		});
-
-		it("renders existing notes", async () => {
-			await act(async () => {
-				renderPanel(makeTask({
-					notes: [
-						{ id: "n1", content: "AI note content", source: "ai", createdAt: "2025-06-15T10:00:00Z", updatedAt: "2025-06-15T10:00:00Z" },
-						{ id: "n2", content: "User note content", source: "user", createdAt: "2025-06-15T11:00:00Z", updatedAt: "2025-06-15T11:00:00Z" },
-					],
-				}));
-			});
-			expect(screen.getByText("AI note content")).toBeInTheDocument();
-			// User note is in a textarea
-			expect(screen.getByDisplayValue("User note content")).toBeInTheDocument();
-		});
-
-		it("renders AI notes as read-only text", async () => {
-			await act(async () => {
-				renderPanel(makeTask({
-					notes: [
-						{ id: "n1", content: "AI generated", source: "ai", createdAt: "2025-06-15T10:00:00Z", updatedAt: "2025-06-15T10:00:00Z" },
-					],
-				}));
-			});
-			expect(screen.getByText("AI")).toBeInTheDocument();
-			expect(screen.getByText("AI generated")).toBeInTheDocument();
-			// Should not be a textarea
-			expect(screen.queryByDisplayValue("AI generated")).not.toBeInTheDocument();
-		});
-
-		it("renders user notes as editable textareas", async () => {
-			await act(async () => {
-				renderPanel(makeTask({
-					notes: [
-						{ id: "n1", content: "Editable", source: "user", createdAt: "2025-06-15T10:00:00Z", updatedAt: "2025-06-15T10:00:00Z" },
-					],
-				}));
-			});
-			expect(screen.getByText("User")).toBeInTheDocument();
-			const textarea = screen.getByDisplayValue("Editable");
-			expect(textarea.tagName).toBe("TEXTAREA");
-		});
-
-		it("renders collapse button", async () => {
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			expect(screen.getByLabelText("Collapse panel")).toBeInTheDocument();
-		});
 	});
 
 	describe("collapse/expand toggle", () => {
-		it("expands panel when clicking expand button", async () => {
+		it("expands on click, keeping the bars, their controls and the toggle's focus, and persists the state", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			await act(async () => {
 				renderPanel(makeTask({ seq: 99, description: "Some desc" }));
 			});
+			const nodes = () => [
+				document.querySelector('[data-help-id="inspector.context-bar"]'),
+				document.querySelector('[data-help-id="inspector.git-bar"]'),
+				document.querySelector('[data-help-id="inspector.runtime-bar"]'),
+				screen.getByLabelText("Full screen"),
+			];
+			const before = nodes();
+			before.forEach((node) => expect(node).toBeInTheDocument());
 
-			// Collapsed initially — no description
+			// Collapsed initially — no description; default is collapsed=true
 			expect(screen.queryByText("Some desc")).not.toBeInTheDocument();
+			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("true");
 
 			await user.click(screen.getByLabelText("Expand panel"));
 
 			// Now expanded — description visible
 			expect(screen.getByText("Some desc")).toBeInTheDocument();
 			expect(screen.getByText("#99")).toBeInTheDocument();
+			nodes().forEach((node, i) => expect(node).toBe(before[i]));
+			expect(document.activeElement).toBe(screen.getByLabelText("Collapse panel"));
+			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("false");
 		});
 
 		it("collapses panel when clicking collapse button", async () => {
@@ -895,39 +731,6 @@ describe("TaskHeader", () => {
 
 			// Now collapsed — no description
 			expect(screen.queryByText("Visible desc")).not.toBeInTheDocument();
-		});
-
-		it("keeps the bars, their controls and the toggle's focus across a collapse toggle", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			const nodes = () => [
-				document.querySelector('[data-help-id="inspector.context-bar"]'),
-				document.querySelector('[data-help-id="inspector.git-bar"]'),
-				document.querySelector('[data-help-id="inspector.runtime-bar"]'),
-				screen.getByLabelText("Full screen"),
-			];
-			const before = nodes();
-			before.forEach((node) => expect(node).toBeInTheDocument());
-
-			await user.click(screen.getByLabelText("Expand panel"));
-
-			nodes().forEach((node, i) => expect(node).toBe(before[i]));
-			expect(document.activeElement).toBe(screen.getByLabelText("Collapse panel"));
-		});
-
-		it("persists collapsed state to localStorage", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			// Default is collapsed=true
-			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("true");
-
-			await user.click(screen.getByLabelText("Expand panel"));
-			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("false");
 		});
 
 		it("ends the Runtime bar, right of Images, in the collapsed panel", async () => {
@@ -959,22 +762,7 @@ describe("TaskHeader", () => {
 	});
 
 	describe("status dropdown", () => {
-		it("opens dropdown with allowed transitions on click", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ status: "in-progress" }));
-			});
-
-			await user.click(screen.getByText("Agent is Working"));
-
-			// in-progress can go to all other statuses
-			expect(screen.getByText("To Do")).toBeInTheDocument();
-			expect(screen.getByText("Completed")).toBeInTheDocument();
-			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("Has Questions")).toBeInTheDocument();
-		});
-
-		it("moves task to new status on selection", async () => {
+		it("opens the allowed transitions on click and moves the task to the picked status", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "in-progress" });
@@ -986,6 +774,11 @@ describe("TaskHeader", () => {
 			});
 
 			await user.click(screen.getByText("Agent is Working"));
+
+			// in-progress can go to all other statuses
+			expect(screen.getByText("To Do")).toBeInTheDocument();
+			expect(screen.getByText("Completed")).toBeInTheDocument();
+			expect(screen.getByText("Cancelled")).toBeInTheDocument();
 			await user.click(screen.getByText("Has Questions"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -1005,13 +798,15 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("retries with force on move failure", async () => {
+		it("retries with force on move failure, and alerts when both attempts fail", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "in-progress" });
 			const updatedTask = { ...task, status: "review-by-user" as const };
 
 			mockedApi.request.moveTask
+				.mockRejectedValueOnce(new Error("fail1"))
+				.mockRejectedValueOnce(new Error("fail2"))
 				.mockRejectedValueOnce(new Error("env broken"))
 				.mockResolvedValueOnce(updatedTask);
 
@@ -1019,10 +814,15 @@ describe("TaskHeader", () => {
 				renderPanel(task, { dispatch });
 			});
 
+			// Both attempts fail: an alert, no update.
+			await user.click(screen.getByText("Agent is Working"));
+			await user.click(screen.getByText("Your Review"));
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+
 			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Your Review"));
 
-			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
+			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(4);
 			expect(mockedApi.request.moveTask).toHaveBeenLastCalledWith({
 				taskId: "t1",
 				projectId: "p1",
@@ -1036,27 +836,7 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("shows alert when both move attempts fail", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const task = makeTask({ status: "in-progress" });
-			const alertSpy = vi.mocked(toast.error);
-
-			mockedApi.request.moveTask
-				.mockRejectedValueOnce(new Error("fail1"))
-				.mockRejectedValueOnce(new Error("fail2"));
-
-			await act(async () => {
-				renderPanel(task);
-			});
-
-			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Your Review"));
-
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-			// alertSpy cleanup handled by clearAllMocks
-		});
-
-		it("navigates away on completed/cancelled", async () => {
+		it("navigates away on completed and stamps movedAt via the fast-path", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
@@ -1075,6 +855,12 @@ describe("TaskHeader", () => {
 				type: "updateTask",
 				task: expect.objectContaining({ status: "completed", worktreePath: null, branchName: null }),
 			}));
+			const dispatchedTask = dispatch.mock.calls.find(
+				(c: unknown[]) => (c[0] as AppAction).type === "updateTask",
+			)?.[0] as { type: string; task: Task } | undefined;
+			expect(typeof dispatchedTask!.task.movedAt).toBe("string");
+			// movedAt should be a recent ISO timestamp
+			expect(new Date(dispatchedTask!.task.movedAt!).getTime()).toBeGreaterThan(Date.now() - 5000);
 		});
 
 		it("does not navigate away from a newer task when terminal preflight resolves late", async () => {
@@ -1147,31 +933,6 @@ describe("TaskHeader", () => {
 			} finally {
 				localStorage.removeItem("dev3-task-open-mode");
 			}
-		});
-
-		it("sets movedAt when moving to completed via fast-path", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const dispatch = vi.fn();
-			const navigate = vi.fn();
-			const task = makeTask({ status: "in-progress" });
-			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
-
-			await act(async () => {
-				renderPanel(task, { dispatch, navigate });
-			});
-
-			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Completed"));
-
-			const dispatchedTask = dispatch.mock.calls.find(
-				(c: unknown[]) => (c[0] as AppAction).type === "updateTask",
-			)?.[0] as { type: string; task: Task } | undefined;
-			expect(dispatchedTask).toBeDefined();
-			expect(dispatchedTask!.task.movedAt).toBeDefined();
-			expect(typeof dispatchedTask!.task.movedAt).toBe("string");
-			// movedAt should be a recent ISO timestamp
-			const movedAtMs = new Date(dispatchedTask!.task.movedAt!).getTime();
-			expect(movedAtMs).toBeGreaterThan(Date.now() - 5000);
 		});
 
 		it("sets movedAt when moving to cancelled via fast-path", async () => {
@@ -1251,36 +1012,7 @@ describe("TaskHeader", () => {
 			expect(within(dialog).getByText("note 5")).toBeInTheDocument();
 		});
 
-		it("adds a note when clicking Add button", async () => {
-			localStorage.setItem("dev3-panel-collapsed", "false");
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const dispatch = vi.fn();
-			const task = makeTask({ notes: [] });
-			const updatedTask = {
-				...task,
-				notes: [{ id: "n-new", content: "", source: "user" as const, createdAt: "2025-06-15T12:00:00Z", updatedAt: "2025-06-15T12:00:00Z" }],
-			};
-			mockedApi.request.addTaskNote.mockResolvedValue(updatedTask);
-
-			await act(async () => {
-				renderPanel(task, { dispatch });
-			});
-
-			await user.click(screen.getByText("+ Add Note"));
-
-			expect(mockedApi.request.addTaskNote).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-				content: "",
-				source: "user",
-			});
-			expect(dispatch).toHaveBeenCalledWith({
-				type: "updateTask",
-				task: updatedTask,
-			});
-		});
-
-		it("deletes a note when clicking delete button", async () => {
+		it("adds and deletes notes through the RPCs and dispatches the result", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const dispatch = vi.fn();
@@ -1289,47 +1021,38 @@ describe("TaskHeader", () => {
 					{ id: "n1", content: "Delete me", source: "user", createdAt: "2025-06-15T10:00:00Z", updatedAt: "2025-06-15T10:00:00Z" },
 				],
 			});
-			const updatedTask = { ...task, notes: [] };
-			mockedApi.request.deleteTaskNote.mockResolvedValue(updatedTask);
+			const added = { ...task, notes: [...task.notes!, { id: "n-new", content: "", source: "user" as const, createdAt: "2025-06-15T12:00:00Z", updatedAt: "2025-06-15T12:00:00Z" }] };
+			const deleted = { ...task, notes: [] };
+			mockedApi.request.addTaskNote.mockResolvedValue(added);
+			mockedApi.request.deleteTaskNote.mockResolvedValue(deleted);
 
 			await act(async () => {
 				renderPanel(task, { dispatch });
 			});
 
-			// Find delete button by title
-			await user.click(screen.getByTitle("Delete note"));
+			await user.click(screen.getByText("+ Add Note"));
+			expect(mockedApi.request.addTaskNote).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				content: "",
+				source: "user",
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: added });
 
+			await user.click(screen.getByTitle("Delete note"));
 			expect(mockedApi.request.deleteTaskNote).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 				noteId: "n1",
 			});
-			expect(dispatch).toHaveBeenCalledWith({
-				type: "updateTask",
-				task: updatedTask,
-			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: deleted });
 		});
 
-		it("shows alert when add note fails", async () => {
+		it("shows an alert when adding or deleting a note fails", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.addTaskNote.mockRejectedValue(new Error("network error"));
-
-			await act(async () => {
-				renderPanel(makeTask({ notes: [] }));
-			});
-
-			await user.click(screen.getByText("+ Add Note"));
-
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-			// alertSpy cleanup handled by clearAllMocks
-		});
-
-		it("shows alert when delete note fails", async () => {
-			localStorage.setItem("dev3-panel-collapsed", "false");
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.deleteTaskNote.mockRejectedValue(new Error("oops"));
 
 			await act(async () => {
@@ -1340,50 +1063,29 @@ describe("TaskHeader", () => {
 				}));
 			});
 
+			await user.click(screen.getByText("+ Add Note"));
+			await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
 			await user.click(screen.getByTitle("Delete note"));
-
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-			// alertSpy cleanup handled by clearAllMocks
+			await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(2));
 		});
 	});
 
 	describe("dev server button", () => {
+		// The resolved config (getResolvedProject) also lacks a devScript here — renderPanel
+		// resolves to the project prop — so this covers the worktree-resolved case too.
 		it("shows Setup Dev Server button with hint popover when no devScript", async () => {
-			await act(async () => {
-				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
-			});
-			const btn = screen.getByText("Setup Dev Server").closest("button")!;
-			expect(btn).not.toBeDisabled();
-			await act(async () => { btn.click(); });
-			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
-			expect(screen.getByText("Configure dev3 devScript for this project")).toBeInTheDocument();
-		});
-
-		it("userEvent click on Setup Dev Server shows hint popover", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
 			});
 			const btn = screen.getByText("Setup Dev Server").closest("button")!;
+			expect(btn).not.toBeDisabled();
 			await user.click(btn);
 			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
 			expect(screen.getByText("Configure dev3 devScript for this project")).toBeInTheDocument();
 		});
 
-		it("shows not-allowed style when task is not active", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
-			await act(async () => {
-				renderPanel(
-					makeTask({ status: "todo", worktreePath: null, branchName: null }),
-					{ project: { ...project, devScript: "bun run dev" } },
-				);
-			});
-			const buttons = screen.getAllByText("Dev Server");
-			const btn = buttons[0].closest("button")!;
-			expect(btn.className).toContain("cursor-not-allowed");
-		});
-
-		it("calls runDevServer when clicked and no server is running", async () => {
+		it("renders a neutral play state while stopped and calls runDevServer on click", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
 			mockedApi.request.runDevServer.mockResolvedValue(defaultDevServerStatus);
@@ -1395,6 +1097,10 @@ describe("TaskHeader", () => {
 			const buttons = screen.getAllByText("Dev Server");
 			const btn = buttons[0].closest("button")!;
 			expect(btn).not.toBeDisabled();
+			await waitFor(() => expect(btn.className).toContain("text-fg-2"));
+			expect(btn.className).not.toContain("text-success");
+			// play affordance, not a pulsing dot
+			expect(btn.querySelector(".animate-pulse")).toBeNull();
 
 			await user.click(btn);
 
@@ -1433,20 +1139,26 @@ describe("TaskHeader", () => {
 			);
 		});
 
-		it("shows running menu when dev server is already running", async () => {
+		it("renders the green running state and opens the running menu (no args line) instead of starting", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+			mockedApi.request.getDevServerStatus.mockResolvedValue(defaultDevServerStatus);
 
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
 			});
 
-			const buttons = screen.getAllByText("Dev Server");
-			await user.click(buttons[0].closest("button")!);
+			const btn = screen.getAllByText("Dev Server")[0].closest("button")!;
+			await waitFor(() => expect(btn.className).toContain("text-success"));
+			expect(btn.querySelector(".bg-success.animate-pulse")).not.toBeNull();
+			expect(btn.getAttribute("aria-label")).toBe("Dev server running — click for options");
+
+			await user.click(btn);
 
 			await waitFor(() => expect(screen.getByText("Dev server is already running")).toBeInTheDocument());
 			expect(screen.getByText("Restart")).toBeInTheDocument();
 			expect(screen.getByText("Stop")).toBeInTheDocument();
+			expect(screen.queryByTestId("dev-server-args")).toBeNull();
 			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
 		});
 
@@ -1466,20 +1178,6 @@ describe("TaskHeader", () => {
 			const line = await screen.findByTestId("dev-server-args");
 			expect(line.textContent).toBe("--own-db 'a b'");
 			expect(line.getAttribute("title")).toBe("Started with arguments: --own-db 'a b'");
-		});
-
-		it("shows no args line in the menu when the server runs without args", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
-			mockedApi.request.getDevServerStatus.mockResolvedValue(defaultDevServerStatus);
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
-			});
-			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
-
-			await screen.findByText("Dev server is already running");
-			expect(screen.queryByTestId("dev-server-args")).toBeNull();
 		});
 
 		it("restarts dev server via restartDevServer (stop → delay → start)", async () => {
@@ -1548,34 +1246,6 @@ describe("TaskHeader", () => {
 			// alertSpy cleanup handled by clearAllMocks
 		});
 
-		it("renders neutral (non-green) play state when the dev server is stopped", async () => {
-			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
-			});
-
-			const btn = screen.getAllByText("Dev Server")[0].closest("button")!;
-			await waitFor(() => expect(btn.className).toContain("text-fg-2"));
-			expect(btn.className).not.toContain("text-success");
-			// play affordance, not a pulsing dot
-			expect(btn.querySelector(".animate-pulse")).toBeNull();
-		});
-
-		it("renders green running state with a pulsing live dot when running", async () => {
-			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
-			});
-
-			const btn = screen.getAllByText("Dev Server")[0].closest("button")!;
-			await waitFor(() => expect(btn.className).toContain("text-success"));
-			const dot = btn.querySelector(".bg-success.animate-pulse");
-			expect(dot).not.toBeNull();
-			expect(btn.getAttribute("aria-label")).toBe("Dev server running — click for options");
-		});
-
 		it("shows the Starting… spinner state while the server is starting", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
@@ -1622,24 +1292,6 @@ describe("TaskHeader", () => {
 			],
 		};
 
-		it("opens a row per server with its state, port and own actions", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
-			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: multiProject });
-			});
-			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
-
-			expect(await screen.findByTestId("dev-server-list")).toBeInTheDocument();
-			expect(screen.getByTestId("dev-server-row-dev")).toBeInTheDocument();
-			const apiRow = screen.getByTestId("dev-server-row-api");
-			expect(apiRow.textContent).toContain(":55930");
-			expect(apiRow.textContent).toContain("Stop");
-			expect(screen.getByTestId("dev-server-row-dev").textContent).toContain("Start");
-		});
-
 		it("shows a running server's script args under its row, and nothing for one without", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
@@ -1661,24 +1313,6 @@ describe("TaskHeader", () => {
 			expect(screen.queryByTestId("dev-server-args-dev")).toBeNull();
 		});
 
-		it("starts only the server whose row was clicked", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
-			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
-			mockedApi.request.runDevServer.mockResolvedValue(multiStatus);
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: multiProject });
-			});
-			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
-			await screen.findByTestId("dev-server-list");
-			await user.click(within(screen.getByTestId("dev-server-row-dev")).getByText("Start"));
-
-			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(
-				expect.objectContaining({ server: "dev", focus: true }),
-			);
-		});
-
 		async function openList(user: ReturnType<typeof userEvent.setup>) {
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
 			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
@@ -1694,60 +1328,50 @@ describe("TaskHeader", () => {
 		}
 
 		// The user had to hit the small "Start" word exactly; the row text was
-		// selectable instead. A stopped row is now one button, name included.
-		it("a stopped server's whole row is its Start button, and the panel text is not selectable", async () => {
+		// selectable instead. A stopped row is now one button, name included — and a
+		// running row is not a button, so a stray click never stops it.
+		it("a stopped server's whole row starts only that server; a running row is not a button; the text is not selectable", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const { list } = await openList(user);
+
+			// One row per server with its state, port and own actions.
+			const apiRow = screen.getByTestId("dev-server-row-api");
+			expect(apiRow.textContent).toContain(":55930");
+			expect(apiRow.textContent).toContain("Stop");
+			expect(screen.getByTestId("dev-server-row-dev").textContent).toContain("Start");
+			expect(apiRow.tagName).not.toBe("BUTTON");
+			await user.click(within(apiRow).getByText("api"));
+			expect(mockedApi.request.stopDevServer).not.toHaveBeenCalled();
+			expect(mockedApi.request.restartDevServer).not.toHaveBeenCalled();
 
 			const devRow = screen.getByTestId("dev-server-row-dev");
 			expect(devRow.tagName).toBe("BUTTON");
 			expect(list.className).toContain("select-none");
 			await user.click(within(devRow).getByText("dev"));
 
-			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
+			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev", focus: true }));
 		});
 
-		it("a running server's row is not a button, so a stray click never stops it", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await openList(user);
-
-			const apiRow = screen.getByTestId("dev-server-row-api");
-			expect(apiRow.tagName).not.toBe("BUTTON");
-			await user.click(within(apiRow).getByText("api"));
-
-			expect(mockedApi.request.stopDevServer).not.toHaveBeenCalled();
-			expect(mockedApi.request.restartDevServer).not.toHaveBeenCalled();
-		});
-
-		// A document mousedown listener never saw clicks on the terminal, which
-		// captures its own mousedown — so nothing outside the panel closed it.
-		it("a click outside the panel lands on a backdrop that closes it and refocuses the trigger", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const { trigger } = await openList(user);
-
-			await user.click(screen.getByTestId("dev-server-backdrop"));
-
-			expect(screen.queryByTestId("dev-server-list")).toBeNull();
-			expect(document.activeElement).toBe(trigger);
-		});
-
-		it("pressing the toolbar button again closes the panel instead of reopening it", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const { trigger } = await openList(user);
-			expect(trigger.getAttribute("aria-expanded")).toBe("true");
-
-			await user.click(trigger);
-
-			expect(screen.queryByTestId("dev-server-list")).toBeNull();
-			expect(trigger.getAttribute("aria-expanded")).toBe("false");
-		});
-
-		it("Escape closes the panel and returns focus to the toolbar button", async () => {
+		// The backdrop exists because a document mousedown listener never saw clicks
+		// on the terminal, which captures its own mousedown — nothing outside closed it.
+		it("closes on Escape, on a second toolbar press and on the outside backdrop, refocusing the trigger", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const { trigger } = await openList(user);
 
 			await user.keyboard("{Escape}");
+			expect(screen.queryByTestId("dev-server-list")).toBeNull();
+			expect(document.activeElement).toBe(trigger);
 
+			await user.click(trigger);
+			await screen.findByTestId("dev-server-list");
+			expect(trigger.getAttribute("aria-expanded")).toBe("true");
+			await user.click(trigger);
+			expect(screen.queryByTestId("dev-server-list")).toBeNull();
+			expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+			await user.click(trigger);
+			await screen.findByTestId("dev-server-list");
+			await user.click(screen.getByTestId("dev-server-backdrop"));
 			expect(screen.queryByTestId("dev-server-list")).toBeNull();
 			expect(document.activeElement).toBe(trigger);
 		});
@@ -1767,9 +1391,10 @@ describe("TaskHeader", () => {
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
 		});
 
-		it("Start all and a named Restart are user actions: both ask for focus, Stop does not", async () => {
+		it("Start all and a named Restart are user actions: both ask for focus, Stop does not; Stop all stops every server", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.restartDevServer.mockResolvedValue(multiStatus);
+			mockedApi.request.stopDevServer.mockResolvedValue(multiStatus);
 			const { list } = await openList(user);
 
 			await user.click(within(list).getByText("Start all"));
@@ -1780,21 +1405,10 @@ describe("TaskHeader", () => {
 
 			await user.click(within(screen.getByTestId("dev-server-row-api")).getByText("Stop"));
 			expect(mockedApi.request.stopDevServer.mock.calls[0][0]).not.toHaveProperty("focus");
-		});
 
-		it("Stop all takes down every server in one action", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
-			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
-			mockedApi.request.stopDevServer.mockResolvedValue({ ...multiStatus, running: false });
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: multiProject });
-			});
-			await user.click(screen.getAllByText("Dev Server")[0].closest("button")!);
-			await user.click(await screen.findByText("Stop all"));
-
-			expect(mockedApi.request.stopDevServer).toHaveBeenCalledWith(expect.objectContaining({ all: true }));
+			// Stop all takes down every server in one action.
+			await user.click(within(list).getByText("Stop all"));
+			expect(mockedApi.request.stopDevServer).toHaveBeenLastCalledWith(expect.objectContaining({ all: true }));
 			expect(mockedApi.request.stopDevServer).not.toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
 		});
 
@@ -1843,19 +1457,6 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("shows hint popover when resolved config has no devScript", async () => {
-			mockedApi.request.getResolvedProject.mockResolvedValue({ ...project, devScript: "" });
-
-			await act(async () => {
-				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
-			});
-
-			const btn = screen.getByText("Setup Dev Server").closest("button")!;
-			expect(btn).not.toBeDisabled();
-			await act(async () => { btn.click(); });
-			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
-		});
-
 		it("falls back to project prop when getResolvedProject fails", async () => {
 			mockedApi.request.getResolvedProject.mockRejectedValue(new Error("fail"));
 
@@ -1871,26 +1472,16 @@ describe("TaskHeader", () => {
 		// The backend resolves the task itself, so the config cascade is the same
 		// one a start uses — including the main checkout's gitignored
 		// config.local.json, which a worktree never has a copy of.
+		// The task has no worktreePath yet, which must not stop the resolve either.
 		it("resolves by taskId, not by worktree path", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ id: "task-9" }), { project: { ...project, devScript: "bun run dev" } });
+				renderPanel(makeTask({ id: "task-9", worktreePath: null }), { project: { ...project, devScript: "bun run dev" } });
 			});
 
 			expect(mockedApi.request.getResolvedProject).toHaveBeenCalledWith({
 				projectId: project.id,
 				taskId: "task-9",
 			});
-		});
-
-		it("still resolves when the task has no worktreePath yet", async () => {
-			await act(async () => {
-				renderPanel(
-					makeTask({ worktreePath: null }),
-					{ project: { ...project, devScript: "bun run dev" } },
-				);
-			});
-
-			expect(mockedApi.request.getResolvedProject).toHaveBeenCalled();
 		});
 	});
 
@@ -1918,11 +1509,13 @@ describe("TaskHeader", () => {
 			expect(screen.queryByText("Branch status failed to load")).not.toBeInTheDocument();
 		});
 
-		it("shows ahead badge when ahead > 0", async () => {
+		it("shows the ahead badge and the uncommitted line counts", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 5,
 				behind: 0,
+				insertions: 10,
+				deletions: 3,
 			});
 
 			await act(async () => {
@@ -1930,25 +1523,11 @@ describe("TaskHeader", () => {
 			});
 
 			expect(screen.getAllByText(/5 commits ahead/).length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText("+10").length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText("−3").length).toBeGreaterThanOrEqual(1);
 		});
 
-		it("shows behind badge when behind > 0", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 0,
-				behind: 2,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const count = screen.getAllByTestId("behind-count")[0];
-			expect(count).toHaveClass("text-danger");
-			expect(count).toHaveTextContent("2 commits behind");
-		});
-
-		it("shows both ahead and behind when both > 0", async () => {
+		it("shows both ahead and behind when both > 0, and disables Merge while behind", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
@@ -1964,6 +1543,9 @@ describe("TaskHeader", () => {
 			// The wording is red together with the number; only the ahead half stays muted.
 			expect(count).toHaveTextContent("1 behind");
 			expect(count.parentElement).toHaveTextContent("3 ahead · 1 behind");
+			for (const btn of screen.getAllByText("Merge")) {
+				expect(btn.closest("button")).toBeDisabled();
+			}
 		});
 
 		/**
@@ -1988,36 +1570,6 @@ describe("TaskHeader", () => {
 			expect(screen.queryByTestId("behind-count")).toBeNull();
 		});
 
-		it("shows uncommitted changes badge", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				insertions: 10,
-				deletions: 3,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.getAllByText("+10").length).toBeGreaterThanOrEqual(1);
-			expect(screen.getAllByText("−3").length).toBeGreaterThanOrEqual(1);
-		});
-
-		it("does not show badges when ahead=0, behind=0", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 0,
-				behind: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.queryByText(/commits? ahead/)).not.toBeInTheDocument();
-			expect(screen.queryByText(/commits? behind/)).not.toBeInTheDocument();
-		});
-
 			it("uses task baseBranch as comparison branch", async () => {
 				mockedApi.request.getBranchStatus.mockResolvedValue({
 					...defaultBranchStatus,
@@ -2034,64 +1586,15 @@ describe("TaskHeader", () => {
 				expect(screen.getAllByLabelText(/vs develop/).length).toBeGreaterThanOrEqual(1);
 			});
 
-		it("opens the diff when the ahead/behind and line counts are clicked", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const onOpenInlineDiff = vi.fn();
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-				behind: 1,
-				insertions: 46,
-				deletions: 19,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff });
-			});
-
-			// One control carries both halves, so clicking either number opens the diff.
-			const summary = screen.getByText("+46").closest("button")!;
-			expect(summary).toContainElement(screen.getAllByTestId("behind-count")[0]);
-			await user.click(summary);
-
-			// The +/− half is the working tree, so a dirty tree opens that scope.
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({ mode: "uncommitted", pinMode: true });
-		});
-
-		it("keeps no separator between the commit counts and the line counts", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-				behind: 1,
-				insertions: 46,
-				deletions: 19,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
-			});
-
-			const summary = screen.getByText("+46").closest("button")!;
-			expect(summary.textContent).not.toContain("|");
-		});
-
-		it("drops the compare-ref picker — the project setting owns that choice", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
-			});
-
-			expect(screen.queryByText(/vs origin\/main/)).not.toBeInTheDocument();
-			expect(screen.queryByLabelText("Change comparison branch")).not.toBeInTheDocument();
-		});
 	});
 
 	describe("git action buttons", () => {
-		it("shows git buttons for active task with worktree", async () => {
+		// Default status: 3 ahead, 0 behind, a GitHub remote, nothing diverged, no PR.
+		it("shows the git buttons for an active task: rebase off, push/PR live, plain Push, Create PR; push alerts on failure, then calls pushTask", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.pushTask
+				.mockRejectedValueOnce(new Error("no remote"))
+				.mockResolvedValue(undefined);
 			await act(async () => {
 				renderPanel(makeTask());
 			});
@@ -2099,9 +1602,28 @@ describe("TaskHeader", () => {
 			// The standalone Diff button is gone: the two counters are the diff entry points.
 			expect(screen.queryAllByText("Diff")).toHaveLength(0);
 			expect(screen.queryByText("Unpushed")).not.toBeInTheDocument();
-			expect(screen.getAllByText("Rebase").length).toBeGreaterThanOrEqual(1);
-			expect(screen.getAllByText("Push").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Merge").length).toBeGreaterThanOrEqual(1);
+			// Not behind: rebase is disabled on every copy.
+			for (const btn of screen.getAllByText("Rebase")) {
+				expect(btn.closest("button")).toBeDisabled();
+			}
+			// A remote and nothing diverged: plain Push and PR are live.
+			expect(screen.queryAllByText("Force push")).toHaveLength(0);
+			expect(screen.getAllByText("Push")[0].closest("button")!).not.toBeDisabled();
+			expect(screen.getAllByText("PR")[0].closest("button")!).not.toBeDisabled();
+			expect(screen.queryByText("Open PR")).not.toBeInTheDocument();
+			// No confirmation for a push that did not diverge; a failed push alerts.
+			const enabledPush = () => screen.getAllByText("Push").find(b => !b.closest("button")!.disabled)!;
+			await user.click(enabledPush().closest("button")!);
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+			await user.click(enabledPush().closest("button")!);
+			await waitFor(() => expect(mockedApi.request.pushTask).toHaveBeenCalledTimes(2));
+
+			expect(mockedApi.request.pushTask).toHaveBeenLastCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+			});
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		it("shows agent-assisted git actions for an active Codex task", async () => {
@@ -2121,50 +1643,22 @@ describe("TaskHeader", () => {
 			expect(screen.getAllByText("Auto PR").length).toBeGreaterThanOrEqual(1);
 		});
 
-		it("does not show git buttons for inactive task", async () => {
+		it("shows no git buttons, fetches no branch status and greys the dev server for an inactive task", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ status: "todo", worktreePath: null, branchName: null }));
+				renderPanel(
+					makeTask({ status: "todo", worktreePath: null, branchName: null }),
+					{ project: { ...project, devScript: "bun run dev" } },
+				);
 			});
 
 			expect(screen.queryByText("Rebase")).not.toBeInTheDocument();
 			expect(screen.queryByText("Push")).not.toBeInTheDocument();
 			expect(screen.queryByText("Merge")).not.toBeInTheDocument();
+			expect(mockedApi.request.getBranchStatus).not.toHaveBeenCalled();
+			expect(screen.getAllByText("Dev Server")[0].closest("button")!.className).toContain("cursor-not-allowed");
 		});
 
-		it("rebase is disabled when not behind", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				behind: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			// Find all Rebase buttons (collapsed + expanded might render different copies)
-			const rebaseButtons = screen.getAllByText("Rebase");
-			for (const btn of rebaseButtons) {
-				expect(btn.closest("button")).toBeDisabled();
-			}
-		});
-
-		it("push is disabled when not ahead", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const pushButtons = screen.getAllByText("Push");
-			for (const btn of pushButtons) {
-				expect(btn.closest("button")).toBeDisabled();
-			}
-		});
-
-		it("explains uncommitted changes on disabled git actions", async () => {
+		it("shows the behind badge and explains uncommitted changes on disabled git actions", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -2178,12 +1672,15 @@ describe("TaskHeader", () => {
 				renderPanel(makeTask());
 			});
 
+			const count = screen.getAllByTestId("behind-count")[0];
+			expect(count).toHaveClass("text-danger");
+			expect(count).toHaveTextContent("2 commits behind");
+
 			async function expectTooltip(label: string, content: string) {
 				const button = screen.getAllByText(label)[0].closest("button")!;
-				const anchor = button.parentElement!;
-				await user.hover(anchor);
-				expect(await screen.findByRole("tooltip")).toHaveTextContent(content);
-				await user.unhover(anchor);
+				const { tooltip, leave } = await hoverTooltip(user, button.parentElement!);
+				expect(tooltip).toHaveTextContent(content);
+				await leave();
 			}
 
 			await expectTooltip("Push", "Nothing to push — commit the uncommitted changes first");
@@ -2192,7 +1689,7 @@ describe("TaskHeader", () => {
 			await expectTooltip("Merge", "Nothing to merge — commit the uncommitted changes first");
 		});
 
-		it("explains when there are no local commits to push", async () => {
+		it("with nothing ahead or behind: no count badges, push/merge/rebase/commit disabled, and Push says why", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -2206,15 +1703,25 @@ describe("TaskHeader", () => {
 				renderPanel(makeTask());
 			});
 
+			expect(screen.queryByText(/commits? ahead/)).not.toBeInTheDocument();
+			expect(screen.queryByText(/commits? behind/)).not.toBeInTheDocument();
+			for (const label of ["Push", "Merge", "Rebase"]) {
+				for (const btn of screen.getAllByText(label)) {
+					expect(btn.closest("button"), label).toBeDisabled();
+				}
+			}
+			const commitButtons = screen.getAllByText("Commit");
+			expect(commitButtons.length).toBeGreaterThanOrEqual(1);
+			expect(commitButtons.every((b) => b.closest("button")!.disabled)).toBe(true);
+
 			const pushButton = screen.getAllByText("Push")[0].closest("button")!;
-			const anchor = pushButton.parentElement!;
-			await user.hover(anchor);
-			expect(await screen.findByRole("tooltip")).toHaveTextContent("Nothing to push — no local commits ahead");
+			const { tooltip } = await hoverTooltip(user, pushButton.parentElement!);
+			expect(tooltip).toHaveTextContent("Nothing to push — no local commits ahead");
 		});
 
 		// A project added from a local folder has no `origin`: push and PR have no
 		// destination, so they must read as unavailable instead of failing on click.
-		it("disables push and PR when the project has no git remote", async () => {
+		it("disables push and PR when the project has no git remote, and merges without a confirmation", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -2229,27 +1736,17 @@ describe("TaskHeader", () => {
 			for (const label of ["Push", "PR", "Auto PR"]) {
 				const button = screen.getAllByText(label)[0].closest("button")!;
 				expect(button).toBeDisabled();
-				await user.hover(button.parentElement!);
-				expect(await screen.findByRole("tooltip")).toHaveTextContent(
-					"This project has no git remote — nothing to push to",
-				);
-				await user.unhover(button.parentElement!);
+				const { tooltip, leave } = await hoverTooltip(user, button.parentElement!);
+				expect(tooltip).toHaveTextContent("This project has no git remote — nothing to push to");
+				await leave();
 			}
-		});
 
-		it("keeps push and PR live when the project has a remote", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				hasRemote: true,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.getAllByText("Push")[0].closest("button")!).not.toBeDisabled();
-			expect(screen.getAllByText("PR")[0].closest("button")!).not.toBeDisabled();
+			// Nothing to push the base to, so Merge needs no confirmation.
+			mockedApi.request.mergeTask.mockResolvedValue(undefined);
+			const merge = screen.getAllByText("Merge").find((b) => !b.closest("button")!.disabled)!;
+			await user.click(merge.closest("button")!);
+			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalled());
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		// `gh` is the only forge client dev3 speaks, so a GitLab/Gitea origin must
@@ -2272,47 +1769,10 @@ describe("TaskHeader", () => {
 			for (const label of ["PR", "Auto PR"]) {
 				const button = screen.getAllByText(label)[0].closest("button")!;
 				expect(button).toBeDisabled();
-				await user.hover(button.parentElement!);
-				expect(await screen.findByRole("tooltip")).toHaveTextContent(
-					"origin is not a GitHub remote",
-				);
-				await user.unhover(button.parentElement!);
+				const { tooltip, leave } = await hoverTooltip(user, button.parentElement!);
+				expect(tooltip).toHaveTextContent("origin is not a GitHub remote");
+				await leave();
 			}
-		});
-
-		// The rebase-then-push case: origin/<branch> holds commits HEAD does not, so
-		// a plain push is refused as non-fast-forward. The label has to say so before
-		// the click, because the backend escalates to a leased force push.
-		it("renames Push to Force push when the branch diverged from origin", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				hasRemote: true,
-				remoteAhead: 2,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.queryAllByText("Push")).toHaveLength(0);
-			expect(screen.getAllByText("Force push")[0].closest("button")!).not.toBeDisabled();
-		});
-
-		it("keeps the plain Push label when nothing diverged", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				hasRemote: true,
-				remoteAhead: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.queryAllByText("Force push")).toHaveLength(0);
-			expect(screen.getAllByText("Push")[0].closest("button")!).not.toBeDisabled();
 		});
 
 		// A foreign-code task exists to READ commits the local user did not write. A
@@ -2337,57 +1797,28 @@ describe("TaskHeader", () => {
 			expect(screen.getAllByText("Rebase").length).toBeGreaterThan(0);
 		});
 
-		it("merge is disabled when behind > 0", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 2,
-				behind: 1,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const mergeButtons = screen.getAllByText("Merge");
-			for (const btn of mergeButtons) {
-				expect(btn.closest("button")).toBeDisabled();
-			}
-		});
-
-		it("merge is disabled when ahead = 0", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 0,
-				behind: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const mergeButtons = screen.getAllByText("Merge");
-			for (const btn of mergeButtons) {
-				expect(btn.closest("button")).toBeDisabled();
-			}
-		});
-
-		it("calls rebaseTask on rebase click", async () => {
+		it("calls rebaseTask on rebase click, alerting when it fails", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				behind: 2,
 				canRebase: true,
 			});
-			mockedApi.request.rebaseTask.mockResolvedValue(undefined);
+			mockedApi.request.rebaseTask
+				.mockRejectedValueOnce(new Error("conflict"))
+				.mockResolvedValue(undefined);
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const rebaseButtons = screen.getAllByText("Rebase");
-			const enabledBtn = rebaseButtons.find(b => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
+			const enabledRebase = () => screen.getAllByText("Rebase").find(b => !b.closest("button")!.disabled);
+			expect(enabledRebase()).toBeTruthy();
+			await user.click(enabledRebase()!.closest("button")!);
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+
+			await user.click(enabledRebase()!.closest("button")!);
+			await waitFor(() => expect(mockedApi.request.rebaseTask).toHaveBeenCalledTimes(2));
 
 			expect(mockedApi.request.rebaseTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -2396,37 +1827,19 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("calls pushTask on push click", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-			});
-			mockedApi.request.pushTask.mockResolvedValue(undefined);
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const pushButtons = screen.getAllByText("Push");
-			const enabledBtn = pushButtons.find(b => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
-
-			expect(mockedApi.request.pushTask).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-			});
-		});
-
-		it("calls mergeTask on merge click", async () => {
+		it("asks before merging into a pushed base: declined does nothing, a failure alerts, confirmed calls mergeTask", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 2,
 				behind: 0,
 			});
-			mockedApi.request.mergeTask.mockResolvedValue(undefined);
+			mockedApi.request.mergeTask
+				.mockRejectedValueOnce(new Error("merge error"))
+				.mockResolvedValue(undefined);
+			// With a remote, Merge squashes AND pushes the base branch — that crosses
+			// review and CI, so it must not happen on a bare click.
+			vi.mocked(confirm).mockResolvedValueOnce(false);
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -2436,8 +1849,17 @@ describe("TaskHeader", () => {
 			const enabledBtn = mergeButtons.find(b => !b.closest("button")!.disabled);
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1));
+			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
 
-			expect(mockedApi.request.mergeTask).toHaveBeenCalledWith({
+			// Confirmed but the merge fails: an alert.
+			await user.click(enabledBtn!.closest("button")!);
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+
+			await user.click(screen.getAllByText("Merge").find(b => !b.closest("button")!.disabled)!.closest("button")!);
+			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalledTimes(2));
+
+			expect(mockedApi.request.mergeTask).toHaveBeenLastCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 				// The ref the git bar measured against travels with the click, so the
@@ -2464,6 +1886,7 @@ describe("TaskHeader", () => {
 				prUrl: "https://github.com/h0x91b/dev-3.0/pull/1475",
 			});
 			mockedApi.request.mergeTask.mockResolvedValue(undefined);
+			vi.mocked(confirm).mockResolvedValueOnce(false);
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -2471,6 +1894,11 @@ describe("TaskHeader", () => {
 
 			const merge = screen.getAllByText("Merge PR").find((b) => !b.closest("button")!.disabled)!;
 			expect(merge).toBeTruthy();
+			// Declined: nothing merges.
+			await user.click(merge.closest("button")!);
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1));
+			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
+
 			await user.click(merge.closest("button")!);
 
 			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalledWith({
@@ -2481,27 +1909,6 @@ describe("TaskHeader", () => {
 			}));
 			// Confirmed, but not as a destructive act — GitHub still gates the landing.
 			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.not.objectContaining({ danger: true }));
-		});
-
-		it("does nothing when the PR merge is declined", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 2,
-				prNumber: 1475,
-				prUrl: "https://github.com/h0x91b/dev-3.0/pull/1475",
-			});
-			vi.mocked(confirm).mockResolvedValue(false);
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const merge = screen.getAllByText("Merge PR").find((b) => !b.closest("button")!.disabled)!;
-			await user.click(merge.closest("button")!);
-
-			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalled());
-			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
 		});
 
 		it("opens the uncommitted diff from the changes summary when the tree is dirty", async () => {
@@ -2515,8 +1922,16 @@ describe("TaskHeader", () => {
 
 			const summary = await screen.findByTestId("changes-summary");
 			expect(summary).toHaveAccessibleName("Open uncommitted changes: 1 ahead · 3 behind, uncommitted +700 −11 lines");
+			// One control carries both halves, with no separator between them, so
+			// clicking either number opens the diff.
+			expect(summary).toContainElement(screen.getAllByTestId("behind-count")[0]);
+			expect(summary).toContainElement(screen.getAllByText("+700")[0]);
+			expect(summary.textContent).not.toContain("|");
+			// The compare-ref picker is gone from the bar — the project setting owns that choice.
+			expect(screen.queryByLabelText("Change comparison branch")).not.toBeInTheDocument();
 			await user.click(summary);
 
+			// The +/− half is the working tree, so a dirty tree opens that scope.
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({ mode: "uncommitted", pinMode: true });
 		});
 
@@ -2676,116 +2091,12 @@ describe("TaskHeader", () => {
 				});
 			});
 
-			it("shows alert on rebase failure", async () => {
-				const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-				const alertSpy = vi.mocked(toast.error);
-				mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				behind: 2,
-				canRebase: true,
-			});
-			mockedApi.request.rebaseTask.mockRejectedValue(new Error("conflict"));
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const rebaseButtons = screen.getAllByText("Rebase");
-			const enabledBtn = rebaseButtons.find(b => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
-
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-			// alertSpy cleanup handled by clearAllMocks
-		});
-
-		it("shows alert on push failure", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.mocked(toast.error);
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-			});
-			mockedApi.request.pushTask.mockRejectedValue(new Error("no remote"));
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const pushButtons = screen.getAllByText("Push");
-			const enabledBtn = pushButtons.find(b => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
-
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-			// alertSpy cleanup handled by clearAllMocks
-		});
-
-		it("shows alert on merge failure", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.mocked(toast.error);
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-				behind: 0,
-			});
-			mockedApi.request.mergeTask.mockRejectedValue(new Error("merge error"));
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const mergeButtons = screen.getAllByText("Merge");
-			const enabledBtn = mergeButtons.find(b => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
-
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-			// alertSpy cleanup handled by clearAllMocks
-		});
-
 		// With a remote, Merge squashes AND pushes the base branch — that crosses
 		// review and CI, so it must not happen on a bare click.
-		it("confirms before merging when the base branch will be pushed", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-				behind: 0,
-				hasRemote: true,
-			});
-			vi.mocked(confirm).mockResolvedValue(false);
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const merge = screen.getAllByText("Merge").find((b) => !b.closest("button")!.disabled)!;
-			await user.click(merge.closest("button")!);
-
-			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalled());
-			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
-		});
-
-		it("merges without a confirmation when there is no remote to push to", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-				behind: 0,
-				hasRemote: false,
-			});
-			mockedApi.request.mergeTask.mockResolvedValue(undefined);
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const merge = screen.getAllByText("Merge").find((b) => !b.closest("button")!.disabled)!;
-			await user.click(merge.closest("button")!);
-
-			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalled());
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
-		});
-
-		it("confirms before a force push and does nothing when declined", async () => {
+		// The rebase-then-push case: origin/<branch> holds commits HEAD does not, so
+		// a plain push is refused as non-fast-forward. The label has to say so before
+		// the click, because the backend escalates to a leased force push.
+		it("renames Push to Force push when the branch diverged, and confirms before it (declined: nothing)", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -2799,6 +2110,7 @@ describe("TaskHeader", () => {
 				renderPanel(makeTask());
 			});
 
+			expect(screen.queryAllByText("Push")).toHaveLength(0);
 			const push = screen.getAllByText("Force push").find((b) => !b.closest("button")!.disabled)!;
 			await user.click(push.closest("button")!);
 
@@ -2806,45 +2118,40 @@ describe("TaskHeader", () => {
 			expect(mockedApi.request.pushTask).not.toHaveBeenCalled();
 		});
 
-		it("pushes without a confirmation when nothing diverged", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-				hasRemote: true,
-				remoteAhead: 0,
-			});
-			mockedApi.request.pushTask.mockResolvedValue(undefined);
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const push = screen.getAllByText("Push").find((b) => !b.closest("button")!.disabled)!;
-			await user.click(push.closest("button")!);
-
-			await waitFor(() => expect(mockedApi.request.pushTask).toHaveBeenCalled());
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
-		});
-
-		it("hands the rebase off to the agent when canRebase is false (conflicts)", async () => {
+		it("hands the rebase off to the agent when canRebase is false (conflicts), saying when delivery is unconfirmed or impossible", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				behind: 2,
 				canRebase: false,
 			});
-			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ delivery: { status: "delivered" } });
+			mockedApi.request.rebaseTaskViaAgent
+				// "unconfirmed" is neither of the two old answers: the prompt may well be in the
+				// agent already, so it must read as neither the success line nor "no terminal".
+				.mockResolvedValueOnce({ delivery: { status: "unconfirmed", reason: "unacknowledged" } })
+				.mockResolvedValueOnce({ delivery: { status: "not-delivered", reason: "pane-absent" } })
+				.mockResolvedValue({ delivery: { status: "delivered" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
 			// The conflict state relabels the (enabled) button "Rebase (AI)".
-			const rebaseButtons = screen.getAllByText("Rebase (AI)");
-			const enabledBtn = rebaseButtons.find((b) => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
+			const enabledBtn = () => screen.getAllByText("Rebase (AI)").find((b) => !b.closest("button")!.disabled);
+			expect(enabledBtn()).toBeTruthy();
+
+			await user.click(enabledBtn()!.closest("button")!);
+			await waitFor(() =>
+				expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("could not be confirmed"), expect.anything()),
+			);
+			expect(toast.error).not.toHaveBeenCalled();
+
+			// No agent terminal to hand it to: a warning.
+			await user.click(enabledBtn()!.closest("button")!);
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+			vi.mocked(toast.info).mockClear();
+
+			await user.click(enabledBtn()!.closest("button")!);
 
 			expect(mockedApi.request.rebaseTaskViaAgent).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -2856,73 +2163,28 @@ describe("TaskHeader", () => {
 			await waitFor(() => expect(toast.info).toHaveBeenCalled());
 		});
 
-		it("warns when there is no agent terminal to hand the rebase to", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				behind: 2,
-				canRebase: false,
-			});
-			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ delivery: { status: "not-delivered", reason: "pane-absent" } });
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const enabledBtn = screen
-				.getAllByText("Rebase (AI)")
-				.find((b) => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
-
-			await waitFor(() => expect(toast.error).toHaveBeenCalled());
-		});
-
-		it("says the rebase handoff could not be confirmed, instead of claiming it landed", async () => {
-			// "unconfirmed" is neither of the two old answers: the prompt may well be in the
-			// agent already, so it must read as neither the success line nor "no terminal".
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				behind: 2,
-				canRebase: false,
-			});
-			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({
-				delivery: { status: "unconfirmed", reason: "unacknowledged" },
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const enabledBtn = screen
-				.getAllByText("Rebase (AI)")
-				.find((b) => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
-
-			await waitFor(() =>
-				expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("could not be confirmed"), expect.anything()),
-			);
-			expect(toast.error).not.toHaveBeenCalled();
-		});
-
-		it("hands the commit off to the agent when the worktree is dirty", async () => {
+		it("hands the commit off to the agent when the worktree is dirty, warning when there is no agent terminal", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				insertions: 12,
 				deletions: 3,
 			});
-			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ delivery: { status: "delivered" } });
+			mockedApi.request.commitTaskViaAgent
+				.mockResolvedValueOnce({ delivery: { status: "not-delivered", reason: "pane-absent" } })
+				.mockResolvedValue({ delivery: { status: "delivered" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const enabledBtn = screen
-				.getAllByText("Commit")
-				.find((b) => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
+			const enabledBtn = () => screen.getAllByText("Commit").find((b) => !b.closest("button")!.disabled);
+			expect(enabledBtn()).toBeTruthy();
+			// No agent terminal to hand it to: a warning.
+			await user.click(enabledBtn()!.closest("button")!);
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+
+			await user.click(enabledBtn()!.closest("button")!);
 
 			expect(mockedApi.request.commitTaskViaAgent).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -2931,104 +2193,46 @@ describe("TaskHeader", () => {
 			await waitFor(() => expect(toast.info).toHaveBeenCalled());
 		});
 
-		it("disables Commit when there are no uncommitted changes", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				insertions: 0,
-				deletions: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const commitButtons = screen.getAllByText("Commit");
-			expect(commitButtons.length).toBeGreaterThanOrEqual(1);
-			expect(commitButtons.every((b) => b.closest("button")!.disabled)).toBe(true);
-		});
-
-		it("warns when there is no agent terminal to hand the commit to", async () => {
+		// No reported state, nothing ahead: the badge still shows, stays neutral, refreshes
+		// the rich status on open, previews it on hover and opens the PR on click.
+		it("shows a neutral PR badge for an existing PR even when ahead=0, hides Create PR, previews and opens it", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const openSpy = vi.fn(); window.open = openSpy;
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
-				insertions: 4,
-				deletions: 0,
-			});
-			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ delivery: { status: "not-delivered", reason: "pane-absent" } });
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const enabledBtn = screen
-				.getAllByText("Commit")
-				.find((b) => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
-
-			await waitFor(() => expect(toast.error).toHaveBeenCalled());
-		});
-
-		it("shows 'Create PR' when no open PR exists", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				unpushed: 0,
-				prNumber: null,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const createPRButtons = screen.getAllByText("PR");
-			expect(createPRButtons.length).toBeGreaterThanOrEqual(1);
-			expect(screen.queryByText("Open PR")).not.toBeInTheDocument();
-		});
-
-		it("shows PR badge when an open PR exists and hides Create PR button", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
+				ahead: 0,
 				unpushed: 0,
 				prNumber: 42,
 				prUrl: "https://github.com/test/repo/pull/42",
+				prState: null,
 			});
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
+			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", force: false });
 			const badges = screen.getAllByText(/PR #42/);
 			expect(badges.length).toBeGreaterThanOrEqual(1);
+			for (const node of badges) {
+				expect(node.closest("button")!.className).not.toMatch(/success|pr-merged|danger/);
+			}
 			expect(screen.queryByText("PR")).not.toBeInTheDocument();
+
+			const btn = badges[0].closest("button")!;
+			await user.hover(btn);
+			expect(await screen.findByTestId("pr-status-popover")).toHaveTextContent("PR #42 status");
+			await user.click(btn);
+			expect(openSpy).toHaveBeenCalledWith("https://github.com/test/repo/pull/42", "_blank");
 		});
 
 		// A finished PR is history, not the branch's live PR: its badge stays, but it
 		// must neither hide Create PR for the follow-up nor route Merge through it.
-		it.each(["MERGED", "CLOSED"])("brings Create PR back beside the badge of a %s PR", async (prState) => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				unpushed: 0,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-				prState,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.getAllByText(/PR #42/).length).toBeGreaterThanOrEqual(1);
-			expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
-			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
-		});
-
 		it.each([
-			["MERGED", "text-pr-merged", "Merged"],
-			["CLOSED", "text-danger", "Closed"],
-			["OPEN", "text-success", "Open"],
-		])("tints every PR #42 badge by the branch's %s state and names it", async (prState, cls, label) => {
+			["MERGED", "text-pr-merged", "Merged", true],
+			["CLOSED", "text-danger", "Closed", true],
+			["OPEN", "text-success", "Open", false],
+		])("tints every PR #42 badge by the branch's %s state and names it", async (prState, cls, label, finished) => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
@@ -3047,6 +2251,12 @@ describe("TaskHeader", () => {
 			for (const badge of badges) {
 				expect(badge.className).toContain(cls);
 				expect(badge).toHaveTextContent(`PR #42 — ${label}`);
+			}
+			if (finished) {
+				expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
+				expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
+			} else {
+				expect(screen.queryByText("PR")).not.toBeInTheDocument();
 			}
 		});
 
@@ -3095,30 +2305,15 @@ describe("TaskHeader", () => {
 				for (const node of screen.getAllByRole("button").filter((button) => button.textContent?.includes("PR #42"))) {
 					expect(node).toHaveTextContent(`PR #42 — ${state === "MERGED" ? "Merged" : "Open"}`);
 				}
-				await userEvent.hover(screen.getAllByText(/PR #42/)[0].closest("button")!);
+				await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).hover(screen.getAllByText(/PR #42/)[0].closest("button")!);
 				const popover = await screen.findByTestId("pr-status-popover");
 				expect(within(popover).getByText("build").closest("li")).toHaveTextContent(ciStatus === "failure" ? "Failed" : "Passed");
-				await userEvent.unhover(screen.getAllByText(/PR #42/)[0].closest("button")!);
+				await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).unhover(screen.getAllByText(/PR #42/)[0].closest("button")!);
 			}
-		});
-
-		it("keeps the PR #42 badge neutral while nothing reports its state", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				unpushed: 0,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-				prState: null,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			for (const node of screen.getAllByText(/PR #42/)) {
-				expect(node.closest("button")!.className).not.toMatch(/success|pr-merged|danger/);
-			}
+			// The merged badge stays clickable.
+			const openSpy = vi.fn(); window.open = openSpy;
+			fireEvent.click(screen.getAllByText(/PR #42/)[0].closest("button")!);
+			expect(openSpy).toHaveBeenCalledWith(pr.prUrl, "_blank");
 		});
 
 		it("tints the PR #42 badge from the task's stored cache while GitHub gives no state", async () => {
@@ -3153,6 +2348,9 @@ describe("TaskHeader", () => {
 			for (const node of screen.getAllByText(/PR #42/)) {
 				expect(node.closest("button")!.className).toContain("text-pr-merged");
 			}
+			// Read as merged, so Create PR is back and Merge does not route through it.
+			expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
+			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
 		});
 
 		it("opens the git-bar PR popover on the stored merged status, not Unknown, when no push arrived", async () => {
@@ -3179,87 +2377,13 @@ describe("TaskHeader", () => {
 				}));
 			});
 
-			await userEvent.hover(screen.getAllByText(/PR #42/)[0].closest("button")!);
+			await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).hover(screen.getAllByText(/PR #42/)[0].closest("button")!);
 			const popover = await screen.findByTestId("pr-status-popover");
 			expect(within(popover).getByText("PR status").nextElementSibling).toHaveTextContent("Merged");
 			expect(within(popover).getByTestId("pr-popover-finished-note")).toBeInTheDocument();
 			expect(within(popover).queryByText("Unknown")).not.toBeInTheDocument();
 			expect(within(popover).getByText("build")).toBeInTheDocument();
 			mockedApi.request.refreshTaskPrStatus.mockResolvedValue({ outcome: "updated" });
-		});
-
-		it("reads a merged PR from the task's cache when GitHub gives no state", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				unpushed: 0,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-				prState: null,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask({
-					prNumber: 42,
-					prUrl: "https://github.com/test/repo/pull/42",
-					prStatusCache: {
-						number: 42, url: "https://github.com/test/repo/pull/42", ciStatus: null, reviewState: null,
-						unresolvedCount: 0, mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
-						checks: [], prTitle: null, isDraft: false, cachedAt: "2026-09-29T00:00:00.000Z",
-					},
-				}));
-			});
-
-			expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
-			expect(screen.queryByText("Merge PR")).not.toBeInTheDocument();
-		});
-
-		it("shows PR badge even when ahead=0", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 0,
-				unpushed: 0,
-				prNumber: 99,
-				prUrl: "https://github.com/test/repo/pull/99",
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const badges = screen.getAllByText(/PR #99/);
-			expect(badges.length).toBeGreaterThanOrEqual(1);
-		});
-
-		it("shows the unresolved comment count on the PR section", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", {
-					detail: {
-						projectId: "p1",
-						taskId: "t1",
-						prNumber: 42,
-						prUrl: "https://github.com/test/repo/pull/42",
-						ciStatus: "pending",
-						reviewState: null,
-						unresolvedCount: 4,
-						mergeState: { mergeable: "MERGEABLE", status: "CLEAN" },
-						checks: [],
-						prTitle: "Status surface",
-						isDraft: false,
-					},
-				}));
-			});
-
-			expect(await screen.findAllByLabelText("4 unresolved comments")).not.toHaveLength(0);
 		});
 
 		it("does not leak the previous task's pushed PR status after switching tasks", async () => {
@@ -3311,42 +2435,6 @@ describe("TaskHeader", () => {
 			});
 
 			expect(screen.queryByText(/PR #42/)).not.toBeInTheDocument();
-		});
-
-		it("refreshes rich PR status when opening a task with an existing PR", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", force: false });
-		});
-
-		it("opens PR URL in new tab when Open PR is clicked", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const openSpy = vi.fn(); window.open = openSpy;
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				unpushed: 0,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const badges = screen.getAllByText(/PR #42/);
-			const btn = badges[0].closest("button")!;
-			await user.click(btn);
-
-			expect(openSpy).toHaveBeenCalledWith("https://github.com/test/repo/pull/42", "_blank");
 		});
 
 		it("calls createPullRequest when Create PR is clicked (no existing PR)", async () => {
@@ -3401,26 +2489,6 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("shows PR status popover with PR number", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 3,
-				unpushed: 0,
-				prNumber: 42,
-				prUrl: "https://github.com/test/repo/pull/42",
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const badges = screen.getAllByText(/PR #42/);
-			const btn = badges[0].closest("button")!;
-			await userEvent.hover(btn);
-			const popover = await screen.findByTestId("pr-status-popover");
-			expect(popover).toHaveTextContent("PR #42 status");
-		});
-
 		it("shows auto-merge and mergeability details in the PR status popover", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -3451,8 +2519,10 @@ describe("TaskHeader", () => {
 				}));
 			});
 
+			// The unresolved comment count rides the PR section itself.
+			expect(await screen.findAllByLabelText("2 unresolved comments")).not.toHaveLength(0);
 			const badge = screen.getAllByText(/PR #42/)[0].closest("button")!;
-			await userEvent.hover(badge);
+			await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).hover(badge);
 			const popover = await screen.findByTestId("pr-status-popover");
 			expect(popover).toHaveTextContent("Merge status");
 			expect(within(popover).getByText("Auto-merge")).toBeInTheDocument();
@@ -3462,46 +2532,6 @@ describe("TaskHeader", () => {
 			expect(within(popover).getByText("Unresolved comments")).toBeInTheDocument();
 			expect(within(popover).getByText("A required approving review is missing")).toBeInTheDocument();
 			expect(within(popover).getByText("Failed checks: E2E PR Smoke Tests")).toBeInTheDocument();
-		});
-
-		it("shows a merged PR state while keeping the badge clickable", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const openSpy = vi.fn(); window.open = openSpy;
-			const prUrl = "https://github.com/test/repo/pull/42";
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				prNumber: 42,
-				prUrl,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			act(() => {
-				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", {
-					detail: {
-						projectId: "p1",
-						taskId: "t1",
-						prNumber: 42,
-						prUrl,
-						ciStatus: null,
-						reviewState: null,
-						unresolvedCount: null,
-						mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
-						checks: [],
-						prTitle: "Merged change",
-						isDraft: false,
-					},
-				}));
-			});
-
-			const badge = screen.getAllByText(/PR #42/)[0].closest("button")!;
-			await user.hover(badge);
-			const popover = await screen.findByTestId("pr-status-popover");
-			expect(within(popover).getByText("PR status")).toBeInTheDocument();
-			expect(within(popover).getByText("Merged")).toBeInTheDocument();
-			await user.click(badge);
-			expect(openSpy).toHaveBeenCalledWith(prUrl, "_blank");
 		});
 
 		it("PR badge does not open a tab when prUrl is null", async () => {
@@ -3550,13 +2580,14 @@ describe("TaskHeader", () => {
 	});
 
 	describe("full screen navigation", () => {
-		it("navigates to task screen on click", async () => {
+		it("navigates to the task screen on click, with no panel-restore toggle in split view", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const navigate = vi.fn();
 			await act(async () => {
 				renderPanel(makeTask(), { navigate });
 			});
 
+			expect(screen.queryByTestId("show-active-tasks")).not.toBeInTheDocument();
 			await user.click(screen.getByLabelText("Full screen"));
 
 			expect(navigate).toHaveBeenCalledWith({
@@ -3566,42 +2597,13 @@ describe("TaskHeader", () => {
 			});
 		});
 
-		it("navigates back to project when in full page mode", async () => {
+		it("in full page mode: exit and the left-edge panel-restore toggle both return to the split view", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const navigate = vi.fn();
 			await act(async () => {
 				renderPanel(makeTask(), { navigate, isFullPage: true });
 			});
-
-			await user.click(screen.getByLabelText("Exit full screen"));
-
-			expect(navigate).toHaveBeenCalledWith({
-				screen: "project",
-				projectId: "p1",
-				activeTaskId: "t1",
-			});
-		});
-
-		it("shows the panel-restore toggle in full page mode and navigates to the split view", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const navigate = vi.fn();
-			await act(async () => {
-				renderPanel(makeTask(), { navigate, isFullPage: true });
-			});
-
-			await user.click(screen.getByTestId("show-active-tasks"));
-
-			expect(navigate).toHaveBeenCalledWith({
-				screen: "project",
-				projectId: "p1",
-				activeTaskId: "t1",
-			});
-		});
-
-		it("puts the panel-restore toggle at the left edge of the git row", async () => {
-			await act(async () => {
-				renderPanel(makeTask(), { isFullPage: true });
-			});
+			const splitView = { screen: "project", projectId: "p1", activeTaskId: "t1" };
 
 			const toggle = screen.getByTestId("show-active-tasks");
 			const gitBar = document.querySelector('[data-help-id="inspector.git-bar"]')!;
@@ -3609,17 +2611,15 @@ describe("TaskHeader", () => {
 			expect(gitRow.contains(toggle)).toBe(true);
 			expect(gitRow.firstElementChild?.contains(toggle)).toBe(true);
 			expect(screen.getByTestId("branch-chip").compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+
+			await user.click(screen.getByLabelText("Exit full screen"));
+			expect(navigate).toHaveBeenCalledWith(splitView);
+			navigate.mockClear();
+			await user.click(toggle);
+			expect(navigate).toHaveBeenCalledWith(splitView);
 		});
 
-		it("omits the panel-restore toggle in split view", async () => {
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(screen.queryByTestId("show-active-tasks")).not.toBeInTheDocument();
-		});
-
-		it("uses the app immersive toggle when provided instead of navigating", async () => {
+		it("uses the app immersive toggle when provided instead of navigating, and names its shortcuts", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const navigate = vi.fn();
 			const toggle = vi.fn();
@@ -3627,48 +2627,21 @@ describe("TaskHeader", () => {
 				renderPanel(makeTask(), { navigate, onToggleTerminalFullscreen: toggle });
 			});
 
+			await user.hover(screen.getByLabelText("Full screen"));
+			await act(async () => {
+				vi.advanceTimersByTime(300);
+			});
+			expect(screen.getByText(/F11/)).toBeInTheDocument();
+
 			await user.click(screen.getByLabelText("Full screen"));
 
 			expect(toggle).toHaveBeenCalledTimes(1);
 			expect(navigate).not.toHaveBeenCalled();
 		});
 
-		it("shows the fullscreen shortcuts in the button tooltip", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask(), { onToggleTerminalFullscreen: vi.fn() });
-			});
-
-			await user.hover(screen.getByLabelText("Full screen"));
-			await act(async () => {
-				vi.advanceTimersByTime(300);
-			});
-
-			expect(screen.getByText(/F11/)).toBeInTheDocument();
-		});
 	});
 
 	describe("branch status polling", () => {
-		it("fetches branch status on mount for active tasks", async () => {
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-				compareRef: "origin/main",
-			});
-		});
-
-		it("does not fetch branch status for inactive tasks", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ status: "todo", worktreePath: null }));
-			});
-
-			expect(mockedApi.request.getBranchStatus).not.toHaveBeenCalled();
-		});
-
 		it("does not fetch branch status when no worktree path", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ status: "in-progress", worktreePath: null }));
@@ -3715,22 +2688,21 @@ describe("TaskHeader", () => {
 			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
-		it("hands completion to the agent only after a danger confirmation", async () => {
-			vi.mocked(confirm).mockResolvedValue(true as never);
+		it("hands completion to the agent only after a danger confirmation; a cancel grants nothing", async () => {
+			vi.mocked(confirm).mockResolvedValueOnce(false as never).mockResolvedValue(true as never);
 			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask({ selfCompletion: true }));
 
 			await chooseOwner(makeTask({ manualCompletion: true }), /Agent completes it/);
+			expect(mockedApi.request.setTaskCompletionOwner).not.toHaveBeenCalled();
+			await act(async () => {
+				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent completes it/ }));
+			});
 
 			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({ danger: true, confirmLabel: "Let the agent complete it" }));
 			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "agent" });
-		});
-
-		it("grants nothing when the agent confirmation is cancelled", async () => {
-			vi.mocked(confirm).mockResolvedValue(false as never);
-
-			await chooseOwner(makeTask({ manualCompletion: true }), /Agent completes it/);
-
-			expect(mockedApi.request.setTaskCompletionOwner).not.toHaveBeenCalled();
 		});
 
 		it("says in words that the agent completes the task, and what that skips", async () => {
@@ -3744,7 +2716,7 @@ describe("TaskHeader", () => {
 			expect(button.className).toContain("text-warning-strong");
 		});
 
-		it("states active completion ownership in words, colour and the accessible name", async () => {
+		it("states active completion ownership in words, colour and the accessible name, right of the status chip", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ manualCompletion: true }));
 			});
@@ -3758,24 +2730,6 @@ describe("TaskHeader", () => {
 			expect(button.className).toContain("text-warning-strong");
 			expect(button.className).not.toContain("text-accent");
 			expect(button.querySelector("svg")).toBeTruthy();
-		});
-
-		it("keeps the off state quiet — no label, no colour", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ manualCompletion: false }));
-			});
-
-			expect(screen.queryByText("I’ll complete it myself")).not.toBeInTheDocument();
-			const button = screen.getAllByTestId("task-completion-owner")[0];
-			expect(button).toHaveAttribute("aria-pressed", "false");
-			expect(button.className).toContain("text-fg-3");
-			expect(button.className).not.toContain("warning");
-		});
-
-		it("puts completion ownership to the RIGHT of the status chip", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ manualCompletion: true }));
-			});
 
 			const owner = screen.getByLabelText(/complete it myself/i);
 			const status = screen.getByText("Agent is Working");
@@ -3784,11 +2738,17 @@ describe("TaskHeader", () => {
 			).toBeTruthy();
 		});
 
-		it("shows the watch toggle as a bare bell, the words only in its name", async () => {
+		it("keeps the off state quiet — no label, no colour — and the watch toggle a bare bell", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ watched: true }));
+				renderPanel(makeTask({ manualCompletion: false, watched: true }));
 			});
 
+			expect(screen.queryByText("I’ll complete it myself")).not.toBeInTheDocument();
+			const button = screen.getAllByTestId("task-completion-owner")[0];
+			expect(button).toHaveAttribute("aria-pressed", "false");
+			expect(button.className).toContain("text-fg-3");
+			expect(button.className).not.toContain("warning");
+			// The watch toggle's words live only in its name.
 			expect(screen.queryByText("Watching")).not.toBeInTheDocument();
 			expect(screen.getByLabelText(/stop notifications/i).querySelector("svg")).toBeTruthy();
 		});
@@ -4244,29 +3204,25 @@ describe("TaskHeader", () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 		});
 
-		it("shows task title with edit button in expanded view", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ title: "My task title" }));
-			});
-			expect(screen.getByText("My task title")).toBeInTheDocument();
-			expect(screen.getByTitle("Edit title")).toBeInTheDocument();
-		});
-
-		it("shows customTitle when set", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ title: "Auto title", customTitle: "Custom name" }));
-			});
-			expect(screen.getByText("Custom name")).toBeInTheDocument();
-		});
-
-		it("opens rename input on pencil click", async () => {
+		it("shows the title with an edit button; editing offers no reset, an unchanged Enter saves nothing, cancel restores", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			await act(async () => {
 				renderPanel(makeTask({ title: "My task" }));
 			});
+			expect(screen.getByText("My task")).toBeInTheDocument();
+
 			await user.click(screen.getByTitle("Edit title"));
-			const input = screen.getByDisplayValue("My task");
-			expect(input).toBeInTheDocument();
+			expect(screen.getByDisplayValue("My task")).toBeInTheDocument();
+			expect(screen.queryByText("Reset to auto")).not.toBeInTheDocument();
+			// Press Enter without changing value
+			await user.keyboard("{Enter}");
+			expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
+
+			expect(screen.queryByDisplayValue("My task")).not.toBeInTheDocument();
+			await user.click(screen.getByTitle("Edit title"));
+			await user.click(screen.getByTestId("rename-cancel"));
+			expect(screen.queryByDisplayValue("My task")).not.toBeInTheDocument();
+			expect(screen.getByText("My task")).toBeInTheDocument();
 		});
 
 		it("saves new title on Enter", async () => {
@@ -4294,38 +3250,7 @@ describe("TaskHeader", () => {
 			expect(mockedTrackEvent).toHaveBeenCalledWith("task_renamed", { project_id: "p1" });
 		});
 
-		it("cancels rename on cancel button click", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ title: "My task" }));
-			});
-			await user.click(screen.getByTitle("Edit title"));
-			expect(screen.getByDisplayValue("My task")).toBeInTheDocument();
-
-			await user.click(screen.getByTestId("rename-cancel"));
-			expect(screen.queryByDisplayValue("My task")).not.toBeInTheDocument();
-			expect(screen.getByText("My task")).toBeInTheDocument();
-		});
-
-		it("shows reset button when customTitle is set", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ title: "Auto title", customTitle: "Custom name" }));
-			});
-			await user.click(screen.getByTitle("Edit title"));
-			expect(screen.getByText("Reset to auto")).toBeInTheDocument();
-		});
-
-		it("does not show reset button when no customTitle", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ title: "Auto title" }));
-			});
-			await user.click(screen.getByTitle("Edit title"));
-			expect(screen.queryByText("Reset to auto")).not.toBeInTheDocument();
-		});
-
-		it("resets title to auto-generated", async () => {
+		it("shows customTitle and resets it to the auto-generated title", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const dispatch = vi.fn();
 			const updatedTask = makeTask({ title: "Auto title", customTitle: null });
@@ -4334,6 +3259,8 @@ describe("TaskHeader", () => {
 			await act(async () => {
 				renderPanel(makeTask({ title: "Auto title", customTitle: "Custom name" }), { dispatch });
 			});
+			// customTitle wins over the title, and editing it offers the reset.
+			expect(screen.getByText("Custom name")).toBeInTheDocument();
 			await user.click(screen.getByTitle("Edit title"));
 			await user.click(screen.getByText("Reset to auto"));
 
@@ -4347,16 +3274,6 @@ describe("TaskHeader", () => {
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
 		});
 
-		it("does not save when title is unchanged", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			await act(async () => {
-				renderPanel(makeTask({ title: "My task" }));
-			});
-			await user.click(screen.getByTitle("Edit title"));
-			// Press Enter without changing value
-			await user.keyboard("{Enter}");
-			expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
-		});
 	});
 
 	describe("custom column status display", () => {
@@ -4402,14 +3319,18 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 
 	const vproject: Project = { ...project, kind: "virtual", path: "/tmp/.dev3.0/ops/operations" };
 
-	it("hides the git bar (branch name) for a virtual task", async () => {
+	it("hides the git bar, Dev Server and Scripts for a virtual task and notes 'No repository attached'", async () => {
 		await act(async () => {
 			renderPanel(
-				makeTask({ branchName: "dev3/should-not-show", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
+				makeTask({ status: "in-progress", branchName: "dev3/should-not-show", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
 				{ project: vproject },
 			);
 		});
 		expect(screen.queryByText("dev3/should-not-show")).not.toBeInTheDocument();
+		expect(screen.getByText("No repository attached")).toBeInTheDocument();
+		expect(screen.queryByText("Setup Dev Server")).not.toBeInTheDocument();
+		expect(screen.queryByText("Dev Server")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Scripts")).not.toBeInTheDocument();
 	});
 
 	it("says the git workflow is off, and shows no branch, on a gitless project", async () => {
@@ -4423,21 +3344,12 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 		expect(screen.queryByText("dev3/should-not-show")).not.toBeInTheDocument();
 	});
 
-	it("still shows the git bar (branch name) for a git task", async () => {
+	it("still shows the git bar, Dev Server and Scripts for a git task", async () => {
 		await act(async () => {
-			renderPanel(makeTask({ branchName: "dev3/task-shown", worktreePath: "/tmp/wt/t1" }));
+			renderPanel(makeTask({ status: "in-progress", branchName: "dev3/task-shown", worktreePath: "/tmp/wt/t1" }));
 		});
 		expect(await screen.findByTestId("branch-chip")).toBeInTheDocument();
-	});
-
-	it("fills the empty git slot with a muted 'No repository attached' note", async () => {
-		await act(async () => {
-			renderPanel(
-				makeTask({ status: "in-progress", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
-				{ project: vproject },
-			);
-		});
-		expect(screen.getByText("No repository attached")).toBeInTheDocument();
+		expect(screen.getByLabelText("Scripts")).toBeInTheDocument();
 	});
 
 	describe("attaching a git repository", () => {
@@ -4465,7 +3377,7 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			expect(screen.queryByRole("button", { name: "Attach repository" })).not.toBeInTheDocument();
 		});
 
-		it("shows the changes summary, the repo chip and Detach — and no write actions", async () => {
+		it("shows the changes summary, the repo chip and Detach — and no write actions; Detach sends a null path", async () => {
 			await act(async () => {
 				renderPanel(opsTask({ attachedRepo: "/Users/me/repo" }), { project: vproject, onOpenInlineDiff: vi.fn() });
 			});
@@ -4475,12 +3387,6 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			for (const name of ["Commit", "Rebase", "Push", "Merge", "Create PR"]) {
 				expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
 			}
-		});
-
-		it("detaches with a null path", async () => {
-			await act(async () => {
-				renderPanel(opsTask({ attachedRepo: "/Users/me/repo" }), { project: vproject });
-			});
 			await act(async () => {
 				fireEvent.click(screen.getByRole("button", { name: "Detach repository" }));
 			});
@@ -4502,25 +3408,6 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 		});
 	});
 
-	it("removes the Dev Server and Scripts controls for a virtual task", async () => {
-		await act(async () => {
-			renderPanel(
-				makeTask({ status: "in-progress", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
-				{ project: vproject },
-			);
-		});
-		expect(screen.queryByText("Setup Dev Server")).not.toBeInTheDocument();
-		expect(screen.queryByText("Dev Server")).not.toBeInTheDocument();
-		expect(screen.queryByLabelText("Scripts")).not.toBeInTheDocument();
-	});
-
-	it("keeps Dev Server and Scripts for a git task", async () => {
-		await act(async () => {
-			renderPanel(makeTask({ status: "in-progress", worktreePath: "/tmp/wt/t1" }));
-		});
-		expect(screen.getByLabelText("Scripts")).toBeInTheDocument();
-	});
-
 	describe("narrow viewport (mobile)", () => {
 		beforeEach(() => {
 			mockViewport(390);
@@ -4529,33 +3416,30 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			mockViewport(1920);
 		});
 
-		it("collapses the two toolbars into a summary bar with a kebab (sheet closed)", async () => {
+		it("collapses the toolbars into a summary bar whose kebab opens and closes the actions sheet", async () => {
 			await act(async () => {
-				renderPanel(makeTask({ title: "Mobile task" }));
+				renderPanel(makeTask({ title: "Mobile task", seq: 7 }));
 			});
 			// Summary bar: kebab present, full actions sheet not yet open.
 			expect(screen.getByTestId("task-actions-kebab")).toBeInTheDocument();
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 			// The task title is NOT repeated in the summary bar — it already shows in
 			// the breadcrumb row above (GlobalHeader). Only status + kebab live here.
-			// (The full title is still reachable via the details grid in the sheet.)
 			expect(screen.queryByText("Mobile task")).not.toBeInTheDocument();
-		});
 
-		it("opens the actions sheet from the kebab, exposing actions + details", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ title: "Mobile task", seq: 7 }));
-			});
 			await act(async () => {
 				fireEvent.click(screen.getByTestId("task-actions-kebab"));
 			});
 			const sheet = screen.getByTestId("task-actions-sheet");
-			expect(sheet).toBeInTheDocument();
-			// Sheet header.
+			// Sheet header + the details grid moved into the sheet (Title row + task number).
 			expect(within(sheet).getByText("Task actions")).toBeInTheDocument();
-			// Details grid moved into the sheet (Title row + task number).
 			expect(within(sheet).getByText("Title")).toBeInTheDocument();
 			expect(within(sheet).getByText("#7")).toBeInTheDocument();
+
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Close" }));
+			});
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 		});
 
 		async function openSheet(task: Task, opts?: Parameters<typeof renderPanel>[1]) {
@@ -4568,26 +3452,24 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			return screen.getByTestId("task-actions-sheet");
 		}
 
-		it("Full screen row closes the sheet and enters terminal fullscreen", async () => {
-			const onToggleTerminalFullscreen = vi.fn();
-			const sheet = await openSheet(makeTask(), { onToggleTerminalFullscreen });
-
-			await act(async () => {
-				fireEvent.click(within(sheet).getByTestId("task-actions-fullscreen"));
-			});
-
-			expect(onToggleTerminalFullscreen).toHaveBeenCalledTimes(1);
-			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
-		});
-
-		it("Hibernate row closes the sheet and runs the confirmed hibernate flow", async () => {
+		it("Full screen and Hibernate rows close the sheet; one enters terminal fullscreen, the other runs the confirmed hibernate flow", async () => {
 			vi.mocked(confirm).mockResolvedValue(true);
 			const task = makeTask();
 			mockedApi.request.hibernateTask.mockResolvedValue({ task: { ...task, hibernated: true }, freedRssBytes: null });
-			const sheet = await openSheet(task);
+			const onToggleTerminalFullscreen = vi.fn();
+			const fullscreenSheet = await openSheet(task, { onToggleTerminalFullscreen });
 
 			await act(async () => {
-				fireEvent.click(within(sheet).getByTestId("task-actions-hibernate"));
+				fireEvent.click(within(fullscreenSheet).getByTestId("task-actions-fullscreen"));
+			});
+			expect(onToggleTerminalFullscreen).toHaveBeenCalledTimes(1);
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			await act(async () => {
+				fireEvent.click(within(screen.getByTestId("task-actions-sheet")).getByTestId("task-actions-hibernate"));
 			});
 
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
@@ -4635,7 +3517,7 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			}
 		});
 
-		it("surfaces the images and artifacts badges in the summary bar itself", async () => {
+		it("surfaces the images and artifacts badges in the summary bar, and opens both viewers from the sheet", async () => {
 			const openImage = vi.fn();
 			window.addEventListener("dev3:openImageViewer", openImage);
 			await act(async () => {
@@ -4671,34 +3553,32 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 				fireEvent.click(badge);
 			});
 			expect((openImage.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
-			window.removeEventListener("dev3:openImageViewer", openImage);
-		});
 
-		it("opens artifact history from the touch actions sheet", async () => {
+			// The sheet rows open the same viewers and dismiss the sheet.
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			await act(async () => {
+				fireEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Images"));
+			});
+			expect(openImage).toHaveBeenCalledTimes(2);
+			expect((openImage.mock.calls[1][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+
 			const openArtifact = vi.fn();
 			window.addEventListener("dev3:openArtifactViewer", openArtifact);
 			await act(async () => {
-				renderPanel(makeTask({
-					sharedArtifacts: [{
-						id: "artifact-1",
-						kind: "html",
-						title: "Report",
-						name: "report.html",
-						storedPath: "/tmp/shared-artifacts/artifact-1/report.html",
-						originalPath: "/tmp/report.html",
-						bytes: 10,
-						createdAt: 1,
-						assets: [],
-					}],
-				}));
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
 			});
-			await userEvent.click(screen.getByTestId("task-actions-kebab"));
-			await userEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Artifacts"));
+			await act(async () => {
+				fireEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Artifacts"));
+			});
 			expect(openArtifact).toHaveBeenCalledOnce();
 			// projectId is required by the App-level listener — without it the viewer never opens.
 			expect((openArtifact.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 			window.removeEventListener("dev3:openArtifactViewer", openArtifact);
+			window.removeEventListener("dev3:openImageViewer", openImage);
 		});
 
 		it("orders the whole actions group: Full screen, status rows, runtime rows, session rows with Hibernate last", async () => {
@@ -4728,78 +3608,7 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			]);
 		});
 
-		it("draws the session rows as one section after the runtime rows, in the session bar's order", async () => {
-			const sheet = await openSheet(makeTask({
-				sharedArtifacts: [{
-					id: "artifact-1",
-					kind: "html",
-					title: "Report",
-					name: "report.html",
-					storedPath: "/tmp/shared-artifacts/artifact-1/report.html",
-					originalPath: "/tmp/report.html",
-					bytes: 10,
-					createdAt: 1,
-					assets: [],
-				}],
-			}));
-			const group = within(sheet).getByTestId("task-actions-fullscreen").closest(".touch-actions") as HTMLElement;
-			const ids = Array.from(group.querySelectorAll("button")).map((button) => button.dataset.testid ?? button.textContent ?? "");
-			const tail = ids.slice(ids.findIndex((id) => id.includes("Artifacts")));
-			expect(tail).toEqual([expect.stringContaining("Artifacts"), "task-actions-bug-hunters", "task-actions-spawn-agent", "task-actions-hibernate"]);
-		});
-
-		it("opens the image viewer and closes the actions sheet", async () => {
-			const openImage = vi.fn();
-			window.addEventListener("dev3:openImageViewer", openImage);
-			await act(async () => {
-				renderPanel(makeTask({
-					sharedImages: [{
-						id: "image-1",
-						storedPath: "/tmp/shared-images/image-1/shot.png",
-						originalPath: "/tmp/shot.png",
-						name: "shot.png",
-						mime: "image/png",
-						bytes: 10,
-						createdAt: 1,
-					}],
-				}));
-			});
-			await userEvent.click(screen.getByTestId("task-actions-kebab"));
-			await userEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Images"));
-			expect(openImage).toHaveBeenCalledOnce();
-			expect((openImage.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
-			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
-			window.removeEventListener("dev3:openImageViewer", openImage);
-		});
-
-		it("closes the sheet on the close button", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ title: "Mobile task" }));
-			});
-			await act(async () => {
-				fireEvent.click(screen.getByTestId("task-actions-kebab"));
-			});
-			expect(screen.getByTestId("task-actions-sheet")).toBeInTheDocument();
-			await act(async () => {
-				fireEvent.click(screen.getByRole("button", { name: "Close" }));
-			});
-			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
-		});
-
-		it("opens the Move to bottom sheet from the status chip (not the anchored popover)", async () => {
-			await act(async () => {
-				renderPanel(makeTask({ status: "in-progress" }));
-			});
-			await act(async () => {
-				fireEvent.click(screen.getByText("Agent is Working"));
-			});
-			const sheet = screen.getByTestId("task-status-sheet");
-			expect(within(sheet).getByText("Move to")).toBeInTheDocument();
-			expect(within(sheet).getByText("Has Questions")).toBeInTheDocument();
-			expect(within(sheet).getByText("Completed")).toBeInTheDocument();
-		});
-
-		it("moves the task from the status sheet and closes it", async () => {
+		it("opens the Move to bottom sheet from the status chip, moves the task and closes it", async () => {
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "in-progress" });
 			const updatedTask = { ...task, status: "user-questions" as const };
@@ -4811,8 +3620,12 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			await act(async () => {
 				fireEvent.click(screen.getByText("Agent is Working"));
 			});
+			// A bottom sheet, not the anchored popover.
+			const statusSheet = screen.getByTestId("task-status-sheet");
+			expect(within(statusSheet).getByText("Move to")).toBeInTheDocument();
+			expect(within(statusSheet).getByText("Completed")).toBeInTheDocument();
 			await act(async () => {
-				fireEvent.click(within(screen.getByTestId("task-status-sheet")).getByText("Has Questions"));
+				fireEvent.click(within(statusSheet).getByText("Has Questions"));
 			});
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -4823,24 +3636,6 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
 			expect(screen.queryByTestId("task-status-sheet")).not.toBeInTheDocument();
-		});
-
-		it("surfaces git action rows (diff, rebase, push, create PR, merge) in the actions sheet", async () => {
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
-			});
-			await act(async () => {
-				fireEvent.click(screen.getByTestId("task-actions-kebab"));
-			});
-			const sheet = screen.getByTestId("task-actions-sheet");
-			// Git section header + the mutation rows are present as full-width rows.
-			expect(within(sheet).getByText("Git")).toBeInTheDocument();
-			expect(within(sheet).getByText("Show Diff")).toBeInTheDocument();
-			expect(within(sheet).getByText("Rebase")).toBeInTheDocument();
-			expect(within(sheet).getByText("Push")).toBeInTheDocument();
-			expect(within(sheet).getByText("Create PR")).toBeInTheDocument();
-			expect(within(sheet).getByText("PR + auto-merge")).toBeInTheDocument();
-			expect(within(sheet).getByText("Merge")).toBeInTheDocument();
 		});
 
 		it("keeps Open PR and offers Create PR in the sheet once the PR merged", async () => {
@@ -4863,76 +3658,7 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			expect(within(sheet).queryByText("Merge PR")).not.toBeInTheDocument();
 		});
 
-		it("triggers Create PR and dismisses the sheet", async () => {
-			mockedApi.request.createPullRequest.mockResolvedValue({ delivery: { status: "delivered" } });
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-			await act(async () => {
-				fireEvent.click(screen.getByTestId("task-actions-kebab"));
-			});
-			// Wait until the branch status loads (ahead: 3) so the row enables.
-			const createPR = await within(screen.getByTestId("task-actions-sheet")).findByText("Create PR");
-			await waitFor(() => expect(createPR.closest("button")).not.toBeDisabled());
-			await act(async () => {
-				fireEvent.click(createPR);
-			});
-			expect(mockedApi.request.createPullRequest).toHaveBeenCalledWith(
-				expect.objectContaining({ taskId: "t1", projectId: "p1", autoMerge: false }),
-			);
-			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
-		});
-
-		it("shows the diff summary badge once branch status loads (tap opens the diff)", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 3,
-				diffInsertions: 10,
-				diffDeletions: 2,
-				diffFileStats: [
-					{ path: "src/a.ts", insertions: 5, deletions: 1 },
-					{ path: "src/b.ts", insertions: 4, deletions: 1 },
-					{ path: "src/c.ts", insertions: 1, deletions: 0 },
-				],
-			});
-			const onOpenInlineDiff = vi.fn();
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff });
-			});
-			const badge = await screen.findByTestId("diff-summary-badge");
-			expect(badge).toHaveTextContent("3 files");
-			await act(async () => {
-				fireEvent.click(badge);
-			});
-			expect(onOpenInlineDiff).toHaveBeenCalledWith(
-				expect.objectContaining({ mode: "branch" }),
-			);
-		});
-
-		it("never stacks the summary bar — the wide diff badge sheds by container width", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 9,
-				diffInsertions: 451,
-				diffDeletions: 297,
-				diffFileStats: [{ path: "src/a.ts", insertions: 451, deletions: 297 }],
-			});
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
-			});
-			const bar = await screen.findByTestId("task-summary-bar");
-			// A second row moves every control the user was aiming at, so the bar
-			// never wraps: it is a container, and the badge hides below 400px.
-			const classes = bar.className.split(/\s+/);
-			expect(classes).toContain("flex-nowrap");
-			expect(classes).not.toContain("flex-wrap");
-			expect(classes).toContain("[container-type:inline-size]");
-			const slot = screen.getByTestId("summary-bar-diff-slot");
-			expect(slot.className).toContain("[@container(min-width:400px)]:contents");
-			expect(screen.getByTestId("diff-summary-badge")).toBeInTheDocument();
-		});
-
-		it("keeps a compact diff button on the bar for the widths that shed the wide badge", async () => {
+		it("shows the wide diff badge (tap opens, no hover popover), never wraps, and keeps a compact button for narrower widths", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				diffFiles: 3,
@@ -4948,6 +3674,27 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			await act(async () => {
 				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
+			// The wide badge shows once branch status loads, and a tap opens the diff.
+			const badge = await screen.findByTestId("diff-summary-badge");
+			expect(badge).toHaveTextContent("3 files");
+			// Touch fires mouseenter on tap: that must not arm the hover file-list popover.
+			await act(async () => {
+				fireEvent.mouseEnter(badge);
+			});
+			expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
+			await act(async () => {
+				fireEvent.click(badge);
+			});
+			expect(onOpenInlineDiff).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "branch" }));
+
+			// A second row moves every control the user was aiming at, so the bar
+			// never wraps: it is a container, and the badge hides below 400px.
+			const classes = screen.getByTestId("task-summary-bar").className.split(/\s+/);
+			expect(classes).toContain("flex-nowrap");
+			expect(classes).not.toContain("flex-wrap");
+			expect(classes).toContain("[container-type:inline-size]");
+			expect(screen.getByTestId("summary-bar-diff-slot").className).toContain("[@container(min-width:400px)]:contents");
+
 			const compact = await screen.findByTestId("summary-bar-diff-compact");
 			// A square: no numbers at all. The bar's remaining width at 390px is one
 			// icon wide, and the wide badge carries the counts from 400px up.
@@ -5014,27 +3761,9 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			expect(screen.queryByTestId("diff-summary-badge")).not.toBeInTheDocument();
 		});
 
-		it("does not arm the hover file-list popover on touch (tap fires mouseenter)", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				diffFiles: 1,
-				diffInsertions: 2,
-				diffDeletions: 0,
-				diffFileStats: [{ path: "src/a.ts", insertions: 2, deletions: 0 }],
-			});
+		it("feeds the sheet's git rows from the panel-level status (enabled, one remote refresh) and Create PR dismisses it", async () => {
 			await act(async () => {
 				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
-			});
-			const badge = await screen.findByTestId("diff-summary-badge");
-			await act(async () => {
-				fireEvent.mouseEnter(badge);
-			});
-			expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
-		});
-
-		it("feeds the sheet from the panel-level status (rows enabled, one remote refresh on open)", async () => {
-			await act(async () => {
-				renderPanel(makeTask());
 			});
 			await waitFor(() => expect(mockedApi.request.getBranchStatus).toHaveBeenCalled());
 			const callsBefore = mockedApi.request.getBranchStatus.mock.calls.length;
@@ -5042,11 +3771,25 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 				fireEvent.click(screen.getByTestId("task-actions-kebab"));
 			});
 			const sheet = screen.getByTestId("task-actions-sheet");
+			// Git section header + the mutation rows are present as full-width rows.
+			for (const row of ["Git", "Show Diff", "Rebase", "Push", "Create PR", "PR + auto-merge", "Merge"]) {
+				expect(within(sheet).getByText(row)).toBeInTheDocument();
+			}
 			// Branch status (ahead: 3) loaded before the sheet opened, so Create PR
 			// is enabled immediately — no "Loading branch status…" flash.
-			expect(within(sheet).getByText("Create PR").closest("button")).not.toBeDisabled();
+			const createPR = within(sheet).getByText("Create PR");
+			expect(createPR.closest("button")).not.toBeDisabled();
 			const openCalls = mockedApi.request.getBranchStatus.mock.calls.slice(callsBefore);
 			expect(openCalls).toEqual([[expect.objectContaining({ taskId: "t1", refresh: true })]]);
+
+			mockedApi.request.createPullRequest.mockResolvedValue({ delivery: { status: "delivered" } });
+			await act(async () => {
+				fireEvent.click(createPR);
+			});
+			expect(mockedApi.request.createPullRequest).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", projectId: "p1", autoMerge: false }),
+			);
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 		});
 
 		it("omits the git section for a virtual (Operations) project", async () => {
@@ -5123,21 +3866,6 @@ describe("hibernate button", () => {
 		mockedApi.request.hibernateTask.mockClear();
 	});
 
-	it("does nothing when the confirmation is declined", async () => {
-		mockedConfirm.mockResolvedValue(false);
-		let view!: ReturnType<typeof renderPanel>;
-		await act(async () => {
-			view = renderPanel(makeTask());
-		});
-
-		await act(async () => {
-			fireEvent.click(view.getAllByTestId("task-hibernate-button")[0]);
-		});
-
-		expect(mockedConfirm).toHaveBeenCalled();
-		expect(mockedApi.request.hibernateTask).not.toHaveBeenCalled();
-	});
-
 	it("hibernates once confirmed", async () => {
 		mockedConfirm.mockResolvedValue(true);
 		const task = makeTask();
@@ -5177,7 +3905,7 @@ describe("hibernate button", () => {
 		}
 	});
 
-	it("warns about the extra agents when the task runs more than one pane", async () => {
+	it("warns about the extra agents when the task runs more than one pane, and does nothing when declined", async () => {
 		mockedConfirm.mockResolvedValue(false);
 		let view!: ReturnType<typeof renderPanel>;
 		await act(async () => {
@@ -5196,6 +3924,8 @@ describe("hibernate button", () => {
 		});
 
 		expect(mockedConfirm.mock.calls[0][0].message).toContain("2 agents");
+		// Declined: nothing hibernates.
+		expect(mockedApi.request.hibernateTask).not.toHaveBeenCalled();
 	});
 });
 

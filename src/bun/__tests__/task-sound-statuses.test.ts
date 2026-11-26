@@ -3,15 +3,12 @@ import { isTaskSoundEnabled, isTaskSoundStatus } from "../../shared/task-sound-s
 import type { TaskStatus } from "../../shared/types";
 
 describe("task sound statuses", () => {
-	it("names exactly the columns that can chime", () => {
+	it("names exactly the columns that can chime; completion is opt-out and each needs-you chime opt-in", () => {
 		const all: TaskStatus[] = [
 			"todo", "in-progress", "user-questions", "review-by-ai",
 			"review-by-user", "review-by-colleague", "completed", "cancelled",
 		];
 		expect(all.filter(isTaskSoundStatus)).toEqual(["user-questions", "review-by-user", "completed", "cancelled"]);
-	});
-
-	it("keeps the completion chime opt-out and each needs-you chime opt-in", () => {
 		expect(isTaskSoundEnabled({}, "completed")).toBe(true);
 		expect(isTaskSoundEnabled({}, "review-by-user")).toBe(false);
 		expect(isTaskSoundEnabled({}, "user-questions")).toBe(false);

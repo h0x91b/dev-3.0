@@ -17,17 +17,11 @@ import {
 const SCRIPT = fileURLToPath(new URL("../../../scripts/windows-ci-scope.ts", import.meta.url));
 
 describe("windows CI scope matching", () => {
-	it("matches an exact path entry", () => {
+	it("matches exact entries and anything under a /** entry at any depth, never a prefix-sharing sibling", () => {
 		expect(matchesWindowsScope("src/bun/pty-server.ts")).toBe(true);
 		expect(matchesWindowsScope("electrobun.config.ts")).toBe(true);
-	});
-
-	it("matches anything under a /** entry, at any depth", () => {
 		expect(matchesWindowsScope("src/bun/native-terminal-host/index.ts")).toBe(true);
 		expect(matchesWindowsScope("src/bun/native-terminal-host/nested/deep/file.ts")).toBe(true);
-	});
-
-	it("does not match a sibling that merely shares a prefix", () => {
 		expect(matchesWindowsScope("src/bun/pty-server-extra.ts")).toBe(false);
 		expect(matchesWindowsScope("src/bun/native-terminal-hostess.ts")).toBe(false);
 	});

@@ -65,30 +65,14 @@ afterEach(() => {
 });
 
 describe("a burst of dev3 messages keeps its boundaries", () => {
-	it("separates two envelopes with a blank line instead of welding them", async () => {
-		await holdMessageForPane(task, PANE, envelope("first report", 1));
-		await holdMessageForPane(task, PANE, envelope("second report", 2));
-		await vi.runAllTimersAsync();
-
-		const typed = typedText();
-		expect(typed).toContain("</dev3-ai-message>\n\n<dev3-ai-message>");
-		expect(typed).not.toContain("</dev3-ai-message><dev3-ai-message>");
-	});
-
-	it("opens the turn with the message itself, never with a leading blank line", async () => {
-		await holdMessageForPane(task, PANE, envelope("only report", 1));
-		await vi.runAllTimersAsync();
-
-		expect(typedText().startsWith("<dev3-ai-message>")).toBe(true);
-	});
-
-	it("keeps every boundary in a three-message burst", async () => {
+	it("separates every envelope of a burst with a blank line, and opens the turn with the message itself", async () => {
 		for (const seq of [1, 2, 3]) await holdMessageForPane(task, PANE, envelope(`report ${seq}`, seq));
 		await vi.runAllTimersAsync();
 
 		const typed = typedText();
 		expect(typed.split("</dev3-ai-message>\n\n<dev3-ai-message>")).toHaveLength(3);
 		expect(typed).not.toContain("</dev3-ai-message><dev3-ai-message>");
+		expect(typed.startsWith("<dev3-ai-message>"), "no leading blank line").toBe(true);
 	});
 
 	it("puts the board snapshot behind the same blank line", async () => {

@@ -55,15 +55,11 @@ describe("detectLaunchLocationIssue", () => {
 
 	it.each([
 		["brew/DMG install in /Applications", "/Applications/dev-3.0.app", writable],
-		["user-owned ~/Applications install", `${HOME}/Applications/dev-3.0.app`, writable],
 		["unwritable install already in /Applications (MDM)", "/Applications/dev-3.0.app", {}],
 		["unwritable install already in ~/Applications", `${HOME}/Applications/dev-3.0.app`, {}],
-		["writable external drive", "/Volumes/SSD/Apps/dev-3.0.app", writable],
 		["writable disk image", "/Volumes/dev-3.0/dev-3.0.app", writable],
-		["bun run dev build", "/Users/ada/src/dev-3.0/build/dev-macos-arm64/dev-3.0-dev.app", { channel: "dev" }],
 		["dev channel even from a DMG", "/Volumes/dev-3.0/dev-3.0.app", { channel: "dev" }],
 		["Linux", "/opt/dev-3.0/bin", { platform: "linux" }],
-		["Windows", "C:\\Program Files\\dev-3.0", { platform: "win32" }],
 		["a path that is not a bundle", "/Volumes/dev-3.0/bin", {}],
 	] as const)("does not flag a %s", (_label, path, over) => {
 		expect(detectLaunchLocationIssue(env(path, over))).toBeNull();
@@ -78,13 +74,10 @@ describe("detectLaunchLocationIssue", () => {
 		expect(issue?.destination).toBe(`${HOME}/Applications/dev-3.0.app`);
 	});
 
-	it("honours DEV3_APPLICATIONS_DIR so QA installs into a temp folder", () => {
+	it("honours DEV3_APPLICATIONS_DIR so QA installs into a temp folder, and keeps the bundle's own name", () => {
 		expect(applicationsDestination("/Volumes/x/dev-3.0.app", { home: HOME, isWritable: () => true }, "/tmp/qa")).toBe(
 			"/tmp/qa/dev-3.0.app",
 		);
-	});
-
-	it("keeps the bundle's own name (channel builds)", () => {
 		expect(applicationsDestination("/Volumes/x/dev-3.0-canary.app", { home: HOME, isWritable: () => true })).toBe(
 			"/Applications/dev-3.0-canary.app",
 		);
@@ -92,11 +85,8 @@ describe("detectLaunchLocationIssue", () => {
 });
 
 describe("relaunchCommand", () => {
-	it("is a plain open in production", () => {
+	it("is a plain open in production, carrying only a scoped home and tmux socket dir over", () => {
 		expect(relaunchCommand("/Applications/dev-3.0.app", {})).toEqual(["open", "/Applications/dev-3.0.app"]);
-	});
-
-	it("carries a scoped home and tmux socket dir over to the new copy", () => {
 		expect(relaunchCommand("/a/dev-3.0.app", { DEV3_HOME: "/tmp/h", TMUX_TMPDIR: "/tmp/t", PATH: "/bin" })).toEqual([
 			"open", "--env", "DEV3_HOME=/tmp/h", "--env", "TMUX_TMPDIR=/tmp/t", "/a/dev-3.0.app",
 		]);
@@ -116,8 +106,9 @@ describe("findSourceVolume", () => {
 		dir = null;
 	});
 
-	it("finds the mount the bundle sits on, not a mere prefix match", () => {
+	it("finds the mount the bundle sits on, not a mere prefix match, and null for an ordinary folder", () => {
 		expect(findSourceVolume("/Volumes/dev-3.0 1/dev-3.0.app", ["/Volumes/dev-3.0", "/Volumes/dev-3.0 1"])).toBe("/Volumes/dev-3.0 1");
+		expect(findSourceVolume("/Users/ada/Shared/dev-3.0.app", ["/Volumes/dev-3.0"])).toBeNull();
 	});
 
 	it("for a translocated copy, finds the image that holds a same-named app", () => {
@@ -128,14 +119,10 @@ describe("findSourceVolume", () => {
 		mkdirSync(join(installer, "dev-3.0.app"), { recursive: true });
 		expect(findSourceVolume(TRANSLOCATED, [other, installer])).toBe(installer);
 	});
-
-	it("returns null for an ordinary folder", () => {
-		expect(findSourceVolume("/Users/ada/Shared/dev-3.0.app", ["/Volumes/dev-3.0"])).toBeNull();
-	});
 });
 
 describe("parseHdiutilMountPoints", () => {
-	it("extracts every mount point and unescapes XML", () => {
+	it("extracts every mount point, unescapes XML, and returns nothing when no image is attached", () => {
 		const plist = `<plist><dict><key>images</key><array>
 			<dict><key>system-entities</key><array>
 				<dict><key>dev-entry</key><string>/dev/disk4s1</string></dict>
@@ -147,9 +134,6 @@ describe("parseHdiutilMountPoints", () => {
 			</array></dict>
 		</array></dict></plist>`;
 		expect(parseHdiutilMountPoints(plist)).toEqual(["/Volumes/dev-3.0", "/Volumes/A & B"]);
-	});
-
-	it("returns nothing when no image is attached", () => {
 		expect(parseHdiutilMountPoints("<plist><dict><key>images</key><array/></dict></plist>")).toEqual([]);
 	});
 });

@@ -165,32 +165,23 @@ afterEach(() => {
 });
 
 describe("isPrivateClaudeEntry", () => {
-	it("keeps login, identity, usage and org policy per-account", () => {
+	it("keeps login, identity, usage, org policy, credential-shaped names and per-login runtime state per-account, and shares the rest", () => {
 		for (const entry of [".credentials.json", ".claude.json", "stats-cache.json", "policy-limits.json", "statsig"]) {
-			expect(isPrivateClaudeEntry(entry)).toBe(true);
+			expect(isPrivateClaudeEntry(entry), "keeps login, identity, usage and org policy per-account").toBe(true);
 		}
-	});
-
-	it("catches credential-shaped names dev3 has never seen", () => {
 		for (const entry of ["oauth-credentials.json", "auth.json", "authProfile.json", "refresh-token", "api.key"]) {
-			expect(isPrivateClaudeEntry(entry)).toBe(true);
+			expect(isPrivateClaudeEntry(entry), "catches credential-shaped names dev3 has never seen").toBe(true);
 		}
-	});
-
-	it("keeps per-login runtime state private, including prefixed siblings", () => {
 		for (const entry of [
 			"backups", "telemetry", "state", ".config.json", "hfi-auth.json", "mcp-needs-auth-cache.json", "mcp-discovery-cache", "remote-control", "ccr",
 			"daemon", "daemon.log", "daemon.json", "daemon.status.json", "daemon.scheduled.status.json", "daemon-auth-cooldown", "daemon-auth-status.json",
 			"policy-limits.json.signature.json", "policy-limits.json.signature-iat.json", "policy-limits.json.stamp.json",
 			"remote-settings.json", "remote-settings.json.signature.json", "remote-settings.json.synced-at",
 		]) {
-			expect(isPrivateClaudeEntry(entry)).toBe(true);
+			expect(isPrivateClaudeEntry(entry), "keeps per-login runtime state private, including prefixed siblings").toBe(true);
 		}
-	});
-
-	it("shares user customization and ordinary runtime state", () => {
 		for (const entry of ["settings.json", "settings.local.json", "skills", "workflows", "routines", "hooks", "CLAUDE.md", "history.jsonl", "sessions", "cache", "projects", "file-history", "newthing"]) {
-			expect(isPrivateClaudeEntry(entry)).toBe(false);
+			expect(isPrivateClaudeEntry(entry), `shares ${entry}`).toBe(false);
 		}
 	});
 });
@@ -263,19 +254,13 @@ describe("registeredOutputStyleName", () => {
 	// Claude Code registers a style under frontmatter `name` INSTEAD of the
 	// filename slug — the slug is not kept as an alias, so a settings.json value
 	// of "low-battery" never matches a file declaring `name: Low Battery`.
-	it("prefers the frontmatter name over the filename slug", () => {
+	it("prefers the frontmatter name, falls back to the filename slug, ignores body lines and strips quotes", () => {
 		const md = "---\nname: Low Battery\ndescription: x\nkeep-coding-instructions: true\n---\n\n# body\n";
-		expect(registeredOutputStyleName("low-battery.md", md)).toBe("Low Battery");
-	});
-
-	it("falls back to the filename slug when there is no frontmatter name", () => {
-		expect(registeredOutputStyleName("my-style.md", "---\ndescription: x\n---\nbody")).toBe("my-style");
-		expect(registeredOutputStyleName("my-style.md", "# no frontmatter at all")).toBe("my-style");
-	});
-
-	it("ignores a name-like line in the body and strips quotes", () => {
-		expect(registeredOutputStyleName("s.md", '---\nname: "Quoted Name"\n---\nname: Not This\n')).toBe("Quoted Name");
-		expect(registeredOutputStyleName("s.md", "---\ndescription: x\n---\nname: Body Name\n")).toBe("s");
+		expect(registeredOutputStyleName("low-battery.md", md), "prefers the frontmatter name over the filename slug").toBe("Low Battery");
+		expect(registeredOutputStyleName("my-style.md", "---\ndescription: x\n---\nbody"), "falls back to the filename slug when there is no frontmatter name").toBe("my-style");
+		expect(registeredOutputStyleName("my-style.md", "# no frontmatter at all"), "falls back to the filename slug when there is no frontmatter name").toBe("my-style");
+		expect(registeredOutputStyleName("s.md", '---\nname: "Quoted Name"\n---\nname: Not This\n'), "ignores a name-like line in the body and strips quotes").toBe("Quoted Name");
+		expect(registeredOutputStyleName("s.md", "---\ndescription: x\n---\nname: Body Name\n"), "ignores a name-like line in the body and strips quotes").toBe("s");
 	});
 });
 
@@ -340,23 +325,16 @@ describe("importCurrentClaudeAccount", () => {
 		expect(lstatSync(join(dir, ".credentials.json")).isSymbolicLink()).toBe(false);
 	});
 
-	it("does not auto-activate the imported account (system login stays active)", async () => {
+	it("does not auto-activate the imported account, rejects a duplicate, and fails cleanly with no login", async () => {
+		await expect(importCurrentClaudeAccount(paths), "no login").rejects.toThrow(/No Claude Code login/);
 		seedClaudeLogin();
 		await importCurrentClaudeAccount(paths);
 		const state = await listAgentAccounts(paths);
+		// The system login stays active.
 		expect(state.claude.activeId).toBeNull();
 		expect(state.claude.systemIdentity?.email).toBe("main@example.com");
 		expect(state.claude.systemConfigDir).toBe(paths.claudeHome);
-	});
-
-	it("rejects a duplicate of an already-imported account", async () => {
-		seedClaudeLogin();
-		await importCurrentClaudeAccount(paths);
-		await expect(importCurrentClaudeAccount(paths)).rejects.toThrow(/already added/);
-	});
-
-	it("fails cleanly when there is no login", async () => {
-		await expect(importCurrentClaudeAccount(paths)).rejects.toThrow(/No Claude Code login/);
+		await expect(importCurrentClaudeAccount(paths), "duplicate").rejects.toThrow(/already added/);
 	});
 
 	it("fails and cleans up when credentials cannot be found", async () => {
@@ -389,6 +367,15 @@ describe("claude login flow", () => {
 		expect(seeded.numStartups).toBe(7);
 	});
 
+	it("prepare hands a launch scoped by env to its own dir, and pre-trusts that dir", async () => {
+		seedClaudeLogin();
+		const { accountId, launch } = await prepareClaudeLogin(paths);
+		const dir = claudeAccountDir(accountId, paths);
+		expect(launch).toEqual({ command: "claude", args: ["/login"], env: { CLAUDE_CONFIG_DIR: dir }, cwd: dir });
+		const seeded = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
+		expect(seeded.projects[dir].hasTrustDialogAccepted).toBe(true);
+	});
+
 	it("complete fails before the login happened", async () => {
 		seedClaudeLogin();
 		const { accountId } = await prepareClaudeLogin(paths);
@@ -403,15 +390,6 @@ describe("claude login flow", () => {
 		// No identity yet → the provider CLI is not even started.
 		expect(probe).not.toHaveBeenCalled();
 		expect(stagedLoginHasIdentity("claude", accountId, paths)).toBe(false);
-	});
-
-	it("prepare hands a launch scoped by env to its own dir, and pre-trusts that dir", async () => {
-		seedClaudeLogin();
-		const { accountId, launch } = await prepareClaudeLogin(paths);
-		const dir = claudeAccountDir(accountId, paths);
-		expect(launch).toEqual({ command: "claude", args: ["/login"], env: { CLAUDE_CONFIG_DIR: dir }, cwd: dir });
-		const seeded = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
-		expect(seeded.projects[dir].hasTrustDialogAccepted).toBe(true);
 	});
 
 	it("sweeps only marked, unregistered staged dirs older than the TTL", async () => {
@@ -609,42 +587,32 @@ describe("claudeAccountForConfigDir", () => {
 		return importCurrentClaudeAccount(paths);
 	}
 
-	it("names the managed account a project folder is signed in to", async () => {
+	it("names the managed account a project folder is signed in to, and is null for nobody, another person or another org", async () => {
 		const account = await managedAccount();
+		expect(claudeAccountForConfigDir(projectDir(), paths), "folder nobody is signed in to").toBeNull();
 		signIn("claude-acc-1");
-		expect(claudeAccountForConfigDir(projectDir(), paths)).toBe(account.id);
-	});
-
-	it("is null for another person or another organization of the same person", async () => {
-		await managedAccount();
+		expect(claudeAccountForConfigDir(projectDir(), paths), "the managed account").toBe(account.id);
 		signIn("someone-else");
-		expect(claudeAccountForConfigDir(projectDir(), paths)).toBeNull();
+		expect(claudeAccountForConfigDir(projectDir(), paths), "another person").toBeNull();
 		signIn("claude-acc-1", "org-2");
-		expect(claudeAccountForConfigDir(projectDir(), paths)).toBeNull();
-	});
-
-	it("is null for a folder nobody is signed in to", async () => {
-		await managedAccount();
-		expect(claudeAccountForConfigDir(projectDir(), paths)).toBeNull();
+		expect(claudeAccountForConfigDir(projectDir(), paths), "another organization of the same person").toBeNull();
 	});
 });
 
 describe("setActiveClaudeAccount / getActiveClaudeConfigDir", () => {
-	it("activation controls the injected CLAUDE_CONFIG_DIR", async () => {
+
+	it("activation controls the injected CLAUDE_CONFIG_DIR and rejects unknown ids", async () => {
+		await expect(setActiveClaudeAccount("nope", paths), "rejects unknown account ids").rejects.toThrow(/Unknown Claude account/);
 		seedClaudeLogin();
 		const account = await importCurrentClaudeAccount(paths);
 
-		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
+		expect(await getActiveClaudeConfigDir(undefined, paths), "activation controls the injected CLAUDE_CONFIG_DIR").toBeNull();
 
 		await setActiveClaudeAccount(account.id, paths);
-		expect(await getActiveClaudeConfigDir(undefined, paths)).toBe(claudeAccountDir(account.id, paths));
+		expect(await getActiveClaudeConfigDir(undefined, paths), "activation controls the injected CLAUDE_CONFIG_DIR").toBe(claudeAccountDir(account.id, paths));
 
 		await setActiveClaudeAccount(null, paths);
-		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
-	});
-
-	it("rejects unknown account ids", async () => {
-		await expect(setActiveClaudeAccount("nope", paths)).rejects.toThrow(/Unknown Claude account/);
+		expect(await getActiveClaudeConfigDir(undefined, paths), "activation controls the injected CLAUDE_CONFIG_DIR").toBeNull();
 	});
 
 	it("backfills a shared entry missing from an account created by an older version", async () => {
@@ -673,18 +641,6 @@ describe("setActiveClaudeAccount / getActiveClaudeConfigDir", () => {
 });
 
 describe("codex accounts", () => {
-	it("import snapshots auth.json into a per-account CODEX_HOME and becomes the default", async () => {
-		seedCodexLogin("acc-1");
-		const account = await importCurrentCodexAccount(paths);
-		expect(account.label).toBe("acc-1@example.com");
-		expect(account.identity?.planLabel).toBe("Plus");
-
-		const state = await listAgentAccounts(paths);
-		expect(state.codex.activeId).toBe(account.id);
-		expect(state.codex.currentIdentity?.accountId).toBe("acc-1");
-		// The account dir is a usable CODEX_HOME holding its own auth.json.
-		expect(existsSync(join(codexAccountDir(account.id, paths), "auth.json"))).toBe(true);
-	});
 
 	it("gives each account CODEX_HOME dev3's execpolicy rules (#2043)", async () => {
 		seedCodexLogin("acc-1");
@@ -693,8 +649,18 @@ describe("codex accounts", () => {
 		expect(rules).toContain('"pane", "run"], decision="prompt"');
 	});
 
-	it("rejects import without a ChatGPT login", async () => {
-		await expect(importCurrentCodexAccount(paths)).rejects.toThrow(/No Codex login/);
+	it("import needs a ChatGPT login and snapshots auth.json into a per-account CODEX_HOME that becomes the default", async () => {
+		await expect(importCurrentCodexAccount(paths), "rejects import without a ChatGPT login").rejects.toThrow(/No Codex login/);
+		seedCodexLogin("acc-1");
+		const account = await importCurrentCodexAccount(paths);
+		expect(account.label, "import snapshots auth.json into a per-account CODEX_HOME and becomes the default").toBe("acc-1@example.com");
+		expect(account.identity?.planLabel, "import snapshots auth.json into a per-account CODEX_HOME and becomes the default").toBe("Plus");
+
+		const state = await listAgentAccounts(paths);
+		expect(state.codex.activeId, "import snapshots auth.json into a per-account CODEX_HOME and becomes the default").toBe(account.id);
+		expect(state.codex.currentIdentity?.accountId, "import snapshots auth.json into a per-account CODEX_HOME and becomes the default").toBe("acc-1");
+		// The account dir is a usable CODEX_HOME holding its own auth.json.
+		expect(existsSync(join(codexAccountDir(account.id, paths), "auth.json")), "import snapshots auth.json into a per-account CODEX_HOME and becomes the default").toBe(true);
 	});
 
 	it("prepareCodexLogin scaffolds a fresh CODEX_HOME and hands a scoped login command", async () => {
@@ -715,25 +681,18 @@ describe("codex accounts", () => {
 		}
 	});
 
-	it("prepareCodexLogin uses device auth when the viewer is remote, even on a desktop host", async () => {
+	it("prepareCodexLogin uses device auth for a remote viewer on a desktop host and on a headless box", async () => {
 		const prevHeadless = process.env.DEV3_HEADLESS;
 		delete process.env.DEV3_HEADLESS;
 		try {
-			const { accountId, launch } = await prepareCodexLogin(paths, { deviceAuth: true });
-			expect(launch).toEqual({ command: "codex", args: ["login", "--device-auth"], env: { CODEX_HOME: codexAccountDir(accountId, paths) }, cwd: codexAccountDir(accountId, paths) });
-		} finally {
-			if (prevHeadless === undefined) delete process.env.DEV3_HEADLESS;
-			else process.env.DEV3_HEADLESS = prevHeadless;
-		}
-	});
+			const remote = await prepareCodexLogin(paths, { deviceAuth: true });
+			const remoteDir = codexAccountDir(remote.accountId, paths);
+			expect(remote.launch, "remote viewer on a desktop host").toEqual({ command: "codex", args: ["login", "--device-auth"], env: { CODEX_HOME: remoteDir }, cwd: remoteDir });
 
-	it("prepareCodexLogin appends --device-auth on a headless/remote box (no local browser)", async () => {
-		const prevHeadless = process.env.DEV3_HEADLESS;
-		process.env.DEV3_HEADLESS = "1";
-		try {
-			const { accountId, loginCommand } = await prepareCodexLogin(paths);
-			const dir = codexAccountDir(accountId, paths);
-			expect(loginCommand).toBe(`CODEX_HOME='${dir}' codex login --device-auth`);
+			process.env.DEV3_HEADLESS = "1";
+			const headless = await prepareCodexLogin(paths);
+			const dir = codexAccountDir(headless.accountId, paths);
+			expect(headless.loginCommand, "headless box with no local browser").toBe(`CODEX_HOME='${dir}' codex login --device-auth`);
 		} finally {
 			if (prevHeadless === undefined) delete process.env.DEV3_HEADLESS;
 			else process.env.DEV3_HEADLESS = prevHeadless;
@@ -889,44 +848,41 @@ describe("codex accounts", () => {
 });
 
 describe("claude API profiles", () => {
-	it("creates a profile with its own config dir and 0600 api-profile.json", async () => {
+	it("creates a profile with its own config dir and 0600 api-profile.json, rejecting an empty profile or malformed base URL", async () => {
 		seedClaudeLogin();
 		const account = await addClaudeApiProfile(
 			{ baseUrl: "https://openrouter.ai/api", apiKey: "sk-or-key-1234567890abcdef", model: "claude-sonnet-4-6" },
 			paths,
 		);
 
-		expect(account.auth).toBe("api");
-		expect(account.label).toBe("openrouter.ai");
-		expect(account.api).toEqual({
+		expect(account.auth, "creates a profile with its own config dir and 0600 api-profile.json").toBe("api");
+		expect(account.label, "creates a profile with its own config dir and 0600 api-profile.json").toBe("openrouter.ai");
+		expect(account.api, "creates a profile with its own config dir and 0600 api-profile.json").toEqual({
 			baseUrl: "https://openrouter.ai/api",
 			model: "claude-sonnet-4-6",
 			slotModels: {},
 			hasApiKey: true,
 			envKeys: [],
 		});
-		expect(account.identity).toBeNull();
+		expect(account.identity, "creates a profile with its own config dir and 0600 api-profile.json").toBeNull();
 
 		const dir = claudeAccountDir(account.id, paths);
-		expect(lstatSync(join(dir, "settings.json")).isSymbolicLink()).toBe(true);
-		expect(lstatSync(join(dir, "api-profile.json")).mode & 0o777).toBe(0o600);
+		expect(lstatSync(join(dir, "settings.json")).isSymbolicLink(), "creates a profile with its own config dir and 0600 api-profile.json").toBe(true);
+		expect(lstatSync(join(dir, "api-profile.json")).mode & 0o777, "creates a profile with its own config dir and 0600 api-profile.json").toBe(0o600);
 		// Seeded .claude.json has no identity but pre-approves the API key tail.
 		const seeded = JSON.parse(readFileSync(join(dir, ".claude.json"), "utf-8"));
-		expect(seeded.oauthAccount).toBeUndefined();
-		expect(seeded.userID).toBeUndefined();
-		expect(seeded.machineID).toBeUndefined();
-		expect(seeded.anonymousId).toBeUndefined();
+		expect(seeded.oauthAccount, "creates a profile with its own config dir and 0600 api-profile.json").toBeUndefined();
+		expect(seeded.userID, "creates a profile with its own config dir and 0600 api-profile.json").toBeUndefined();
+		expect(seeded.machineID, "creates a profile with its own config dir and 0600 api-profile.json").toBeUndefined();
+		expect(seeded.anonymousId, "creates a profile with its own config dir and 0600 api-profile.json").toBeUndefined();
 		for (const key of ["cachedGrowthBookFeatures", "s1mAccessCache", "clientDataCacheSlots", "penguinModeOrgEnabled"]) {
-			expect(seeded).not.toHaveProperty(key);
+			expect(seeded, "creates a profile with its own config dir and 0600 api-profile.json").not.toHaveProperty(key);
 		}
-		expect(seeded.numStartups).toBe(7);
-		expect(seeded.hasCompletedOnboarding).toBe(true);
-		expect(seeded.customApiKeyResponses.approved).toContain("sk-or-key-1234567890abcdef".slice(-20));
-	});
-
-	it("rejects an empty profile and a malformed base URL", async () => {
-		await expect(addClaudeApiProfile({}, paths)).rejects.toThrow(/API key, a base URL, or environment/);
-		await expect(addClaudeApiProfile({ baseUrl: "not a url", apiKey: "k" }, paths)).rejects.toThrow(/Invalid base URL/);
+		expect(seeded.numStartups, "creates a profile with its own config dir and 0600 api-profile.json").toBe(7);
+		expect(seeded.hasCompletedOnboarding, "creates a profile with its own config dir and 0600 api-profile.json").toBe(true);
+		expect(seeded.customApiKeyResponses.approved, "creates a profile with its own config dir and 0600 api-profile.json").toContain("sk-or-key-1234567890abcdef".slice(-20));
+		await expect(addClaudeApiProfile({}, paths), "rejects an empty profile and a malformed base URL").rejects.toThrow(/API key, a base URL, or environment/);
+		await expect(addClaudeApiProfile({ baseUrl: "not a url", apiKey: "k" }, paths), "rejects an empty profile and a malformed base URL").rejects.toThrow(/Invalid base URL/);
 	});
 
 	it("active API profile injects ANTHROPIC_* and extra env; master model fans out to alias slots", async () => {
@@ -1094,20 +1050,17 @@ describe("claude API profiles", () => {
 		expect(seeded.customApiKeyResponses.approved).toContain("sk-brand-new-key-1234567890".slice(-20));
 	});
 
-	it("update rejects a profile left with nothing and a malformed base URL", async () => {
+	it("update rejects a profile left with nothing, a malformed base URL, and a non-API (oauth) account", async () => {
 		seedClaudeLogin();
 		const account = await addClaudeApiProfile({ apiKey: "sk-x" }, paths);
-		await expect(updateClaudeApiProfile(account.id, { apiKey: "", env: {} }, paths)).rejects.toThrow(
+		await expect(updateClaudeApiProfile(account.id, { apiKey: "", env: {} }, paths), "update rejects a profile left with nothing and a malformed base URL").rejects.toThrow(
 			/API key, a base URL, or environment/,
 		);
-		await expect(updateClaudeApiProfile(account.id, { baseUrl: "not a url" }, paths)).rejects.toThrow(/Invalid base URL/);
-	});
-
-	it("draft and update reject a non-API (oauth) account", async () => {
+		await expect(updateClaudeApiProfile(account.id, { baseUrl: "not a url" }, paths), "update rejects a profile left with nothing and a malformed base URL").rejects.toThrow(/Invalid base URL/);
 		seedClaudeLogin();
 		const oauth = await importCurrentClaudeAccount(paths);
-		await expect(getClaudeApiProfileDraft(oauth.id, paths)).rejects.toThrow(/Only API profiles/);
-		await expect(updateClaudeApiProfile(oauth.id, { model: "x" }, paths)).rejects.toThrow(/Only API profiles/);
+		await expect(getClaudeApiProfileDraft(oauth.id, paths), "draft and update reject a non-API (oauth) account").rejects.toThrow(/Only API profiles/);
+		await expect(updateClaudeApiProfile(oauth.id, { model: "x" }, paths), "draft and update reject a non-API (oauth) account").rejects.toThrow(/Only API profiles/);
 	});
 });
 
@@ -1124,41 +1077,30 @@ describe("remove / rename", () => {
 		expect(state.claude.activeId).toBeNull();
 	});
 
-	it("remove of an unregistered (pending) claude dir is a silent cleanup", async () => {
+	it("remove cleans up a pending dir silently and rejects path-traversal ids (remove and complete) without touching disk", async () => {
 		seedClaudeLogin();
 		const { accountId } = await prepareClaudeLogin(paths);
 		await removeAgentAccount("claude", accountId, paths);
-		expect(existsSync(claudeAccountDir(accountId, paths))).toBe(false);
-	});
-
-	it("remove rejects path-traversal account ids without touching disk", async () => {
+		expect(existsSync(claudeAccountDir(accountId, paths)), "remove of an unregistered (pending) claude dir is a silent cleanup").toBe(false);
 		mkdirSync(join(root, "victim"), { recursive: true });
 		writeFileSync(join(root, "victim", "file.txt"), "keep me");
 		// claudeAccountDir(accountsDir, "claude", "../../victim") would resolve to
 		// the victim dir — the id must be rejected before any rmSync.
-		await expect(removeAgentAccount("claude", "../../victim", paths)).rejects.toThrow(/Invalid account id/);
-		await expect(removeAgentAccount("codex", "../../victim", paths)).rejects.toThrow(/Invalid account id/);
-		expect(existsSync(join(root, "victim", "file.txt"))).toBe(true);
-	});
-
-	it("completeClaudeLogin rejects path-traversal account ids", async () => {
+		await expect(removeAgentAccount("claude", "../../victim", paths), "remove rejects path-traversal account ids without touching disk").rejects.toThrow(/Invalid account id/);
+		await expect(removeAgentAccount("codex", "../../victim", paths), "remove rejects path-traversal account ids without touching disk").rejects.toThrow(/Invalid account id/);
+		expect(existsSync(join(root, "victim", "file.txt")), "remove rejects path-traversal account ids without touching disk").toBe(true);
 		seedClaudeLogin();
-		await expect(completeClaudeLogin("../../.claude", paths, unavailableStatus)).rejects.toThrow(/Invalid account id/);
+		await expect(completeClaudeLogin("../../.claude", paths, unavailableStatus), "completeClaudeLogin rejects path-traversal account ids").rejects.toThrow(/Invalid account id/);
 	});
 
-	it("rename updates the label", async () => {
+	it("rename updates the label and rejects empty labels and unknown ids", async () => {
 		seedClaudeLogin();
 		const account = await importCurrentClaudeAccount(paths);
 		await renameAgentAccount("claude", account.id, "Work", paths);
 		const state = await listAgentAccounts(paths);
 		expect(state.claude.accounts[0].label).toBe("Work");
-	});
-
-	it("rename rejects empty labels and unknown ids", async () => {
-		seedClaudeLogin();
-		const account = await importCurrentClaudeAccount(paths);
-		await expect(renameAgentAccount("claude", account.id, "  ", paths)).rejects.toThrow(/empty/);
-		await expect(renameAgentAccount("claude", "nope", "X", paths)).rejects.toThrow(/Unknown/);
+		await expect(renameAgentAccount("claude", account.id, "  ", paths), "empty label").rejects.toThrow(/empty/);
+		await expect(renameAgentAccount("claude", "nope", "X", paths), "unknown id").rejects.toThrow(/Unknown/);
 	});
 });
 
@@ -1244,21 +1186,18 @@ describe("omp accounts", () => {
 		expect(stagedLoginHasIdentity("omp", accountId, paths)).toBe(true);
 	});
 
-	it("a verified login drops the staged marker and can no longer be discarded", async () => {
+	it("a verified login can no longer be discarded; an unverified one is discarded and an abandoned one swept", async () => {
 		const account = await addOmpAccount();
 		const dir = agentDirAccountDir("omp", account.id, paths);
-		expect(existsSync(join(dir, STAGED_LOGIN_MARKER))).toBe(false);
-		expect(discardStagedLogin("omp", account.id, paths)).toBe(false);
-		expect(existsSync(dir)).toBe(true);
-	});
-
-	it("discards an unverified staged dir and sweeps an abandoned one", async () => {
+		expect(existsSync(join(dir, STAGED_LOGIN_MARKER)), "a verified login drops the staged marker and can no longer be discarded").toBe(false);
+		expect(discardStagedLogin("omp", account.id, paths), "a verified login drops the staged marker and can no longer be discarded").toBe(false);
+		expect(existsSync(dir), "a verified login drops the staged marker and can no longer be discarded").toBe(true);
 		const { accountId } = await prepareAgentDirLogin("omp", paths);
-		expect(discardStagedLogin("omp", accountId, paths)).toBe(true);
-		expect(existsSync(agentDirAccountDir("omp", accountId, paths))).toBe(false);
+		expect(discardStagedLogin("omp", accountId, paths), "discards an unverified staged dir and sweeps an abandoned one").toBe(true);
+		expect(existsSync(agentDirAccountDir("omp", accountId, paths)), "discards an unverified staged dir and sweeps an abandoned one").toBe(false);
 		const stale = await prepareAgentDirLogin("omp", paths);
-		expect(sweepAbandonedStagedLogins("omp", 60_000, Date.now() + 120_000, paths)).toBe(1);
-		expect(existsSync(agentDirAccountDir("omp", stale.accountId, paths))).toBe(false);
+		expect(sweepAbandonedStagedLogins("omp", 60_000, Date.now() + 120_000, paths), "discards an unverified staged dir and sweeps an abandoned one").toBe(1);
+		expect(existsSync(agentDirAccountDir("omp", stale.accountId, paths)), "discards an unverified staged dir and sweeps an abandoned one").toBe(false);
 	});
 
 	it("registers a verified login as the default, labelled by its email", async () => {
@@ -1276,18 +1215,15 @@ describe("omp accounts", () => {
 		expect(existsSync(join(paths.accountsDir, "accounts.json"))).toBe(false);
 	});
 
-	it("injects nothing while no omp account exists", async () => {
-		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({});
-	});
-
-	it("points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login", async () => {
+	it("injects nothing without an omp account; points PI_CODING_AGENT_DIR at the selected one and unsets it for the system login", async () => {
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths), "injects nothing while no omp account exists").toEqual({});
 		const account = await addOmpAccount();
 		const dir = agentDirAccountDir("omp", account.id, paths);
-		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
-		expect(await getActiveAgentDirSessionEnv("omp", null, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths), "points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login").toEqual({ PI_CODING_AGENT_DIR: dir });
+		expect(await getActiveAgentDirSessionEnv("omp", null, paths), "points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login").toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
 		await setActiveAgentDirAccount("omp", null, paths);
-		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths)).toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
-		expect(await getActiveAgentDirSessionEnv("omp", account.id, paths)).toEqual({ PI_CODING_AGENT_DIR: dir });
+		expect(await getActiveAgentDirSessionEnv("omp", undefined, paths), "points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login").toEqual({ PI_CODING_AGENT_DIR: ENV_UNSET });
+		expect(await getActiveAgentDirSessionEnv("omp", account.id, paths), "points PI_CODING_AGENT_DIR at the selected account and unsets it for the system login").toEqual({ PI_CODING_AGENT_DIR: dir });
 	});
 
 	it("links entries that appeared in ~/.omp/agent after the account was created", async () => {
@@ -1341,13 +1277,16 @@ describe("pi accounts", () => {
 		return completeAgentDirLogin("pi", accountId, paths);
 	}
 
-	it("keeps credentials, sessions and the per-key model catalog private, shares the rest", () => {
+	it("keeps credentials, sessions and the model catalog private, and never counts the user's own credentials as the new account's", async () => {
 		for (const entry of ["auth.json", "auth.json.lock", "sessions", "models-store.json", "pi-debug.log"]) {
-			expect(isPrivateAgentDirEntry("pi", entry)).toBe(true);
+			expect(isPrivateAgentDirEntry("pi", entry), "keeps credentials, sessions and the per-key model catalog private, shares the rest").toBe(true);
 		}
 		for (const entry of ["settings.json", "skills", "extensions", "models.json", "AGENTS.md", "keybindings.json"]) {
-			expect(isPrivateAgentDirEntry("pi", entry)).toBe(false);
+			expect(isPrivateAgentDirEntry("pi", entry), "keeps credentials, sessions and the per-key model catalog private, shares the rest").toBe(false);
 		}
+		seedPiAgentHome();
+		const { accountId } = await prepareAgentDirLogin("pi", paths);
+		await expect(completeAgentDirLogin("pi", accountId, paths), "never counts the user's own ~/.pi/agent credentials as the new account's").rejects.toBeInstanceOf(LoginNotReadyError);
 	});
 
 	it("signs in through pi itself with /login typed in by an extension, never passed as a prompt", async () => {
@@ -1396,12 +1335,6 @@ describe("pi accounts", () => {
 		expect((await listAgentAccounts(paths)).pi.activeId).toBe(account.id);
 	});
 
-	it("never counts the user's own ~/.pi/agent credentials as the new account's", async () => {
-		seedPiAgentHome();
-		const { accountId } = await prepareAgentDirLogin("pi", paths);
-		await expect(completeAgentDirLogin("pi", accountId, paths)).rejects.toBeInstanceOf(LoginNotReadyError);
-	});
-
 	it("keeps the pi registry in its own file, apart from omp's and accounts.json", async () => {
 		await addPiAccount();
 		expect(existsSync(join(paths.accountsDir, "pi-accounts.json"))).toBe(true);
@@ -1446,19 +1379,12 @@ describe("codexWorkspaceIdNeeded", () => {
 			codex: { accounts: accounts.map((identity, i) => ({ id: `cx-${i}`, identity })), activeId: null, currentIdentity },
 		} as unknown as AgentAccountsState);
 
-	it("is true only for an email that appears with two different workspace ids", () => {
+	it("is true only for an email that appears with two different workspace ids, case-insensitively, counting the ~/.codex login", () => {
 		const check = needed([id("a@x", "w1"), id("a@x", "w2"), id("b@x", "w1"), id("b@x", "w1"), id("c@x", null), id("c@x", "w1"), id(null, "w1")]);
 		expect(["a@x", "b@x", "c@x"].map((email) => check(id(email, "w1")))).toEqual([true, false, false]);
 		expect(check(null)).toBe(false);
-	});
-
-	it("compares emails case-insensitively", () => {
-		const check = needed([id("Dana@X.test", "w1"), id("dana@x.test", "w2")]);
-		expect(check(id("DANA@x.test", "w1"))).toBe(true);
-	});
-
-	it("counts the ~/.codex login beside the managed ones", () => {
-		expect(needed([id("a@x", "w1")], id("A@x", "w2"))(id("a@x", "w1"))).toBe(true);
-		expect(needed([id("a@x", "w1")], id("a@x", "w1"))(id("a@x", "w1"))).toBe(false);
+		expect(needed([id("Dana@X.test", "w1"), id("dana@x.test", "w2")])(id("DANA@x.test", "w1")), "compares emails case-insensitively").toBe(true);
+		expect(needed([id("a@x", "w1")], id("A@x", "w2"))(id("a@x", "w1")), "counts the ~/.codex login").toBe(true);
+		expect(needed([id("a@x", "w1")], id("a@x", "w1"))(id("a@x", "w1")), "same workspace in ~/.codex").toBe(false);
 	});
 });

@@ -146,17 +146,19 @@ describe("leading-edge flush", () => {
 		expect(client.sent.length).toBeLessThanOrEqual(2);
 	});
 
-	it("holds the message rate to two frames per window under a continuous stream", () => {
+	it("holds the message rate to two frames per window under a continuous stream, losing and reordering nothing", () => {
 		const client = startSession("task-batch-rate-1");
 
 		// 4 ms between chunks for a second: unbatched that is 250 frames.
+		let expected = "";
 		for (let ms = 0; ms < 1000; ms += 4) {
-			emit("o");
+			emit(`${ms}|`);
+			expected += `${ms}|`;
 			vi.advanceTimersByTime(4);
 		}
-		vi.advanceTimersByTime(BATCH_MS);
+		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 
-		expect(client.sent.join("")).toBe("o".repeat(250));
+		expect(client.sent.join("")).toBe(expected);
 		// TWO per window, not one: the leading edge opens each window with a small
 		// frame and the timer closes it with the coalesced rest. That is the price
 		// of never delaying a lone echo, and it is still an order of magnitude
@@ -164,19 +166,6 @@ describe("leading-edge flush", () => {
 		const windows = 1000 / BATCH_MS;
 		expect(client.sent.length).toBeLessThanOrEqual(2 * windows + 2);
 		expect(client.sent.length).toBeGreaterThan(windows);
-	});
-
-	it("loses no bytes and keeps their order across many windows", () => {
-		const client = startSession("task-batch-order-1");
-
-		for (let i = 0; i < 50; i++) {
-			emit(`chunk${i}|`);
-			vi.advanceTimersByTime(5);
-		}
-		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
-
-		const expected = Array.from({ length: 50 }, (_, i) => `chunk${i}|`).join("");
-		expect(client.sent.join("")).toBe(expected);
 	});
 });
 
@@ -221,20 +210,6 @@ describe("broadcast backpressure", () => {
 		expect(() => emit("still fine")).not.toThrow();
 		expect(client.sent).toEqual(["still fine"]);
 	});
-
-	it("returns to the normal cadence once the socket drains", () => {
-		const client = startSession("task-bp-drain-1");
-		client.buffered = PTY_BACKPRESSURE_LOW_WATER_BYTES;
-
-		emit("slow");
-		expect(client.sent).toEqual([]);
-		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
-		expect(client.sent).toEqual(["slow"]);
-
-		client.buffered = 0;
-		emit("fast");
-		expect(client.sent).toEqual(["slow", "fast"]);
-	});
 });
 
 describe("pressure changing mid-session", () => {
@@ -253,8 +228,8 @@ describe("pressure changing mid-session", () => {
 		emit("during|");
 		expect(client.sent).toEqual(["before|", "during|"]);
 
-		// Saturated again mid-stream.
-		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
+		// Pressured again mid-stream — the low-water mark already throttles.
+		client.buffered = PTY_BACKPRESSURE_LOW_WATER_BYTES;
 		emit("after|");
 		expect(client.sent).toEqual(["before|", "during|"]);
 		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);

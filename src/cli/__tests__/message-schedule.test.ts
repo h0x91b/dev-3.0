@@ -29,31 +29,28 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("message --at with a zone", () => {
-	it("sends the UTC instant and confirms in local AND UTC, with the cancel command", async () => {
+	it("sends the UTC instant and confirms in local AND UTC, with the cancel command when the app returns an id", async () => {
 		mockSend.mockResolvedValue(ok({ taskId: CTX.taskId, pending: 1, messageId: MSG_ID }));
 		await handleMessage(args(["wake up"], { subject: "wake", at: "2099-01-02T06:00Z" }), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "message.schedule", expect.objectContaining({ at: "2099-01-02T06:00:00.000Z" }));
 		expect(stdout).toContain("06:00 UTC");
 		expect(stdout).toContain(" local (");
 		expect(stdout).toContain("dev3 message --cancel bbbbbbbb --task aaaaaaaa");
-	});
 
-	it("still confirms when an older app returns no id", async () => {
+		// An older app returns no id: still confirm, just without the cancel hint.
+		stdout = "";
 		mockSend.mockResolvedValue(ok({ taskId: CTX.taskId, pending: 1 }));
 		await handleMessage(args(["x"], { subject: "s", at: "06:00Z" }), SOCKET, CTX);
 		expect(stdout).toContain("UTC");
 		expect(stdout).not.toContain("--cancel");
 	});
 
-	it("refuses an absolute time in the past before contacting the app", async () => {
+	it("refuses a past time, and names every accepted spelling for an invalid one, before contacting the app", async () => {
 		await expect(handleMessage(args(["x"], { subject: "s", at: "2020-01-01T00:00Z" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderr).toContain("in the past");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("names every accepted spelling when the time is invalid", async () => {
 		await expect(handleMessage(args(["x"], { subject: "s", at: "6pm" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderr).toMatch(/HH:MMZ.*HH:MM\+03:00/);
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
@@ -64,22 +61,19 @@ describe("message --list / --cancel", () => {
 		messages: [{ id: MSG_ID, at: "2099-01-02T06:00:00.000Z", subject: "wake", target: "agent", fromSeq: 12, fromTaskId: "t", preview: "wake up" }],
 	};
 
-	it("lists the worktree task's queue without needing text or a subject", async () => {
+	it("lists the worktree task's queue without text or a subject, as JSON with --json, and says so when empty", async () => {
 		mockSend.mockResolvedValue(ok(listing));
 		await handleMessage(args([], { list: "true" }), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "message.scheduled.list", { taskId: CTX.taskId, projectId: "proj-001" });
 		expect(stdout).toContain("bbbbbbbb");
 		expect(stdout).toContain("seq:12");
 		expect(stdout).toContain("06:00 UTC");
-	});
 
-	it("--list --json prints the listing object as is", async () => {
-		mockSend.mockResolvedValue(ok(listing));
+		stdout = "";
 		await handleMessage(args([], { list: "true", json: "true" }), SOCKET, CTX);
 		expect(JSON.parse(stdout)).toEqual(listing);
-	});
 
-	it("an empty queue says so", async () => {
+		stdout = "";
 		mockSend.mockResolvedValue(ok({ ...listing, messages: [] }));
 		await handleMessage(args([], { list: "true" }), SOCKET, CTX);
 		expect(stdout).toContain("No scheduled messages pending");

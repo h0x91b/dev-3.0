@@ -84,7 +84,7 @@ afterAll(() => {
 });
 
 describe("resolveTerminalPaths", () => {
-	it("resolves absolute paths without any project context", async () => {
+	it("without a project context resolves absolute paths and ~, but not relative paths", async () => {
 		const { resolved } = await appHandlers.resolveTerminalPaths({
 			paths: [join(tmp, "notes.txt"), "/definitely/not/here.txt"],
 		});
@@ -93,6 +93,10 @@ describe("resolveTerminalPaths", () => {
 			kind: "file",
 		});
 		expect(resolved["/definitely/not/here.txt"]).toBeNull();
+
+		const { resolved: more } = await appHandlers.resolveTerminalPaths({ paths: ["~", "src/index.ts"] });
+		expect(more["~"]).toEqual({ path: homedir(), kind: "directory" });
+		expect(more["src/index.ts"]).toBeNull();
 	});
 
 	it("resolves relative paths against the task worktree first, then the project dir", async () => {
@@ -111,23 +115,17 @@ describe("resolveTerminalPaths", () => {
 		});
 		expect(resolved["missing.md"]).toBeNull();
 		expect(resolved["src"]).toEqual({ path: join(worktree, "src"), kind: "directory" });
-	});
 
-	it("keeps the project base when the task id is not a real task (project terminal)", async () => {
-		const { resolved } = await appHandlers.resolveTerminalPaths({
+		// A task id that is not a real task (project terminal) keeps the project base.
+		const { resolved: project } = await appHandlers.resolveTerminalPaths({
 			taskId: "project-session-key",
 			projectId: "proj-1",
 			paths: ["readme.md"],
 		});
-		expect(resolved["readme.md"]).toEqual({
+		expect(project["readme.md"]).toEqual({
 			path: join(projectDir, "readme.md"),
 			kind: "file",
 		});
-	});
-
-	it("expands ~ against the home directory", async () => {
-		const { resolved } = await appHandlers.resolveTerminalPaths({ paths: ["~"] });
-		expect(resolved["~"]).toEqual({ path: homedir(), kind: "directory" });
 	});
 
 	it("does not resolve paths outside the home directory and project roots", async () => {
@@ -215,19 +213,18 @@ describe("resolveTerminalPaths", () => {
 			path: join(worktree, "docs", "components", "scout.md"),
 			kind: "file",
 		});
-	});
 
-	it("leaves an ambiguous suffix unresolved rather than guessing a file", async () => {
-		const { resolved } = await appHandlers.resolveTerminalPaths({
+		// An ambiguous suffix stays unresolved rather than guessing a file.
+		const { resolved: ambiguous } = await appHandlers.resolveTerminalPaths({
 			taskId: "task-1",
 			projectId: "proj-1",
 			// dup.md exists twice; "cout.md" is a suffix but not at a segment boundary.
 			paths: ["dup.md", "cout.md", "./architecture.md", "../docs/architecture.md"],
 		});
-		expect(resolved["dup.md"]).toBeNull();
-		expect(resolved["cout.md"]).toBeNull();
-		expect(resolved["./architecture.md"]).toBeNull();
-		expect(resolved["../docs/architecture.md"]).toBeNull();
+		expect(ambiguous["dup.md"]).toBeNull();
+		expect(ambiguous["cout.md"]).toBeNull();
+		expect(ambiguous["./architecture.md"]).toBeNull();
+		expect(ambiguous["../docs/architecture.md"]).toBeNull();
 	});
 
 	it("reuses the file index across calls instead of listing per candidate", async () => {
@@ -242,19 +239,15 @@ describe("resolveTerminalPaths", () => {
 		expect(runGit.mock.calls.length).toBe(before);
 	});
 
-	it("relative paths resolve to null without a project context", async () => {
-		const { resolved } = await appHandlers.resolveTerminalPaths({ paths: ["src/index.ts"] });
-		expect(resolved["src/index.ts"]).toBeNull();
-	});
 });
 
 describe("readFilePreview", () => {
-	it("returns text content for small text files", async () => {
+	it("classifies text, directories, missing or relative paths, binary files and images", async () => {
 		const result = await appHandlers.readFilePreview({ path: join(tmp, "notes.txt") });
 		expect(result).toEqual({ kind: "text", content: "hello\n", truncated: false, size: 6 });
-	});
-
-	it("classifies directories, missing paths and binary files", async () => {
+		expect(await appHandlers.readFilePreview({ path: "relative/path.txt" })).toEqual({
+			kind: "not-found",
+		});
 		expect(await appHandlers.readFilePreview({ path: worktree })).toEqual({ kind: "directory" });
 		expect(await appHandlers.readFilePreview({ path: join(tmp, "nope.txt") })).toEqual({
 			kind: "not-found",
@@ -265,12 +258,21 @@ describe("readFilePreview", () => {
 			kind: "binary",
 			size: 4,
 		});
-	});
 
-	it("rejects relative paths", async () => {
-		expect(await appHandlers.readFilePreview({ path: "relative/path.txt" })).toEqual({
-			kind: "not-found",
-		});
+		const pngPath = join(tmp, "dot.png");
+		// 1x1 transparent PNG
+		writeFileSync(
+			pngPath,
+			Buffer.from(
+				"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+				"base64",
+			),
+		);
+		const image = await appHandlers.readFilePreview({ path: pngPath });
+		expect(image.kind).toBe("image");
+		if (image.kind === "image") {
+			expect(image.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
+		}
 	});
 
 	it("refuses paths outside the home dir and registered projects", async () => {
@@ -282,22 +284,6 @@ describe("readFilePreview", () => {
 		).rejects.toThrow(/outside the allowed/);
 	});
 
-	it("returns a data URL for images", async () => {
-		const pngPath = join(tmp, "dot.png");
-		// 1x1 transparent PNG
-		writeFileSync(
-			pngPath,
-			Buffer.from(
-				"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-				"base64",
-			),
-		);
-		const result = await appHandlers.readFilePreview({ path: pngPath });
-		expect(result.kind).toBe("image");
-		if (result.kind === "image") {
-			expect(result.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
-		}
-	});
 });
 
 describe("audio and video previews", () => {

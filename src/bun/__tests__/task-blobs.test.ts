@@ -76,7 +76,7 @@ function taskWithFileStats(overrides?: Partial<Task>): Task {
 }
 
 describe("splitTaskBlobs — pure split rule", () => {
-	it("moves fileStats out and leaves the declared diff numbers in place", () => {
+	it("moves fileStats out, leaves the declared diff numbers in place, and never mutates the caller's task", () => {
 		const task = taskWithFileStats();
 		const split = splitTaskBlobs([task]);
 
@@ -91,15 +91,10 @@ describe("splitTaskBlobs — pure split rule", () => {
 			deletions: 4,
 			capturedAt: "2026-08-16T10:00:00.000Z",
 		});
-	});
-
-	it("never mutates the caller's task objects", () => {
-		const task = taskWithFileStats();
-		splitTaskBlobs([task]);
 		expect((task.completedDiffStats as { fileStats?: unknown }).fileStats).toHaveLength(2);
 	});
 
-	it("is a no-op once the migration has run, so a steady-state save writes no sidecars", () => {
+	it("is a no-op once migrated (no sidecars on a steady-state save), with no diff stats, or with an empty fileStats array", () => {
 		const alreadyMigrated = makeTask({
 			completedDiffStats: { files: 2, insertions: 30, deletions: 4, capturedAt: "2026-08-16T10:00:00.000Z" },
 		});
@@ -108,16 +103,14 @@ describe("splitTaskBlobs — pure split rule", () => {
 		expect(split.changed).toBe(false);
 		expect(split.blobs).toHaveLength(0);
 		expect(split.tasks[0]).toBe(alreadyMigrated);
-	});
 
-	it("ignores tasks with no diff stats and an empty fileStats array", () => {
 		const empty = makeTask({
 			id: "task-2",
 			completedDiffStats: { files: 0, insertions: 0, deletions: 0, capturedAt: "x", fileStats: [] } as Task["completedDiffStats"],
 		});
-		const split = splitTaskBlobs([makeTask(), empty]);
-		expect(split.changed).toBe(false);
-		expect(split.blobs).toHaveLength(0);
+		const ignored = splitTaskBlobs([makeTask(), empty]);
+		expect(ignored.changed).toBe(false);
+		expect(ignored.blobs).toHaveLength(0);
 	});
 });
 

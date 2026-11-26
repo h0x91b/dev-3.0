@@ -51,11 +51,14 @@ for (const loader of loaders) {
 			}
 		});
 
-		it.each(["0.4.0", "0.4.1", "0.4.0-dev3.2", undefined])("rejects unreviewed package version %s", async (version) => {
-			metadata.override = true;
-			metadata.version = version;
-			const { create } = await loader.load();
-			await expect(create()).rejects.toThrow("requires ghostty-web@0.4.0-dev3.1");
+		it("rejects every unreviewed package version", async () => {
+			for (const version of ["0.4.0", "0.4.1", "0.4.0-dev3.2", undefined]) {
+				vi.resetModules();
+				metadata.override = true;
+				metadata.version = version;
+				const { create } = await loader.load();
+				await expect(create(), String(version)).rejects.toThrow("requires ghostty-web@0.4.0-dev3.1");
+			}
 		});
 	});
 }

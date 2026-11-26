@@ -99,79 +99,49 @@ beforeEach(() => {
 // ─── getCurrentBranch ────────────────────────────────────────────────────────
 
 describe("getCurrentBranch", () => {
-	it("returns current branch name", async () => {
-		queueResponse(0, "main\n");
-		const result = await getCurrentBranch("/repo");
-		expect(result).toBe("main");
-	});
-
-	it("returns feature branch name with slashes", async () => {
+	it("returns the branch name (slashes included), and null on detached HEAD or git failure", async () => {
 		queueResponse(0, "dev3/fix-login-bug\n");
-		const result = await getCurrentBranch("/repo");
-		expect(result).toBe("dev3/fix-login-bug");
-	});
-
-	it("returns null on detached HEAD", async () => {
+		expect(await getCurrentBranch("/repo")).toBe("dev3/fix-login-bug");
 		queueResponse(0, "HEAD\n");
-		const result = await getCurrentBranch("/repo");
-		expect(result).toBeNull();
-	});
-
-	it("returns null when command fails", async () => {
+		expect(await getCurrentBranch("/repo")).toBeNull();
 		queueResponse(128, "", "fatal: not a git repository");
-		const result = await getCurrentBranch("/not-a-repo");
-		expect(result).toBeNull();
+		expect(await getCurrentBranch("/not-a-repo")).toBeNull();
 	});
 });
 
 // ─── pullOrigin ──────────────────────────────────────────────────────────────
 
 describe("pullOrigin", () => {
-	it("returns ok=true with stdout when pull succeeds", async () => {
+	it("returns ok/stdout on success and ok=false/stderr on failure", async () => {
 		queueResponse(0, "Already up to date.\n");
-		const result = await pullOrigin("/repo", "main");
-		expect(result.ok).toBe(true);
-		expect(result.stdout).toBe("Already up to date.");
-		expect(result.stderr).toBe("");
-	});
+		expect(await pullOrigin("/repo", "main")).toEqual({ ok: true, stdout: "Already up to date.", stderr: "" });
 
-	it("returns ok=false with stderr when pull fails", async () => {
 		queueResponse(1, "", "fatal: unable to access 'https://...': Could not resolve host\n");
-		const result = await pullOrigin("/repo", "main");
-		expect(result.ok).toBe(false);
-		expect(result.stderr).toMatch(/unable to access/);
+		const failed = await pullOrigin("/repo", "main");
+		expect(failed.ok).toBe(false);
+		expect(failed.stderr).toMatch(/unable to access/);
 	});
 
-	it("passes branch name through to git pull", async () => {
-		queueResponse(0, "Updating abc..def\nFast-forward\n");
-		const result = await pullOrigin("/repo", "master");
-		expect(result.ok).toBe(true);
-		expect(result.stdout).toMatch(/Fast-forward/);
-	});
-
-	it("retries once when pull fails with 'Cannot fast-forward to multiple branches'", async () => {
+	it("retries exactly once on 'Cannot fast-forward to multiple branches', and never on unrelated failures", async () => {
 		queueResponse(128, "", "fatal: Cannot fast-forward to multiple branches.\n");
 		queueResponse(0, "Updating abc..def\nFast-forward\n");
-		const result = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
-		expect(result.ok).toBe(true);
-		expect(result.stdout).toMatch(/Fast-forward/);
+		const retried = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
+		expect(retried.ok).toBe(true);
+		expect(retried.stdout).toMatch(/Fast-forward/);
 		expect(spawnMock).toHaveBeenCalledTimes(2);
-	});
 
-	it("retries at most once — a second multiple-branches failure is returned", async () => {
+		spawnMock.mockClear();
 		queueResponse(128, "", "fatal: Cannot fast-forward to multiple branches.\n");
 		queueResponse(128, "", "fatal: Cannot fast-forward to multiple branches.\n");
-		const result = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
-		expect(result.ok).toBe(false);
-		expect(result.stderr).toMatch(/Cannot fast-forward to multiple branches/);
+		const twice = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
+		expect(twice.ok).toBe(false);
+		expect(twice.stderr).toMatch(/Cannot fast-forward to multiple branches/);
 		expect(spawnMock).toHaveBeenCalledTimes(2);
-	});
 
-	it("does not retry on unrelated pull failures", async () => {
+		spawnMock.mockClear();
 		queueResponse(1, "", "fatal: unable to access 'https://...': Could not resolve host\n");
-		const result = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
-		expect(result.ok).toBe(false);
-		expect(result.stderr).toMatch(/unable to access/);
+		const unrelated = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
+		expect(unrelated.ok).toBe(false);
 		expect(spawnMock).toHaveBeenCalledTimes(1);
 	});
 });
@@ -179,199 +149,106 @@ describe("pullOrigin", () => {
 // ─── isWorktreeDirty ────────────────────────────────────────────────────────
 
 describe("isWorktreeDirty", () => {
-	it("returns false for clean working tree", async () => {
-		queueResponse(0, "");
-		const result = await isWorktreeDirty("/repo");
-		expect(result).toBe(false);
-	});
-
-	it("returns true when tracked changes exist", async () => {
-		queueResponse(0, " M src/app.ts\n");
-		const result = await isWorktreeDirty("/repo");
-		expect(result).toBe(true);
-	});
-
-	it("returns true when only untracked files exist", async () => {
-		queueResponse(0, "?? scratch.txt\n");
-		const result = await isWorktreeDirty("/repo");
-		expect(result).toBe(true);
-	});
-
-	it("returns false when git status fails", async () => {
-		queueResponse(128, "", "fatal: not a git repository");
-		const result = await isWorktreeDirty("/repo");
-		expect(result).toBe(false);
+	it("is dirty on tracked or untracked changes, clean on empty status or git failure", async () => {
+		const cases: Array<[string, number, string, boolean]> = [
+			["clean", 0, "", false],
+			["tracked change", 0, " M src/app.ts\n", true],
+			["untracked only", 0, "?? scratch.txt\n", true],
+			["git failure", 128, "", false],
+		];
+		for (const [name, code, stdout, expected] of cases) {
+			queueResponse(code, stdout);
+			expect(await isWorktreeDirty("/repo"), name).toBe(expected);
+		}
 	});
 });
 
 // ─── getUnpushedCount ────────────────────────────────────────────────────────
 
 describe("getUnpushedCount", () => {
-	it("returns 0 for empty branch name", async () => {
-		const result = await getUnpushedCount("/repo", "");
-		expect(result).toBe(0);
-	});
-
-	it("returns -1 when branch was never pushed (no remote tracking)", async () => {
+	it("returns 0 for an empty name, -1 when never pushed, else the rev-list count (0 if it fails)", async () => {
+		expect(await getUnpushedCount("/repo", "")).toBe(0);
 		queueResponse(128, "", "fatal: Needed a single revision");
-		const result = await getUnpushedCount("/repo", "dev3/task-branch");
-		expect(result).toBe(-1);
-	});
-
-	it("returns 0 when all commits are pushed", async () => {
+		expect(await getUnpushedCount("/repo", "dev3/task-branch")).toBe(-1);
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/branch
-		queueResponse(0, "0\n");      // rev-list --count
-		const result = await getUnpushedCount("/repo", "dev3/task-branch");
-		expect(result).toBe(0);
-	});
-
-	it("returns N for N unpushed commits", async () => {
-		queueResponse(0, "abc123\n");
-		queueResponse(0, "3\n");
-		const result = await getUnpushedCount("/repo", "dev3/task-branch");
-		expect(result).toBe(3);
-	});
-
-	it("returns 0 when rev-list fails", async () => {
+		queueResponse(0, "3\n");      // rev-list --count
+		expect(await getUnpushedCount("/repo", "dev3/task-branch")).toBe(3);
 		queueResponse(0, "abc123\n");
 		queueResponse(1, "", "error");
-		const result = await getUnpushedCount("/repo", "dev3/task-branch");
-		expect(result).toBe(0);
+		expect(await getUnpushedCount("/repo", "dev3/task-branch")).toBe(0);
 	});
 });
 
 // ─── getBehindOriginCount ────────────────────────────────────────────────────
 
 describe("getBehindOriginCount", () => {
-	it("returns 0 for empty branch name", async () => {
-		const result = await getBehindOriginCount("/repo", "");
-		expect(result).toBe(0);
-	});
-
-	it("returns 0 when origin ref does not exist", async () => {
+	it("returns 0 for an empty name or missing origin ref, else the rev-list count (0 if it fails)", async () => {
+		expect(await getBehindOriginCount("/repo", "")).toBe(0);
 		queueResponse(128, "", "fatal: Needed a single revision");
-		const result = await getBehindOriginCount("/repo", "main");
-		expect(result).toBe(0);
-	});
-
-	it("returns N when local branch is N commits behind origin", async () => {
+		expect(await getBehindOriginCount("/repo", "main")).toBe(0);
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
 		queueResponse(0, "5\n");      // rev-list --count HEAD..origin/main
-		const result = await getBehindOriginCount("/repo", "main");
-		expect(result).toBe(5);
-	});
-
-	it("returns 0 when up to date", async () => {
-		queueResponse(0, "abc123\n");
-		queueResponse(0, "0\n");
-		const result = await getBehindOriginCount("/repo", "main");
-		expect(result).toBe(0);
-	});
-
-	it("returns 0 when rev-list fails", async () => {
+		expect(await getBehindOriginCount("/repo", "main")).toBe(5);
 		queueResponse(0, "abc123\n");
 		queueResponse(1, "", "error");
-		const result = await getBehindOriginCount("/repo", "main");
-		expect(result).toBe(0);
+		expect(await getBehindOriginCount("/repo", "main")).toBe(0);
 	});
 });
 
 // ─── getBranchStatus ─────────────────────────────────────────────────────────
 
 describe("getBranchStatus", () => {
-	it("returns ahead count for new commits", async () => {
+	it("returns ahead-only counts directly, and zero when git fails", async () => {
 		queueResponse(0, "0\t2\n"); // "behind\tahead"
-		const result = await getBranchStatus("/repo", "origin/main");
-		expect(result.ahead).toBe(2);
-		expect(result.behind).toBe(0);
+		expect(await getBranchStatus("/repo", "origin/main")).toMatchObject({ ahead: 2, behind: 0 });
+		queueResponse(1, "", "error");
+		expect(await getBranchStatus("/repo", "origin/main")).toMatchObject({ ahead: 0, behind: 0 });
 	});
 
-	it("returns behind count when base has new commits", async () => {
+	// Ahead AND behind is the one shape a missing fork point can also produce,
+	// so this path probes `git merge-base` before trusting the counts.
+	it("trusts ahead+behind counts only when merge-base finds a fork point", async () => {
 		queueResponse(0, "1\t2\n");
-		// Ahead AND behind is the one shape a missing fork point can also produce,
-		// so this path probes `git merge-base` before trusting the counts.
 		queueResponse(0, "abc1234\n");
-		const result = await getBranchStatus("/repo", "origin/main");
-		expect(result.ahead).toBe(2);
-		expect(result.behind).toBe(1);
-		expect(result.baseUnreachable).toBe(false);
-	});
+		expect(await getBranchStatus("/repo", "origin/main")).toMatchObject({ ahead: 2, behind: 1, baseUnreachable: false });
 
-	it("reports the base as unreachable when the merge-base probe finds nothing", async () => {
 		queueResponse(0, "1\t2\n");
 		queueResponse(1, "", "fatal: refusing to merge unrelated histories");
-		const result = await getBranchStatus("/repo", "origin/main");
-		expect(result).toEqual({ ahead: 0, behind: 0, baseUnreachable: true });
-	});
-
-	it("returns zero for fresh branch with no changes", async () => {
-		queueResponse(0, "0\t0\n");
-		const result = await getBranchStatus("/repo", "origin/main");
-		expect(result.ahead).toBe(0);
-		expect(result.behind).toBe(0);
-	});
-
-	it("returns zero when command fails", async () => {
-		queueResponse(1, "", "error");
-		const result = await getBranchStatus("/repo", "origin/main");
-		expect(result.ahead).toBe(0);
-		expect(result.behind).toBe(0);
+		expect(await getBranchStatus("/repo", "origin/main")).toEqual({ ahead: 0, behind: 0, baseUnreachable: true });
 	});
 });
 
 // ─── canRebaseCleanly ────────────────────────────────────────────────────────
 
 describe("canRebaseCleanly", () => {
-	it("returns true when merge-tree succeeds (no conflicts)", async () => {
+	it("is true when merge-tree succeeds and false when it reports conflicts", async () => {
 		queueResponse(0, "abc123treehash\n");
-		const result = await canRebaseCleanly("/repo", "origin/main");
-		expect(result).toBe(true);
-	});
-
-	it("returns false when merge-tree reports conflicts", async () => {
+		expect(await canRebaseCleanly("/repo", "origin/main")).toBe(true);
 		queueResponse(1, "", "CONFLICT (content): Merge conflict in app.ts");
-		const result = await canRebaseCleanly("/repo", "origin/main");
-		expect(result).toBe(false);
+		expect(await canRebaseCleanly("/repo", "origin/main")).toBe(false);
 	});
 });
 
 // ─── getUncommittedChanges ───────────────────────────────────────────────────
 
 describe("getUncommittedChanges", () => {
-	it("returns zero for clean working tree", async () => {
+	it("returns zero for a clean tree and falls back to counting when git status fails", async () => {
 		queueResponse(0, "");   // git status --porcelain — clean, so no diff runs
-		const result = await getUncommittedChanges("/repo");
-		expect(result.insertions).toBe(0);
-		expect(result.deletions).toBe(0);
-	});
+		expect(await getUncommittedChanges("/repo")).toEqual({ insertions: 0, deletions: 0 });
 
-	it("falls back to counting when git status fails", async () => {
 		queueResponse(128, "", "fatal: boom");   // git status --porcelain
 		queueResponse(0, "4\t2\tapp.ts\n");      // git diff --numstat HEAD
 		queueResponse(0, "");                     // git ls-files --others
-		const result = await getUncommittedChanges("/repo");
-		expect(result).toEqual({ insertions: 4, deletions: 2 });
+		expect(await getUncommittedChanges("/repo")).toEqual({ insertions: 4, deletions: 2 });
 	});
 
-	it("counts insertions and deletions in tracked files", async () => {
+	it("sums tracked numstat lines, skipping binary (-) entries", async () => {
 		queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
-		queueResponse(0, "3\t1\tapp.ts\n2\t0\tutils.ts\n");
+		queueResponse(0, "-\t-\timage.png\n3\t1\tapp.ts\n2\t0\tutils.ts\n");
 		queueResponse(0, "");
-		const result = await getUncommittedChanges("/repo");
-		expect(result.insertions).toBe(5);
-		expect(result.deletions).toBe(1);
+		expect(await getUncommittedChanges("/repo")).toEqual({ insertions: 5, deletions: 1 });
 	});
 
-	it("handles binary files (- instead of numbers)", async () => {
-		queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
-		queueResponse(0, "-\t-\timage.png\n2\t1\tapp.ts\n");
-		queueResponse(0, "");
-		const result = await getUncommittedChanges("/repo");
-		expect(result.insertions).toBe(2);
-		expect(result.deletions).toBe(1);
-	});
-
-	// Tests for untracked file handling require real files on disk
 	describe("untracked files", () => {
 		const tmpDir = join(tmpdir(), `git-branch-ops-test-${Date.now()}`);
 
@@ -383,41 +260,14 @@ describe("getUncommittedChanges", () => {
 			rmSync(tmpDir, { recursive: true, force: true });
 		});
 
-		it("counts lines in untracked text files", async () => {
+		it("counts lines of untracked text files, skipping binary (null bytes) and >1 MB files", async () => {
 			writeFileSync(join(tmpDir, "readme.txt"), "line1\nline2\nline3\n");
-			queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
-			queueResponse(0, "");               // git diff --numstat HEAD
-			queueResponse(0, "readme.txt\n");   // git ls-files --others
-			const result = await getUncommittedChanges(tmpDir);
-			expect(result.insertions).toBe(3);
-			expect(result.deletions).toBe(0);
-		});
-
-		it("skips untracked binary files (null bytes)", async () => {
-			// Binary file with null bytes — should be excluded
-			const binaryContent = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00]);
-			writeFileSync(join(tmpDir, "image.png"), binaryContent);
-			// Text file — should be counted
-			writeFileSync(join(tmpDir, "app.ts"), "const x = 1;\n");
-			queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
-			queueResponse(0, "");                           // git diff --numstat HEAD
-			queueResponse(0, "image.png\napp.ts\n");       // git ls-files --others
-			const result = await getUncommittedChanges(tmpDir);
-			expect(result.insertions).toBe(1); // only app.ts line, not binary
-			expect(result.deletions).toBe(0);
-		});
-
-		it("skips untracked files larger than 1 MB", async () => {
-			// Create a file larger than 1 MB
-			const largeContent = "x".repeat(1_048_577) + "\n";
-			writeFileSync(join(tmpDir, "huge.txt"), largeContent);
-			writeFileSync(join(tmpDir, "small.ts"), "ok\n");
-			queueResponse(0, " M app.ts\n");   // git status --porcelain — dirty
-			queueResponse(0, "");                           // git diff --numstat HEAD
-			queueResponse(0, "huge.txt\nsmall.ts\n");      // git ls-files --others
-			const result = await getUncommittedChanges(tmpDir);
-			expect(result.insertions).toBe(1); // only small.ts
-			expect(result.deletions).toBe(0);
+			writeFileSync(join(tmpDir, "image.png"), Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00]));
+			writeFileSync(join(tmpDir, "huge.txt"), "x".repeat(1_048_577) + "\n");
+			queueResponse(0, " M app.ts\n");                          // git status --porcelain — dirty
+			queueResponse(0, "");                                      // git diff --numstat HEAD
+			queueResponse(0, "readme.txt\nimage.png\nhuge.txt\n");    // git ls-files --others
+			expect(await getUncommittedChanges(tmpDir)).toEqual({ insertions: 3, deletions: 0 });
 		});
 	});
 });
@@ -577,7 +427,10 @@ describe("getTaskDiff", () => {
 		}));
 	});
 
-	it("reports binary files in skippedFiles with both sides' sizes", async () => {
+
+	it("reports modified, added and renamed binary files in skippedFiles with their sizes", async () => {
+		const opts = { baseBranch: "main", compareRef: "origin/main", compareLabel: "origin/main" };
+
 		queueResponse(0, "M\0image.png\0");      // name-status
 		queueResponse(0, "-\t-\timage.png\n");   // getBranchDiffStats
 		queueResponse(0, "-\t-\timage.png\0");   // getNumstat
@@ -585,47 +438,22 @@ describe("getTaskDiff", () => {
 		queueResponse(0, catBlob("\0binary-old")); // old ref batch (null byte ⇒ binary)
 		queueResponse(0, catCheck(250));         // new ref batch-check
 		queueResponse(0, catBlob("\0binary-new-bytes")); // new ref batch
+		const modified = await getTaskDiff("/repo", "branch", opts);
+		expect(modified.files).toEqual([]);
+		expect(modified.skippedFiles).toHaveLength(1);
+		expect(modified.skippedFiles[0]).toMatchObject({ status: "modified", reason: "binary", displayPath: "image.png" });
+		expect(modified.skippedFiles[0].oldSize).toBeGreaterThan(0);
+		expect(modified.skippedFiles[0].newSize).toBeGreaterThan(0);
 
-		const result = await getTaskDiff("/repo", "branch", {
-			baseBranch: "main",
-			compareRef: "origin/main",
-			compareLabel: "origin/main",
-		});
-
-		expect(result.files).toEqual([]);
-		expect(result.skippedFiles).toHaveLength(1);
-		const skipped = result.skippedFiles[0];
-		expect(skipped.status).toBe("modified");
-		expect(skipped.reason).toBe("binary");
-		expect(skipped.displayPath).toBe("image.png");
-		expect(skipped.oldSize).toBeGreaterThan(0);
-		expect(skipped.newSize).toBeGreaterThan(0);
-	});
-
-	it("reports added binary files with null oldSize", async () => {
 		queueResponse(0, "A\0assets/logo.png\0");   // name-status
 		queueResponse(0, "-\t-\tassets/logo.png\n"); // getBranchDiffStats
 		queueResponse(0, "-\t-\tassets/logo.png\0"); // getNumstat
 		queueResponse(0, catCheck(64));             // new ref batch-check (added: no old side)
 		queueResponse(0, catBlob("\0png-new-bytes")); // new ref batch
+		const added = (await getTaskDiff("/repo", "branch", opts)).skippedFiles[0];
+		expect(added).toMatchObject({ status: "added", reason: "binary", oldPath: null, oldSize: null });
+		expect(added.newSize).toBeGreaterThan(0);
 
-		const result = await getTaskDiff("/repo", "branch", {
-			baseBranch: "main",
-			compareRef: "origin/main",
-			compareLabel: "origin/main",
-		});
-
-		expect(result.files).toEqual([]);
-		expect(result.skippedFiles).toHaveLength(1);
-		const skipped = result.skippedFiles[0];
-		expect(skipped.status).toBe("added");
-		expect(skipped.reason).toBe("binary");
-		expect(skipped.oldPath).toBeNull();
-		expect(skipped.oldSize).toBeNull();
-		expect(skipped.newSize).toBeGreaterThan(0);
-	});
-
-	it("reports renamed binary files with old→new paths and sizes", async () => {
 		queueResponse(0, "R100\0old.png\0new.png\0");  // name-status (rename)
 		queueResponse(0, "-\t-\tnew.png\n");            // getBranchDiffStats
 		queueResponse(0, "-\t-\t\0old.png\0new.png\0"); // getNumstat (rename, -z layout)
@@ -633,50 +461,26 @@ describe("getTaskDiff", () => {
 		queueResponse(0, catBlob("\0oldbin"));          // old ref batch
 		queueResponse(0, catCheck(82));                 // new ref batch-check (new.png)
 		queueResponse(0, catBlob("\0newbin2"));         // new ref batch
-
-		const result = await getTaskDiff("/repo", "branch", {
-			baseBranch: "main",
-			compareRef: "origin/main",
-			compareLabel: "origin/main",
-		});
-
-		expect(result.skippedFiles).toHaveLength(1);
-		const skipped = result.skippedFiles[0];
-		expect(skipped.status).toBe("renamed");
-		expect(skipped.reason).toBe("binary");
-		expect(skipped.oldPath).toBe("old.png");
-		expect(skipped.newPath).toBe("new.png");
-		expect(skipped.oldSize).toBeGreaterThan(0);
-		expect(skipped.newSize).toBeGreaterThan(0);
+		const renamed = (await getTaskDiff("/repo", "branch", opts)).skippedFiles[0];
+		expect(renamed).toMatchObject({ status: "renamed", reason: "binary", oldPath: "old.png", newPath: "new.png" });
+		expect(renamed.oldSize).toBeGreaterThan(0);
+		expect(renamed.newSize).toBeGreaterThan(0);
 	});
 });
 
 // ─── listBranches ────────────────────────────────────────────────────────────
 
 describe("listBranches", () => {
-	it("returns local and remote branches", async () => {
-		queueResponse(0, "main\nfeature/login\n");            // local
-		queueResponse(0, "origin/main\norigin/feature/login\n"); // remote
+	it("returns local and remote branches without origin/HEAD, and [] when both are empty", async () => {
+		queueResponse(0, "main\nfeature/login\n");                          // local
+		queueResponse(0, "origin/main\norigin/HEAD\norigin/feature/login\n"); // remote
 		const branches = await listBranches("/repo");
-		const local = branches.filter((b) => !b.isRemote).map((b) => b.name);
-		const remote = branches.filter((b) => b.isRemote).map((b) => b.name);
-		expect(local).toEqual(["main", "feature/login"]);
-		expect(remote).toEqual(["origin/main", "origin/feature/login"]);
-	});
+		expect(branches.filter((b) => !b.isRemote).map((b) => b.name)).toEqual(["main", "feature/login"]);
+		expect(branches.filter((b) => b.isRemote).map((b) => b.name)).toEqual(["origin/main", "origin/feature/login"]);
 
-	it("filters out origin/HEAD from remote branches", async () => {
-		queueResponse(0, "main\n");
-		queueResponse(0, "origin/main\norigin/HEAD\n");
-		const branches = await listBranches("/repo");
-		const remote = branches.filter((b) => b.isRemote).map((b) => b.name);
-		expect(remote).toEqual(["origin/main"]);
-	});
-
-	it("handles empty branch lists", async () => {
 		queueResponse(0, "");
 		queueResponse(0, "");
-		const branches = await listBranches("/repo");
-		expect(branches).toEqual([]);
+		expect(await listBranches("/repo")).toEqual([]);
 	});
 });
 
@@ -696,60 +500,34 @@ describe("detectDefaultCompareRef", () => {
 
 	it("tracks the local base branch against origin when it does not exist yet", async () => {
 		queueResponse(0, "origin\n"); // remotes
-		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
-		queueResponse(128, "", "fatal: ambiguous argument 'main'"); // rev-parse --verify main
-		queueResponse(0, ""); // branch --track main origin/main
-
-		expect(await detectDefaultCompareRef("/repo", "main")).toBe("origin/main");
-		expect(spawnResponses).toHaveLength(0);
-	});
-
-	it("uses origin/master when master is the base branch", async () => {
-		queueResponse(0, "origin\n"); // remotes
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/master
 		queueResponse(128, "", "fatal: ambiguous argument 'master'"); // rev-parse --verify master
 		queueResponse(0, ""); // branch --track master origin/master
 
-		const ref = await detectDefaultCompareRef("/repo", "master");
-
-		expect(ref).toBe("origin/master");
+		expect(await detectDefaultCompareRef("/repo", "master")).toBe("origin/master");
+		expect(spawnResponses).toHaveLength(0);
 	});
 
-	it("falls back to the local base branch when there is no origin remote", async () => {
+	it("falls back to the local base without origin, and to origin/main when the base has no remote ref", async () => {
 		queueResponse(0, "\n"); // remotes — none
 		queueResponse(0, "abc123\n"); // rev-parse --verify main
-
 		expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
-	});
 
-	it("falls back to origin/main when the configured base branch has no remote ref", async () => {
 		queueResponse(0, "origin\n"); // remotes
 		queueResponse(128, "", "fatal"); // rev-parse --verify origin/develop
 		queueResponse(0, "abc123\n"); // rev-parse --verify develop
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
-
 		expect(await detectDefaultCompareRef("/repo", "develop")).toBe("origin/main");
 	});
 
-	it("caches the result for repeated calls (no extra git spawns)", async () => {
-		queueResponse(0, "origin\n"); // remotes
-		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
-		queueResponse(0, "abc123\n"); // rev-parse --verify main
-		queueResponse(0, ""); // branch --set-upstream-to origin/main main
-
-		const first = await detectDefaultCompareRef("/repo", "main");
-		expect(first).toBe("origin/main");
-		expect(spawnResponses).toHaveLength(0);
-
-		// Second call hits the cache — nothing queued, no spawn attempted
-		const second = await detectDefaultCompareRef("/repo", "main");
-		expect(second).toBe("origin/main");
-	});
-
-	it("caches per projectPath+baseBranch key", async () => {
+	it("caches per projectPath+baseBranch key (no extra git spawns on repeat)", async () => {
 		queueResponse(0, "\n");
 		queueResponse(0, "abc123\n");
 		expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
+		// Same key hits the cache — nothing queued, no spawn attempted
+		const spawnsAfterFirst = spawnMock.mock.calls.length;
+		expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
+		expect(spawnMock.mock.calls.length).toBe(spawnsAfterFirst);
 
 		// Different repo: full detection runs again
 		queueResponse(0, "origin\n");
@@ -784,40 +562,27 @@ describe("detectDefaultCompareRef", () => {
 // ─── getOriginUrl ────────────────────────────────────────────────────────────
 
 describe("getOriginUrl", () => {
-	it("returns origin URL on success", async () => {
+	it("returns the origin URL, or null when git fails", async () => {
 		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n");
-		const url = await getOriginUrl("/repo");
-		expect(url).toBe("https://github.com/h0x91b/dev-3.0.git");
-	});
-
-	it("returns null when command fails", async () => {
+		expect(await getOriginUrl("/repo")).toBe("https://github.com/h0x91b/dev-3.0.git");
 		queueResponse(1, "", "fatal: not a git repository");
-		const url = await getOriginUrl("/not-a-repo");
-		expect(url).toBeNull();
+		expect(await getOriginUrl("/not-a-repo")).toBeNull();
 	});
 });
 
 // ─── deriveForkUrl ───────────────────────────────────────────────────────────
 
 describe("deriveForkUrl", () => {
-	it("replaces owner in HTTPS URL", () => {
-		const result = deriveForkUrl("https://github.com/h0x91b/dev-3.0.git", "yanive");
-		expect(result).toBe("https://github.com/yanive/dev-3.0.git");
-	});
-
-	it("replaces owner in SSH URL", () => {
-		const result = deriveForkUrl("git@github.com:h0x91b/dev-3.0.git", "yanive");
-		expect(result).toBe("git@github.com:yanive/dev-3.0.git");
-	});
-
-	it("handles HTTPS URL without .git suffix", () => {
-		const result = deriveForkUrl("https://github.com/h0x91b/dev-3.0", "yanive");
-		expect(result).toBe("https://github.com/yanive/dev-3.0");
-	});
-
-	it("returns null for unrecognized URL format", () => {
-		const result = deriveForkUrl("not-a-url", "yanive");
-		expect(result).toBeNull();
+	it("replaces the owner in HTTPS/SSH URLs and rejects unknown formats", () => {
+		const cases: Array<[string, string | null]> = [
+			["https://github.com/h0x91b/dev-3.0.git", "https://github.com/yanive/dev-3.0.git"],
+			["git@github.com:h0x91b/dev-3.0.git", "git@github.com:yanive/dev-3.0.git"],
+			["https://github.com/h0x91b/dev-3.0", "https://github.com/yanive/dev-3.0"],
+			["not-a-url", null],
+		];
+		for (const [input, expected] of cases) {
+			expect(deriveForkUrl(input, "yanive"), input).toBe(expected);
+		}
 	});
 });
 
@@ -834,7 +599,7 @@ describe("fetchFork", () => {
 		expect(result).toBe(true);
 	});
 
-	it("fetches fork branches into remote-tracking refs so the branch selector can see them", async () => {
+	it("reuses an existing remote and fetches into remote-tracking refs so the branch selector can see them", async () => {
 		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n"); // get-url origin
 		queueResponse(0, "https://github.com/yanive/dev-3.0.git\n"); // get-url forkOwner (exists)
 		queueResponse(0, "");                                            // fetch
@@ -862,68 +627,42 @@ describe("fetchFork", () => {
 		);
 	});
 
-	it("reuses existing remote", async () => {
-		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n"); // get-url origin
-		queueResponse(0, "https://github.com/yanive/dev-3.0.git\n"); // get-url forkOwner (exists)
-		queueResponse(0, "");                                            // fetch
-		const result = await fetchFork("/repo", "yanive", "feat/cool-stuff");
-		expect(result).toBe(true);
-	});
-
-	it("returns false when origin URL cannot be determined", async () => {
+	it("returns false when the origin URL is unknown or the fetch fails", async () => {
 		queueResponse(1, "", "fatal: not a git repository");
-		const result = await fetchFork("/not-a-repo", "yanive", "feat/cool-stuff");
-		expect(result).toBe(false);
-	});
+		expect(await fetchFork("/not-a-repo", "yanive", "feat/cool-stuff")).toBe(false);
 
-	it("returns false when fetch fails", async () => {
 		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n");
 		queueResponse(1, "", "fatal: No such remote");
 		queueResponse(0, "");                                            // remote add
 		queueResponse(1, "", "fatal: couldn't find remote ref");         // fetch fails
-		const result = await fetchFork("/repo", "yanive", "nonexistent");
-		expect(result).toBe(false);
+		expect(await fetchFork("/repo", "yanive", "nonexistent")).toBe(false);
 	});
 });
 
 // ─── isForeignBranchRef ──────────────────────────────────────────────────────
 
 describe("isForeignBranchRef", () => {
-	it("no existingBranch → own work (a fresh branch off the base)", async () => {
+	it("no existingBranch or a local name → own work; a slash alone does not make it foreign", async () => {
 		expect(await isForeignBranchRef("/repo", undefined)).toBe(false);
 		expect(await isForeignBranchRef("/repo", null)).toBe(false);
 		expect(await isForeignBranchRef("/repo", "   ")).toBe(false);
-	});
-
-	it("plain local branch name → own work, without asking git", async () => {
 		expect(await isForeignBranchRef("/repo", "feature-login")).toBe(false);
-		expect(spawnMock).not.toHaveBeenCalled();
-	});
+		expect(spawnMock).not.toHaveBeenCalled(); // decided without asking git
 
-	it("a slash alone does not make it foreign — feature/login is a local branch", async () => {
 		queueResponse(0, "origin\n");
 		expect(await isForeignBranchRef("/repo", "feature/login")).toBe(false);
-	});
-
-	it("origin/<branch> → foreign", async () => {
-		queueResponse(0, "origin\n");
-		expect(await isForeignBranchRef("/repo", "origin/feat/x")).toBe(true);
-	});
-
-	it("fork remote's branch → foreign", async () => {
-		queueResponse(0, "origin\nyanive\n");
-		expect(await isForeignBranchRef("/repo", "yanive/feat/x")).toBe(true);
-	});
-
-	it("strips a refs/remotes/ prefix before classifying", async () => {
-		queueResponse(0, "origin\n");
-		expect(await isForeignBranchRef("/repo", "refs/remotes/origin/feat/x")).toBe(true);
 	});
 
 	// The whole reason this asks for remotes instead of `rev-parse refs/remotes/...`:
 	// a merged pull request's branch is deleted upstream, and the ref check would
 	// then quietly hand the task back its own trust.
-	it("still foreign after the upstream branch was deleted", async () => {
+	it("origin, fork-remote and refs/remotes/ refs → foreign, even after the upstream branch was deleted", async () => {
+		queueResponse(0, "origin\n");
+		expect(await isForeignBranchRef("/repo", "origin/feat/x")).toBe(true);
+		queueResponse(0, "origin\nyanive\n");
+		expect(await isForeignBranchRef("/repo", "yanive/feat/x")).toBe(true);
+		queueResponse(0, "origin\n");
+		expect(await isForeignBranchRef("/repo", "refs/remotes/origin/feat/x")).toBe(true);
 		queueResponse(0, "origin\nyanive\n"); // remote survives, branch does not
 		expect(await isForeignBranchRef("/repo", "yanive/merged-and-deleted")).toBe(true);
 	});
@@ -937,37 +676,26 @@ describe("isForeignBranchRef", () => {
 // ─── localBranchNameForRef / refAuthorAndSubject ─────────────────────────────
 
 describe("localBranchNameForRef", () => {
-	it("strips the remote that owns the ref, origin and fork alike", async () => {
+	// The reason this asks git instead of cutting at the first slash: `feat/x` is
+	// itself a legal local branch name, and cutting would review `x`.
+	it("strips the owning remote (origin or fork) but leaves a local name with a slash alone", async () => {
 		queueResponse(0, "abc123\n");
 		expect(await localBranchNameForRef("/repo", "origin/feat/x")).toBe("feat/x");
 		queueResponse(0, "abc123\n");
 		expect(await localBranchNameForRef("/repo", "yanive/feat/x")).toBe("feat/x");
-	});
-
-	// The reason this asks git instead of cutting at the first slash: `feat/x` is
-	// itself a legal local branch name, and cutting would review `x`.
-	it("leaves a local branch name that merely contains a slash alone", async () => {
 		queueResponse(1, "", "fatal: Needed a single revision");
 		expect(await localBranchNameForRef("/repo", "feat/x")).toBe("feat/x");
 	});
 });
 
 describe("refAuthorAndSubject", () => {
-	it("splits git's NUL-separated author and subject", async () => {
-		queueResponse(0, `Jane Doe\0Rework the parser\n`);
-		expect(await refAuthorAndSubject("/repo", "origin/feat/x")).toEqual({
-			author: "Jane Doe", subject: "Rework the parser",
-		});
-	});
-
 	// A subject can hold anything a commit message's first line holds, including
 	// the colons and parentheses the topic condenser later strips.
-	it("keeps the subject verbatim, punctuation included", async () => {
+	it("splits author and subject verbatim, and answers nulls for a missing ref instead of throwing", async () => {
 		queueResponse(0, `Ann\0feat(remote): serve it (#12)\n`);
-		expect(await refAuthorAndSubject("/repo", "b")).toMatchObject({ subject: "feat(remote): serve it (#12)" });
-	});
-
-	it("answers nulls when the ref is not there, instead of throwing", async () => {
+		expect(await refAuthorAndSubject("/repo", "b")).toEqual({
+			author: "Ann", subject: "feat(remote): serve it (#12)",
+		});
 		queueResponse(1, "", "fatal: bad revision");
 		expect(await refAuthorAndSubject("/repo", "gone")).toEqual({ author: null, subject: null });
 	});

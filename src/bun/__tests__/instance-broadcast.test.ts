@@ -32,18 +32,9 @@ afterEach(() => {
 });
 
 describe("discoverPeerSockets", () => {
-	it("returns empty array when sockets dir does not exist", () => {
+	it("returns empty array when the sockets dir is missing or empty", () => {
+		expect(discoverPeerSockets()).toEqual([]);
 		rmSync(socketsDir, { recursive: true, force: true });
-		expect(discoverPeerSockets()).toEqual([]);
-	});
-
-	it("returns empty array when no socket files exist", () => {
-		expect(discoverPeerSockets()).toEqual([]);
-	});
-
-	it("skips own PID socket", () => {
-		const ownSocket = join(socketsDir, `${process.pid}.sock`);
-		writeFileSync(ownSocket, "");
 		expect(discoverPeerSockets()).toEqual([]);
 	});
 
@@ -59,27 +50,14 @@ describe("discoverPeerSockets", () => {
 		expect(existsSync(staleSocket)).toBe(false);
 	});
 
-	it("returns socket path for alive peer PID", () => {
+	it("returns only the alive peer's socket, skipping its own pid, non-.sock files and non-numeric names", () => {
 		// Use parent process PID — guaranteed alive during test
-		const ppid = process.ppid;
-		const aliveSocket = join(socketsDir, `${ppid}.sock`);
+		const aliveSocket = join(socketsDir, `${process.ppid}.sock`);
 		writeFileSync(aliveSocket, "");
-
-		const peers = discoverPeerSockets();
-		expect(peers).toEqual([aliveSocket]);
-	});
-
-	it("skips non-.sock files", () => {
-		const ppid = process.ppid;
+		writeFileSync(join(socketsDir, `${process.pid}.sock`), "");
 		writeFileSync(join(socketsDir, "readme.txt"), "");
-		writeFileSync(join(socketsDir, `${ppid}.sock`), "");
-		const peers = discoverPeerSockets();
-		// Only the .sock file for the alive PID
-		expect(peers.length).toBe(1);
-	});
-
-	it("skips files with non-numeric PID names", () => {
 		writeFileSync(join(socketsDir, "abc.sock"), "");
-		expect(discoverPeerSockets()).toEqual([]);
+
+		expect(discoverPeerSockets()).toEqual([aliveSocket]);
 	});
 });

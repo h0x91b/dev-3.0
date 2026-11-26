@@ -48,28 +48,19 @@ afterEach(() => {
 });
 
 describe("detectContext — virtual (Operations) tasks", () => {
-	it("resolves projectId + taskId from a virtual work dir", () => {
+	it("resolves projectId + taskId from a virtual work dir and its nested subdirs", () => {
 		const ctx = detectContext(WORK_DIR);
-		expect(ctx).not.toBeNull();
 		expect(ctx?.projectId).toBe(PROJECT_ID);
 		expect(ctx?.taskId).toBe(TASK_ID);
 		expect(ctx?.worktreePath).toBe(WORK_DIR);
+		const nested = detectContext(`${WORK_DIR}/src/components`);
+		expect(nested?.projectId).toBe(PROJECT_ID);
+		expect(nested?.taskId).toBe(TASK_ID);
 	});
 
-	it("resolves from a nested subdir of the work dir", () => {
-		const ctx = detectContext(`${WORK_DIR}/src/components`);
-		expect(ctx?.projectId).toBe(PROJECT_ID);
-		expect(ctx?.taskId).toBe(TASK_ID);
-	});
-
-	it("returns null for an ops path that is not a /work dir", () => {
-		const ctx = detectContext(`${OPS_DIR}/${READABLE_SLUG}/${SHORT_ID}/logs`);
-		expect(ctx).toBeNull();
-	});
-
-	it("returns null when no virtual project matches the readable slug", () => {
-		const ctx = detectContext(`${OPS_DIR}/no-such-board/${SHORT_ID}/work`);
-		expect(ctx).toBeNull();
+	it("returns null for an ops path that is not a /work dir, or a readable slug no virtual project has", () => {
+		expect(detectContext(`${OPS_DIR}/${READABLE_SLUG}/${SHORT_ID}/logs`)).toBeNull();
+		expect(detectContext(`${OPS_DIR}/no-such-board/${SHORT_ID}/work`)).toBeNull();
 	});
 });
 
@@ -106,34 +97,21 @@ describe("detectContext — DEV3_TASK_ID env fallback (fixed-folder ops / Quick 
 describe("offline ID resolution — virtual (Operations) projects", () => {
 	// These run without a socket and previously read only projects.json, going
 	// blind to virtual boards (which live in virtual-projects.json).
-	it("readProjectDirect resolves a virtual project by id", () => {
+	it("resolves a virtual project, its task, and short task/project ids", () => {
 		const project = readProjectDirect(PROJECT_ID);
 		expect(project?.id).toBe(PROJECT_ID);
 		expect(project?.name).toBe("Test Ops");
 		expect(project?.path).toBe(SYNTH_PATH);
+		expect(readTaskDirect(PROJECT_ID, TASK_ID)?.id).toBe(TASK_ID);
+		expect(expandShortId(SHORT_ID, null)).toBe(TASK_ID);
+		expect(expandShortProjectId("vproj-test", null)).toBe(PROJECT_ID);
 	});
 
-	it("readTaskDirect resolves a virtual project's task", () => {
-		const task = readTaskDirect(PROJECT_ID, TASK_ID);
-		expect(task?.id).toBe(TASK_ID);
-	});
-
-	it("readTaskDirect resolves a seq:N reference within the project", () => {
+	it("readTaskDirect resolves seq:N within the project, and reads a seq shared by variants as unknown", () => {
 		writeFileSync(`${TASK_DATA_DIR}/tasks.json`, JSON.stringify([{ id: TASK_ID, seq: 7 }, { id: "other", seq: 8 }]));
 		expect(readTaskDirect(PROJECT_ID, "seq:7")?.id).toBe(TASK_ID);
 		expect(readTaskDirect(PROJECT_ID, "seq:9")).toBeNull();
-	});
-
-	it("readTaskDirect reads a seq:N shared by variants as unknown", () => {
 		writeFileSync(`${TASK_DATA_DIR}/tasks.json`, JSON.stringify([{ id: TASK_ID, seq: 7 }, { id: "variant", seq: 7 }]));
 		expect(readTaskDirect(PROJECT_ID, "seq:7")).toBeNull();
-	});
-
-	it("expandShortId expands a short task id belonging to a virtual project", () => {
-		expect(expandShortId(SHORT_ID, null)).toBe(TASK_ID);
-	});
-
-	it("expandShortProjectId expands a short virtual project id", () => {
-		expect(expandShortProjectId("vproj-test", null)).toBe(PROJECT_ID);
 	});
 });

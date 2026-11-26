@@ -132,16 +132,11 @@ describe("handleCodexHook", () => {
 		await handleCodexHook(JSON.stringify({ hook_event_name: "SessionStart", session_id: "session-9" }), SOCKET, CONTEXT);
 
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "session-9", paneId: "pane-1" });
-	});
 
-	it("prefers $TMUX_PANE when both are set", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		// $TMUX_PANE wins when both are set.
 		process.env.TMUX_PANE = "%42";
-		process.env.DEV3_PANE_ID = "pane-1";
-
 		await handleCodexHook(JSON.stringify({ hook_event_name: "SessionStart", session_id: "session-9" }), SOCKET, CONTEXT);
-
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ paneId: "%42" });
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "%42" });
 	});
 
 	it("carries the submitted prompt and its turn id on UserPromptSubmit", async () => {
@@ -171,94 +166,47 @@ describe("handleCodexHook", () => {
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 	});
 
-	it("flags a Stop whose final message asks the user to type an approval reply", async () => {
+	it("flags a Stop whose final message asks the user to type an approval reply, also phrased as 'reply with'", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
-		await handleCodexHook(
-			JSON.stringify({
-				hook_event_name: "Stop",
-				session_id: "s",
-				last_assistant_message: "A security hook blocked the write.\n\nReply **`Approved 0123456789ab`** to allow it.",
-			}),
-			SOCKET,
-			CONTEXT,
-		);
-
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "Stop", approvalHold: "Approved 0123456789ab" });
-		expect(stdout).toBe("{}");
-	});
-
-	it("sends no approval hold for an ordinary final message", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
-		await handleCodexHook(
-			JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: "Done; the change is approved by CI." }),
-			SOCKET,
-			CONTEXT,
-		);
-
-		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("approvalHold");
-	});
-
-	it.each([
-		"Done — the write went through after you replied `Approved 0123456789ab`.",
-		"I'll send the summary next; your `Approved 0123456789ab` unblocked the write.",
-	])("sends no approval hold for a summary quoting an approval already given: %s", async (message) => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
-		await handleCodexHook(
+		const stop = (message: string) => handleCodexHook(
 			JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: message }),
 			SOCKET,
 			CONTEXT,
 		);
 
-		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("approvalHold");
+		await stop("A security hook blocked the write.\n\nReply **`Approved 0123456789ab`** to allow it.");
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "Stop", approvalHold: "Approved 0123456789ab" });
+		expect(stdout).toBe("{}");
+
+		await stop("Blocked. Please reply with: Approved 0123456789ab");
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ approvalHold: "Approved 0123456789ab" });
 	});
 
-	it("flags an approval request phrased as 'reply with'", async () => {
+	it("sends no approval hold for an ordinary message or a summary quoting an approval already given, and no stray prompt", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
-		await handleCodexHook(
-			JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: "Blocked. Please reply with: Approved 0123456789ab" }),
-			SOCKET,
-			CONTEXT,
-		);
-
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ approvalHold: "Approved 0123456789ab" });
+		const messages = [
+			"Done; the change is approved by CI.",
+			"Done — the write went through after you replied `Approved 0123456789ab`.",
+			"I'll send the summary next; your `Approved 0123456789ab` unblocked the write.",
+		];
+		for (const message of messages) {
+			await handleCodexHook(
+				JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: message, prompt: "leftover" }),
+				SOCKET,
+				CONTEXT,
+			);
+			const params = mockSend.mock.calls[mockSend.mock.calls.length - 1]![2];
+			expect(params, message).not.toHaveProperty("approvalHold");
+			expect(params, "only UserPromptSubmit carries a prompt").not.toHaveProperty("prompt");
+		}
 	});
 
-	it("carries no prompt on the other lifecycle events", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-
-		await handleCodexHook(
-			JSON.stringify({ hook_event_name: "Stop", session_id: "s", prompt: "leftover" }),
-			SOCKET,
-			CONTEXT,
-		);
-
-		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("prompt");
-	});
-
-	it("is a successful no-op outside a dev3 task", async () => {
-		await handleCodexHook(
-			JSON.stringify({ hook_event_name: "Stop" }),
-			SOCKET,
-			null,
-		);
+	it("is a successful no-op outside a dev3 task or with the app offline", async () => {
+		await handleCodexHook(JSON.stringify({ hook_event_name: "Stop" }), SOCKET, null);
+		await handleCodexHook(JSON.stringify({ hook_event_name: "Stop" }), null, CONTEXT);
 
 		expect(mockSend).not.toHaveBeenCalled();
-		expect(stdout).toBe("{}");
-	});
-
-	it("never blocks Codex when the app is offline", async () => {
-		await handleCodexHook(
-			JSON.stringify({ hook_event_name: "Stop" }),
-			null,
-			CONTEXT,
-		);
-
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(stdout).toBe("{}");
+		expect(stdout).toBe("{}{}");
 	});
 
 	it("reports a socket error without failing the hook", async () => {

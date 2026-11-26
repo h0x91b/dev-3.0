@@ -148,11 +148,8 @@ describe("background schedulers", () => {
 		expect(missing).toEqual([]);
 	});
 
-	it("headless drops the foreground flag when its last browser leaves", () => {
-		expect(source("headless-entry.ts")).toMatch(/onLastRpcClientGone: \(\) => setAppForeground\(false\)/);
-	});
-
-	it("headless stops the schedulers on shutdown", () => {
-		expect(source("headless-entry.ts")).toMatch(/^\tconst focusFlushed = stopBackgroundSchedulers\(\);$/m);
+	it("headless drops the foreground flag when its last browser leaves and stops the schedulers on shutdown", () => {
+		expect(source("headless-entry.ts"), "headless drops the foreground flag when its last browser leaves").toMatch(/onLastRpcClientGone: \(\) => setAppForeground\(false\)/);
+		expect(source("headless-entry.ts"), "headless stops the schedulers on shutdown").toMatch(/^\tconst focusFlushed = stopBackgroundSchedulers\(\);$/m);
 	});
 });

@@ -48,17 +48,11 @@ describe("withGitDefaults", () => {
 		expect(withGitDefaults(["git", "--git-dir=/x/.git", "status"])[1]).toBe(NOL);
 	});
 
-	it("leaves every other subcommand, writes included, without the flag", () => {
+	it("leaves every other subcommand (writes included), a -C path named status, and non-git commands without the flag", () => {
 		for (const sub of ["add", "commit", "stash", "checkout", "rebase", "merge", "worktree", "diff", "ls-files", "rev-parse", "fetch"]) {
 			expect(withGitDefaults(["git", sub, "x"])).toEqual(["git", "-c", "core.quotepath=false", sub, "x"]);
 		}
-	});
-
-	it("reads the value of -C as a path, not as the subcommand", () => {
 		expect(withGitDefaults(["git", "-C", "status", "log"])).not.toContain(NOL);
-	});
-
-	it("does not touch non-git commands", () => {
 		expect(withGitDefaults(["gh", "status"])).toEqual(["gh", "status"]);
 	});
 });
@@ -84,7 +78,7 @@ describe("git status through dev3 takes no optional index lock", () => {
 		expect(indexSignature(repo.local)).not.toBe(before);
 	});
 
-	it("isWorktreeDirty leaves the index untouched and still answers correctly", async () => {
+	it("isWorktreeDirty leaves the index untouched, still answers correctly, and matches plain porcelain output", async () => {
 		makeStatOnlyDirty(repo.local);
 		const before = indexSignature(repo.local);
 
@@ -96,25 +90,17 @@ describe("git status through dev3 takes no optional index lock", () => {
 		expect(await isWorktreeDirty(repo.local)).toBe(true);
 		writeFileSync(join(repo.local, "new.ts"), "untracked\n");
 		expect(await isWorktreeDirty(repo.local)).toBe(true);
-	});
 
-	it("reports the same porcelain output with or without the flag", async () => {
-		writeFileSync(join(repo.local, "app.ts"), "changed\n");
-		writeFileSync(join(repo.local, "new.ts"), "untracked\n");
+		// The porcelain output is the same with or without the flag.
 		const viaDev3 = await run(["git", "status", "--porcelain", "--untracked-files=all"], repo.local);
 		const plain = g("git -c core.quotepath=false status --porcelain --untracked-files=all", repo.local).trim();
 		expect(viaDev3).toMatchObject({ ok: true, stdout: plain });
 	});
 
-	it("still answers while another process holds index.lock", async () => {
+	it("still answers while another process holds index.lock, but keeps required locks for writes", async () => {
 		writeFileSync(join(repo.local, ".git", "index.lock"), "");
 		writeFileSync(join(repo.local, "app.ts"), "changed\n");
 		expect(await isWorktreeDirty(repo.local)).toBe(true);
-	});
-
-	it("keeps required locks: a write still fails on a held index.lock", async () => {
-		writeFileSync(join(repo.local, ".git", "index.lock"), "");
-		writeFileSync(join(repo.local, "app.ts"), "changed\n");
 		const add = await run(["git", "add", "app.ts"], repo.local);
 		expect(add.ok).toBe(false);
 		expect(add.stderr).toContain("index.lock");
@@ -142,19 +128,15 @@ describe("uncommitted-change reads skip git diff on a clean worktree", () => {
 		expect(indexSignature(repo.local)).not.toBe(before);
 	});
 
-	it("getUncommittedChanges answers zero without running git diff or touching the index", async () => {
+	it("getUncommittedChanges and getTaskDiff answer zero without running git diff or touching the index", async () => {
 		makeStatOnlyDirty(repo.local);
 		const before = indexSignature(repo.local);
 
 		expect(await getUncommittedChanges(repo.local)).toEqual({ insertions: 0, deletions: 0 });
 		expect(diffSpawns()).toEqual([]);
 		expect(indexSignature(repo.local)).toBe(before);
-	});
 
-	it("getTaskDiff uncommitted mode returns the empty diff without running git diff", async () => {
-		makeStatOnlyDirty(repo.local);
-		const before = indexSignature(repo.local);
-
+		// getTaskDiff's uncommitted mode likewise returns the empty diff.
 		const result = await getTaskDiff(repo.local, "uncommitted", { baseBranch: "main" });
 		expect(result.summary).toEqual({ files: 0, insertions: 0, deletions: 0 });
 		expect(result.files).toEqual([]);

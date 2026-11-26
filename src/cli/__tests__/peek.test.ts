@@ -81,14 +81,20 @@ describe("dev3 peek", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.peek", expect.objectContaining({ taskId: TASK_ID }));
 		expect(stdoutOutput).toContain("<seq:42> · Fix auth race");
 		expect(stdoutOutput).toContain("waiting for approval");
+		const params = mockSend.mock.calls[0][2] as Record<string, unknown>;
+		expect(params, "no pane/lines unless passed").not.toHaveProperty("pane");
+		expect(params).not.toHaveProperty("lines");
 	});
 
-	it("passes a seq reference through untouched", async () => {
+	it("passes a seq reference through untouched, scoped to the caller's board unless --project says otherwise", async () => {
+		// A bare seq is scoped to the caller's own board, since every board counts from 1.
 		mockSend.mockResolvedValue(okResp(snapshot()));
 
 		await handlePeek(args({ task: "seq:7" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0][2]).toMatchObject({ taskId: "seq:7", projectId: "proj-001" });
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.peek", expect.objectContaining({ taskId: "seq:7" }));
+		await handlePeek(args({ task: "seq:7", project: "proj-002" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[1][2]).toMatchObject({ taskId: "seq:7", projectId: "proj-002" });
 	});
 
 	it("forwards pane and line selection", async () => {
@@ -97,16 +103,6 @@ describe("dev3 peek", () => {
 		await handlePeek(args({ pane: "2", lines: "40" }), SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.peek", expect.objectContaining({ pane: "2", lines: 40 }));
-	});
-
-	it("sends no pane or lines when the caller passed none", async () => {
-		mockSend.mockResolvedValue(okResp(snapshot()));
-
-		await handlePeek(args(), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0][2] as Record<string, unknown>;
-		expect(params).not.toHaveProperty("pane");
-		expect(params).not.toHaveProperty("lines");
 	});
 
 	it("emits the raw snapshot with --json", async () => {
@@ -132,30 +128,15 @@ describe("dev3 peek", () => {
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
-	it("rejects a --lines value outside the supported range", async () => {
+	it("rejects bad --lines / --pane values, unknown flags and a missing task before sending", async () => {
 		await expect(handlePeek(args({ lines: "5000" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("--lines must be a whole number from 1 to 1000");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects a non-numeric --lines value", async () => {
-		await expect(handlePeek(args({ lines: "lots" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an empty --pane value", async () => {
-		await expect(handlePeek(args({ pane: "" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects unknown flags", async () => {
-		await expect(handlePeek(args({ watch: "true" }), SOCKET, CTX)).rejects.toThrow(/EXIT_3/);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("asks for --task when there is no task in context", async () => {
+		for (const flags of [{ lines: "lots" }, { pane: "" }, { watch: "true" }] as Array<Record<string, string>>) {
+			await expect(handlePeek(args(flags), SOCKET, CTX), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+		}
 		await expect(handlePeek(args(), SOCKET, null)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("No task in context");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("lets the app-not-running failure through so the CLI can exit 2", async () => {
@@ -165,22 +146,6 @@ describe("dev3 peek", () => {
 
 		await expect(handlePeek(args(), SOCKET, CTX)).rejects.toThrow("APP_NOT_RUNNING");
 		expect(stdoutOutput).toBe("");
-	});
-
-	it("scopes a bare seq to the caller's own board, since every board counts from 1", async () => {
-		mockSend.mockResolvedValue(okResp(snapshot()));
-
-		await handlePeek(args({ task: "seq:7" }), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).toMatchObject({ projectId: "proj-001" });
-	});
-
-	it("reaches another board when --project says so", async () => {
-		mockSend.mockResolvedValue(okResp(snapshot()));
-
-		await handlePeek(args({ task: "seq:7", project: "proj-002" }), SOCKET, CTX);
-
-		expect(mockSend.mock.calls[0][2]).toMatchObject({ projectId: "proj-002" });
 	});
 
 	it("fails with the server's message when the task cannot be resolved", async () => {
@@ -318,15 +283,18 @@ describe("dev3 peek --follow", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
-	it.each([
+	it("rejects bad --follow / --interval combinations before touching the app", async () => {
+		for (const [flags, message] of [
 		[{ interval: "5" }, "--interval only applies with --follow"],
 		[{ follow: "30" }, "--follow takes no value"],
 		[{ follow: "true", interval: "0" }, "--interval must be"],
 		[{ follow: "true", interval: "3601" }, "--interval must be"],
 		[{ follow: "true", interval: "1.5" }, "--interval must be"],
-	])("rejects %o before touching the app", async (flags, message) => {
-		await expect(handlePeek(args(flags), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain(message);
+		] as Array<[Record<string, string>, string]>) {
+			stderrOutput = "";
+			await expect(handlePeek(args(flags), SOCKET, CTX), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain(message);
+		}
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

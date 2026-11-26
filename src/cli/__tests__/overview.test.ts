@@ -97,92 +97,44 @@ describe("overview set", () => {
 		expect(stdoutOutput).toContain("aaaaaaaa");
 	});
 
-	it("trims whitespace before sending", async () => {
+	it("trims whitespace before sending and accepts exactly 500 chars", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleOverview("set", args(["   padded summary   "]), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]![2]!.overview).toBe("padded summary");
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.overview).toBe("padded summary");
+		await handleOverview("set", args(["A".repeat(500)]), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledTimes(2);
 	});
 
-	it("rejects empty overview", async () => {
-		await expect(
-			handleOverview("set", args([""]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
+	it("rejects empty, whitespace-only and over-500-char text, unknown flags and a missing task before sending", async () => {
+		await expect(handleOverview("set", args([""]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Usage:");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects whitespace-only overview", async () => {
-		await expect(
-			handleOverview("set", args(["   "]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects overview over 500 chars", async () => {
-		const tooLong = "A".repeat(501);
-		await expect(
-			handleOverview("set", args([tooLong]), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
+		await expect(handleOverview("set", args(["   "]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		await expect(handleOverview("set", args(["A".repeat(501)]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Overview too long");
+		// An unknown flag must not fall back to the context task.
+		await expect(handleOverview("set", args(["summary"], { taskk: "bbbbbbbb" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("Unknown option");
+		expect(stderrOutput).toContain("--taskk");
+		await expect(handleOverview("set", args(["summary"]), SOCKET, null)).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("accepts overview at exactly 500 chars", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-		const exact = "A".repeat(500);
-
-		await handleOverview("set", args([exact]), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalled();
-	});
-
-	it("auto-detects taskId and projectId from context", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleOverview("set", args(["summary"]), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe(CTX.taskId);
-		expect(params.projectId).toBe(CTX.projectId);
-	});
-
-	it("--task flag overrides context", async () => {
+	it("--task / --task-id override the context, and an 8-char --task resolves to the full UUID", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleOverview("set", args(["summary"], { task: "bbbbbbbb-2222-3333-4444-555555555555" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb-2222-3333-4444-555555555555");
-		// The writer is the task the CLI runs in, not the one it writes to.
-		expect(params.sourceTaskId).toBe(CTX.taskId);
-	});
-
-	it("--task-id flag overrides context", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
 		await handleOverview("set", args(["summary"], { "task-id": "cccccccc-2222-3333-4444-555555555555" }), SOCKET, CTX);
+		await handleOverview("set", args(["summary"], { task: FAKE_TASK.id.slice(0, 8) }), SOCKET, CTX);
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc-2222-3333-4444-555555555555");
-	});
-
-	it("resolves 8-char --task short ID to full UUID", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		const shortId = FAKE_TASK.id.slice(0, 8);
-		await handleOverview("set", args(["summary"], { task: shortId }), SOCKET, CTX);
-
-		const sentTaskId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		expect(sentTaskId).toBe(FAKE_TASK.id);
-	});
-
-	it("exits when no taskId and no context", async () => {
-		await expect(
-			handleOverview("set", args(["summary"]), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
+		expect(mockSend.mock.calls.map((c) => (c[2] as Record<string, unknown>).taskId)).toEqual([
+			"bbbbbbbb-2222-3333-4444-555555555555",
+			"cccccccc-2222-3333-4444-555555555555",
+			FAKE_TASK.id,
+		]);
+		// The writer is the task the CLI runs in, not the one it writes to.
+		expect(mockSend.mock.calls[0]![2]!.sourceTaskId).toBe(CTX.taskId);
 	});
 
 	it("exits on server error", async () => {
@@ -192,18 +144,6 @@ describe("overview set", () => {
 			handleOverview("set", args(["summary"]), SOCKET, CTX),
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task not found");
-	});
-});
-
-describe("overview unknown flags", () => {
-	it("rejects unknown flags instead of falling back to context", async () => {
-		await expect(
-			handleOverview("set", args(["summary"], { taskk: "bbbbbbbb" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-
-		expect(stderrOutput).toContain("Unknown option");
-		expect(stderrOutput).toContain("--taskk");
-		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
@@ -230,7 +170,7 @@ describe("overview show", () => {
 		expect(stdoutOutput).not.toContain("user-edited");
 	});
 
-	it("prints user-edited version and hides AI version when user overrides", async () => {
+	it("prints the user-edited version over the AI one, without repeating an identical AI section", async () => {
 		mockSend.mockResolvedValue(
 			okResp({
 				overview: "AI-written summary.",
@@ -246,9 +186,7 @@ describe("overview show", () => {
 		// AI version is surfaced so agents know their edits aren't lost
 		expect(stdoutOutput).toContain("AI overview (currently hidden by user edit)");
 		expect(stdoutOutput).toContain("AI-written summary.");
-	});
-
-	it("does not repeat AI section when user override equals AI overview", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(
 			okResp({
 				overview: "Same text.",
@@ -263,7 +201,7 @@ describe("overview show", () => {
 		expect(stdoutOutput).not.toContain("AI overview (currently hidden");
 	});
 
-	it("prints hint + description fallback when overview missing", async () => {
+	it("prints hint + description fallback when overview is missing, even with an empty description", async () => {
 		mockSend.mockResolvedValue(
 			okResp({
 				overview: null,
@@ -276,9 +214,7 @@ describe("overview show", () => {
 
 		expect(stdoutOutput).toContain("no overview set");
 		expect(stdoutOutput).toContain("The original user request text.");
-	});
-
-	it("handles empty description gracefully", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(
 			okResp({ overview: null, userOverview: null, description: "" }),
 		);
@@ -288,13 +224,10 @@ describe("overview show", () => {
 		expect(stdoutOutput).toContain("no overview set");
 	});
 
-	it("exits when no context and no --task", async () => {
+	it("exits 3 without a task and 1 on server error", async () => {
 		await expect(
 			handleOverview("show", args(), SOCKET, null),
 		).rejects.toThrow("EXIT_3");
-	});
-
-	it("exits on server error", async () => {
 		mockSend.mockResolvedValue(errResp("Task not found"));
 
 		await expect(
@@ -319,13 +252,10 @@ describe("overview clear", () => {
 		expect(stdoutOutput).toContain("aaaaaaaa");
 	});
 
-	it("exits when no context and no --task", async () => {
+	it("exits 3 without a task and 1 on server error", async () => {
 		await expect(
 			handleOverview("clear", args(), SOCKET, null),
 		).rejects.toThrow("EXIT_3");
-	});
-
-	it("exits on server error", async () => {
 		mockSend.mockResolvedValue(errResp("Task not found"));
 
 		await expect(
@@ -342,9 +272,6 @@ describe("overview (unknown subcommand)", () => {
 			handleOverview("edit", args(), SOCKET, null),
 		).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Unknown subcommand");
-	});
-
-	it("exits with usage error when no subcommand", async () => {
 		await expect(
 			handleOverview(undefined, args(), SOCKET, null),
 		).rejects.toThrow("EXIT_3");

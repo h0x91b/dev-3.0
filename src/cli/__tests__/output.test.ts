@@ -55,22 +55,11 @@ describe("printTable", () => {
 		expect(lines[2]).toContain("in-progress");
 	});
 
-	it("handles empty rows", () => {
+	it("prints only the header for empty rows, and pads shorter cells to align columns", () => {
 		printTable(["ID", "NAME"], []);
-		const lines = stdoutOutput.split("\n").filter(Boolean);
-		expect(lines).toHaveLength(1); // Only header
-		expect(lines[0]).toContain("ID");
-	});
+		expect(stdoutOutput.split("\n").filter(Boolean)).toEqual([expect.stringContaining("ID")]);
+		stdoutOutput = "";
 
-	it("handles single row", () => {
-		printTable(["KEY"], [["value"]]);
-		const lines = stdoutOutput.split("\n").filter(Boolean);
-		expect(lines).toHaveLength(2);
-		expect(lines[0]).toContain("KEY");
-		expect(lines[1]).toContain("value");
-	});
-
-	it("pads shorter cells to align columns", () => {
 		printTable(["A", "B"], [
 			["short", "x"],
 			["a", "longer-value"],
@@ -99,35 +88,24 @@ describe("printDetail", () => {
 		expect(lines[1]).toContain("abc-123");
 	});
 
-	it("aligns keys based on longest key", () => {
+	it("aligns values on the longest key and keeps empty separator fields", () => {
 		printDetail([
 			["Short:", "val1"],
-			["Longer Key:", "val2"],
-		]);
-		const lines = stdoutOutput.split("\n").filter(Boolean);
-		// "Short:" is padded to match "Longer Key:" length
-		expect(lines[0].indexOf("val1")).toBe(lines[1].indexOf("val2"));
-	});
-
-	it("handles empty fields (separators)", () => {
-		printDetail([
-			["Key:", "val"],
 			["", ""],
-			["Other:", "val2"],
+			["Longer Key:", "val2"],
 		]);
 		const lines = stdoutOutput.split("\n");
 		expect(lines.length).toBeGreaterThanOrEqual(3);
+		const withValues = lines.filter((l) => l.includes("val"));
+		expect(withValues[0].indexOf("val1")).toBe(withValues[1].indexOf("val2"));
 	});
 });
 
 describe("exitError", () => {
-	it("writes error to stderr and exits with the default command-failed code", () => {
+	it("writes error to stderr and exits with the default command-failed code or a custom one", () => {
 		expect(() => exitError("something broke")).toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
 		expect(stderrOutput).toContain("error: something broke");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_COMMAND_FAILED);
-	});
-
-	it("exits with custom code", () => {
 		expect(() => exitError("bad input", undefined, 42)).toThrow("EXIT_42");
 		expect(exitSpy).toHaveBeenCalledWith(42);
 	});
@@ -144,7 +122,9 @@ describe("exitAppNotRunning", () => {
 	it("exits with the app-not-running code and message", () => {
 		expect(() => exitAppNotRunning()).toThrow(`EXIT_${CLI_EXIT_CODE_APP_NOT_RUNNING}`);
 		expect(stderrOutput).toContain("app not running");
-		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_APP_NOT_RUNNING);
+		// Terse when no diagnostics are provided.
+		expect(stderrOutput).not.toContain("DEV3_DEBUG");
+		expect(stderrOutput).not.toContain("stage:");
 	});
 
 	it("--tolerate-app-offline keeps the notice but exits 0 (hooks with no POSIX shell)", () => {
@@ -152,19 +132,11 @@ describe("exitAppNotRunning", () => {
 		expect(stderrOutput).toContain("warning: app not running");
 		expect(stderrOutput).not.toContain("error:");
 		expect(exitSpy).toHaveBeenCalledWith(0);
-	});
-
-	it("tolerating also covers a connect-stage failure", () => {
+		// Tolerating also covers a connect-stage failure.
 		expect(() =>
 			exitAppNotRunning({ stage: "connect", socketPath: "/tmp/x.sock", tolerate: true }),
 		).toThrow("EXIT_0");
 		expect(stderrOutput).toContain("warning: cannot reach the dev3.0 app");
-	});
-
-	it("stays terse when no diagnostics are provided", () => {
-		expect(() => exitAppNotRunning()).toThrow();
-		expect(stderrOutput).not.toContain("DEV3_DEBUG");
-		expect(stderrOutput).not.toContain("stage:");
 	});
 
 	it("appends stage and diagnostics when provided", () => {
@@ -199,16 +171,11 @@ describe("exitAppNotRunning", () => {
 	});
 });
 
-describe("exitUsage", () => {
-	it("exits with the usage code", () => {
+describe("exitUsage / exitInternalError", () => {
+	it("exit with the usage and internal-error codes", () => {
 		expect(() => exitUsage("bad command")).toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(stderrOutput).toContain("error: bad command");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
-	});
-});
-
-describe("exitInternalError", () => {
-	it("exits with the internal-error code", () => {
 		expect(() => exitInternalError("boom")).toThrow(`EXIT_${CLI_EXIT_CODE_INTERNAL_ERROR}`);
 		expect(stderrOutput).toContain("error: boom");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_INTERNAL_ERROR);

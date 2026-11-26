@@ -10,6 +10,7 @@ import { projectStorageKey } from "../../shared/project-storage-key";
 import { runWorktreeCleanup, type WorktreeCleanupResult } from "../worktree-cleanup-job";
 import {
 	checkWorktreeCleanup,
+	claimRetentionStart,
 	cleanupDue,
 	INITIAL_DELAY_MS,
 	startWorktreeCleanupScheduler,
@@ -264,5 +265,25 @@ describe("runWorktreeCleanup (the real prune, 14 days)", () => {
 		const result = runWorktreeCleanup(deps([], []), { afterPrune });
 		expect(afterPrune).toHaveBeenCalledWith(expect.arrayContaining([`${root}/0ccccccc`]));
 		expect(result.afterPrune).toBe("compressed");
+	});
+});
+
+describe("claimRetentionStart", () => {
+	it("records the first retention run once and keeps it across later runs and versions", async () => {
+		const disk = sharedDisk();
+		const clock = { now: T0 };
+		expect(await claimRetentionStart({ now: () => clock.now, withState: disk.withState })).toBe(T0);
+		clock.now = T0 + 3 * DAY;
+		expect(await claimRetentionStart({ now: () => clock.now, withState: disk.withState })).toBe(T0);
+		expect(disk.read().retentionStartedAt).toBe(new Date(T0).toISOString());
+	});
+
+	it("keeps the recorded start when a daily run rewrites the rest of the state", async () => {
+		const disk = sharedDisk();
+		const clock = { now: T0 };
+		await claimRetentionStart({ now: () => clock.now, withState: disk.withState });
+		const { deps } = appVersion(disk, clock);
+		await checkWorktreeCleanup(deps);
+		expect(disk.read().retentionStartedAt).toBe(new Date(T0).toISOString());
 	});
 });

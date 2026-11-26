@@ -34,14 +34,18 @@ describe("real automatic hibernation eligibility probe", () => {
 		expect(tmux.listPanes).toHaveBeenCalledWith(PEEK_PANE_FORMAT, { target: "dev3-task", scope: "session", socket: "task-socket" });
 	});
 
-	it.each([[], [{ ...pane, agentTag: "" }], [{ ...pane, dead: true }], [pane, { ...pane, paneId: "%2", windowId: "@2" }]].map(panes => ({ panes })))("protects a terminal without sole agent ownership (%j)", async ({ panes }) => {
-		vi.mocked(tmux.listPanes).mockResolvedValue(panes as never);
-		expect(await readAutoHibernateOutputAt(task)).toBeNull();
-	});
-
-	it.each([0, NaN, Infinity])("cannot declare invalid tmux clocks inactive (%s)", async windowActivity => {
-		vi.mocked(tmux.listPanes).mockResolvedValue([{ ...pane, windowActivity }] as never);
-		expect(await readAutoHibernateOutputAt(task)).toBeNull();
+	it("protects a terminal without sole agent ownership or with an invalid tmux clock", async () => {
+		const cases = [
+			[],
+			[{ ...pane, agentTag: "" }],
+			[{ ...pane, dead: true }],
+			[pane, { ...pane, paneId: "%2", windowId: "@2" }],
+			...[0, NaN, Infinity].map(windowActivity => [{ ...pane, windowActivity }]),
+		];
+		for (const panes of cases) {
+			vi.mocked(tmux.listPanes).mockResolvedValue(panes as never);
+			expect(await readAutoHibernateOutputAt(task), JSON.stringify(panes)).toBeNull();
+		}
 	});
 
 	it("protects a pane split between ownership and output observations", async () => {

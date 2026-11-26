@@ -73,7 +73,7 @@ beforeEach(() => {
 });
 
 describe("listExplorerDirectory", () => {
-	it("lists the task worktree root: directories first, natural order, .git hidden, dotfiles kept", async () => {
+	it("lists the task worktree root (dirs first, natural order, .git hidden, dotfiles kept) and a '..'-prefixed folder", async () => {
 		const listing = await list({ projectId: "proj-1", taskId: "task-1" });
 		expect(listing.root).toBe(worktree);
 		expect(listing.error).toBeUndefined();
@@ -83,6 +83,11 @@ describe("listExplorerDirectory", () => {
 		]);
 		const src = listing.entries.find((e) => e.name === "src");
 		expect(src).toMatchObject({ kind: "directory", relPath: "src", path: join(worktree, "src") });
+		{
+			const listing = await list({ projectId: "proj-1", taskId: "task-1", relPath: "..cfg" });
+			expect(listing.error).toBeUndefined();
+			expect(listing.relPath).toBe("..cfg");
+		}
 	});
 
 	it("marks direct children that git reports as ignored, not deeper ones", async () => {
@@ -110,12 +115,6 @@ describe("listExplorerDirectory", () => {
 		expect(runGit).not.toHaveBeenCalled();
 	});
 
-	it("lists a folder whose name merely starts with two dots", async () => {
-		const listing = await list({ projectId: "proj-1", taskId: "task-1", relPath: "..cfg" });
-		expect(listing.error).toBeUndefined();
-		expect(listing.relPath).toBe("..cfg");
-	});
-
 	it("still lists, undimmed, when the root is not a git repo", async () => {
 		ignoredOutput = null;
 		const listing = await list({ projectId: "proj-1", taskId: "task-1" });
@@ -129,23 +128,22 @@ describe("listExplorerDirectory", () => {
 		expect(listing.entries.map((e) => e.name)).toEqual(["main.txt"]);
 	});
 
-	it("refuses a relative path that escapes the root", async () => {
+	it("refuses an escaping path, reports not-found for a missing dir or a file, and no-root without a root", async () => {
 		for (const relPath of ["..", "../project", "src/../../project"]) {
 			const listing = await list({ projectId: "proj-1", taskId: "task-1", relPath });
 			expect(listing.error).toBe("outside-root");
 			expect(listing.entries).toEqual([]);
 		}
+		{
+			expect((await list({ projectId: "proj-1", taskId: "task-1", relPath: "nope" })).error).toBe("not-found");
+			expect((await list({ projectId: "proj-1", taskId: "task-1", relPath: "README.md" })).error).toBe("not-found");
+		}
+		{
+			expect((await list({ projectId: "virtual" })).error).toBe("no-root");
+			expect((await list({ projectId: "proj-1", taskId: "no-worktree" })).error).toBe("no-root");
+		}
 	});
 
-	it("reports a missing directory and a file as not-found", async () => {
-		expect((await list({ projectId: "proj-1", taskId: "task-1", relPath: "nope" })).error).toBe("not-found");
-		expect((await list({ projectId: "proj-1", taskId: "task-1", relPath: "README.md" })).error).toBe("not-found");
-	});
-
-	it("has no root for a virtual project or a task without a worktree", async () => {
-		expect((await list({ projectId: "virtual" })).error).toBe("no-root");
-		expect((await list({ projectId: "proj-1", taskId: "no-worktree" })).error).toBe("no-root");
-	});
 });
 
 describe("listExplorerDirectory with an extra folder", () => {
@@ -155,31 +153,31 @@ describe("listExplorerDirectory with an extra folder", () => {
 		expect(listing.entries.map((e) => [e.name, e.relPath])).toEqual([["lib", "lib"], ["notes.md", "notes.md"]]);
 	});
 
-	it("refuses a folder the project does not declare, or one that is missing", async () => {
+	it("refuses an undeclared or missing extra folder, and a path climbing out of a declared one", async () => {
 		expect((await list({ projectId: "proj-1", folder: worktree })).error).toBe("no-root");
 		expect((await list({ projectId: "proj-1", folder: join(tmp, "gone") })).error).toBe("no-root");
+		{
+			const listing = await list({ projectId: "proj-1", folder: extraDir, relPath: "../worktree" });
+			expect(listing.error).toBe("outside-root");
+		}
 	});
 
-	it("still refuses a path that climbs out of the extra folder", async () => {
-		const listing = await list({ projectId: "proj-1", folder: extraDir, relPath: "../worktree" });
-		expect(listing.error).toBe("outside-root");
-	});
 });
 
 describe("getProjectFolders", () => {
-	it("returns the resolved folders of the project", async () => {
+	it("returns the project's folders, keeping the short cache unless a fresh read is asked", async () => {
 		const folders = await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1" });
 		expect(folders.map((f) => f.name)).toEqual(["extra", "gone"]);
+		{
+			const { clearProjectFoldersCache } = await import("../../project-folders");
+			const clear = clearProjectFoldersCache as ReturnType<typeof vi.fn>;
+			clear.mockClear();
+			await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1" });
+			await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1", withBranch: true });
+			expect(clear).not.toHaveBeenCalled();
+			await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1", fresh: true });
+			expect(clear).toHaveBeenCalledWith("proj-1");
+		}
 	});
 
-	it("keeps the short cache on a plain call and drops it only when asked for a fresh read", async () => {
-		const { clearProjectFoldersCache } = await import("../../project-folders");
-		const clear = clearProjectFoldersCache as ReturnType<typeof vi.fn>;
-		clear.mockClear();
-		await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1" });
-		await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1", withBranch: true });
-		expect(clear).not.toHaveBeenCalled();
-		await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1", fresh: true });
-		expect(clear).toHaveBeenCalledWith("proj-1");
-	});
 });

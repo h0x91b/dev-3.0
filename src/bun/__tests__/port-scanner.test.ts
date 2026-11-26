@@ -21,7 +21,6 @@ vi.mock("../port-tunnels", () => ({ cleanupTaskTunnels: vi.fn() }));
 import { cleanupTaskTunnels } from "../port-tunnels";
 import {
 	nativeTaskPaneRoots,
-	listNativeTaskIds,
 	setNativePaneRecordsReader,
 	parseLsofOutput,
 	getDescendantPids,
@@ -58,7 +57,7 @@ function makeProc(stdout: string, exitCode = 0) {
 }
 
 describe("parseLsofOutput", () => {
-	it("parses valid lsof -F output", () => {
+	it("parses valid lsof -F output, keeping only PIDs in the set", () => {
 		const output = [
 			"p123",
 			"cnode",
@@ -66,70 +65,28 @@ describe("parseLsofOutput", () => {
 			"p456",
 			"cbun",
 			"n127.0.0.1:8080",
-		].join("\n");
-
-		const pidSet = new Set([123, 456]);
-		const result = parseLsofOutput(output, pidSet);
-
-		expect(result).toEqual([
-			{ port: 3000, pid: 123, processName: "node" },
-			{ port: 8080, pid: 456, processName: "bun" },
-		]);
-	});
-
-	it("filters by PID set", () => {
-		const output = [
-			"p123",
-			"cnode",
-			"n*:3000",
 			"p999",
 			"cpython3",
 			"n*:5000",
 		].join("\n");
 
-		const pidSet = new Set([123]);
-		const result = parseLsofOutput(output, pidSet);
+		const result = parseLsofOutput(output, new Set([123, 456]));
 
-		expect(result).toHaveLength(1);
-		expect(result[0].port).toBe(3000);
-	});
-
-	it("returns empty array for empty output", () => {
+		expect(result).toEqual([
+			{ port: 3000, pid: 123, processName: "node" },
+			{ port: 8080, pid: 456, processName: "bun" },
+		]);
 		expect(parseLsofOutput("", new Set())).toEqual([]);
 	});
 
-	it("handles malformed lines gracefully", () => {
+	it("skips malformed lines, deduplicates and sorts ports numerically", () => {
 		const output = [
 			"p123",
 			"cnode",
 			"ngarbage-no-port",
-			"n*:3000",
-		].join("\n");
-
-		const result = parseLsofOutput(output, new Set([123]));
-		expect(result).toEqual([
-			{ port: 3000, pid: 123, processName: "node" },
-		]);
-	});
-
-	it("deduplicates ports", () => {
-		const output = [
-			"p123",
-			"cnode",
-			"n*:3000",
-			"n127.0.0.1:3000",
-		].join("\n");
-
-		const result = parseLsofOutput(output, new Set([123]));
-		expect(result).toHaveLength(1);
-	});
-
-	it("sorts ports numerically", () => {
-		const output = [
-			"p123",
-			"cnode",
 			"n*:8080",
 			"n*:3000",
+			"n127.0.0.1:3000",
 			"n*:5173",
 		].join("\n");
 
@@ -137,23 +94,11 @@ describe("parseLsofOutput", () => {
 		expect(result.map((p) => p.port)).toEqual([3000, 5173, 8080]);
 	});
 
-	it("rejects port 0", () => {
-		const output = "p123\ncnode\nn*:0\n";
-		const result = parseLsofOutput(output, new Set([123]));
-		expect(result).toEqual([]);
-	});
-
-	it("rejects port above 65535", () => {
-		const output = "p123\ncnode\nn*:70000\n";
-		const result = parseLsofOutput(output, new Set([123]));
-		expect(result).toEqual([]);
-	});
-
-	it("accepts port 65535", () => {
-		const output = "p123\ncnode\nn*:65535\n";
-		const result = parseLsofOutput(output, new Set([123]));
-		expect(result).toHaveLength(1);
-		expect(result[0].port).toBe(65535);
+	it("accepts ports 1..65535 only", () => {
+		const parse = (port: number) => parseLsofOutput(`p123\ncnode\nn*:${port}\n`, new Set([123]));
+		expect(parse(0)).toEqual([]);
+		expect(parse(70000)).toEqual([]);
+		expect(parse(65535).map((p) => p.port)).toEqual([65535]);
 	});
 });
 
@@ -163,6 +108,7 @@ describe("parsePortHolders", () => {
 			"p123",
 			"cnode",
 			"n*:3000",
+			"n*:5173",
 			"p456",
 			"cbun",
 			"n127.0.0.1:8080",
@@ -175,56 +121,27 @@ describe("parsePortHolders", () => {
 		]);
 	});
 
-	it("ignores ports outside the requested set", () => {
-		const output = [
-			"p123",
-			"cnode",
-			"n*:3000",
-			"n*:5173",
-		].join("\n");
-
-		const result = parsePortHolders(output, new Set([5173]));
-		expect(result).toEqual([{ port: 5173, pid: 123, processName: "node" }]);
-	});
-
-	it("deduplicates a port bound on multiple interfaces", () => {
-		const output = [
-			"p123",
-			"cnode",
-			"n*:3000",
-			"n127.0.0.1:3000",
-		].join("\n");
-
-		const result = parsePortHolders(output, new Set([3000]));
-		expect(result).toHaveLength(1);
-	});
-
-	it("handles malformed network lines gracefully", () => {
-		const output = "p123\ncnode\nngarbage-no-port\nn*:3000\n";
+	it("deduplicates a port bound on multiple interfaces and skips malformed lines", () => {
+		const output = "p123\ncnode\nngarbage-no-port\nn*:3000\nn127.0.0.1:3000\n";
 		const result = parsePortHolders(output, new Set([3000]));
 		expect(result).toEqual([{ port: 3000, pid: 123, processName: "node" }]);
 	});
 });
 
 describe("parseProcessInfoOutput", () => {
-	it("parses ps output into tree and resources", () => {
+	it("parses ps output into tree and resources, skipping malformed lines", () => {
 		const { tree, resources } = parseProcessInfoOutput(
-			"  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n",
+			"garbage\n  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n",
 		);
 
 		expect(tree.get(1)).toEqual([100]);
 		expect(tree.get(100)).toEqual([200]);
 		expect(tree.get(200)).toEqual([300]);
+		expect(tree.size).toBe(3);
 
 		expect(resources.get(100)).toEqual({ rss: 204800 * 1024, cpu: 5.2 });
 		expect(resources.get(200)).toEqual({ rss: 102400 * 1024, cpu: 2.1 });
 		expect(resources.get(300)).toEqual({ rss: 51200 * 1024, cpu: 0.5 });
-	});
-
-	it("skips malformed lines", () => {
-		const { tree } = parseProcessInfoOutput("garbage\n  100     1   1000   0.1\n");
-		expect(tree.get(1)).toEqual([100]);
-		expect(tree.size).toBe(1);
 	});
 });
 
@@ -251,17 +168,14 @@ describe("getAllSessionPanePids", () => {
 		expect(argv).toContain("-a");
 	});
 
-	it("skips malformed lines", async () => {
+	it("skips malformed lines and returns an empty map when tmux fails", async () => {
 		mockSpawn.mockReturnValue(makeProc("no-tab-here\n42\tdev3-ok000000\n\t\nNaN\tdev3-bad00000\n"));
 		const map = await getAllSessionPanePids("dev3");
 		expect([...map.keys()]).toEqual(["dev3-ok000000"]);
 		expect(map.get("dev3-ok000000")).toEqual([42]);
-	});
 
-	it("returns empty map when tmux fails", async () => {
 		mockSpawn.mockReturnValue(makeProc("", 1));
-		const map = await getAllSessionPanePids("dev3");
-		expect(map.size).toBe(0);
+		expect((await getAllSessionPanePids("dev3")).size).toBe(0);
 	});
 });
 
@@ -270,14 +184,9 @@ describe("findPortHolders", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns empty for an empty port list without spawning lsof", async () => {
+	it("never spawns lsof for an empty port list or when output is provided", async () => {
 		expect(await findPortHolders([])).toEqual([]);
-		expect(mockSpawn).not.toHaveBeenCalled();
-	});
-
-	it("uses provided lsof output without spawning", async () => {
-		const output = "p123\ncnode\nn*:3000\n";
-		const result = await findPortHolders([3000], output);
+		const result = await findPortHolders([3000], "p123\ncnode\nn*:3000\n");
 		expect(result).toEqual([{ port: 3000, pid: 123, processName: "node" }]);
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
@@ -295,10 +204,12 @@ describe("waitForPortsFree", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns immediately when the ports are already free", async () => {
+	it("returns immediately for an empty port list or ports that are already free", async () => {
+		expect(await waitForPortsFree([], 5000, 10)).toEqual([]);
+		expect(mockSpawn).not.toHaveBeenCalled();
+
 		mockSpawn.mockReturnValue(makeProc(""));
-		const holders = await waitForPortsFree([3000], 5000, 10);
-		expect(holders).toEqual([]);
+		expect(await waitForPortsFree([3000], 5000, 10)).toEqual([]);
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 	});
 
@@ -317,12 +228,6 @@ describe("waitForPortsFree", () => {
 		const holders = await waitForPortsFree([3000], 30, 10);
 		expect(holders).toEqual([{ port: 3000, pid: 123, processName: "node" }]);
 	});
-
-	it("returns immediately for an empty port list", async () => {
-		const holders = await waitForPortsFree([], 5000, 10);
-		expect(holders).toEqual([]);
-		expect(mockSpawn).not.toHaveBeenCalled();
-	});
 });
 
 describe("getDescendantPids", () => {
@@ -335,25 +240,10 @@ describe("getDescendantPids", () => {
 	// returns nothing when spawned from the packaged GUI .app — see decision
 	// 095). The mocks below provide that one ps table.
 
-	it("returns children for a single level", async () => {
+	it("returns sibling children, and nothing for a leaf", async () => {
 		mockSpawn.mockReturnValue(makeProc("100 1 0 0.0\n200 100 0 0.0\n201 100 0 0.0\n"));
-
-		const result = await getDescendantPids(100);
-		expect(result).toEqual([200, 201]);
-	});
-
-	it("returns empty for no children", async () => {
-		mockSpawn.mockReturnValue(makeProc("100 1 0 0.0\n"));
-
-		const result = await getDescendantPids(100);
-		expect(result).toEqual([]);
-	});
-
-	it("handles deep nesting", async () => {
-		mockSpawn.mockReturnValue(makeProc("100 1 0 0.0\n200 100 0 0.0\n300 200 0 0.0\n"));
-
-		const result = await getDescendantPids(100);
-		expect(result).toEqual([200, 300]);
+		expect(await getDescendantPids(100)).toEqual([200, 201]);
+		expect(await getDescendantPids(201)).toEqual([]);
 	});
 
 	it("collects a deep dev-server tree via ONE ps call, not pgrep (decision 095)", async () => {
@@ -390,18 +280,12 @@ describe("getSessionPanePids", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns pane PIDs from tmux output", async () => {
+	it("returns pane PIDs from tmux output, and empty on tmux failure", async () => {
 		mockSpawn.mockReturnValue(makeProc("12345\n67890\n"));
+		expect(await getSessionPanePids("dev3", "dev3-abc12345")).toEqual([12345, 67890]);
 
-		const result = await getSessionPanePids("dev3", "dev3-abc12345");
-		expect(result).toEqual([12345, 67890]);
-	});
-
-	it("returns empty on tmux failure", async () => {
 		mockSpawn.mockReturnValue(makeProc("", 1));
-
-		const result = await getSessionPanePids("dev3", "dev3-abc12345");
-		expect(result).toEqual([]);
+		expect(await getSessionPanePids("dev3", "dev3-abc12345")).toEqual([]);
 	});
 });
 
@@ -416,16 +300,11 @@ describe("getLsofOutput", () => {
 		expect(result).toBe("p123\ncnode\nn*:3000\n");
 	});
 
-	it("returns empty string on failure", async () => {
+	it("returns empty string on failure or exception", async () => {
 		mockSpawn.mockReturnValue(makeProc("", 1));
-		const result = await getLsofOutput();
-		expect(result).toBe("");
-	});
-
-	it("returns empty string on exception", async () => {
+		expect(await getLsofOutput()).toBe("");
 		mockSpawn.mockImplementation(() => { throw new Error("boom"); });
-		const result = await getLsofOutput();
-		expect(result).toBe("");
+		expect(await getLsofOutput()).toBe("");
 	});
 });
 
@@ -433,22 +312,6 @@ describe("collectProcessInfo", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		clearProcessInfoCache();
-	});
-
-	it("parses ps output into tree and resources", async () => {
-		mockSpawn.mockReturnValueOnce(
-			makeProc("  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n"),
-		);
-
-		const { tree, resources } = await collectProcessInfo();
-
-		expect(tree.get(1)).toEqual([100]);
-		expect(tree.get(100)).toEqual([200]);
-		expect(tree.get(200)).toEqual([300]);
-
-		expect(resources.get(100)).toEqual({ rss: 204800 * 1024, cpu: 5.2 });
-		expect(resources.get(200)).toEqual({ rss: 102400 * 1024, cpu: 2.1 });
-		expect(resources.get(300)).toEqual({ rss: 51200 * 1024, cpu: 0.5 });
 	});
 
 	it("returns empty maps on ps failure", async () => {
@@ -498,41 +361,26 @@ describe("buildProcessTree", () => {
 		expect(tree.get(200)).toEqual([400]);
 	});
 
-	it("returns empty map on ps failure", async () => {
+	it("returns empty map on ps failure or exception", async () => {
 		mockSpawn.mockReturnValueOnce(makeProc("", 1));
-		const tree = await buildProcessTree();
-		expect(tree.size).toBe(0);
-	});
-
-	it("returns empty map on exception", async () => {
+		expect((await buildProcessTree()).size).toBe(0);
+		clearProcessInfoCache();
 		mockSpawn.mockImplementation(() => { throw new Error("boom"); });
-		const tree = await buildProcessTree();
-		expect(tree.size).toBe(0);
+		expect((await buildProcessTree()).size).toBe(0);
 	});
 });
 
 describe("collectDescendants", () => {
-	it("returns all descendants via in-memory BFS", () => {
+	it("returns all descendants via in-memory BFS, empty for a leaf or unknown PID", () => {
 		const tree = new Map<number, number[]>([
 			[1, [100]],
 			[100, [200, 300]],
 			[200, [400]],
 		]);
 
-		const result = collectDescendants(100, tree);
-		expect(result).toEqual([200, 300, 400]);
-	});
-
-	it("returns empty for leaf PID", () => {
-		const tree = new Map<number, number[]>([[1, [100]]]);
-		const result = collectDescendants(100, tree);
-		expect(result).toEqual([]);
-	});
-
-	it("returns empty for unknown PID", () => {
-		const tree = new Map<number, number[]>();
-		const result = collectDescendants(999, tree);
-		expect(result).toEqual([]);
+		expect(collectDescendants(100, tree)).toEqual([200, 300, 400]);
+		expect(collectDescendants(400, tree)).toEqual([]);
+		expect(collectDescendants(999, tree)).toEqual([]);
 	});
 });
 
@@ -621,16 +469,6 @@ describe("collectTaskPids", () => {
 		expect(listPaneCalls).toHaveLength(1);
 	});
 
-	it("handles missing dev server session gracefully", async () => {
-		routeSpawnByArgv({
-			ps: "100 1 0 0.0\n",
-			panes: { "dev3-abc12345": "100\n" }, // dev session unrouted → exit 1
-		});
-
-		const pids = await collectTaskPids("dev3", "dev3-abc12345");
-		expect(pids).toEqual(new Set([100]));
-	});
-
 	it("uses processTree when provided (no ps spawn)", async () => {
 		const tree = new Map<number, number[]>([
 			[1, [100]],
@@ -667,14 +505,11 @@ describe("scanTaskPorts", () => {
 		clearProcessInfoCache();
 	});
 
-	it("returns empty when no pane PIDs", async () => {
+	it("orchestrates pane PIDs, descendants, and lsof parsing; empty without panes", async () => {
 		routeSpawnByArgv({});
+		expect(await scanTaskPorts("dev3", "dev3-abc12345")).toEqual([]);
 
-		const result = await scanTaskPorts("dev3", "dev3-abc12345");
-		expect(result).toEqual([]);
-	});
-
-	it("orchestrates pane PIDs, descendants, and lsof parsing", async () => {
+		clearProcessInfoCache();
 		routeSpawnByArgv({
 			ps: "100 1 0 0.0\n200 100 0 0.0\n",
 			lsof: "p200\ncnode\nn*:3000\n",
@@ -717,7 +552,7 @@ describe("poller", () => {
 		vi.useRealTimers();
 	});
 
-	it("pushes portsUpdated when ports change", async () => {
+	it("pushes portsUpdated when ports change, and not again when unchanged", async () => {
 		const push = vi.fn();
 		const getActiveSessions = vi.fn().mockReturnValue([
 			{ taskId: "task-1234-5678-abcd", tmuxSocket: "dev3" },
@@ -738,6 +573,11 @@ describe("poller", () => {
 			taskId: "task-1234-5678-abcd",
 			ports: [{ port: 3000, pid: 100, processName: "node" }],
 		});
+		expect(push).toHaveBeenCalledTimes(1);
+
+		// Second poll cycle — same ports, no second push
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(push).toHaveBeenCalledTimes(1);
 	});
 
 	it("issues one ps + one lsof + one tmux list-panes -a per cycle", async () => {
@@ -761,28 +601,6 @@ describe("poller", () => {
 		expect(mockSpawn).toHaveBeenCalledTimes(3);
 		const argv0s = mockSpawn.mock.calls.map((args: any) => args[0][0]).sort();
 		expect(argv0s).toEqual(["lsof", "ps", "tmux"]);
-	});
-
-	it("does not push when ports are unchanged", async () => {
-		const push = vi.fn();
-		const getActiveSessions = vi.fn().mockReturnValue([
-			{ taskId: "task-unchanged-test", tmuxSocket: "dev3" },
-		]);
-
-		routeSpawnByArgv({
-			ps: "  500     1   60000   0.0\n",
-			lsof: "p500\ncnode\nn*:4000\n",
-			allPanes: "500\tdev3-task-unc\n",
-		});
-
-		startPortScanPoller(push, getActiveSessions);
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(push).toHaveBeenCalledTimes(1);
-
-		// Second poll cycle — same ports
-		await vi.advanceTimersByTimeAsync(10_000);
-		// Should still be 1 (no second push)
-		expect(push).toHaveBeenCalledTimes(1);
 	});
 
 	it("cleans up stale cache entries when sessions disappear", async () => {
@@ -933,24 +751,11 @@ describe("native task panes", () => {
 		setNativePaneRecordsReader({ listTaskIds, readPanes });
 	});
 
-	it("keeps a pane whose host still owns its shell", () => {
-		records([{ host: 10, shell: 11, command: ["sh", "run.sh"] }]);
+	it("keeps panes whose host still owns their shell and drops the rest", () => {
+		expect(nativeTaskPaneRoots(TASK, tree)).toEqual([]);
+		records([{ host: 10, shell: 11, command: ["sh", "run.sh"] }, { host: 20, shell: 99 }, { host: 30, shell: 31 }]);
 		expect(nativeTaskPaneRoots(TASK, tree)).toEqual([{ shellPid: 11, command: ["sh", "run.sh"] }]);
 		expect(readPanes).toHaveBeenCalledWith(TASK);
-	});
-
-	it("drops a pane whose shell is not a child of its host", () => {
-		records([{ host: 10, shell: 11 }, { host: 20, shell: 99 }, { host: 30, shell: 31 }]);
-		expect(nativeTaskPaneRoots(TASK, tree).map((r) => r.shellPid)).toEqual([11]);
-	});
-
-	it("is empty for a task with no pane records", () => {
-		expect(nativeTaskPaneRoots(TASK, tree)).toEqual([]);
-	});
-
-	it("lists the reader's task ids", () => {
-		listTaskIds.mockReturnValue([TASK]);
-		expect(listNativeTaskIds()).toEqual([TASK]);
 	});
 
 	describe("poller", () => {

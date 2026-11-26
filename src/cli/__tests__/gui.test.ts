@@ -138,31 +138,35 @@ describe("dev3 gui — argument validation", () => {
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
-	it("rejects unknown flags", async () => {
-		await expect(handleGui(undefined, args({ bogus: "true" }))).rejects.toThrow("__exit__");
-		expect(combinedStderr()).toContain("Unknown option: --bogus");
-	});
-
-	it("rejects positional arguments", async () => {
-		await expect(handleGui(undefined, args({}, ["foo"]))).rejects.toThrow("__exit__");
-		expect(combinedStderr()).toContain('Unknown positional argument: "foo"');
-	});
-
-	it("rejects subcommands", async () => {
-		await expect(handleGui("install", args())).rejects.toThrow("__exit__");
-		expect(combinedStderr()).toContain('"dev3 gui" takes no subcommand');
+	it("rejects unknown flags, positional arguments and subcommands", async () => {
+		const cases: Array<[string | undefined, ParsedArgs, string]> = [
+			[undefined, args({ bogus: "true" }), "Unknown option: --bogus"],
+			[undefined, args({}, ["foo"]), 'Unknown positional argument: "foo"'],
+			["install", args(), '"dev3 gui" takes no subcommand'],
+		];
+		for (const [sub, parsed, message] of cases) {
+			stderrSpy.mockClear();
+			await expect(handleGui(sub, parsed), message).rejects.toThrow("__exit__");
+			expect(combinedStderr(), message).toContain(message);
+		}
 	});
 });
 
 describe("dev3 gui — macOS path", () => {
 	beforeEach(() => setPlatform("darwin"));
 
-	it("opens /Applications/dev-3.0.app when present", async () => {
+	it("opens /Applications/dev-3.0.app when present, without calling fetch", async () => {
 		fsState.existing.add("/Applications/dev-3.0.app");
-		await handleGui(undefined, args());
-		const openCall = spawnState.syncCalls.find((c) => c.cmd === "open");
-		expect(openCall).toBeDefined();
-		expect(openCall?.args).toEqual(["-a", "/Applications/dev-3.0.app"]);
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+			throw new Error("fetch should never be called on macOS");
+		});
+		try {
+			await handleGui(undefined, args());
+			expect(spawnState.syncCalls.find((c) => c.cmd === "open")?.args).toEqual(["-a", "/Applications/dev-3.0.app"]);
+			expect(fetchSpy).not.toHaveBeenCalled();
+		} finally {
+			fetchSpy.mockRestore();
+		}
 	});
 
 	it("falls back to ~/Applications when /Applications is empty", async () => {
@@ -184,19 +188,6 @@ describe("dev3 gui — macOS path", () => {
 		await expect(handleGui(undefined, args())).rejects.toThrow("__exit__");
 		expect(combinedStderr()).toContain("dev-3.0 desktop app not found");
 		expect(combinedStderr()).toContain("brew install --cask dev3");
-	});
-
-	it("does not call fetch on macOS", async () => {
-		fsState.existing.add("/Applications/dev-3.0.app");
-		const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() => {
-			throw new Error("fetch should never be called on macOS");
-		});
-		try {
-			await handleGui(undefined, args());
-			expect(fetchSpy).not.toHaveBeenCalled();
-		} finally {
-			fetchSpy.mockRestore();
-		}
 	});
 });
 

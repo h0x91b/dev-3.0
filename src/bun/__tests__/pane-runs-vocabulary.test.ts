@@ -71,25 +71,19 @@ describe("run ids and labels", () => {
 });
 
 describe("commands a pane must never be opened for", () => {
-	it("refuses an empty command", () => {
+	it("refuses an empty or over-long command and passes an ordinary one with pipes and operators", () => {
 		expect(paneRunCommandProblem("")).toMatch(/empty/);
 		expect(paneRunCommandProblem("   ")).toMatch(/empty/);
 		expect(paneRunCommandProblem(undefined)).toMatch(/empty/);
+		expect(paneRunCommandProblem("x".repeat(PANE_RUN_COMMAND_MAX_LENGTH))).toBeNull();
+		expect(paneRunCommandProblem("x".repeat(PANE_RUN_COMMAND_MAX_LENGTH + 1))).toMatch(/longer than/);
+		expect(paneRunCommandProblem("bun run build 2>&1 | grep error && echo ok")).toBeNull();
 	});
 
 	it("refuses a newline, because the pane would run a second unreviewed command", () => {
 		expect(paneRunCommandProblem("bun run build\nrm -rf .")).toMatch(/newline/);
 		expect(paneRunCommandProblem("bun run build\r")).toMatch(/newline/);
 		expect(paneRunCommandProblem("bun\0run")).toMatch(/NUL/);
-	});
-
-	it("refuses a command longer than the documented ceiling", () => {
-		expect(paneRunCommandProblem("x".repeat(PANE_RUN_COMMAND_MAX_LENGTH))).toBeNull();
-		expect(paneRunCommandProblem("x".repeat(PANE_RUN_COMMAND_MAX_LENGTH + 1))).toMatch(/longer than/);
-	});
-
-	it("passes an ordinary command with pipes and operators", () => {
-		expect(paneRunCommandProblem("bun run build 2>&1 | grep error && echo ok")).toBeNull();
 	});
 });
 
@@ -102,36 +96,34 @@ describe("bounded reads", () => {
 		expect(clampPaneRunTail("50")).toBe(50);
 	});
 
-	it("returns the LAST lines and reports how many there were", () => {
+	it("returns the LAST lines with the total, stripping escape sequences and the trailing blank line", () => {
 		const text = Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n");
-		const tail = paneRunTail(text, 3);
-		expect(tail.lines).toEqual(["line 7", "line 8", "line 9"]);
-		expect(tail.totalLines).toBe(10);
-	});
-
-	it("strips escape sequences, so a progress-bar redraw cannot reach an agent's context", () => {
-		const tail = paneRunTail("\u001b[2Kbuilding\u001b[0m\n", 10);
-		expect(tail.lines).toEqual(["building"]);
-	});
-
-	it("trims the trailing blank line a log file always ends with", () => {
+		expect(paneRunTail(text, 3)).toEqual({ lines: ["line 7", "line 8", "line 9"], totalLines: 10 });
+		// A progress-bar redraw must not reach an agent's context.
+		expect(paneRunTail("\u001b[2Kbuilding\u001b[0m\n", 10).lines).toEqual(["building"]);
+		// A log file always ends with a newline.
 		expect(paneRunTail("only\n", 10)).toEqual({ lines: ["only"], totalLines: 1 });
 	});
 });
 
 describe("the outcome line — a hung build must never read as a failed one", () => {
-	it("names a still-running command and warns that a quiet tail is not an ending", () => {
-		const line = paneRunOutcomeLine(view({ status: { ...view().status!, state: "running", exitCode: null, endedAt: null } }));
-		expect(line).toMatch(/still running \(pid 42\)/);
-		expect(line).toMatch(/empty tail means quiet, not finished/);
-	});
 
-	it("names the exit code of a finished command", () => {
-		expect(paneRunOutcomeLine(view({ status: { ...view().status!, exitCode: 7 } }))).toBe("outcome: finished — exit code 7");
-	});
-
-	it("says a signal death is a signal death rather than inventing a code", () => {
-		expect(paneRunOutcomeLine(view({ status: { ...view().status!, exitCode: null } }))).toMatch(/killed by a signal, no exit code/);
+	it("names a running, finished, signalled, starting, unknown or never-started run for what it is", () => {
+		const base = view().status!;
+		const cases: Array<[name: string, run: PaneRunView, expected: RegExp]> = [
+			["still running", view({ status: { ...base, state: "running", exitCode: null, endedAt: null } }), /still running \(pid 42\)/],
+			// A quiet tail is not an ending.
+			["still running warns", view({ status: { ...base, state: "running", exitCode: null, endedAt: null } }), /empty tail means quiet, not finished/],
+			// Unknown, never not-running.
+			["unknown status", view({ status: null, statusDetail: "the status file could not be believed" }), /^outcome: unknown.*could not be believed/s],
+			["exit code", view({ status: { ...base, exitCode: 7 } }), /^outcome: finished — exit code 7$/],
+			["signal death", view({ status: { ...base, exitCode: null } }), /killed by a signal, no exit code/],
+			["starting while the pane is there", view({ paneId: "pane-2", status: { ...base, state: "starting", exitCode: null, endedAt: null } }), /^outcome: starting/],
+			["never started", view({ status: { ...base, state: "failed", detail: "SystemRoot is required" } }), /never ran — SystemRoot is required/],
+		];
+		for (const [name, run, expected] of cases) {
+			expect(paneRunOutcomeLine(run), name).toMatch(expected);
+		}
 	});
 
 	it("reports a run whose pane is gone as stopped, not as still running", () => {
@@ -143,36 +135,14 @@ describe("the outcome line — a hung build must never read as a failed one", ()
 		expect(line).toMatch(/^outcome: gone/);
 		expect(line).not.toMatch(/still running/);
 	});
-
-	it("keeps saying still-running while the pane is there", () => {
-		const line = paneRunOutcomeLine(
-			view({ paneId: "pane-2", status: { ...view().status!, state: "starting", exitCode: null, endedAt: null } }),
-		);
-		expect(line).toMatch(/^outcome: starting/);
-	});
-
-	it("reports an unknown status as unknown, never as not-running", () => {
-		const line = paneRunOutcomeLine(view({ status: null, statusDetail: "the status file could not be believed" }));
-		expect(line).toMatch(/^outcome: unknown/);
-		expect(line).toMatch(/could not be believed/);
-	});
-
-	it("distinguishes a command that never started from one that failed", () => {
-		const line = paneRunOutcomeLine(
-			view({ status: { ...view().status!, state: "failed", detail: "SystemRoot is required" } }),
-		);
-		expect(line).toMatch(/never ran — SystemRoot is required/);
-	});
 });
 
 describe("status decoding", () => {
-	it("refuses a status that cannot be believed rather than filling in defaults", () => {
+	it("refuses a status that cannot be believed rather than filling in defaults, and keeps a null exit code null", () => {
 		expect(decodePaneRunStatus(null)).toBeNull();
 		expect(decodePaneRunStatus({ runId: "nope", state: "running" })).toBeNull();
 		expect(decodePaneRunStatus({ runId: "run-0123456789ab", state: "sprinting" })).toBeNull();
-	});
-
-	it("keeps a null exit code null — the signal case must survive the round trip", () => {
+		// The signal case must survive the round trip.
 		const decoded = decodePaneRunStatus({ runId: "run-0123456789ab", state: "exited", exitCode: null });
 		expect(decoded?.exitCode).toBeNull();
 		expect(decoded?.state).toBe("exited");
@@ -180,40 +150,31 @@ describe("status decoding", () => {
 });
 
 describe("what a finished pane does with itself", () => {
-	it("closes a clean run on the timer, and says how long it has", () => {
-		const plan = paneRunDismissal(0);
-		expect(plan.autoCloseMs).toBe(PANE_RUN_AUTO_CLOSE_SECONDS * 1000);
-		expect(plan.message).toContain(`${PANE_RUN_AUTO_CLOSE_SECONDS}s`);
+	it("closes a clean run on the short timer and a failed one on the long window, saying how long it has", () => {
+		const clean = paneRunDismissal(0);
+		expect(clean.autoCloseMs).toBe(PANE_RUN_AUTO_CLOSE_SECONDS * 1000);
+		expect(clean.message).toContain(`${PANE_RUN_AUTO_CLOSE_SECONDS}s`);
+		// A failed run's output is the whole point.
+		const failed = paneRunDismissal(1);
+		expect(failed.autoCloseMs).toBe(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS * 1000);
+		expect(failed.message).toContain("30m");
+		expect(failed.autoCloseMs).toBeGreaterThan(clean.autoCloseMs * 10);
 	});
 
-	it("gives a failed run the long window — its output is the whole point", () => {
-		const plan = paneRunDismissal(1);
-		expect(plan.autoCloseMs).toBe(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS * 1000);
-		expect(plan.message).toContain("30m");
-	});
-
-	it("holds a failure far longer than a success — but every outcome is bounded", () => {
+	it("bounds every outcome and treats an unreadable one as a failure, never as a success", () => {
 		for (const exitCode of [0, 1, 137, null]) {
-			expect(paneRunDismissal(exitCode).autoCloseMs).toBeGreaterThan(0);
+			expect(paneRunDismissal(exitCode).autoCloseMs, String(exitCode)).toBeGreaterThan(0);
 		}
-		expect(paneRunDismissal(1).autoCloseMs).toBeGreaterThan(paneRunDismissal(0).autoCloseMs * 10);
-	});
-
-	it("treats an unreadable outcome as a failure, never as a success", () => {
 		// null is what a signal death writes: killed is not clean.
 		expect(paneRunDismissal(null).autoCloseMs).toBe(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS * 1000);
 	});
 });
 
 describe("rendering", () => {
-	it("states that a tail was truncated, so a first error is not read as the first error", () => {
-		const text = renderPaneRunLog(view({ lines: ["b", "c"], truncated: true, totalLines: 900 }));
-		expect(text).toMatch(/showing the last 2 of 900 lines/);
-	});
-
-	it("marks a line count taken from a windowed log as a floor, not the whole file", () => {
-		const text = renderPaneRunLog(view({ lines: ["b", "c"], truncated: true, totalLines: 900, logWindowed: true }));
-		expect(text).toMatch(/showing the last 2 of 900\+ lines/);
+	it("states that a tail was truncated, and marks a count from a windowed log as a floor", () => {
+		// So a first error is not read as the first error.
+		expect(renderPaneRunLog(view({ lines: ["b", "c"], truncated: true, totalLines: 900 }))).toMatch(/showing the last 2 of 900 lines/);
+		expect(renderPaneRunLog(view({ lines: ["b", "c"], truncated: true, totalLines: 900, logWindowed: true }))).toMatch(/showing the last 2 of 900\+ lines/);
 	});
 
 	it("names the backend and the screen-read limit in the listing", () => {
@@ -261,23 +222,15 @@ describe("paneRunShell — the one place a shell dialect genuinely differs", () 
 		});
 	});
 
-	it("runs a Windows command through Windows PowerShell 5.1 under SystemRoot", () => {
-		const spec = paneRunShell("bun run build", {
-			platform: "win32",
-			env: { SystemRoot: "C:\\Windows" },
-		});
+	it("runs a Windows command through Windows PowerShell 5.1 under SystemRoot, UTF-8 output, exit code propagated", () => {
+		const spec = paneRunShell("bun run build", { platform: "win32", env: { SystemRoot: "C:\\Windows" } });
 		expect(spec.executable).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
 		expect(spec.argv.slice(0, 3)).toEqual(["-NoLogo", "-NoProfile", "-Command"]);
-	});
-
-	it("pins the Windows child's output to UTF-8, because PowerShell 5.1 would use the console code page", () => {
-		const script = paneRunShell("bun run build", { platform: "win32", env: { SystemRoot: "C:\\Windows" } }).argv[3];
+		const script = spec.argv[3];
+		// PowerShell 5.1 would otherwise use the console code page.
 		expect(script).toMatch(/\[Console\]::OutputEncoding = \[System\.Text\.UTF8Encoding\]::new\(\$false\)/);
 		expect(script).toMatch(/\$OutputEncoding = \[Console\]::OutputEncoding/);
-	});
-
-	it("propagates the Windows exit code explicitly — powershell -Command does not do it by itself", () => {
-		const script = paneRunShell("bun run build", { platform: "win32", env: { WINDIR: "C:\\Windows" } }).argv[3];
+		// powershell -Command does not propagate the exit code by itself.
 		expect(script).toContain("; bun run build; ");
 		expect(script).toContain("$dev3Code = $LASTEXITCODE");
 		expect(script.endsWith("exit $dev3Code")).toBe(true);

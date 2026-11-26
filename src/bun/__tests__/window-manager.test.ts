@@ -159,15 +159,12 @@ describe("window-manager", () => {
 		});
 	}
 
-	it("registers new windows and exposes them via getAllWindows", () => {
+	it("registers new windows, exposes them via getAllWindows, and broadcasts push messages to every one", () => {
 		spawn();
 		spawn();
 
 		expect(getWindowCount()).toBe(2);
 		expect(getAllWindows()).toHaveLength(2);
-	});
-
-	it("broadcasts push messages to every window", () => {
 		spawn();
 		spawn();
 
@@ -193,19 +190,6 @@ describe("window-manager", () => {
 		expect(second.webview.rpc.send.navigateToSettings).not.toHaveBeenCalled();
 	});
 
-	it("focusFocusedWindow brings the focused window to the front", () => {
-		spawn();
-		spawn();
-
-		const secondWin = createdWindows[1];
-		secondWin.handlers.focus?.();
-
-		expect(focusFocusedWindow()).toBe(true);
-		expect(secondWin.focus).toHaveBeenCalledTimes(1);
-		expect(createdWindows[0].focus).not.toHaveBeenCalled();
-		expect(secondWin.unminimize).not.toHaveBeenCalled();
-	});
-
 	// A dev launch starts minimized, and focus() alone leaves it iconic on Windows.
 	it("focusFocusedWindow restores a minimized window before focusing it", () => {
 		spawn();
@@ -218,6 +202,19 @@ describe("window-manager", () => {
 
 	it("focusFocusedWindow returns false when no window is open", () => {
 		expect(focusFocusedWindow()).toBe(false);
+	});
+
+	it("focusFocusedWindow brings the focused window to the front", () => {
+		spawn();
+		spawn();
+
+		const secondWin = createdWindows[1];
+		secondWin.handlers.focus?.();
+
+		expect(focusFocusedWindow()).toBe(true);
+		expect(secondWin.focus).toHaveBeenCalledTimes(1);
+		expect(createdWindows[0].focus).not.toHaveBeenCalled();
+		expect(secondWin.unminimize).not.toHaveBeenCalled();
 	});
 
 	it("removes windows on close and falls back to another focused window", () => {

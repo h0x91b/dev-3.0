@@ -56,60 +56,50 @@ function task(overrides: Record<string, unknown> = {}): Task {
 }
 
 describe("unmarked tasks", () => {
-	it("resolves to tmux while reporting the marker as absent", () => {
+	it("resolves to tmux while reporting the marker as absent, and reports the identity without constructing a backend", () => {
 		const resolved = resolveTaskTerminalBackend(task());
 
 		expect(resolved.identity).toBe("tmux");
 		expect(resolved.present).toBe(false);
 		expect(resolved.backend.kind).toBe("tmux");
-	});
-
-	it("reports the identity without constructing a backend", () => {
 		expect(taskTerminalBackendIdentity(task())).toBe("tmux");
 	});
 });
 
 describe("explicit identities", () => {
-	it("round-trips an explicit tmux marker", () => {
-		const resolved = resolveTaskTerminalBackend(task({ terminalBackend: "tmux" }));
+	it("round-trips explicit tmux and native markers", () => {
+		for (const identity of ["tmux", "native"] as const) {
+			const resolved = resolveTaskTerminalBackend(task({ terminalBackend: identity }));
 
-		expect(resolved.identity).toBe("tmux");
-		expect(resolved.present).toBe(true);
-		expect(resolved.backend.kind).toBe("tmux");
-	});
-
-	it("round-trips an explicit native marker", () => {
-		const resolved = resolveTaskTerminalBackend(task({ terminalBackend: "native" }));
-
-		expect(resolved.identity).toBe("native");
-		expect(resolved.present).toBe(true);
-		expect(resolved.backend.kind).toBe("native");
+			expect(resolved.identity).toBe(identity);
+			expect(resolved.present).toBe(true);
+			expect(resolved.backend.kind).toBe(identity);
+		}
 	});
 });
 
 describe("undecodable markers", () => {
-	it("throws a typed error naming the CLI repair command", () => {
+	it("throws a typed error naming the CLI repair command, the offending value and the task", () => {
 		const bad = task({ terminalBackend: "wezterm" });
 
 		expect(() => resolveTaskTerminalBackend(bad)).toThrow(TaskTerminalBackendError);
 		expect(() => resolveTaskTerminalBackend(bad)).toThrow(/dev3 task terminal-backend --to tmux/);
-	});
 
-	it("carries the offending value and the task it belongs to", () => {
 		let error: TaskTerminalBackendError | null = null;
 		try {
-			resolveTaskTerminalBackend(task({ terminalBackend: "wezterm" }));
+			resolveTaskTerminalBackend(bad);
 		} catch (err) {
 			error = err as TaskTerminalBackendError;
 		}
-
 		expect(error?.taskId).toBe(TASK_ID);
 		expect(error?.message).toContain("unknown-value");
 		expect(error?.message).toContain("wezterm");
 	});
 
-	it.each([1, null, true, {}, ["native"]])("rejects the wrong type %o", (value) => {
-		expect(() => resolveTaskTerminalBackend(task({ terminalBackend: value }))).toThrow(TaskTerminalBackendError);
+	it("rejects a marker of the wrong type", () => {
+		for (const value of [1, null, true, {}, ["native"]]) {
+			expect(() => resolveTaskTerminalBackend(task({ terminalBackend: value })), JSON.stringify(value)).toThrow(TaskTerminalBackendError);
+		}
 	});
 
 	it("never falls back to tmux on any resolver entry point", () => {
@@ -122,15 +112,9 @@ describe("undecodable markers", () => {
 });
 
 describe("nativeTaskSessionId", () => {
-	it("is deterministic for the same task", () => {
+	it("is deterministic per task, differs between tasks, and satisfies the session-id rule", () => {
 		expect(nativeTaskSessionId(TASK_ID)).toBe(nativeTaskSessionId(TASK_ID));
-	});
-
-	it("differs between tasks", () => {
 		expect(nativeTaskSessionId(TASK_ID)).not.toBe(nativeTaskSessionId("99999999-1111-2222-3333-444444444444"));
-	});
-
-	it("satisfies the session-id rule for a UUID task id", () => {
 		expect(nativeTaskSessionId(TASK_ID)).toMatch(SESSION_ID_RULE);
 	});
 });
@@ -138,9 +122,6 @@ describe("nativeTaskSessionId", () => {
 describe("taskRunsNativeTerminal", () => {
 	it("is true only for an explicit native marker", () => {
 		expect(taskRunsNativeTerminal(task({ terminalBackend: "native" }))).toBe(true);
-	});
-
-	it("is false for an explicit tmux marker and for an unmarked task", () => {
 		expect(taskRunsNativeTerminal(task({ terminalBackend: "tmux" }))).toBe(false);
 		expect(taskRunsNativeTerminal(task())).toBe(false);
 	});
@@ -155,4 +136,3 @@ describe("nativeTaskTerminalBackend defers launch setup", () => {
 		expect(resolveNativeHostRuntime).not.toHaveBeenCalled();
 	});
 });
-

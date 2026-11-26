@@ -104,25 +104,61 @@ afterEach(() => {
 	exitSpy.mockRestore();
 });
 
+/** The `task.move` call, skipping the `approval.policy` pre-flight in front of it. */
+function moveCall(mock: { mock: { calls: unknown[][] } }) {
+	return mock.mock.calls.find((call) => call[1] === "task.move") as
+		[string, string, Record<string, unknown>, Record<string, unknown>] | undefined;
+}
+
+function lastParams(): Record<string, unknown> {
+	return mockSend.mock.calls[mockSend.mock.calls.length - 1]![2] as Record<string, unknown>;
+}
+
+function resetIO(): void {
+	stdoutOutput = "";
+	stderrOutput = "";
+	mockSend.mockReset();
+	mockReadStdin.mockReset();
+}
+
+type Refusal = { label: string; sub: string; a: ParsedArgs; ctx?: CliContext | null; stderr?: string[]; exit?: string };
+
+/** Each case must fail with a usage-style exit before anything reaches the app. */
+async function expectRefusedBeforeSending(cases: Refusal[]): Promise<void> {
+	for (const c of cases) {
+		resetIO();
+		await expect(handleTask(c.sub, c.a, SOCKET, c.ctx ?? null), c.label).rejects.toThrow(c.exit ?? "EXIT_3");
+		for (const snippet of c.stderr ?? []) expect(stderrOutput, c.label).toContain(snippet);
+		expect(mockSend, c.label).not.toHaveBeenCalled();
+	}
+}
+
 // ─── task show ───────────────────────────────────────────────────────────────
 
 describe("task show", () => {
-	it("shows task by explicit ID", async () => {
+	it("shows a task by explicit ID with its default fields", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.show", {
-			taskId: "aaaaaaaa",
-		});
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.show", { taskId: "aaaaaaaa" });
 		expect(stdoutOutput).toContain("Fix the login bug");
 		expect(stdoutOutput).toContain("Agent is Working");
+		expect(stdoutOutput).toMatch(/Priority:\s*P3/);
+		expect(stdoutOutput).toContain("Description:");
+		expect(stdoutOutput).toContain("Users report 500");
+		for (const absent of ["Created by", "Draft:", "Overview:"]) expect(stdoutOutput, absent).not.toContain(absent);
 	});
 
-	it("prints no Created by line for a task the user created", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+	it("prints an explicit priority, marks a draft, and skips a description equal to the title", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "todo", draft: true, priority: "P0", description: FAKE_TASK.title }));
+
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-		expect(stdoutOutput).not.toContain("Created by");
+
+		expect(stdoutOutput).toMatch(/Priority:\s*P0/);
+		// A draft must be visible so an agent does not start on a half-written prompt.
+		expect(stdoutOutput).toMatch(/Draft:\s+yes/);
+		expect(stdoutOutput).not.toContain("Description:");
 	});
 
 	it("prints the parent a task was created by, and a deleted parent as such", async () => {
@@ -140,121 +176,43 @@ describe("task show", () => {
 		expect(stdoutOutput).toMatch(/Created by:\s*a task \(deleted\)/);
 	});
 
-	it("prints the priority field (defaulting to P3 when absent)", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-		expect(stdoutOutput).toMatch(/Priority:\s*P3/);
-	});
-
-	it("prints an explicit priority when set", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, priority: "P0" }));
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-		expect(stdoutOutput).toMatch(/Priority:\s*P0/);
-	});
-
-	it("auto-detects taskId from context when no ID given", async () => {
+	it("takes task and project from context unless --project overrides it", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleTask("show", args(), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.show", {
-			taskId: CTX.taskId,
-			projectId: CTX.projectId,
-		});
-	});
-
-	it("auto-detects projectId from context", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.show", { taskId: CTX.taskId, projectId: CTX.projectId });
 
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe(CTX.projectId);
-	});
-
-	it("--project flag overrides context projectId", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		expect(lastParams().projectId).toBe(CTX.projectId);
 
 		await handleTask("show", args(["aaaaaaaa"], { project: "other-proj" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe("other-proj");
+		expect(lastParams().projectId).toBe("other-proj");
 	});
 
-	it("exits with usage error when no ID and no context", async () => {
+	it("exits with a usage error without an ID or context or on unknown flags, and 1 on server failure", async () => {
 		await expect(handleTask("show", args(), SOCKET, null)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Usage:");
-	});
-
-	it("marks a draft task so an agent does not start on a half-written prompt", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "todo", draft: true }));
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).toMatch(/Draft:\s+yes/);
-	});
-
-	it("does not mention drafts for an ordinary task", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).not.toContain("Draft:");
-	});
-
-	it("exits with error on server failure", async () => {
+		await expect(handleTask("show", args(["aaaaaaaa"], { bogus: "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
 		mockSend.mockResolvedValue(errResp("Task not found"));
 
 		await expect(handleTask("show", args(["bad"]), SOCKET, null)).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task not found");
 	});
 
-	it("prints description when different from title", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).toContain("Description:");
-		expect(stdoutOutput).toContain("Users report 500");
-	});
-
-	it("skips description when same as title", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, description: FAKE_TASK.title }));
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).not.toContain("Description:");
-	});
-
-	it("always shows the current overview (agent overview)", async () => {
+	it("shows the agent overview, and prefers the user override over it", async () => {
 		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, overview: "Repro done, writing the lock" }));
-
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
 		expect(stdoutOutput).toContain("Overview:");
 		expect(stdoutOutput).toContain("Repro done, writing the lock");
-	});
 
-	it("prefers the user override over the agent overview", async () => {
-		mockSend.mockResolvedValue(
-			okResp({ ...FAKE_TASK, overview: "agent text", userOverview: "user pinned text" }),
-		);
-
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, overview: "agent text", userOverview: "user pinned text" }));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
 		expect(stdoutOutput).toContain("user pinned text");
 		expect(stdoutOutput).not.toContain("agent text");
 	});
 
-	it("omits the overview section when there is none", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).not.toContain("Overview:");
-	});
-
-	it("inlines note bodies with --notes", async () => {
+	it("inlines note bodies only with --notes, and the title/overview change log only with --history", async () => {
 		mockSend.mockResolvedValue(
 			okResp({
 				...FAKE_TASK,
@@ -270,36 +228,16 @@ describe("task show", () => {
 			}),
 		);
 
-		await handleTask("show", args(["aaaaaaaa"], { notes: "true" }), SOCKET, null);
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toContain("Notes:");
+		expect(stdoutOutput).not.toContain("Root cause: missing mutex");
 
+		stdoutOutput = "";
+		await handleTask("show", args(["aaaaaaaa"], { notes: "true" }), SOCKET, null);
 		expect(stdoutOutput).toContain("Notes (1):");
 		expect(stdoutOutput).toContain("note1111");
 		expect(stdoutOutput).toContain("Root cause: missing mutex around session refresh");
-	});
-
-	it("does not inline note bodies without --notes", async () => {
-		mockSend.mockResolvedValue(
-			okResp({
-				...FAKE_TASK,
-				notes: [
-					{
-						id: "note1111-2222-3333-4444-555555555555",
-						content: "secret note body",
-						source: "ai",
-						createdAt: "2026-03-01T13:00:00Z",
-						updatedAt: "2026-03-01T13:00:00Z",
-					},
-				],
-			}),
-		);
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).toContain("Notes:");
-		expect(stdoutOutput).not.toContain("secret note body");
-	});
-
-	it("prints the title/overview change log with --history", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(
 			okResp({
 				...FAKE_TASK,
@@ -315,8 +253,11 @@ describe("task show", () => {
 			}),
 		);
 
-		await handleTask("show", args(["aaaaaaaa"], { history: "true" }), SOCKET, null);
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).not.toContain("History (");
 
+		stdoutOutput = "";
+		await handleTask("show", args(["aaaaaaaa"], { history: "true" }), SOCKET, null);
 		expect(stdoutOutput).toContain("History (2):");
 		expect(stdoutOutput).toContain("[created]");
 		expect(stdoutOutput).toContain("title + overview changed");
@@ -324,24 +265,6 @@ describe("task show", () => {
 		expect(stdoutOutput).toContain("(none)");
 	});
 
-	it("does not print history without --history", async () => {
-		mockSend.mockResolvedValue(
-			okResp({
-				...FAKE_TASK,
-				history: [{ at: "2026-03-01T10:00:00Z", title: "x", overview: null, changed: "created" }],
-			}),
-		);
-
-		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).not.toContain("History (");
-	});
-
-	it("rejects unknown flags", async () => {
-		await expect(handleTask("show", args(["aaaaaaaa"], { bogus: "true" }), SOCKET, null)).rejects.toThrow(
-			"EXIT_3",
-		);
-	});
 });
 
 // ─── task create ─────────────────────────────────────────────────────────────
@@ -349,15 +272,10 @@ describe("task show", () => {
 describe("task create", () => {
 	const createdTask: Task = { ...FAKE_TASK, status: "todo", seq: 43, title: "New task" };
 
-	it("creates task with explicit --project and --title", async () => {
+	it("creates task with explicit --project and --title and prints its seq and short ID", async () => {
 		mockSend.mockResolvedValue(okResp(createdTask));
 
-		await handleTask(
-			"create",
-			args([], { project: "proj-001", title: "New task" }),
-			SOCKET,
-			null,
-		);
+		await handleTask("create", args([], { project: "proj-001", title: "New task" }), SOCKET, null);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
 			projectId: "proj-001",
@@ -365,6 +283,8 @@ describe("task create", () => {
 		});
 		expect(stdoutOutput).toContain("Created task");
 		expect(stdoutOutput).toContain("New task");
+		expect(stdoutOutput).toContain("(<seq:proj-001/43>)");
+		expect(stdoutOutput).toContain("aaaaaaaa"); // first 8 chars
 	});
 
 	it("opts the new task in with --self-completion on", async () => {
@@ -375,93 +295,48 @@ describe("task create", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", { projectId: "proj-001", title: "New task", selfCompletion: true });
 	});
 
-	it("auto-detects projectId from context", async () => {
+	it("takes the project from context and names the task it runs inside as the creator, even for another project", async () => {
 		mockSend.mockResolvedValue(okResp(createdTask));
 
 		await handleTask("create", args([], { title: "New task" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe(CTX.projectId);
-	});
-
-	it("names the task it runs inside as the creator, even for another project", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
+		expect(lastParams().projectId).toBe(CTX.projectId);
 
 		await handleTask("create", args([], { project: "proj-other", title: "New task" }), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.create", {
 			projectId: "proj-other",
 			title: "New task",
 			sourceTaskId: CTX.taskId,
 		});
 	});
 
-	it("sends --type and names the role it created", async () => {
+	it("sends a normalized --type and names the role, and omits taskType for --type standard", async () => {
 		mockSend.mockResolvedValue(okResp({ ...createdTask, taskType: "pr-review" }));
-
 		await handleTask("create", args([], { project: "proj-001", title: "Review PR 42", type: "PR-Review" }), SOCKET, null);
-
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
 			projectId: "proj-001",
 			title: "Review PR 42",
 			taskType: "pr-review",
 		});
 		expect(stderrOutput).toContain("Role: pr-review");
-	});
 
-	it("sends --type coordinator alongside a description", async () => {
-		mockSend.mockResolvedValue(okResp({ ...createdTask, taskType: "coordinator" }));
-
-		await handleTask(
-			"create",
-			args([], { project: "proj-001", title: "Run the board", description: "manage the agents", type: "coordinator" }),
-			SOCKET,
-			null,
-		);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
-			projectId: "proj-001",
-			title: "Run the board",
-			description: "manage the agents",
-			taskType: "coordinator",
-		});
-	});
-
-	it("creates the cleanup role with an explicit central-audit brief", async () => {
-		mockSend.mockResolvedValue(okResp({ ...createdTask, taskType: "board-cleanup" }));
-		await handleTask("create", args([], { project: "proj-001", title: "Board cleanup", description: "Audit all projects.", type: "board-cleanup" }), SOCKET, null);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", { projectId: "proj-001", title: "Board cleanup", description: "Audit all projects.", taskType: "board-cleanup" });
-	});
-
-	it("omits taskType for --type standard", async () => {
+		resetIO();
 		mockSend.mockResolvedValue(okResp(createdTask));
-
 		await handleTask("create", args([], { project: "proj-001", title: "New task", type: "standard" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
-			projectId: "proj-001",
-			title: "New task",
-		});
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", { projectId: "proj-001", title: "New task" });
 		expect(stderrOutput).not.toContain("Role:");
 	});
 
-	it("rejects an unknown --type before contacting the app", async () => {
-		await expect(
-			handleTask("create", args([], { project: "proj-001", title: "New task", type: "reviewer" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--type must be one of coordinator, pr-review, board-cleanup or standard");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("exits with usage error when --project missing and no context", async () => {
-		await expect(
-			handleTask("create", args([], { title: "New task" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--project");
+	it("rejects bad input before contacting the app", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "unknown --type", sub: "create", a: args([], { project: "proj-001", title: "New task", type: "reviewer" }), stderr: ["--type must be one of coordinator, pr-review, board-cleanup or standard"] },
+			{ label: "no --project and no context", sub: "create", a: args([], { title: "New task" }), stderr: ["--project"] },
+			{ label: "no --title", sub: "create", a: args([], { project: "proj-001" }), stderr: ["--title"] },
+			{ label: "whitespace-only --title", sub: "create", a: args([], { project: "proj-001", title: "   " }), stderr: ["--title"] },
+		]);
 	});
 
 	describe("--pr / --branch", () => {
-		it("sends --pr, implies pr-review, and says where the worktree starts", async () => {
+		it("sends --pr, implies pr-review, says where the worktree starts, and yields to an explicit --type", async () => {
 			mockSend.mockResolvedValue(okResp({
 				...createdTask,
 				taskType: "pr-review",
@@ -479,22 +354,17 @@ describe("task create", () => {
 			});
 			expect(stderrOutput).toContain("Starts on: arditti/fix/ctrl-o");
 			expect(stderrOutput).toContain("someone else's code");
-		});
 
-		it("lets an explicit --type override what --pr would imply", async () => {
+			resetIO();
 			mockSend.mockResolvedValue(okResp(createdTask));
-
 			await handleTask("create", args([], { project: "proj-001", title: "X", pr: "5", type: "standard" }), SOCKET, null);
-
-			expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("taskType");
-			expect(mockSend.mock.calls[0]![2]!.pr).toBe("5");
+			expect(lastParams()).not.toHaveProperty("taskType");
+			expect(lastParams().pr).toBe("5");
 		});
 
-		it("sends --branch without implying a type", async () => {
+		it("sends --branch without implying a type, and --worktree with it", async () => {
 			mockSend.mockResolvedValue(okResp({ ...createdTask, existingBranch: "origin/feat/x" }));
-
 			await handleTask("create", args([], { project: "proj-001", title: "Look", branch: "origin/feat/x" }), SOCKET, null);
-
 			expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
 				projectId: "proj-001",
 				title: "Look",
@@ -502,13 +372,10 @@ describe("task create", () => {
 			});
 			expect(stderrOutput).toContain("Starts on: origin/feat/x");
 			expect(stderrOutput).not.toContain("someone else's code");
-		});
 
-		it("sends --worktree with --branch and says the task gets its own worktree", async () => {
+			resetIO();
 			mockSend.mockResolvedValue(okResp({ ...createdTask, existingBranch: "linux-build", ownWorktree: true }));
-
 			await handleTask("create", args([], { project: "proj-001", title: "Linux build", branch: "linux-build", worktree: "true" }), SOCKET, null);
-
 			expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
 				projectId: "proj-001",
 				title: "Linux build",
@@ -528,20 +395,12 @@ describe("task create", () => {
 			expect(stderrOutput).not.toContain("already get their own worktree");
 		});
 
-		it("rejects a value after --worktree before contacting the app", async () => {
-			await expect(
-				handleTask("create", args([], { project: "proj-001", title: "X", worktree: "Linux build" }), SOCKET, null),
-			).rejects.toThrow("EXIT_");
-			expect(stderrOutput).toContain("--worktree takes no value");
-			expect(mockSend).not.toHaveBeenCalled();
-		});
-
-		it("rejects --pr together with --branch before contacting the app", async () => {
-			await expect(
-				handleTask("create", args([], { project: "proj-001", title: "X", pr: "1", branch: "origin/x" }), SOCKET, null),
-			).rejects.toThrow("EXIT_3");
-			expect(stderrOutput).toContain("pass one of them");
-			expect(mockSend).not.toHaveBeenCalled();
+		it("rejects a value after --worktree, --pr with --branch, and --pr on a scratch task before contacting the app", async () => {
+			await expectRefusedBeforeSending([
+				{ label: "--worktree with a value", sub: "create", a: args([], { project: "proj-001", title: "X", worktree: "Linux build" }), stderr: ["--worktree takes no value"], exit: "EXIT_" },
+				{ label: "--pr with --branch", sub: "create", a: args([], { project: "proj-001", title: "X", pr: "1", branch: "origin/x" }), stderr: ["pass one of them"] },
+				{ label: "--pr on scratch", sub: "create", a: args([], { project: "proj-001", scratch: "true", run: "true", pr: "5" }) },
+			]);
 		});
 
 		// Nothing was created, so the caller must be able to tell this apart from
@@ -569,79 +428,99 @@ describe("task create", () => {
 				handleTask("create", args([], { project: "proj-001", title: "X" }), SOCKET, null),
 			).rejects.toThrow("EXIT_1");
 		});
+	});
+});
 
-		it("refuses --pr on a scratch task", async () => {
-			await expect(
-				handleTask("create", args([], { project: "proj-001", scratch: "true", run: "true", pr: "5" }), SOCKET, null),
-			).rejects.toThrow("EXIT_3");
-			expect(mockSend).not.toHaveBeenCalled();
+// ─── task create: description sources ───────────────────────────────────────
+// With @file syntax the file content lands in positional[0] after
+// resolveFileArgs. Bug once: createTask ignored positional args entirely and the
+// file content was lost.
+
+describe("task create description sources", () => {
+	it("takes the description from --description or from positional (@file) content", async () => {
+		const multiLine = "Port exposure\n\nShow which ports a task uses.\n\n**GitHub:** #190";
+		const body = "Show which ports a task uses.\n\n**GitHub:** #190";
+		const cases: Array<{ label: string; positional: string[]; flags: Record<string, string>; title: string; description?: string }> = [
+			{ label: "--description flag", positional: [], flags: { title: "With desc", description: "Full description here" }, title: "With desc", description: "Full description here" },
+			{ label: "positional with --title", positional: [body], flags: { title: "Port exposure" }, title: "Port exposure", description: body },
+			{ label: "multi-line positional, no --title", positional: [multiLine], flags: {}, title: "Port exposure", description: multiLine },
+			{ label: "single-line positional, no --title", positional: ["Fix the login bug"], flags: {}, title: "Fix the login bug" },
+		];
+		for (const c of cases) {
+			resetIO();
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			await handleTask("create", args(c.positional, { project: "proj-001", ...c.flags }), SOCKET, null);
+			expect(lastParams().title, c.label).toBe(c.title);
+			if (c.description !== undefined) expect(lastParams().description, c.label).toBe(c.description);
+		}
+	});
+
+	it("reads --description - from stdin without altering Markdown, using its first line when --title is omitted", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		const markdown = '# Release notes\n\nUse **bold** and quote: "quoted".\n';
+		mockReadStdin.mockResolvedValue(markdown);
+
+		await handleTask("create", args([], { project: "proj-001", title: "Release notes", description: "-" }), SOCKET, null);
+
+		expect(mockReadStdin).toHaveBeenCalledOnce();
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-001",
+			title: "Release notes",
+			description: markdown,
 		});
+
+		resetIO();
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		const untitled = "Release notes\n\n- Preserve this line exactly.\n";
+		mockReadStdin.mockResolvedValue(untitled);
+		await handleTask("create", args([], { project: "proj-001", description: "-" }), SOCKET, null);
+		expect(lastParams().title).toBe("Release notes");
+		expect(lastParams().description).toBe(untitled);
 	});
 
-	it("exits with usage error when --title missing", async () => {
-		await expect(
-			handleTask("create", args([], { project: "proj-001" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--title");
-	});
-
-	it("prints created task summary with seq and short ID", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		await handleTask("create", args([], { project: "proj-001", title: "New task" }), SOCKET, null);
-
-		expect(stdoutOutput).toContain("(<seq:proj-001/43>)");
-		expect(stdoutOutput).toContain("aaaaaaaa"); // first 8 chars
+	it("refuses a positional description together with --description instead of dropping one", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "--description text", sub: "create", a: args(["positional text"], { project: "proj-001", title: "T", description: "flag text" }) },
+			{ label: "--description -", sub: "create", a: args(["positional text"], { project: "proj-001", title: "T", description: "-" }) },
+		]);
+		expect(mockReadStdin).not.toHaveBeenCalled();
 	});
 });
 
 // ─── task update ─────────────────────────────────────────────────────────────
 
 describe("task update", () => {
-	it("updates title with explicit task ID", async () => {
-		const updated = { ...FAKE_TASK, title: "Updated title" };
-		mockSend.mockResolvedValue(okResp(updated));
+	it("updates title and description with explicit task ID", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, title: "Updated title" }));
 
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { title: "Updated title" }),
-			SOCKET,
-			null,
-		);
+		await handleTask("update", args(["aaaaaaaa"], { title: "Updated title", description: "D" }), SOCKET, null);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
 			taskId: "aaaaaaaa",
 			title: "Updated title",
+			description: "D",
 		});
 		expect(stdoutOutput).toContain("Updated task");
 		expect(stdoutOutput).toContain("Updated title");
 	});
 
-	it("auto-detects taskId from context", async () => {
+	it("takes task and project from context, lets --project override it, and injects no project without one", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
 		await handleTask("update", args([], { title: "New title" }), SOCKET, CTX);
+		expect(lastParams().taskId).toBe(CTX.taskId);
+		expect(lastParams().projectId).toBe(CTX.projectId);
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe(CTX.taskId);
-		expect(params.projectId).toBe(CTX.projectId);
+		await handleTask("update", args([], { title: "T", project: "other" }), SOCKET, CTX);
+		expect(lastParams().projectId).toBe("other");
+
+		// A foreign task by explicit ID, no context: the server resolves it by ID alone.
+		await handleTask("update", args(["bbbbbbbb"], { title: "Foreign update" }), SOCKET, null);
+		expect(lastParams().taskId).toBe("bbbbbbbb");
+		expect(lastParams()).not.toHaveProperty("projectId");
 	});
 
-	it("updates description", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { description: "New description" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.description).toBe("New description");
-	});
-
-	it("reads --description - from stdin without altering Markdown", async () => {
+	it("reads --description - from stdin without altering Markdown, and refuses a bare --description", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 		const markdown = '# Updated plan\n\nKeep **quotes**: "intact".';
 		mockReadStdin.mockResolvedValue(markdown);
@@ -649,172 +528,76 @@ describe("task update", () => {
 		await handleTask("update", args(["aaaaaaaa"], { description: "-" }), SOCKET, null);
 
 		expect(mockReadStdin).toHaveBeenCalledOnce();
-		expect(mockSend.mock.calls[0]![2]!.description).toBe(markdown);
-	});
+		expect(lastParams().description).toBe(markdown);
 
-	it("refuses a bare --description instead of overwriting the description with \"true\"", async () => {
+		// A bare flag parses as "true" — it must not overwrite the description with it.
+		mockSend.mockClear();
 		await expect(handleTask("update", args(["aaaaaaaa"], { description: "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("updates both title and description at once", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { title: "T", description: "D" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.title).toBe("T");
-		expect(params.description).toBe("D");
+	it("clears the description when --description is empty or whitespace-only", async () => {
+		// Tri-state: a present flag (even empty/whitespace) means set, absent means leave alone.
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, description: "" }));
+		for (const value of ["   ", ""]) {
+			await handleTask("update", args(["aaaaaaaa"], { description: value }), SOCKET, null);
+			expect(lastParams(), JSON.stringify(value)).toHaveProperty("description", "");
+		}
 	});
 
-	it("exits when neither --title nor --description given", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"]), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--title");
-		expect(stderrOutput).toContain("--description");
+	it("rejects bad input before sending", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "no update field", sub: "update", a: args(["aaaaaaaa"]), stderr: ["--title", "--description"] },
+			{ label: "no task ID and no context", sub: "update", a: args([], { title: "T" }) },
+			{ label: "whitespace-only --title as the only field", sub: "update", a: args(["aaaaaaaa"], { title: "   " }) },
+			{ label: "unknown --type", sub: "update", a: args(["aaaaaaaa"], { type: "overlord" }), stderr: ["--type"] },
+			{ label: "invalid --manual-completion", sub: "update", a: args(["aaaaaaaa"], { "manual-completion": "sometimes" }), stderr: ["--manual-completion"] },
+			{ label: "invalid --priority", sub: "update", a: args(["aaaaaaaa"], { priority: "urgent" }), stderr: ["--priority"] },
+			{ label: "invalid --self-completion", sub: "update", a: args(["aaaaaaaa"], { "self-completion": "maybe" }), stderr: ["--self-completion must be on or off"], exit: "EXIT_" },
+			{ label: "--print-role on another task", sub: "update", a: args(["bbbbbbbb"], { type: "coordinator", "print-role": "true" }), ctx: CTX },
+			{ label: "--print-role without --type", sub: "update", a: args([], { title: "new", "print-role": "true" }), ctx: CTX },
+		]);
 	});
 
-	it("exits when no task ID and no context", async () => {
-		await expect(
-			handleTask("update", args([], { title: "T" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-	});
-
-	it("--force flag passes force=true to the server", async () => {
-		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { title: "T", force: "true" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.force).toBe(true);
-	});
-
-	it("--priority sends a normalized (uppercased) priority", async () => {
-		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, priority: "P0" }, titlePreserved: false }));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { priority: "p0" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.priority).toBe("P0");
-		expect(stdoutOutput).toContain("Updated task");
-	});
-
-	it("--priority alone (no title/description) is a valid update", async () => {
-		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, priority: "P3" }, titlePreserved: false }));
-
-		await handleTask("update", args(["aaaaaaaa"], { priority: "P3" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", priority: "P3" });
-	});
-
-	it("accepts --manual-completion on|off as a standalone update", async () => {
-		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, manualCompletion: true }, titlePreserved: false }));
-
-		await handleTask("update", args(["aaaaaaaa"], { "manual-completion": "on" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
-			taskId: "aaaaaaaa",
-			manualCompletion: true,
-		});
-	});
-
-	it("accepts --self-completion on as a standalone update", async () => {
-		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, selfCompletion: true }, titlePreserved: false }));
-
-		await handleTask("update", args(["aaaaaaaa"], { "self-completion": "on" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", selfCompletion: true });
-	});
-
-	it("rejects an invalid --self-completion value before sending", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"], { "self-completion": "maybe" }), SOCKET, null),
-		).rejects.toThrow();
-		expect(stderrOutput).toContain("--self-completion must be on or off");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("sends --type coordinator as a standalone update", async () => {
-		mockSend.mockResolvedValue(okResp({
-			task: { ...FAKE_TASK, taskType: "coordinator" },
-			titlePreserved: false,
-			roleDelivery: "delivered",
-		}));
-
+	it("accepts standalone flag updates normalized, including --type with standard mapped onto a cleared type", async () => {
+		const cases: Array<{ flags: Record<string, string>; sent: Record<string, unknown> }> = [
+			{ flags: { priority: "p0" }, sent: { priority: "P0" } },
+			{ flags: { "manual-completion": "on" }, sent: { manualCompletion: true } },
+			{ flags: { "self-completion": "on" }, sent: { selfCompletion: true } },
+			{ flags: { title: "T", force: "true" }, sent: { title: "T", force: true } },
+		];
+		for (const c of cases) {
+			resetIO();
+			mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
+			await handleTask("update", args(["aaaaaaaa"], c.flags), SOCKET, null);
+			expect(mockSend, JSON.stringify(c.flags)).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", ...c.sent });
+			expect(stdoutOutput, JSON.stringify(c.flags)).toContain("Updated task");
+		}
+		resetIO();
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, taskType: "coordinator" }, titlePreserved: false, roleDelivery: "delivered" }));
 		await handleTask("update", args(["aaaaaaaa"], { type: "coordinator" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
-			taskId: "aaaaaaaa",
-			taskType: "coordinator",
-		});
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", taskType: "coordinator" });
 		expect(stderrOutput).toContain("told the running agent");
-	});
 
-	it("maps --type standard onto a cleared type", async () => {
 		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false, roleDelivery: "no-session" }));
-
 		await handleTask("update", args(["aaaaaaaa"], { type: "standard" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", taskType: null });
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", taskType: null });
 	});
 
-	// A role change nobody could deliver must never read like a success.
-	it("warns loudly when the running agent could not be told", async () => {
-		mockSend.mockResolvedValue(okResp({
-			task: { ...FAKE_TASK, taskType: "coordinator" },
-			titlePreserved: false,
-			roleDelivery: "not-delivered",
-		}));
+	it("never reports an undelivered role change as a success, and says a held one is still coming", async () => {
+		const respond = (roleDelivery: string) =>
+			mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, taskType: "coordinator" }, titlePreserved: false, roleDelivery }));
 
+		respond("not-delivered");
 		await handleTask("update", args(["aaaaaaaa"], { type: "coordinator" }), SOCKET, null);
-
 		expect(stderrOutput).toContain("could NOT tell the running agent");
-	});
 
-	// Held behind the agent's open prompt: it will arrive, so pasting it too would double it.
-	it("says a role change held behind a prompt is still coming", async () => {
-		mockSend.mockResolvedValue(okResp({
-			task: { ...FAKE_TASK, taskType: "coordinator" },
-			titlePreserved: false,
-			roleDelivery: "held",
-		}));
-
+		// Held behind the agent's open prompt: it will arrive, so pasting it too would double it.
+		stderrOutput = "";
+		respond("held");
 		await handleTask("update", args(["aaaaaaaa"], { type: "coordinator" }), SOCKET, null);
-
 		expect(stderrOutput).toContain("sent after it is answered");
 		expect(stderrOutput).not.toContain("paste the new role in yourself");
-	});
-
-	it("sends --type pr-review", async () => {
-		mockSend.mockResolvedValue(okResp({
-			task: { ...FAKE_TASK, taskType: "pr-review" },
-			titlePreserved: false,
-			roleDelivery: "no-session",
-		}));
-
-		await handleTask("update", args(["aaaaaaaa"], { type: "pr-review" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
-			taskId: "aaaaaaaa",
-			taskType: "pr-review",
-		});
 	});
 
 	// What /dev3-coordinator runs: promote the task this worktree is already in and
@@ -857,85 +640,27 @@ describe("task update", () => {
 		expect(stderrOutput).not.toContain("Role:");
 	});
 
-	it("refuses --print-role against a task other than the caller's own", async () => {
-		await expect(
-			handleTask("update", args(["bbbbbbbb"], { type: "coordinator", "print-role": "true" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses --print-role without --type", async () => {
-		await expect(
-			handleTask("update", args([], { title: "new", "print-role": "true" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an unknown --type before sending", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"], { type: "overlord" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--type");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an invalid --manual-completion value before sending", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"], { "manual-completion": "sometimes" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--manual-completion");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("rejects an invalid --priority value before sending", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"], { priority: "urgent" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--priority");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
 	// The description is the agent's first prompt at launch and nothing re-delivers
 	// it, so a rewrite on a live task has to say so at the keyboard.
-	it("warns that a running agent will not see a new description", async () => {
+	it("warns that a running agent will not see a new description (with --project in the hint), and stays quiet otherwise", async () => {
 		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
 
 		await handleTask("update", args(["aaaaaaaa"], { description: "Now also fix it" }), SOCKET, null);
-
 		expect(stdoutOutput).toContain("running agent will NOT see this");
 		expect(stdoutOutput).toContain("dev3 message --task aaaaaaaa");
-	});
 
-	it("carries --project into the suggested message for a cross-project task", async () => {
-		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { description: "Now also fix it", project: "proj-002" }),
-			SOCKET,
-			null,
-		);
-
+		stdoutOutput = "";
+		await handleTask("update", args(["aaaaaaaa"], { description: "Now also fix it", project: "proj-002" }), SOCKET, null);
 		expect(stdoutOutput).toContain("dev3 message --task aaaaaaaa --project proj-002");
-	});
-
-	it("stays quiet when no agent is running to miss the edit", async () => {
-		mockSend.mockResolvedValue(okResp({
-			task: { ...FAKE_TASK, status: "todo", worktreePath: null },
-			titlePreserved: false,
-		}));
-
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, status: "todo", worktreePath: null }, titlePreserved: false }));
 		await handleTask("update", args(["aaaaaaaa"], { description: "Brief for later" }), SOCKET, null);
-
 		expect(stdoutOutput).toContain("Updated task");
 		expect(stdoutOutput).not.toContain("running agent");
-	});
 
-	it("stays quiet for a title-only update on a running task", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
-
 		await handleTask("update", args(["aaaaaaaa"], { title: "Renamed by the agent" }), SOCKET, null);
-
 		expect(stdoutOutput).not.toContain("running agent");
 	});
 
@@ -973,117 +698,120 @@ describe("task update", () => {
 		expect(stdoutOutput).toContain("Renamed");
 		expect(stderrOutput).not.toContain("title preserved");
 	});
+});
 
-	it("--project flag overrides context projectId", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+// ─── explicit target flags (--id / --task / --task-id) ───────────────────────
+// They let agents show/update/move ANY task, not just the current one, and must
+// never silently fall back to the context task.
 
-		await handleTask(
-			"update",
-			args([], { title: "T", project: "other" }),
-			SOCKET,
-			CTX,
-		);
+describe("explicit task target flags", () => {
+	type Target = { label: string; positional?: string[]; flags: Record<string, string>; ctx: CliContext | null; expected: string };
+	const targets: Target[] = [
+		{ label: "--id without a positional", flags: { id: "bbbbbbbb" }, ctx: null, expected: "bbbbbbbb" },
+		{ label: "--id over context", flags: { id: "bbbbbbbb" }, ctx: CTX, expected: "bbbbbbbb" },
+		{ label: "positional over --id", positional: ["cccccccc"], flags: { id: "bbbbbbbb" }, ctx: null, expected: "cccccccc" },
+		{ label: "--task over context", flags: { task: "bbbbbbbb" }, ctx: CTX, expected: "bbbbbbbb" },
+		{ label: "--task-id over context", flags: { "task-id": "cccccccc" }, ctx: CTX, expected: "cccccccc" },
+	];
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe("other");
+	it.each<{ sub: string; method: string; extra: Record<string, string> }>([
+		{ sub: "show", method: "task.show", extra: {} },
+		{ sub: "update", method: "task.update", extra: { title: "T" } },
+		{ sub: "move", method: "task.move", extra: { status: "review-by-user" } },
+	])("task $sub resolves the target in the right order", async ({ sub, method, extra }) => {
+		for (const t of targets) {
+			resetIO();
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			await handleTask(sub, args(t.positional ?? [], { ...t.flags, ...extra }), SOCKET, t.ctx);
+			const call = mockSend.mock.calls.find((c) => c[1] === method);
+			expect(call?.[2]?.taskId, t.label).toBe(t.expected);
+		}
+	});
+
+	it("rejects unknown flags instead of falling back to context", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "--taskk", sub: "update", a: args([], { taskk: "bbbbbbbb", description: "D" }), ctx: CTX, stderr: ["Unknown option", "--taskk"] },
+		]);
+	});
+
+	// `tasks list` displays 8-char short IDs; we once observed live
+	// `dev3 task show --id 5f01f223` → "Task not found", because the CLI passed the
+	// prefix as-is and the server only matches full UUIDs.
+	it("resolves an 8-char short ID to the full UUID before sending, for show, update and move", async () => {
+		const shortId = FAKE_TASK.id.slice(0, 8);
+		const cases: Array<[string, Record<string, string>]> = [
+			["show", {}],
+			["update", { title: "Updated" }],
+			["move", { status: "review-by-user" }],
+		];
+		for (const [sub, flags] of cases) {
+			resetIO();
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			await handleTask(sub, args([shortId], flags), SOCKET, CTX);
+			expect(mockSend.mock.calls[0]![2]!.taskId, sub).toBe(FAKE_TASK.id);
+		}
 	});
 });
 
 // ─── task move ───────────────────────────────────────────────────────────────
 
 describe("task move", () => {
-	it("moves task to new status with explicit ID", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-ai" as const };
-		mockSend.mockResolvedValue(okResp(moved));
+	it("moves task to new status with explicit ID and prints arrow notation", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "review-by-ai" as const }));
 
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "review-by-ai" }),
-			SOCKET,
-			null,
-		);
+		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-ai" }), SOCKET, null);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
 			taskId: "aaaaaaaa",
 			newStatus: "review-by-ai",
 		});
 		expect(stdoutOutput).toContain("Moved task");
-		expect(stdoutOutput).toContain("AI Review");
+		expect(stdoutOutput).toMatch(/→.*AI Review/);
 	});
 
-	it("auto-detects taskId from context", async () => {
-		const moved = { ...FAKE_TASK, status: "user-questions" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
+	it("takes task and project from context unless --project overrides it", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "user-questions" as const }));
 		await handleTask("move", args([], { status: "user-questions" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
+		let params = moveCall(mockSend)![2];
 		expect(params.taskId).toBe(CTX.taskId);
 		expect(params.projectId).toBe(CTX.projectId);
 		expect(params.newStatus).toBe("user-questions");
-	});
 
-	it("auto-detects projectId from context", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
+		resetIO();
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "review-by-user" as const }));
 		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-user" }), SOCKET, CTX);
+		expect(moveCall(mockSend)![2].projectId).toBe(CTX.projectId);
 
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe(CTX.projectId);
-	});
-
-	it("--project flag overrides context projectId", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "review-by-user", project: "other" }),
-			SOCKET,
-			CTX,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
+		resetIO();
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "review-by-user" as const }));
+		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-user", project: "other" }), SOCKET, CTX);
+		params = moveCall(mockSend)![2];
 		expect(params.projectId).toBe("other");
 	});
 
-	it("exits when --status missing", async () => {
-		await expect(
-			handleTask("move", args(["aaaaaaaa"]), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--status");
+	it("rejects bad input before sending", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "no --status", sub: "move", a: args(["aaaaaaaa"]), stderr: ["--status"] },
+			{ label: "no task ID and no context", sub: "move", a: args([], { status: "review-by-user" }) },
+			{ label: "empty --status", sub: "move", a: args(["aaaaaaaa"], { status: "" }) },
+			{ label: "--force on a status other than completed", sub: "move", a: args(["aaaaaaaa"], { status: "cancelled", force: "true" }), stderr: ["--force only applies to --status completed"], exit: "EXIT_" },
+			{ label: "--if-status with --status todo", sub: "move", a: args(["aaaaaaaa"], { status: "todo", "if-status": "in-progress" }) },
+		]);
 	});
 
-	it("exits when no task ID and no context", async () => {
-		await expect(
-			handleTask("move", args([], { status: "review-by-user" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-	});
-
-	// `cancelled` is never a direct move either — it detours through the same
-	// user approval as `completed` (covered in its own describe below).
-	it("does not send a plain task.move for cancelled", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: false }));
-
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
-		).rejects.toThrow("EXIT_22");
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"task.requestCancellation",
-			{ taskId: "aaaaaaaa" },
-			{ timeoutMs: 10 * 60 * 1000 },
-		);
-	});
-
-	it("exits on server error (e.g. invalid transition)", async () => {
-		mockSend.mockResolvedValue(errResp("Invalid status transition"));
-
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "review-by-user" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Invalid status transition");
+	// Unknown values may be custom column IDs, so the server validates them.
+	it("forwards any status to the server and surfaces its refusal", async () => {
+		for (const [status, error] of [
+			["review-by-user", "Invalid status transition"],
+			["garbage", 'Invalid status: "garbage"'],
+			["in_progress", 'Invalid status: "in_progress"'],
+		]) {
+			resetIO();
+			mockSend.mockResolvedValue(errResp(error));
+			await expect(handleTask("move", args(["aaaaaaaa"], { status }), SOCKET, null), status).rejects.toThrow("EXIT_1");
+			expect(mockSend, status).toHaveBeenCalled();
+			expect(stderrOutput, status).toContain(error);
+		}
 	});
 
 	it("exits with the draft exit code when the task is a draft", async () => {
@@ -1095,51 +823,34 @@ describe("task move", () => {
 		expect(stderrOutput).toContain("draft");
 	});
 
-	it("prints arrow notation with status label", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-ai" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-ai" }), SOCKET, null);
-
-		expect(stdoutOutput).toMatch(/→.*AI Review/);
-	});
-
-	it("accepts --tolerate-app-offline without sending it to the server", async () => {
-		// The flag only softens the app-offline exit code (decided before dispatch,
-		// in main.ts); a reachable app must behave exactly as without it.
-		const moved = { ...FAKE_TASK, status: "in-progress" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "in-progress", "tolerate-app-offline": "true" }),
-			SOCKET,
-			null,
-		);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
-			taskId: "aaaaaaaa",
-			newStatus: "in-progress",
-		});
+	it("keeps hook flags off the wire: --tolerate-app-offline changes nothing, --codex-stop-hook prints minimal JSON", async () => {
+		// --tolerate-app-offline only softens the app-offline exit code (decided before
+		// dispatch, in main.ts); a reachable app must behave exactly as without it.
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "in-progress" as const }));
+		await handleTask("move", args(["aaaaaaaa"], { status: "in-progress", "tolerate-app-offline": "true" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", { taskId: "aaaaaaaa", newStatus: "in-progress" });
 		expect(stderrOutput).not.toContain("Unknown flag");
+
+		resetIO();
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "review-by-user" as const }));
+		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-user", "codex-stop-hook": "true" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", { taskId: "aaaaaaaa", newStatus: "review-by-user" });
+		expect(stdoutOutput).toBe("{}");
 	});
 
-	it("prints minimal JSON stdout for Codex stop hooks", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
+	it("passes --if-status / --if-status-not (comma lists included) only when given", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "in-progress" as const }));
+		const move = async (flags: Record<string, string>) => {
+			await handleTask("move", args(["aaaaaaaa"], { status: "in-progress", ...flags }), SOCKET, null);
+			return lastParams();
+		};
 
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "review-by-user", "codex-stop-hook": "true" }),
-			SOCKET,
-			null,
-		);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
-			taskId: "aaaaaaaa",
-			newStatus: "review-by-user",
-		});
-		expect(stdoutOutput).toBe("{}");
+		expect(await move({ "if-status": "todo" })).toMatchObject({ ifStatus: "todo", newStatus: "in-progress" });
+		expect(await move({ "if-status-not": "review-by-ai,review-by-user" })).toMatchObject({ ifStatusNot: "review-by-ai,review-by-user" });
+		expect(await move({ "if-status": "todo", "if-status-not": "review-by-ai" })).toMatchObject({ ifStatus: "todo", ifStatusNot: "review-by-ai" });
+		const bare = await move({});
+		expect(bare).not.toHaveProperty("ifStatus");
+		expect(bare).not.toHaveProperty("ifStatusNot");
 	});
 });
 
@@ -1147,14 +858,8 @@ describe("task move", () => {
 // "completed" is not a direct move: the CLI sends task.requestCompletion and
 // blocks until the user answers the approval dialog in the app.
 
-/** The `task.move` call, skipping the `approval.policy` pre-flight in front of it. */
-function moveCall(mock: { mock: { calls: unknown[][] } }) {
-	return mock.mock.calls.find((call) => call[1] === "task.move") as
-		[string, string, Record<string, unknown>, Record<string, unknown>] | undefined;
-}
-
 describe("task move --status completed", () => {
-	it("sends task.requestCompletion with the long approval timeout", async () => {
+	it("sends task.requestCompletion with the long approval timeout, and prints minimal JSON for Codex stop hooks", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
 
 		await handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null);
@@ -1168,69 +873,52 @@ describe("task move --status completed", () => {
 		expect(stderrOutput).toContain("requires user approval");
 		expect(stdoutOutput).toContain("User approved");
 		expect(stdoutOutput).toContain("moved to Completed");
+
+		stdoutOutput = "";
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed", "codex-stop-hook": "true" }), SOCKET, null);
+		expect(stdoutOutput).toBe("{}");
 	});
 
-	it("sends force with --force and reports the completion without waiting on a dialog", async () => {
+	it("sends force with --force without waiting on a dialog, and surfaces the app's refusal when the task never opted in", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
-
 		await handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null);
-
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.requestCompletion", { taskId: "aaaaaaaa", force: true }, { timeoutMs: 2 * 60 * 1000 });
 		expect(stderrOutput).not.toContain("requires user approval");
 		expect(stdoutOutput).toContain("Completed without asking (--force)");
-	});
 
-	it("surfaces the app's refusal when the task never opted in", async () => {
 		mockSend.mockResolvedValue(errResp("This task has not opted in to self-completion"));
-
 		await expect(
 			handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null),
 		).rejects.toThrow();
 		expect(stderrOutput).toContain("has not opted in to self-completion");
 	});
 
-	it("rejects --force on any status other than completed", async () => {
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "cancelled", force: "true" }), SOCKET, null),
-		).rejects.toThrow();
-		expect(stderrOutput).toContain("--force only applies to --status completed");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
 	// The task reached Completed another way (board, merged PR) while the dialog
 	// was open: the app voids the request and the agent got what it asked for.
-	it("succeeds when the request was voided because the task is already completed", async () => {
+	it("succeeds when the request was voided because the task is already completed, Codex hook included", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "completed" }));
 
 		await handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null);
 		expect(stdoutOutput).toContain("already Completed");
 		expect(stdoutOutput).toContain("got there another way");
-	});
 
-	it("prints the Codex stop-hook JSON when a voided request finds the task completed", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "completed" }));
-
+		stdoutOutput = "";
 		await handleTask("move", args(["aaaaaaaa"], { status: "completed", "codex-stop-hook": "true" }), SOCKET, null);
 		expect(stdoutOutput).not.toContain("already Completed");
 		expect(stdoutOutput.trim().startsWith("{")).toBe(true);
 	});
 
-	it("exits with code 6 and the voided wording when the task was cancelled instead", async () => {
+	it("exits 6 with the voided wording or the user's decline, and 1 on a server error", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "cancelled" }));
-
 		await expect(handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null)).rejects.toThrow("EXIT_6");
 		expect(stderrOutput).toContain("voided before anyone answered");
 		expect(stderrOutput).not.toContain("User declined");
-	});
 
-	it("exits with code 6 and says the task was deleted when it vanished mid-dialog", async () => {
+		stderrOutput = "";
 		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: null }));
-
 		await expect(handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null)).rejects.toThrow("EXIT_6");
 		expect(stderrOutput).toContain("was deleted");
-	});
-
-	it("exits with code 6 when the user declines", async () => {
+		stderrOutput = "";
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
 		await expect(
@@ -1238,18 +926,7 @@ describe("task move --status completed", () => {
 		).rejects.toThrow("EXIT_6");
 		expect(stderrOutput).toContain("User declined the completion request");
 		expect(stderrOutput).toContain("session stays alive");
-	});
-
-	it("exits with a hint when the approval wait times out", async () => {
-		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
-
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Timed out waiting for the user's decision");
-	});
-
-	it("exits on server error", async () => {
+		stderrOutput = "";
 		mockSend.mockResolvedValue(errResp("Task is already completed"));
 
 		await expect(
@@ -1268,24 +945,7 @@ describe("task move --status completed", () => {
 		expect(stderrOutput).toContain("Run the same `dev3 task move` again");
 		expect(stdoutOutput).not.toContain("User approved");
 	});
-
-	it("prints minimal JSON stdout for Codex stop hooks on approval", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "completed", "codex-stop-hook": "true" }),
-			SOCKET,
-			null,
-		);
-
-		expect(stdoutOutput).toBe("{}");
-	});
 });
-
-// ─── task move --status cancelled (agent cancellation request) ──────────────
-// Same approval contract as `completed`, its own method and its own exit code:
-// "the work landed" and "the work is garbage" must not be one answer.
 
 // A reset: `todo` on a task with a run. The user approves it in the app, whoever
 // asks — no task context grants consent (T17, T17b).
@@ -1314,12 +974,11 @@ describe("task move --status todo", () => {
 		await expect(handleTask("move", args(["aaaaaaaa"], { status: "todo" }), SOCKET, null)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_RESET_DECLINED}`);
 		expect(stderrOutput).toContain("nothing was stopped or deleted");
 	});
-
-	it("refuses --if-status with --status todo instead of guessing", async () => {
-		await expect(handleTask("move", args(["aaaaaaaa"], { status: "todo", "if-status": "in-progress" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
 });
+
+// ─── task move --status cancelled (agent cancellation request) ──────────────
+// Same approval contract as `completed`, its own method and its own exit code:
+// "the work landed" and "the work is garbage" must not be one answer.
 
 describe("task move --status cancelled", () => {
 	it("sends task.requestCancellation with the long approval timeout", async () => {
@@ -1348,19 +1007,18 @@ describe("task move --status cancelled", () => {
 		expect(stderrOutput).toContain("session stays alive");
 	});
 
-	it("exits with a hint when the approval wait times out", async () => {
+	it("on an approval timeout, warns this session dies for its own task but not for another task", async () => {
 		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
 
 		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, CTX),
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Timed out waiting for the user's decision");
-	});
-
-	// The dialog is about the TARGET task, so for `--task`/`--project` the old
-	// "this session will be destroyed" was simply false, and it read as if the
-	// prompt were scoped to the requester (h0x91b/dev-3.0#1669).
-	it("does not claim this session dies when the timeout was for another task", async () => {
+		expect(stderrOutput).toContain("this session will be destroyed");
+		stderrOutput = "";
+		// The dialog is about the TARGET task, so for `--task`/`--project` the old
+		// "this session will be destroyed" was simply false, and it read as if the
+		// prompt were scoped to the requester (h0x91b/dev-3.0#1669).
 		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
 
 		await expect(
@@ -1368,15 +1026,6 @@ describe("task move --status cancelled", () => {
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("This session is not the target");
 		expect(stderrOutput).not.toContain("this session will be destroyed");
-	});
-
-	it("still warns that this session dies when the timeout was for its own task", async () => {
-		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
-
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("this session will be destroyed");
 	});
 
 	it("says whose worktree died when another task was cancelled", async () => {
@@ -1389,15 +1038,6 @@ describe("task move --status cancelled", () => {
 
 		expect(stdoutOutput).toContain("this session is unaffected");
 		expect(stdoutOutput).not.toContain("This worktree and terminal session are being destroyed");
-	});
-
-	it("exits on server error", async () => {
-		mockSend.mockResolvedValue(errResp("Task is already cancelled"));
-
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Task is already cancelled");
 	});
 });
 
@@ -1479,6 +1119,8 @@ describe("task move --status todo after the socket drops", () => {
 	});
 });
 
+// Completion and cancellation share one re-attach loop (waitForDestructiveApproval),
+// so only the per-kind outcomes run for both; the loop mechanics run once, for cancel.
 describe.each([
 	{ status: "cancelled", method: "task.requestCancellation", declineExit: "EXIT_22" },
 	{ status: "completed", method: "task.requestCompletion", declineExit: "EXIT_6" },
@@ -1506,13 +1148,24 @@ describe.each([
 		expect(callsOf(method)).toHaveLength(1);
 		expect(stderrOutput).toContain("User declined");
 	});
+});
 
-	it("reports an approval that landed while disconnected as success", async () => {
+describe("task move --status cancelled: re-attach loop after the socket drops", () => {
+	const target = "cancelled";
+	const method = "task.requestCancellation";
+	const declineExit = "EXIT_22";
+
+	it("reports an approval that landed while disconnected, and a move with no record of the answer, as success", async () => {
 		script({ [method]: [emptyResponse()], "approval.status": [status("answered", target, true)] });
-
 		await handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null);
 		expect(callsOf(method)).toHaveLength(1);
 		expect(stdoutOutput).toContain("User approved");
+
+		resetIO();
+		script({ [method]: [emptyResponse()], "approval.status": [status("none", target)] });
+		await handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null);
+		expect(stdoutOutput).toContain("no record of how the request was answered");
+		expect(stdoutOutput).not.toContain("User approved");
 	});
 
 	it("exits 26 without re-asking when the app has no record and the task has not moved", async () => {
@@ -1525,14 +1178,6 @@ describe.each([
 		expect(stderrOutput).toContain("not evidence");
 		expect(stderrOutput).not.toContain("User declined");
 		expect(stderrOutput).not.toMatch(/nothing was approved/i);
-	});
-
-	it("reports the move when the app has no record but the task reached its target", async () => {
-		script({ [method]: [emptyResponse()], "approval.status": [status("none", target)] });
-
-		await handleTask("move", args(["aaaaaaaa"], { status: target }), SOCKET, null);
-		expect(stdoutOutput).toContain("no record of how the request was answered");
-		expect(stdoutOutput).not.toContain("User approved");
 	});
 
 	it("never re-attaches through an app that does not know approval.status", async () => {
@@ -1623,622 +1268,13 @@ describe.each([
 	});
 });
 
-// ─── --id flag support ───────────────────────────────────────────────────────
-// The CLI should accept --id <taskId> as an alternative to positional arg.
-// This lets agents update/show/move ANY task, not just the current one.
-
-describe("task show --id flag", () => {
-	it("uses --id flag when no positional arg given", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args([], { id: "bbbbbbbb" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.show", {
-			taskId: "bbbbbbbb",
-		});
-	});
-
-	it("--id flag takes priority over context taskId", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args([], { id: "bbbbbbbb" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-	});
-
-	it("positional arg takes priority over --id flag", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args(["cccccccc"], { id: "bbbbbbbb" }), SOCKET, null);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc");
-	});
-});
-
-describe("task show --task aliases", () => {
-	it("--task flag takes priority over context taskId", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args([], { task: "bbbbbbbb" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-
-	it("--task-id flag is accepted as an explicit target alias", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("show", args([], { "task-id": "cccccccc" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-});
-
-describe("task update --id flag", () => {
-	it("uses --id flag when no positional arg given", async () => {
-		const updated = { ...FAKE_TASK, title: "Updated" };
-		mockSend.mockResolvedValue(okResp(updated));
-
-		await handleTask("update", args([], { id: "bbbbbbbb", title: "Updated" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
-			taskId: "bbbbbbbb",
-			title: "Updated",
-		});
-	});
-
-	it("--id flag takes priority over context taskId", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("update", args([], { id: "bbbbbbbb", title: "T" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-	});
-
-	it("--id flag should NOT silently fall back to context", async () => {
-		// If --id is provided, the request must use that ID, never the context task
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("update", args([], { id: "different-task", title: "T" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).not.toBe(CTX.taskId);
-		expect(params.taskId).toBe("different-task");
-	});
-});
-
-describe("task update --task flag", () => {
-	it("--task flag takes priority over context taskId", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("update", args([], { task: "bbbbbbbb", description: "D" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-
-	it("--task-id flag is accepted as an explicit target alias", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask("update", args([], { "task-id": "cccccccc", title: "T" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("cccccccc");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-});
-
-describe("task unknown flags", () => {
-	it("rejects unknown flags instead of falling back to context", async () => {
-		await expect(
-			handleTask("update", args([], { taskk: "bbbbbbbb", description: "D" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-
-		expect(stderrOutput).toContain("Unknown option");
-		expect(stderrOutput).toContain("--taskk");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-describe("task move --if-status flag", () => {
-	it("passes --if-status to server when provided", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "review-by-user", "if-status": "in-progress" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.ifStatus).toBe("in-progress");
-		expect(params.newStatus).toBe("review-by-user");
-	});
-
-	it("does not include ifStatus when --if-status is not provided", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-user" }), SOCKET, null);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params).not.toHaveProperty("ifStatus");
-	});
-});
-
-describe("task move --if-status-not flag", () => {
-	it("passes --if-status-not to server when provided", async () => {
-		const moved = { ...FAKE_TASK, status: "in-progress" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "in-progress", "if-status-not": "review-by-ai" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.ifStatusNot).toBe("review-by-ai");
-		expect(params.newStatus).toBe("in-progress");
-	});
-
-	it("does not include ifStatusNot when --if-status-not is not provided", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-user" }), SOCKET, null);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params).not.toHaveProperty("ifStatusNot");
-	});
-
-	it("passes comma-separated --if-status-not to server", async () => {
-		const moved = { ...FAKE_TASK, status: "in-progress" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "in-progress", "if-status-not": "review-by-ai,review-by-user" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.ifStatusNot).toBe("review-by-ai,review-by-user");
-	});
-
-	it("supports both --if-status and --if-status-not together", async () => {
-		const moved = { ...FAKE_TASK, status: "in-progress" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask(
-			"move",
-			args(["aaaaaaaa"], { status: "in-progress", "if-status": "todo", "if-status-not": "review-by-ai" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.ifStatus).toBe("todo");
-		expect(params.ifStatusNot).toBe("review-by-ai");
-	});
-});
-
-describe("task move --id flag", () => {
-	it("uses --id flag when no positional arg given", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args([], { id: "bbbbbbbb", status: "review-by-user" }), SOCKET, null);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
-			taskId: "bbbbbbbb",
-			newStatus: "review-by-user",
-		});
-	});
-
-	it("--id flag takes priority over context taskId", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args([], { id: "bbbbbbbb", status: "review-by-user" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls.find((call) => call[1] === "task.move")![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-	});
-});
-
-describe("task move --task aliases", () => {
-	it("--task flag takes priority over context taskId", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args([], { task: "bbbbbbbb", status: "review-by-user" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls.find((call) => call[1] === "task.move")![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-
-	it("--task-id flag is accepted as an explicit target alias", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		await handleTask("move", args([], { "task-id": "cccccccc", status: "review-by-user" }), SOCKET, CTX);
-
-		const params = mockSend.mock.calls.find((call) => call[1] === "task.move")![2]!;
-		expect(params.taskId).toBe("cccccccc");
-		expect(params.taskId).not.toBe(CTX.taskId);
-	});
-});
-
-// ─── task create --description ───────────────────────────────────────────────
-// create should support --description to set initial description
-
-describe("task create --description", () => {
-	const createdTask: Task = { ...FAKE_TASK, status: "review-by-user", seq: 50, title: "With desc", description: "Full description here" };
-
-	it("sends description to server when --description is provided", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		await handleTask(
-			"create",
-			args([], { project: "proj-001", title: "With desc", description: "Full description here" }),
-			SOCKET,
-			null,
-		);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
-			projectId: "proj-001",
-			title: "With desc",
-			description: "Full description here",
-		});
-	});
-
-	it("works without --description (backward compat)", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		await handleTask(
-			"create",
-			args([], { project: "proj-001", title: "No desc" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params).not.toHaveProperty("description");
-	});
-
-	it("reads --description - from stdin without altering Markdown", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-		const markdown = '# Release notes\n\nUse **bold** and quote: "quoted".\n';
-		mockReadStdin.mockResolvedValue(markdown);
-
-		await handleTask(
-			"create",
-			args([], { project: "proj-001", title: "Release notes", description: "-" }),
-			SOCKET,
-			null,
-		);
-
-		expect(mockReadStdin).toHaveBeenCalledOnce();
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
-			projectId: "proj-001",
-			title: "Release notes",
-			description: markdown,
-		});
-	});
-
-	it("uses the first stdin line as the title when --title is omitted", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-		const markdown = "Release notes\n\n- Preserve this line exactly.\n";
-		mockReadStdin.mockResolvedValue(markdown);
-
-		await handleTask(
-			"create",
-			args([], { project: "proj-001", description: "-" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.title).toBe("Release notes");
-		expect(params.description).toBe(markdown);
-	});
-
-	it("refuses a positional description together with --description instead of dropping one", async () => {
-		await expect(
-			handleTask("create", args(["positional text"], { project: "proj-001", title: "T", description: "flag text" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-
-		expect(mockSend).not.toHaveBeenCalled();
-		expect(mockReadStdin).not.toHaveBeenCalled();
-	});
-
-	it("refuses a positional description together with --description -", async () => {
-		await expect(
-			handleTask("create", args(["positional text"], { project: "proj-001", title: "T", description: "-" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-// ─── task move: status validation ────────────────────────────────────────────
-// The CLI blocks "cancelled" only; "completed" becomes an approval request.
-// Unknown values (potential custom column IDs) are forwarded to the server,
-// which validates them.
-
-describe("task move status validation", () => {
-	it("forwards unknown status values to the server (may be a custom column ID)", async () => {
-		mockSend.mockResolvedValue({ id: "r", ok: false, error: "Invalid status: \"garbage\"" });
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "garbage" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(mockSend).toHaveBeenCalled();
-	});
-
-	it("forwards typo'd status to the server (e.g. 'in_progress' instead of 'in-progress')", async () => {
-		mockSend.mockResolvedValue({ id: "r", ok: false, error: "Invalid status: \"in_progress\"" });
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "in_progress" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(mockSend).toHaveBeenCalled();
-	});
-
-	it("rejects empty string status", async () => {
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-// ─── task create: cross-project ──────────────────────────────────────────────
-
-describe("task create cross-project", () => {
-	const createdTask = {
-		...FAKE_TASK,
-		status: "review-by-user" as const,
-		seq: 50,
-		projectId: "other-proj",
-	};
-
-	it("--project flag allows creating task in a different project", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		await handleTask(
-			"create",
-			args([], { project: "other-proj", title: "Cross-project task" }),
-			SOCKET,
-			CTX,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.projectId).toBe("other-proj");
-		// context projectId should NOT override explicit --project
-		expect(params.projectId).not.toBe(CTX.projectId);
-	});
-});
-
-// ─── task update: no project, no context ─────────────────────────────────────
-// When updating a foreign task by explicit ID without --project and without
-// context, the request should still work (server resolves by task ID alone),
-// but projectId should not be silently injected from a wrong context.
-
-describe("task update foreign task without project", () => {
-	it("sends request without projectId when updating by explicit ID, no context", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		await handleTask(
-			"update",
-			args(["bbbbbbbb"], { title: "Foreign update" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.taskId).toBe("bbbbbbbb");
-		expect(params).not.toHaveProperty("projectId");
-	});
-});
-
-// ─── short ID resolution ─────────────────────────────────────────────────────
-// `tasks list` displays 8-char short IDs (t.id.slice(0, 8)).
-// When the user copies that ID and uses it with task show/update/move,
-// the CLI must resolve it to the full UUID before sending to the server.
-// Currently the CLI passes the 8-char string as-is, and the server returns
-// "Task not found" because it only matches on full UUIDs.
-//
-// We observed this bug live:
-//   $ dev3 task show --id 5f01f223
-//   error: Task not found: 5f01f223
-
-describe("task show: short ID resolution", () => {
-	it("resolves 8-char short ID to full UUID before sending to server", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		const shortId = FAKE_TASK.id.slice(0, 8); // "aaaaaaaa"
-		await handleTask("show", args([shortId]), SOCKET, CTX);
-
-		const sentId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		// The server should receive the FULL UUID, not the 8-char prefix
-		expect(sentId).toBe(FAKE_TASK.id);
-	});
-});
-
-describe("task update: short ID resolution", () => {
-	it("resolves 8-char short ID to full UUID before sending to server", async () => {
-		mockSend.mockResolvedValue(okResp(FAKE_TASK));
-
-		const shortId = FAKE_TASK.id.slice(0, 8);
-		await handleTask("update", args([shortId], { title: "Updated" }), SOCKET, CTX);
-
-		const sentId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		expect(sentId).toBe(FAKE_TASK.id);
-	});
-});
-
-describe("task move: short ID resolution", () => {
-	it("resolves 8-char short ID to full UUID before sending to server", async () => {
-		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
-		mockSend.mockResolvedValue(okResp(moved));
-
-		const shortId = FAKE_TASK.id.slice(0, 8);
-		await handleTask("move", args([shortId], { status: "review-by-user" }), SOCKET, CTX);
-
-		const sentId = (mockSend.mock.calls[0]![2]! as Record<string, unknown>).taskId;
-		expect(sentId).toBe(FAKE_TASK.id);
-	});
-});
-
-// ─── whitespace validation ───────────────────────────────────────────────────
-// Whitespace-only strings are truthy ("   ".length > 0), so they pass basic
-// `if (!title)` checks. But creating a task with "   " as the title or updating
-// to a whitespace-only value is never intentional — it's always a user error
-// that should be caught early.
-
-describe("task create whitespace validation", () => {
-	it("rejects whitespace-only --title", async () => {
-		await expect(
-			handleTask("create", args([], { project: "proj-001", title: "   " }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--title");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-});
-
-describe("task update whitespace validation", () => {
-	it("rejects whitespace-only --title when it's the only update field", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"], { title: "   " }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("clears description when --description is whitespace-only", async () => {
-		// Whitespace-only is interpreted as "clear the description" — tri-state
-		// behavior: present flag (even if empty/whitespace) means set, absent means leave alone.
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, description: "" }));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { description: "   " }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.description).toBe("");
-	});
-
-	it("clears description when --description is empty string", async () => {
-		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, description: "" }));
-
-		await handleTask(
-			"update",
-			args(["aaaaaaaa"], { description: "" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params).toHaveProperty("description", "");
-	});
-});
-
-// ─── task create: positional content as description ──────────────────────────
-// When using @file syntax, the file content lands in positional[0] after
-// resolveFileArgs. If --title is provided but --description is not, the
-// positional content should become the description.
-// Bug: createTask ignores positional args entirely — file content is lost.
-
-describe("task create with positional content (e.g. @file)", () => {
-	const createdTask: Task = {
-		...FAKE_TASK,
-		status: "todo",
-		seq: 55,
-		title: "Port exposure",
-		description: "Show which ports a task uses.\n\n**GitHub:** #190",
-	};
-
-	it("uses positional[0] as description when --title given but no --description", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		const fileContent = "Show which ports a task uses.\n\n**GitHub:** #190";
-		await handleTask(
-			"create",
-			args([fileContent], { project: "proj-001", title: "Port exposure" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.title).toBe("Port exposure");
-		expect(params.description).toBe(fileContent);
-	});
-
-	it("uses first line of positional as title when --title is not provided", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		const fileContent = "Port exposure\n\nShow which ports a task uses.\n\n**GitHub:** #190";
-		await handleTask(
-			"create",
-			args([fileContent], { project: "proj-001" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.title).toBe("Port exposure");
-		expect(params.description).toBe(fileContent);
-	});
-
-	it("uses single-line positional as both title and description when no --title", async () => {
-		mockSend.mockResolvedValue(okResp(createdTask));
-
-		const fileContent = "Fix the login bug";
-		await handleTask(
-			"create",
-			args([fileContent], { project: "proj-001" }),
-			SOCKET,
-			null,
-		);
-
-		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.title).toBe("Fix the login bug");
-	});
-});
-
-// ─── unknown subcommand ──────────────────────────────────────────────────────
-
-describe("task (unknown subcommand)", () => {
-	it("exits with usage error for unknown subcommand", async () => {
-		await expect(
-			handleTask("deploy", args(), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
+// ─── task (unknown subcommand) / task list ──────────────────────────────────
+
+describe("task subcommand dispatch", () => {
+	it("exits with a usage error for an unknown or missing subcommand, and forwards `task list` to tasks.list", async () => {
+		await expect(handleTask("deploy", args(), SOCKET, null)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Unknown subcommand");
-	});
-
-	it("exits with usage error when no subcommand", async () => {
-		await expect(
-			handleTask(undefined, args(), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-	});
-});
-
-describe("task list (alias for tasks list)", () => {
-	it("forwards `task list` to the plural tasks.list command", async () => {
+		await expect(handleTask(undefined, args(), SOCKET, null)).rejects.toThrow("EXIT_3");
 		mockSend.mockResolvedValue(okResp([FAKE_TASK]));
 		await handleTask("list", args([], {}), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(
@@ -2248,17 +1284,20 @@ describe("task list (alias for tasks list)", () => {
 		);
 		expect(stdoutOutput).toContain("Fix the login bug");
 	});
+
 });
 
 // ─── agent-initiated launch approval ─────────────────────────────────────────
 
 describe("task move — agent asking to start another task", () => {
 	const OTHER = "bbbbbbbb-1111-2222-3333-444444444444";
+	const BASELINE_MS = 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS;
+	const launch = () => handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
-	it("tells the app which task is asking, so a foreign activation can be gated", async () => {
+	it("tells the app which task is asking, waits the baseline, and prints the new task's seq and how to talk to it", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: 'dev3 message --task seq:77 "your message"' }] }));
 
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+		await launch();
 
 		// A cheap `approval.policy` read comes first so the CLI can size its own
 		// timeout to the configured delay — the move itself is the second call.
@@ -2267,7 +1306,9 @@ describe("task move — agent asking to start another task", () => {
 		expect(move[2]!.sourceTaskId).toBe(CTX.taskId);
 		// The dialog can sit open for minutes, so this call waits far longer than
 		// the default socket timeout.
-		expect(move[3]).toEqual({ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
+		expect(move[3]).toEqual({ timeoutMs: BASELINE_MS });
+		expect(stdoutOutput).toContain("seq:77");
+		expect(stdoutOutput).toContain("dev3 message --task seq:77");
 	});
 
 	it("waits past a one-hour delay instead of giving up after the fixed ten minutes", async () => {
@@ -2279,46 +1320,30 @@ describe("task move — agent asking to start another task", () => {
 			return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
 		});
 
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+		await launch();
 
 		// One hour plus the two-minute grace, not the ten-minute baseline.
 		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 60 * 60 * 1000 + 2 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
 	});
 
-	it("keeps the baseline when the app cannot say what its delay is", async () => {
-		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "approval.policy") throw new Error("Socket timeout (5s)");
-			return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
-		});
-
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
-
-		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
-	});
-
-	it("never shortens the wait below the baseline for a short delay", async () => {
-		mockSend.mockImplementation(async (_socket: string, method: string) => {
-			if (method === "approval.policy") return okResp({ autoApproveMs: 15_000 });
-			return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
-		});
-
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
-
-		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
-	});
-
-	it("prints the new task's seq and how to talk to it on approval", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: 'dev3 message --task seq:77 "your message"' }] }));
-
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("seq:77");
-		expect(stdoutOutput).toContain("dev3 message --task seq:77");
+	it("keeps the baseline when the app cannot say what its delay is, and never shortens it for a short delay", async () => {
+		for (const policy of ["throws", "short"] as const) {
+			resetIO();
+			mockSend.mockImplementation(async (_socket: string, method: string) => {
+				if (method === "approval.policy") {
+					if (policy === "throws") throw new Error("Socket timeout (5s)");
+					return okResp({ autoApproveMs: 15_000 });
+				}
+				return okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: "x" }] });
+			});
+			await launch();
+			expect(moveCall(mockSend)![3], policy).toEqual({ timeoutMs: BASELINE_MS });
+		}
 	});
 
 	// 2026-11-01 incident: another dev3 instance deleted the launched task's
 	// worktree mid-preparation, and the requester was still told it started.
-	it("exits with the preparation-failed code when the approved task failed to prepare", async () => {
+	it("exits with the preparation-failed code when the approved task (or any one variant) failed to prepare", async () => {
 		mockSend.mockResolvedValue(okResp({
 			approved: true,
 			seq: 77,
@@ -2326,16 +1351,13 @@ describe("task move — agent asking to start another task", () => {
 			launched: [{ variantIndex: null, replyCommand: "x", preparation: { state: "failed", error: "Preparation interrupted by app restart" } }],
 		}));
 
-		await expect(
-			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
-		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED}`);
+		await expect(launch()).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED}`);
 		expect(stderrOutput).toContain("failed to prepare");
 		expect(stderrOutput).toContain("Preparation interrupted by app restart");
 		expect(stdoutOutput).not.toContain("is starting");
 		expect(stdoutOutput).not.toContain("It knows you started it");
-	});
 
-	it("fails a variant group when any one variant failed to prepare", async () => {
+		resetIO();
 		mockSend.mockResolvedValue(okResp({
 			approved: true,
 			seq: 77,
@@ -2345,10 +1367,7 @@ describe("task move — agent asking to start another task", () => {
 				{ variantIndex: 2, replyCommand: "b", preparation: { state: "failed", error: "setup script exited 1" } },
 			],
 		}));
-
-		await expect(
-			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
-		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED}`);
+		await expect(launch()).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED}`);
 		expect(stderrOutput).toContain("variant #2: setup script exited 1");
 	});
 
@@ -2360,27 +1379,20 @@ describe("task move — agent asking to start another task", () => {
 			launched: [{ variantIndex: null, replyCommand: "x", preparation: { state: "still-preparing" } }],
 		}));
 
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+		await launch();
 
 		expect(stdoutOutput).toContain("still preparing");
 		expect(stdoutOutput).toContain("dev3 task show --task seq:77");
 	});
 
-	it("exits with the launch-declined code when the user says no", async () => {
+	it("exits with the launch-declined code when the user says no, and says voided when the target went away mid-dialog", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
-
-		await expect(
-			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
-		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		await expect(launch()).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 		expect(stderrOutput).toContain("declined the launch request");
-	});
 
-	it("says the request was voided, not declined, when the target task went away mid-dialog", async () => {
+		stderrOutput = "";
 		mockSend.mockResolvedValue(okResp({ approved: false, stale: true }));
-
-		await expect(
-			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
-		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		await expect(launch()).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 		expect(stderrOutput).toContain("voided before anyone answered");
 		expect(stderrOutput).not.toContain("User declined");
 	});
@@ -2399,7 +1411,7 @@ describe("task move — agent asking to start another task", () => {
 			],
 		}));
 
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+		await launch();
 
 		expect(stdoutOutput).toContain("starting as 3 variants");
 		expect(stdoutOutput).toContain("variant #1  dev3 message --task 11111111");
@@ -2409,84 +1421,57 @@ describe("task move — agent asking to start another task", () => {
 	});
 
 	describe("--handoff-file", () => {
-		it("sends the file's text so the launched agent gets it without a second message", async () => {
+		it("sends the file's text so the launched agent gets it without a second message, and nothing without the flag", async () => {
 			const path = join(tmpdir(), `dev3-handoff-${Date.now()}.md`);
 			writeFileSync(path, "  Report to Seq 1141 only.\n", "utf8");
 			mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] }));
 
-			await handleTask("move", args([], { task: OTHER, status: "in-progress", "handoff-file": path }), SOCKET, CTX);
+			try {
+				await handleTask("move", args([], { task: OTHER, status: "in-progress", "handoff-file": path }), SOCKET, CTX);
+				expect(moveCall(mockSend)![2]!.handoffNote).toBe("Report to Seq 1141 only.");
+			} finally {
+				rmSync(path, { force: true });
+			}
 
-			expect(moveCall(mockSend)![2]!.handoffNote).toBe("Report to Seq 1141 only.");
-			rmSync(path, { force: true });
+			mockSend.mockClear();
+			await launch();
+			expect(moveCall(mockSend)![2]!).not.toHaveProperty("handoffNote");
 		});
 
 		it("fails on the launcher's own terminal when the file cannot be read", async () => {
-			await expect(
-				handleTask("move", args([], { task: OTHER, status: "in-progress", "handoff-file": "/nope/missing.md" }), SOCKET, CTX),
-			).rejects.toThrow("EXIT_3");
-			expect(stderrOutput).toContain("cannot read");
-			expect(mockSend).not.toHaveBeenCalled();
-		});
-
-		it("omits the note entirely when the flag is absent", async () => {
-			mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] }));
-
-			await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
-
-			expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("handoffNote");
+			await expectRefusedBeforeSending([
+				{ label: "missing handoff file", sub: "move", a: args([], { task: OTHER, status: "in-progress", "handoff-file": "/nope/missing.md" }), ctx: CTX, stderr: ["cannot read"] },
+			]);
 		});
 	});
 
 	describe("--agent/--config (issue #1911)", () => {
-		const approved = () => okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] });
+		it("passes the suggested agent and preset with the launch request, and nothing without the flags", async () => {
+			mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other", launched: [{ variantIndex: null, replyCommand: "x" }] }));
+			const sent = async (flags: Record<string, string>) => {
+				mockSend.mockClear();
+				await handleTask("move", args([], { task: OTHER, status: "in-progress", ...flags }), SOCKET, CTX);
+				return moveCall(mockSend)![2]!;
+			};
 
-		it("passes the suggested agent and preset with the launch request", async () => {
-			mockSend.mockResolvedValue(approved());
+			expect(await sent({ agent: "builtin-codex", config: "codex-low" })).toMatchObject({ agentId: "builtin-codex", configId: "codex-low" });
 
-			await handleTask("move", args([], { task: OTHER, status: "in-progress", agent: "builtin-codex", config: "codex-low" }), SOCKET, CTX);
+			const agentOnly = await sent({ agent: "builtin-codex" });
+			expect(agentOnly.agentId).toBe("builtin-codex");
+			expect(agentOnly).not.toHaveProperty("configId");
 
-			expect(moveCall(mockSend)![2]!).toMatchObject({ agentId: "builtin-codex", configId: "codex-low" });
+			// No flags: the dialog keeps the global default.
+			const none = await sent({});
+			expect(none).not.toHaveProperty("agentId");
+			expect(none).not.toHaveProperty("configId");
 		});
 
-		it("passes the agent alone when --config is omitted", async () => {
-			mockSend.mockResolvedValue(approved());
-
-			await handleTask("move", args([], { task: OTHER, status: "in-progress", agent: "builtin-codex" }), SOCKET, CTX);
-
-			expect(moveCall(mockSend)![2]!.agentId).toBe("builtin-codex");
-			expect(moveCall(mockSend)![2]!).not.toHaveProperty("configId");
-		});
-
-		it("sends no suggestion without the flags, so the dialog keeps the global default", async () => {
-			mockSend.mockResolvedValue(approved());
-
-			await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
-
-			expect(moveCall(mockSend)![2]!).not.toHaveProperty("agentId");
-			expect(moveCall(mockSend)![2]!).not.toHaveProperty("configId");
-		});
-
-		it("refuses --config without --agent", async () => {
-			await expect(
-				handleTask("move", args([], { task: OTHER, status: "in-progress", config: "codex-low" }), SOCKET, CTX),
-			).rejects.toThrow("EXIT_3");
-			expect(stderrOutput).toContain("--config requires --agent");
-			expect(mockSend).not.toHaveBeenCalled();
-		});
-
-		it("refuses the flags on a move that is not a launch", async () => {
-			await expect(
-				handleTask("move", args([], { status: "review-by-ai", agent: "builtin-codex" }), SOCKET, CTX),
-			).rejects.toThrow("EXIT_3");
-			expect(stderrOutput).toContain("only apply when starting ANOTHER task");
-			expect(mockSend).not.toHaveBeenCalled();
-		});
-
-		it("refuses the flags on a completion request instead of dropping them", async () => {
-			await expect(
-				handleTask("move", args([], { task: OTHER, status: "completed", agent: "builtin-codex" }), SOCKET, CTX),
-			).rejects.toThrow("EXIT_3");
-			expect(mockSend).not.toHaveBeenCalled();
+		it("refuses --config without --agent, and the flags on a move that is not a launch", async () => {
+			await expectRefusedBeforeSending([
+				{ label: "--config without --agent", sub: "move", a: args([], { task: OTHER, status: "in-progress", config: "codex-low" }), ctx: CTX, stderr: ["--config requires --agent"] },
+				{ label: "own status move", sub: "move", a: args([], { status: "review-by-ai", agent: "builtin-codex" }), ctx: CTX, stderr: ["only apply when starting ANOTHER task"] },
+				{ label: "completion request", sub: "move", a: args([], { task: OTHER, status: "completed", agent: "builtin-codex" }), ctx: CTX },
+			]);
 		});
 	});
 
@@ -2508,45 +1493,23 @@ describe("task move — agent asking to start another task", () => {
 	it("names its own pane and pid, so the task it launches can reply to THIS agent", async () => {
 		vi.stubEnv("TMUX_PANE", "%3");
 		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "in-progress" as const }));
-		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
-		const move = mockSend.mock.calls.find(([, method]) => method === "task.move");
-		expect(move?.[2]).toMatchObject({ sourceTaskId: CTX.taskId, sourcePaneId: "%3", sourcePid: process.pid });
+		await launch();
+		expect(moveCall(mockSend)?.[2]).toMatchObject({ sourceTaskId: CTX.taskId, sourcePaneId: "%3", sourcePid: process.pid });
 	});
 });
 
 describe("task create --scratch --run", () => {
-	it("requires --scratch and --run together", async () => {
-		await expect(
-			handleTask("create", args([], { scratch: "true", project: "proj-001" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--scratch and --run go together");
-		expect(mockSend).not.toHaveBeenCalled();
+	it("refuses everything a scratch launch cannot honour before contacting the app", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "--scratch without --run", sub: "create", a: args([], { scratch: "true", project: "proj-001" }), ctx: CTX, stderr: ["--scratch and --run go together"] },
+			{ label: "a title/description", sub: "create", a: args(["do the thing"], { scratch: "true", run: "true", project: "proj-001" }), ctx: CTX, stderr: ["no title, description or type"] },
+			{ label: "--type", sub: "create", a: args([], { scratch: "true", run: "true", type: "coordinator", project: "proj-001" }), ctx: CTX, stderr: ["no title, description or type"] },
+			{ label: "outside a task worktree", sub: "create", a: args([], { scratch: "true", run: "true", project: "proj-001" }), stderr: ["inside a task worktree"] },
+			{ label: "--agent on a plain create, which launches nothing", sub: "create", a: args([], { title: "Later", agent: "builtin-codex", project: "proj-001" }), ctx: CTX, stderr: ["--agent/--config only apply to a launch"] },
+		]);
 	});
 
-	it("refuses a title or description — a scratch task has no prompt", async () => {
-		await expect(
-			handleTask("create", args(["do the thing"], { scratch: "true", run: "true", project: "proj-001" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("no title, description or type");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses --type — a scratch task has no prompt to put a role brief above", async () => {
-		await expect(
-			handleTask("create", args([], { scratch: "true", run: "true", type: "coordinator", project: "proj-001" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("no title, description or type");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses to run outside a task worktree", async () => {
-		await expect(
-			handleTask("create", args([], { scratch: "true", run: "true", project: "proj-001" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("inside a task worktree");
-	});
-
-	it("requests the scratch launch and reports the approved peer", async () => {
+	it("requests the scratch launch, reports the approved peer, and passes --agent/--config as the suggested choice", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: true, seq: 91, title: "Scratch — 14:32", replyCommand: 'dev3 message --task seq:91 "your message"' }));
 
 		await handleTask("create", args([], { scratch: "true", run: "true" }), SOCKET, CTX);
@@ -2558,6 +1521,14 @@ describe("task create --scratch --run", () => {
 			{ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS },
 		);
 		expect(stdoutOutput).toContain("seq:91");
+
+		await handleTask("create", args([], { scratch: "true", run: "true", agent: "builtin-codex", config: "codex-low" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenLastCalledWith(
+			SOCKET,
+			"task.createScratchAndRun",
+			{ projectId: "proj-001", sourceTaskId: CTX.taskId, agentId: "builtin-codex", configId: "codex-low" },
+			{ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS },
+		);
 	});
 
 	it("names its own pane and pid, so the scratch peer can reply to THIS agent", async () => {
@@ -2571,27 +1542,6 @@ describe("task create --scratch --run", () => {
 		expect(launch?.[2]).toEqual({ projectId: "proj-001", sourceTaskId: CTX.taskId, sourcePaneId: "pane-2", sourcePid: process.pid });
 	});
 
-	it("passes --agent/--config as the dialog's suggested choice", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: true, seq: 91, title: "Scratch — 14:32", launched: [{ variantIndex: null, replyCommand: "x" }] }));
-
-		await handleTask("create", args([], { scratch: "true", run: "true", agent: "builtin-codex", config: "codex-low" }), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(
-			SOCKET,
-			"task.createScratchAndRun",
-			{ projectId: "proj-001", sourceTaskId: CTX.taskId, agentId: "builtin-codex", configId: "codex-low" },
-			{ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS },
-		);
-	});
-
-	it("refuses --agent on a plain task create, which launches nothing", async () => {
-		await expect(
-			handleTask("create", args([], { title: "Later", agent: "builtin-codex", project: "proj-001" }), SOCKET, CTX),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("--agent/--config only apply to a launch");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
 	it("exits with the launch-declined code when the scratch request is refused", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
@@ -2602,45 +1552,33 @@ describe("task create --scratch --run", () => {
 });
 
 describe("task open", () => {
-	it("sends task.open with the explicit id", async () => {
+	it("sends task.open with the explicit id and reports focused, reopened and undelivered outcomes", async () => {
 		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, projectId: "proj-001", delivered: true }));
-
 		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
-
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.open", { taskId: "aaaaaaaa" });
 		expect(stdoutOutput).toContain("Opened task aaaaaaaa in the app.");
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, delivered: true, reopened: true }));
+		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toContain("Opening a window on task aaaaaaaa.");
+
+		// No renderer to navigate: nothing was opened.
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, delivered: false }));
+		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toContain("nothing was opened");
 	});
 
-	it("auto-detects the task and project from the worktree context", async () => {
+	it("auto-detects the task and project from the worktree context, and refuses when none resolves", async () => {
 		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, projectId: "proj-001", delivered: true }));
-
 		await handleTask("open", args([]), SOCKET, CTX);
-
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.open", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 		});
-	});
 
-	it("reports a reopened window separately from a focused one", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, delivered: true, reopened: true }));
-
-		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).toContain("Opening a window on task aaaaaaaa.");
-	});
-
-	it("says nothing was opened when the app has no renderer to navigate", async () => {
-		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, delivered: false }));
-
-		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
-
-		expect(stdoutOutput).toContain("nothing was opened");
-	});
-
-	it("exits with a usage error when no task can be resolved", async () => {
-		await expect(handleTask("open", args([]), SOCKET, null)).rejects.toThrow(/EXIT_/);
-		expect(mockSend).not.toHaveBeenCalled();
+		await expectRefusedBeforeSending([{ label: "no task", sub: "open", a: args([]), exit: "EXIT_" }]);
 	});
 });
 
@@ -2714,7 +1652,7 @@ describe("--depends-on", () => {
 		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", "no-depends-on": "seq:1" }), SOCKET, null)).rejects.toThrow("EXIT_3");
 	});
 
-	it("task show lists what the task depends on and what it blocks", async () => {
+	it("task show lists what the task depends on and what it blocks, naming a cancelled dependency as cancelled", async () => {
 		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "blocked", dependsOn: [open, done], blocks: [{ taskId: "dddddddd", seq: 20, title: "Later", status: "todo" }] } }));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdoutOutput).toMatch(/Depends on:\s*#12 \(Agent is Working\), #13 \(Completed\) - blocked by #12/);
@@ -2728,9 +1666,8 @@ describe("--depends-on", () => {
 			dependsOn: [{ taskId: "cccccccc", seq: 13, title: "Second", status: "completed", open: false, state: "done" }],
 			blocks: [],
 		});
-	});
 
-	it("task show names a cancelled dependency as cancelled, not done", async () => {
+		stdoutOutput = "";
 		const cancelled = { taskId: "eeeeeeee", seq: 14, title: "Dropped", status: "cancelled", state: "cancelled" };
 		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "ready", dependsOn: [done, cancelled], blocks: [] } }));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
@@ -2779,18 +1716,15 @@ describe("--start-after", () => {
 		expect(stderrOutput).toContain("Starts after: #12, when its PR merges");
 	});
 
-	it("task create still refuses --agent without --start-after", async () => {
-		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", agent: "claude" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
+	it("rejects --until without --start-after, an unknown --until, and --start-after with --no-start-after", async () => {
+		await expectRefusedBeforeSending([
+			{ label: "--until alone", sub: "create", a: args([], { project: "proj-001", title: "Next", until: "merged" }) },
+			{ label: "unknown --until", sub: "create", a: args([], { project: "proj-001", title: "Next", "start-after": "seq:12", until: "done" }) },
+			{ label: "--start-after with --no-start-after", sub: "update", a: args(["aaaaaaaa"], { "start-after": "seq:12", "no-start-after": "true" }) },
+		]);
 	});
 
-	it("rejects --until without --start-after, and an unknown --until", async () => {
-		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", until: "merged" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", "start-after": "seq:12", until: "done" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("task update arms it from inside a task and records that task as the one asking", async () => {
+	it("task update arms it from inside a task, and sends the asking task with a new title or description", async () => {
 		mockSend.mockResolvedValue(okResp({ task: waiting, titlePreserved: false }));
 		await handleTask("update", args([], { task: "seq:44", "start-after": "seq:12", until: "merged" }), SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", expect.objectContaining({
@@ -2799,9 +1733,6 @@ describe("--start-after", () => {
 			until: "merged",
 			sourceTaskId: CTX.taskId,
 		}));
-	});
-
-	it("task update sends the task it runs in with a new title or description, so refs get that board", async () => {
 		mockSend.mockResolvedValue(okResp({ task: waiting, titlePreserved: false }));
 		await handleTask("update", args([], { task: "seq:44", project: "proj-002", description: "see seq:60" }), SOCKET, CTX);
 		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.update", expect.objectContaining({ description: "see seq:60", sourceTaskId: CTX.taskId }));
@@ -2809,20 +1740,14 @@ describe("--start-after", () => {
 		expect(mockSend.mock.calls[mockSend.mock.calls.length - 1]![2]).not.toHaveProperty("sourceTaskId");
 	});
 
-	it("task update --no-start-after is a standalone update", async () => {
+	it("task update --no-start-after is a standalone update, and task show prints the condition", async () => {
 		mockSend.mockResolvedValue(okResp({ task: { ...waiting, launchAfter: null }, titlePreserved: false }));
 		await handleTask("update", args(["aaaaaaaa"], { "no-start-after": "true" }), SOCKET, null);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", noStartAfter: true });
 		expect(stderrOutput).toContain("Start-after cleared");
-	});
-
-	it("refuses --start-after with --no-start-after", async () => {
-		await expect(handleTask("update", args(["aaaaaaaa"], { "start-after": "seq:12", "no-start-after": "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
-	});
-
-	it("task show prints the condition", async () => {
 		mockSend.mockResolvedValue(okResp(waiting));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdoutOutput).toMatch(/Starts after:\s+#12, when its PR merges/);
 	});
+
 });

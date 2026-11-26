@@ -147,7 +147,7 @@ describe("collectWorktreeReport — classification", () => {
 		expect(e.needsForce).toBe(false);
 	});
 
-	it("flags a worktree with no task record as orphaned and locks an unmerged branch", () => {
+	it("flags a worktree with no task record as orphaned, locks an unmerged branch, and dates it by directory mtime", () => {
 		const e = entry(report.entries, "cccccccc");
 		expect(e.category).toBe("orphaned");
 		expect(e.reclaimableBytes).toBe(3 * GB);
@@ -155,6 +155,9 @@ describe("collectWorktreeReport — classification", () => {
 		expect(e.branchMerged).toBe(false);
 		expect(e.needsForce).toBe(true);
 		expect(e.recommendation).toContain("--force-unmerged");
+		// No task record, so the age falls back to the directory mtime.
+		expect(e.ageDays).toBe(200);
+		expect(e.lastActivity).not.toBeNull();
 	});
 
 	it("reports a slug whose project no longer exists, with git facts unknown", () => {
@@ -166,38 +169,28 @@ describe("collectWorktreeReport — classification", () => {
 		expect(e.needsForce).toBe(false);
 	});
 
-	it("recommends deleting metadata of a task finished over a month ago", () => {
-		const e = entry(report.entries, "dddddddd");
-		expect(e.category).toBe("metadata-only");
-		expect(e.ageBucket).toBe("stale");
-		expect(e.reclaimableBytes).toBe(40 * MB);
+	it("reclaims metadata of a task finished over a month ago, but never a recent one or one still open", () => {
+		const stale = entry(report.entries, "dddddddd");
+		expect(stale.category).toBe("metadata-only");
+		expect(stale.ageBucket).toBe("stale");
+		expect(stale.reclaimableBytes).toBe(40 * MB);
+
+		const recent = entry(report.entries, "eeeeeeee");
+		expect(recent.ageBucket).toBe("recent");
+		expect(recent.reclaimableBytes).toBe(0);
+
+		const open = entry(report.entries, "99999999");
+		expect(open.category).toBe("metadata-only");
+		expect(open.ageBucket).toBe("stale");
+		expect(open.reclaimableBytes).toBe(0);
+		expect(open.recommendation).toContain("keep");
 	});
 
-	it("keeps metadata of a recently finished task", () => {
-		const e = entry(report.entries, "eeeeeeee");
-		expect(e.ageBucket).toBe("recent");
-		expect(e.reclaimableBytes).toBe(0);
-	});
-
-	it("never reclaims metadata of a task that is still open", () => {
-		const e = entry(report.entries, "99999999");
-		expect(e.category).toBe("metadata-only");
-		expect(e.ageBucket).toBe("stale");
-		expect(e.reclaimableBytes).toBe(0);
-		expect(e.recommendation).toContain("keep");
-	});
-
-	it("ignores directories that are not 8-hex task ids", () => {
+	it("ignores non-task dirs, totals disk and reclaimable bytes (and what needs force), and sorts projects by reclaimable size", () => {
 		expect(report.entries.some((e) => e.shortId === "not-a-task-dir")).toBe(false);
-	});
-
-	it("totals disk and reclaimable bytes, and says how much needs the force flag", () => {
 		expect(report.totalBytes).toBe(2 * GB + 1 * GB + 3 * GB + 500 * MB + 40 * MB + 20 * MB + 5 * MB);
 		expect(report.totalReclaimableBytes).toBe(900 * MB + 3 * GB + 500 * MB + 40 * MB);
 		expect(report.unmergedBytes).toBe(3 * GB);
-	});
-
-	it("sorts projects by reclaimable size", () => {
 		expect(report.projects[0]!.slug).toBe(SLUG);
 		expect(report.projects.map((p) => p.projectName)).toEqual(["repoA", null]);
 	});
@@ -258,11 +251,6 @@ describe("collectWorktreeReport — classification", () => {
 		});
 	});
 
-	it("falls back to directory mtime when there is no task record", () => {
-		const e = entry(report.entries, "cccccccc");
-		expect(e.ageDays).toBe(200);
-		expect(e.lastActivity).not.toBeNull();
-	});
 });
 
 describe("renderWorktreeReport", () => {
@@ -336,18 +324,16 @@ describe("renderWorktreeReport", () => {
 });
 
 describe("parseDurationDays", () => {
-	it.each([
-		["30d", 30],
-		["2w", 14],
-		["6m", 180],
-		["1y", 365],
-		["45", 45],
-	])("parses %s", (raw, days) => {
-		expect(parseDurationDays(raw)).toBe(days);
+	it("parses every unit and a bare day count", () => {
+		for (const [raw, days] of [["30d", 30], ["2w", 14], ["6m", 180], ["1y", 365], ["45", 45]] as const) {
+			expect(parseDurationDays(raw), raw).toBe(days);
+		}
 	});
 
-	it.each(["", "soon", "-5d", "0d", "3 months", "1.5w"])("rejects %s", (raw) => {
-		expect(parseDurationDays(raw)).toBeNull();
+	it("rejects empty, words, negative, zero, spaced and fractional values", () => {
+		for (const raw of ["", "soon", "-5d", "0d", "3 months", "1.5w"]) {
+			expect(parseDurationDays(raw), raw).toBeNull();
+		}
 	});
 });
 
@@ -371,39 +357,30 @@ describe("prune", () => {
 		return { outcomes: prune(report, options, deps), removed, gitCalls };
 	}
 
-	it("removes the whole directory of an orphan but only the worktree of an unfinished teardown", () => {
-		const { outcomes, removed } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: false });
+	it("with --prune-orphans: removes an orphan's whole dir, only a teardown's worktree, refuses an unmerged orphan, and never touches an open task", () => {
+		const { outcomes, removed, gitCalls } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: false });
 		expect(removed).toContain(`${HOME}/worktrees/${GONE_SLUG}/ffffffff`);
 		expect(removed).toContain(`${HOME}/worktrees/${SLUG}/bbbbbbbb/worktree`);
 		expect(removed).not.toContain(`${HOME}/worktrees/${SLUG}/bbbbbbbb`);
 		expect(outcomes.find((o) => o.shortId === "bbbbbbbb")!.action).toBe("removed-worktree");
 		expect(outcomes.find((o) => o.shortId === "ffffffff")!.action).toBe("removed-dir");
-	});
 
-	it("refuses an unmerged orphan and says which flag would delete it", () => {
-		const { outcomes, removed } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: false });
 		const skipped = outcomes.find((o) => o.shortId === "cccccccc")!;
 		expect(skipped.action).toBe("skipped");
 		expect(skipped.freedBytes).toBe(0);
 		expect(skipped.reason).toContain("--force-unmerged");
 		expect(removed).not.toContain(`${HOME}/worktrees/${SLUG}/cccccccc`);
-	});
 
-	it("deletes the unmerged orphan once the force flag is given", () => {
-		const { outcomes, removed, gitCalls } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: true });
-		expect(removed).toContain(`${HOME}/worktrees/${SLUG}/cccccccc`);
-		expect(outcomes.find((o) => o.shortId === "cccccccc")!.action).toBe("removed-dir");
-		expect(gitCalls).toContainEqual(["branch", "-D", "dev3/task-cccccccc"]);
-	});
-
-	it("deletes a merged branch with -d and never touches an open task", () => {
-		const { outcomes, gitCalls } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: false });
+		// A merged branch goes with -d; an open task is never even an outcome.
 		expect(gitCalls).toContainEqual(["branch", "-d", "dev3/task-bbbbbbbb"]);
 		expect(outcomes.some((o) => o.shortId === "aaaaaaaa")).toBe(false);
 	});
 
-	it("prunes git's worktree registry once per repo after deleting", () => {
-		const { gitCalls } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: true });
+	it("deletes the unmerged orphan once the force flag is given, and prunes git's worktree registry once per repo", () => {
+		const { outcomes, removed, gitCalls } = pruneWith({ orphans: true, olderThanDays: null, forceUnmerged: true });
+		expect(removed).toContain(`${HOME}/worktrees/${SLUG}/cccccccc`);
+		expect(outcomes.find((o) => o.shortId === "cccccccc")!.action).toBe("removed-dir");
+		expect(gitCalls).toContainEqual(["branch", "-D", "dev3/task-cccccccc"]);
 		expect(gitCalls.filter((c) => c[0] === "worktree" && c[1] === "prune")).toHaveLength(1);
 	});
 
@@ -415,7 +392,7 @@ describe("prune", () => {
 		expect(byAge.removed.sort()).toEqual([`${HOME}/worktrees/${GONE_SLUG}/ffffffff`, `${HOME}/worktrees/${SLUG}/cccccccc`]);
 	});
 
-	it("lets --prune-older-than take old orphans and unfinished teardowns too", () => {
+	it("lets --prune-older-than take old orphans and unfinished teardowns too, but never a still-open task's metadata", () => {
 		const { removed, gitCalls } = pruneWith({ orphans: false, olderThanDays: 30, forceUnmerged: false });
 		expect(removed.sort()).toEqual([
 			`${HOME}/worktrees/${GONE_SLUG}/ffffffff`,
@@ -426,6 +403,7 @@ describe("prune", () => {
 		// The 200-day-old orphan on an unmerged branch goes, but its branch ref stays.
 		expect(gitCalls.some((c) => c[0] === "branch" && c[1] === "-D")).toBe(false);
 		expect(removed.some((p) => p.includes("aaaaaaaa"))).toBe(false);
+		expect(removed).not.toContain(`${HOME}/worktrees/${SLUG}/99999999`);
 	});
 
 	it("keeps an unmerged branch's directory until 60 days old unless --force-unmerged", () => {
@@ -482,16 +460,13 @@ describe("prune", () => {
 			return { report, outcomes, removed, gitCalls };
 		}
 
-		it("reports the checked-out branch, not the dev3/task-* name it started with", () => {
-			const { report } = run("branch refs/heads/fix/dev3-renamed", []);
+		it("reports the checked-out branch, not the dev3/task-* name, and keeps it unmerged under the 60-day floor", () => {
+			const { report, outcomes, removed } = run("branch refs/heads/fix/dev3-renamed", []);
 			const e = entry(report.entries, "bbbbbbbb");
 			expect(e.branch).toBe("fix/dev3-renamed");
 			expect(e.branchMerged).toBe(false);
 			expect(e.needsForce).toBe(true);
-		});
 
-		it("keeps an unmerged renamed branch's worktree under the 60-day floor", () => {
-			const { outcomes, removed } = run("branch refs/heads/fix/dev3-renamed", []);
 			expect(removed).not.toContain(`${TEARDOWN}/worktree`);
 			const o = outcomes.find((x) => x.shortId === "bbbbbbbb")!;
 			expect(o.action).toBe("skipped");
@@ -519,11 +494,6 @@ describe("prune", () => {
 		});
 	});
 
-	it("never selects the metadata of a still-open task, however old", () => {
-		const { removed } = pruneWith({ orphans: false, olderThanDays: 30, forceUnmerged: false });
-		expect(removed).not.toContain(`${HOME}/worktrees/${SLUG}/99999999`);
-	});
-
 	it("reports a failed delete instead of claiming the space back", () => {
 		const { outcomes } = pruneWith(
 			{ orphans: true, olderThanDays: null, forceUnmerged: false },
@@ -541,11 +511,9 @@ describe("prune", () => {
 });
 
 describe("renderPruneOutcomes", () => {
-	it("says nothing was deleted when nothing matched", () => {
+	it("says nothing was deleted when nothing matched; otherwise totals freed bytes and counts skipped and failed rows", () => {
 		expect(renderPruneOutcomes([])).toContain("nothing was deleted");
-	});
 
-	it("totals freed bytes and counts skipped and failed rows", () => {
 		const out = renderPruneOutcomes([
 			{ dir: "/d/a", shortId: "aaaaaaaa", projectName: "repoA", category: "orphaned", action: "removed-dir", freedBytes: GB, branchDeleted: "dev3/task-aaaaaaaa", reason: "whole task directory removed" },
 			{ dir: "/d/b", shortId: "bbbbbbbb", projectName: "repoA", category: "orphaned", action: "skipped", freedBytes: 0, branchDeleted: null, reason: "not merged" },
@@ -557,13 +525,10 @@ describe("renderPruneOutcomes", () => {
 });
 
 describe("formatBytes", () => {
-	it.each([
-		[0, "0 B"],
-		[2048, "2 KB"],
-		[5 * MB, "5 MB"],
-		[2 * GB + 32 * MB, "2.03 GB"],
-	])("formats %i as %s", (bytes, expected) => {
-		expect(formatBytes(bytes)).toBe(expected);
+	it("formats bytes, KB, MB and fractional GB", () => {
+		for (const [bytes, expected] of [[0, "0 B"], [2048, "2 KB"], [5 * MB, "5 MB"], [2 * GB + 32 * MB, "2.03 GB"]] as const) {
+			expect(formatBytes(bytes), String(bytes)).toBe(expected);
+		}
 	});
 });
 
@@ -607,14 +572,12 @@ describe("dev3 doctor --worktrees", () => {
 		expect(parsed.pruned).toEqual([]);
 	});
 
-	it("exits with the prune-incomplete code when an unmerged orphan was skipped", async () => {
+	it("exits with the prune-incomplete code when an unmerged orphan was skipped, and 0 when the prune reclaimed everything", async () => {
 		await expect(
 			handleDoctor({ flags: { worktrees: "true", "prune-orphans": "true" }, positional: [] }, unusedDoctorDeps, fixtureDeps()),
 		).rejects.toThrow("exit");
-		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_PRUNE_INCOMPLETE);
-	});
+		expect(exitSpy).toHaveBeenLastCalledWith(CLI_EXIT_CODE_PRUNE_INCOMPLETE);
 
-	it("exits 0 when the prune reclaimed everything it selected", async () => {
 		await expect(
 			handleDoctor(
 				{ flags: { worktrees: "true", "prune-orphans": "true", "force-unmerged": "true" }, positional: [] },
@@ -622,7 +585,7 @@ describe("dev3 doctor --worktrees", () => {
 				fixtureDeps(),
 			),
 		).rejects.toThrow("exit");
-		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_SUCCESS);
+		expect(exitSpy).toHaveBeenLastCalledWith(CLI_EXIT_CODE_SUCCESS);
 	});
 
 	it("reports large shared media and deletes the old ones only with --prune-media-older-than", async () => {
@@ -646,18 +609,20 @@ describe("dev3 doctor --worktrees", () => {
 		expect(removed).toContain(`${images}/clip.mp4`);
 	});
 
-	it("rejects a --prune-media-older-than value it cannot parse", async () => {
-		await expect(
-			handleDoctor({ flags: { worktrees: "true", "prune-media-older-than": "later" }, positional: [] }, unusedDoctorDeps, fixtureDeps()),
-		).rejects.toThrow("exit");
-		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
-	});
-
-	it("rejects a --prune-older-than value it cannot parse", async () => {
-		await expect(
-			handleDoctor({ flags: { worktrees: "true", "prune-older-than": "soon" }, positional: [] }, unusedDoctorDeps, fixtureDeps()),
-		).rejects.toThrow("exit");
-		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
+	it("rejects an unparsable or missing --prune-older-than / --prune-media-older-than value", async () => {
+		const cases: Array<Record<string, string>> = [
+			{ "prune-media-older-than": "later" },
+			{ "prune-older-than": "soon" },
+			{ "prune-older-than": "true" },
+		];
+		for (const flags of cases) {
+			exitSpy.mockClear();
+			await expect(
+				handleDoctor({ flags: { worktrees: "true", ...flags }, positional: [] }, unusedDoctorDeps, fixtureDeps()),
+				JSON.stringify(flags),
+			).rejects.toThrow("exit");
+			expect(exitSpy, JSON.stringify(flags)).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
+		}
 		expect(errSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("")).toContain("30d");
 	});
 
@@ -705,12 +670,5 @@ describe("dev3 doctor --worktrees", () => {
 			expect(readdirSync(diffsDir)).toEqual(["2026-03-10T19-23-18.patch.gz"]);
 			expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_SUCCESS);
 		});
-	});
-
-	it("rejects --prune-older-than with no value at all", async () => {
-		await expect(
-			handleDoctor({ flags: { worktrees: "true", "prune-older-than": "true" }, positional: [] }, unusedDoctorDeps, fixtureDeps()),
-		).rejects.toThrow("exit");
-		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
 	});
 });

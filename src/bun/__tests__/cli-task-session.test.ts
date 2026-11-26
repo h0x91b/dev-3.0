@@ -52,26 +52,29 @@ describe("dev3 task hibernate", () => {
 		expect(hibernateTask).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
 	});
 
-	it.each([
-		["already-hibernated", { hibernated: true }],
-		["draft", { draft: true }],
-		["not-active", { status: "todo" }],
-		["no-worktree", { worktreePath: null }],
-	])("refuses a %s task before asking anyone", async (reason, patch) => {
-		const outcome = await hibernateCliTask({ project, task: { ...task, ...patch } as Task, requester });
-		expect(outcome).toMatchObject({ outcome: "nothing-to-free", reason });
+	it("refuses a task with nothing to free before asking anyone", async () => {
+		const cases: Array<[string, Partial<Task>]> = [
+			["already-hibernated", { hibernated: true }],
+			["draft", { draft: true }],
+			["not-active", { status: "todo" }],
+			["no-worktree", { worktreePath: null }],
+		];
+		for (const [reason, patch] of cases) {
+			const outcome = await hibernateCliTask({ project, task: { ...task, ...patch } as Task, requester });
+			expect(outcome, reason).toMatchObject({ outcome: "nothing-to-free", reason });
+		}
+		vi.mocked(taskTerminalAlive).mockResolvedValue(false);
+		await expect(hibernateCliTask({ project, task, requester })).resolves.toMatchObject({ outcome: "nothing-to-free", reason: "not-running" });
 		expect(push).not.toHaveBeenCalled();
 		expect(hibernateTask).not.toHaveBeenCalled();
 	});
 
-	it("refuses a task with no live terminal", async () => {
-		vi.mocked(taskTerminalAlive).mockResolvedValue(false);
-		await expect(hibernateCliTask({ project, task, requester })).resolves.toMatchObject({ outcome: "nothing-to-free", reason: "not-running" });
-		expect(hibernateTask).not.toHaveBeenCalled();
-	});
-
-	it("asks an agent's request through the launch dialog with its countdown, then hibernates", async () => {
-		const pending = hibernateCliTask({ project, task, requester });
+	it("asks an agent's request through the launch dialog with its countdown and --reason, then hibernates", async () => {
+		const reason = { text: "Moving it off the exhausted Claude account." };
+		const pending = hibernateCliTask({ project, task, requester, reason });
+		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
+		expect(push.mock.calls[0][1].reason).toEqual(reason);
+		expect(listPendingApprovalSummaries()[0]?.reason).toBe(reason.text);
 		await answer(true);
 		await expect(pending).resolves.toMatchObject({ outcome: "hibernated" });
 		const request = push.mock.calls[0][1];
@@ -79,16 +82,6 @@ describe("dev3 task hibernate", () => {
 		expect(request.autoApproveAt).toBeGreaterThan(Date.now());
 		expect(request.resume).toBeUndefined();
 		expect(request.spawn).toBeUndefined();
-	});
-
-	it("shows the agent's --reason in the dialog", async () => {
-		const reason = { text: "Moving it off the exhausted Claude account." };
-		const pending = hibernateCliTask({ project, task, requester, reason });
-		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
-		expect(push.mock.calls[0][1].reason).toEqual(reason);
-		expect(listPendingApprovalSummaries()[0]?.reason).toBe(reason.text);
-		await answer(true);
-		await pending;
 	});
 
 	it("asks even when an agent hibernates its own task", async () => {
@@ -143,23 +136,20 @@ describe("dev3 task wake", () => {
 		vi.mocked(resumeCliAgent).mockResolvedValue(resumed);
 		await expect(wakeCliTask({ project, task: hibernated, requester, mode: "resume", allowAgentLatest: true })).resolves.toEqual({ outcome: "resume", resume: resumed });
 		expect(resumeCliAgent).toHaveBeenCalledWith({ project, task: hibernated, requester, allowAgentLatest: true });
-	});
-
-	it("--resume --account carries the account into the resume", async () => {
-		vi.mocked(resumeCliAgent).mockResolvedValue({ outcome: "declined", taskId: task.id, seq: 7 });
+		// --account is carried into the resume.
 		await wakeCliTask({ project, task: hibernated, requester: null, mode: "resume", allowAgentLatest: false, accountId: null });
-		expect(resumeCliAgent).toHaveBeenCalledWith(expect.objectContaining({ accountId: null }));
+		expect(resumeCliAgent).toHaveBeenLastCalledWith(expect.objectContaining({ accountId: null }));
 	});
 
-	it("--shell wakes directly when a person runs it", async () => {
+	it("--shell wakes directly when a person runs it, and refuses a missing worktree before asking", async () => {
 		await expect(wakeCliTask({ project, task: hibernated, requester: null, mode: "shell", allowAgentLatest: false })).resolves.toEqual({
 			outcome: "woke-shell", taskId: task.id, seq: 7, backend: "tmux",
 		});
 		expect(push).not.toHaveBeenCalled();
 		expect(wakeTaskShell).toHaveBeenCalledWith({ taskId: task.id });
-	});
 
-	it("--shell refuses a missing worktree before asking anybody", async () => {
+		// A missing worktree is refused before asking anybody.
+		vi.mocked(wakeTaskShell).mockClear();
 		vi.mocked(assertTaskWorkspacePresent).mockImplementationOnce(() => { throw new Error("The task's worktree is missing"); });
 		await expect(wakeCliTask({ project, task: hibernated, requester, mode: "shell", allowAgentLatest: false })).rejects.toThrow("worktree is missing");
 		expect(push).not.toHaveBeenCalled();

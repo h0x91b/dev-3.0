@@ -89,13 +89,16 @@ describe("handleAgyHook", () => {
 		expect(stdout).toBe("{}");
 	});
 
-	it("a normal Stop moves the task toward review", async () => {
+	it("a normal Stop, a user cancel and a payload-named Stop all move the task toward review", async () => {
 		await handleAgyHook("Stop", JSON.stringify({ conversationId: "conv-3", terminationReason: "NO_TOOL_CALL" }), SOCKET, CONTEXT);
+		await handleAgyHook("Stop", JSON.stringify({ terminationReason: "USER_CANCELED" }), SOCKET, CONTEXT);
+		await handleAgyHook("", JSON.stringify({ hookEventName: "Stop", conversationId: "c" }), SOCKET, CONTEXT);
 
-		expect(mockSend.mock.calls).toHaveLength(1);
-		expect(mockSend.mock.calls[0]![1]).toBe("task.agentHook");
+		expect(mockSend.mock.calls).toHaveLength(3);
+		expect(mockSend.mock.calls.map((call) => call[1])).toEqual(["task.agentHook", "task.agentHook", "task.agentHook"]);
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "Stop", sessionId: "conv-3" });
-		expect(stdout).toBe("{}");
+		expect(mockSend.mock.calls[2]![2]).toMatchObject({ event: "Stop" });
+		expect(stdout).toBe("{}{}{}");
 	});
 
 	it("a Stop that ended on ERROR parks the task with an attention badge instead of sending Stop", async () => {
@@ -110,16 +113,6 @@ describe("handleAgyHook", () => {
 		expect(stdout).toBe("{}");
 	});
 
-	it("a user cancel is an ordinary stop", async () => {
-		await handleAgyHook("Stop", JSON.stringify({ terminationReason: "USER_CANCELED" }), SOCKET, CONTEXT);
-		expect(mockSend.mock.calls[0]![1]).toBe("task.agentHook");
-	});
-
-	it("falls back to the payload's own event name when the argument is missing", async () => {
-		await handleAgyHook("", JSON.stringify({ hookEventName: "Stop", conversationId: "c" }), SOCKET, CONTEXT);
-		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "Stop" });
-	});
-
 	it("prints {} and sends nothing for malformed stdin and an unknown event", async () => {
 		await handleAgyHook("PreInvocation", "not json", SOCKET, CONTEXT);
 		expect(stdout).toBe("{}");
@@ -132,17 +125,15 @@ describe("handleAgyHook", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("still injects the protocol when the app is offline, and prints {} elsewhere", async () => {
+	it("injects the protocol offline but never outside a dev3 task, and prints {} elsewhere", async () => {
 		await handleAgyHook("SessionStart", "{}", null, CONTEXT);
-		expect(mockSend).not.toHaveBeenCalled();
 		expect(JSON.parse(stdout).injectSteps).toHaveLength(1);
 		stdout = "";
 
 		await handleAgyHook("Stop", "{}", null, CONTEXT);
 		expect(stdout).toBe("{}");
-	});
+		stdout = "";
 
-	it("does not inject the protocol outside a dev3 task", async () => {
 		await handleAgyHook("SessionStart", "{}", SOCKET, null);
 		expect(stdout).toBe("{}");
 		expect(mockSend).not.toHaveBeenCalled();

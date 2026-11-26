@@ -26,7 +26,7 @@ function report(snapshots: AgentRateLimitSnapshot[]): AgentRateLimitsReport {
 }
 
 describe("nextKeepAliveState", () => {
-	it("returns a fresh watching state when enabled", () => {
+	it("returns a fresh watching state when enabled, and null when disabled", () => {
 		expect(nextKeepAliveState(true)).toEqual({
 			enabled: true,
 			status: "watching",
@@ -36,22 +36,16 @@ describe("nextKeepAliveState", () => {
 			lastVerdict: null,
 			gaveUpReason: null,
 		});
-	});
-	it("returns null when disabled", () => {
 		expect(nextKeepAliveState(false)).toBeNull();
 	});
 });
 
 describe("keepAliveBackoffMs", () => {
-	it("starts at the base and doubles", () => {
+	it("starts at the base, doubles, never exceeds the cap, and treats zero as the first attempt", () => {
 		expect(keepAliveBackoffMs(1)).toBe(KEEP_ALIVE_BACKOFF_BASE_MS);
 		expect(keepAliveBackoffMs(2)).toBe(KEEP_ALIVE_BACKOFF_BASE_MS * 2);
 		expect(keepAliveBackoffMs(3)).toBe(KEEP_ALIVE_BACKOFF_BASE_MS * 4);
-	});
-	it("never exceeds the cap", () => {
 		expect(keepAliveBackoffMs(100)).toBe(KEEP_ALIVE_BACKOFF_MAX_MS);
-	});
-	it("treats zero/negative as the first attempt", () => {
 		expect(keepAliveBackoffMs(0)).toBe(KEEP_ALIVE_BACKOFF_BASE_MS);
 	});
 });
@@ -71,24 +65,17 @@ describe("keepAliveSnapshotResetMs", () => {
 		const s = snap("claude", null, [win(100, NOW + 5_000), win(100, NOW + 9_000), win(50, NOW + 99_000)]);
 		expect(keepAliveSnapshotResetMs(s, NOW)).toBe(NOW + 9_000);
 	});
-	it("ignores windows under the threshold", () => {
-		expect(keepAliveSnapshotResetMs(snap("claude", null, [win(99, NOW + 5_000)]), NOW)).toBeNull();
-	});
-	it("ignores a reset already in the past", () => {
-		expect(keepAliveSnapshotResetMs(snap("claude", null, [win(100, NOW - 5_000)]), NOW)).toBeNull();
-	});
-	it("ignores a blocked window with no known reset", () => {
-		expect(keepAliveSnapshotResetMs(snap("claude", null, [win(100, null)]), NOW)).toBeNull();
+	it("ignores windows under the threshold, a reset already in the past, and a blocked window with no known reset", () => {
+		expect(keepAliveSnapshotResetMs(snap("claude", null, [win(99, NOW + 5_000)]), NOW), "under threshold").toBeNull();
+		expect(keepAliveSnapshotResetMs(snap("claude", null, [win(100, NOW - 5_000)]), NOW), "past reset").toBeNull();
+		expect(keepAliveSnapshotResetMs(snap("claude", null, [win(100, null)]), NOW), "unknown reset").toBeNull();
 	});
 });
 
 describe("keepAliveRateLimitWaitUntil", () => {
-	it("returns reset + buffer for the matching login", () => {
+	it("returns reset + buffer for the matching login only, never a different account or source", () => {
 		const r = report([snap("claude", "acct-1", [win(100, NOW + 5_000)])]);
 		expect(keepAliveRateLimitWaitUntil(r, "claude", "acct-1", NOW)).toBe(NOW + 5_000 + KEEP_ALIVE_RATE_LIMIT_BUFFER_MS);
-	});
-	it("does not match a different account or source", () => {
-		const r = report([snap("claude", "acct-1", [win(100, NOW + 5_000)])]);
 		expect(keepAliveRateLimitWaitUntil(r, "claude", "acct-2", NOW)).toBeNull();
 		expect(keepAliveRateLimitWaitUntil(r, "codex", "acct-1", NOW)).toBeNull();
 	});

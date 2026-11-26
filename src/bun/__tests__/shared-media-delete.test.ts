@@ -77,6 +77,26 @@ describe("planSharedMediaDelete", () => {
 		expect(() => planSharedMediaDelete(project, taskWith([foreign]), [], ["f"])).toThrow(/outside the shared media pool/);
 	});
 
+	it("accepts either of THIS project's pools, whichever storage root is current", () => {
+		const inProject = "/my/project/.dev3/worktrees/shared-images/shared-a.mp4";
+		for (const p of [project, { ...project, storageRoot: "project" } as Project]) {
+			expect(isInProjectSharedMediaPool(p, `${STORE}/shared-a.mp4`)).toBe(true);
+			expect(isInProjectSharedMediaPool(p, inProject)).toBe(true);
+			expect(isInProjectSharedMediaPool(p, "/my/project/.dev3/worktrees/../worktrees/shared-images/shared-a.mp4")).toBe(false);
+			expect(isInProjectSharedMediaPool(p, "/my/other/.dev3/worktrees/shared-images/shared-a.mp4")).toBe(false);
+		}
+	});
+
+	it("with skipRefused lists refused ids instead of throwing", () => {
+		const outside = clip("o", { storedPath: "/etc/hosts.mp4" });
+		const plan = planSharedMediaDelete(project, taskWith([clip("a"), outside]), [], ["a", "o", "nope"], { skipRefused: true });
+		expect(plan.items.map((item) => item.id)).toEqual(["a"]);
+		expect(plan.skipped).toEqual([
+			{ id: "o", reason: "Refusing a path outside the shared media pool" },
+			{ id: "nope", reason: "Media not found on task" },
+		]);
+	});
+
 	it("refuses unknown ids, images, already-removed clips and an empty request", () => {
 		const image = { ...clip("img"), mime: "image/png", storedPath: `${STORE}/shared-img.png` };
 		const gone = clip("gone", { removedAt: 5 });
@@ -135,7 +155,7 @@ describe("deleteSharedMedia", () => {
 		const removed = task.sharedVideos?.find((item) => item.id === "a");
 		expect(removed).toMatchObject({ removedAt: 42, storedPath: a.storedPath, name: "a.mp4" });
 		expect(task.sharedVideos?.find((item) => item.id === "b")?.removedAt).toBeUndefined();
-		expect(summary).toMatchObject({ count: 1, bytes: 100, failed: [] });
+		expect(summary).toMatchObject({ count: 1, bytes: 100, failed: [], skipped: [] });
 	});
 
 	it("revives the record when the unlink fails, so the user can retry", async () => {
@@ -171,6 +191,21 @@ describe("deleteSharedMedia", () => {
 	});
 });
 
+describe("deleteSharedMedia with skipRefused (the sweep)", () => {
+	it("deletes what it may and leaves a refused clip alone instead of aborting", async () => {
+		const a = clip("a");
+		writeFileSync(a.storedPath, "x");
+		const outside = clip("o", { storedPath: `${TEST_HOME}/elsewhere.mp4` });
+		writeFileSync(outside.storedPath, "x");
+		const b = board([taskWith([a, outside])]);
+		const { summary } = await deleteSharedMedia(project, "t1", ["a", "o"], { ...b, skipRefused: true });
+		expect(summary).toMatchObject({ count: 1, skipped: [{ id: "o", reason: "Refusing a path outside the shared media pool" }] });
+		expect(existsSync(a.storedPath)).toBe(false);
+		expect(existsSync(outside.storedPath)).toBe(true);
+		expect(b.tasks[0].sharedVideos?.find((item) => item.id === "o")?.removedAt).toBeUndefined();
+	});
+});
+
 describe("deleteSharedMedia sharer check", () => {
 	it("plans from the board the lock hands it, so a sharer it holds blocks the delete", async () => {
 		const a = clip("a");
@@ -191,5 +226,13 @@ describe("previewSharedMediaDelete", () => {
 		const summary = await previewSharedMediaDelete(project, "t1", ["a"], async () => [taskWith([a])]);
 		expect(summary).toMatchObject({ count: 1, bytes: 100, freeableBytes: 100 });
 		expect(existsSync(a.storedPath)).toBe(true);
+	});
+
+	it("previews a sweep past a refused clip, so the label still shows a size", async () => {
+		const a = clip("a");
+		writeFileSync(a.storedPath, "x".repeat(100));
+		const outside = clip("o", { storedPath: "/etc/hosts.mp4" });
+		const summary = await previewSharedMediaDelete(project, "t1", ["a", "o"], async () => [taskWith([a, outside])], { skipRefused: true });
+		expect(summary).toMatchObject({ count: 1, freeableBytes: 100, skipped: [{ id: "o" }] });
 	});
 });

@@ -91,7 +91,7 @@ describe("holdAgentMessage — the idle window", () => {
 		expect(held[1]?.submit).not.toHaveBeenCalled();
 	});
 
-	it("keeps each pane's window separate", async () => {
+	it("keeps each pane's window separate and starts a fresh window after a release", async () => {
 		const mine = message();
 		const other = message();
 		holdAgentMessage(KEY, mine, {});
@@ -101,14 +101,9 @@ describe("holdAgentMessage — the idle window", () => {
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(mine.submit).toHaveBeenCalledTimes(1);
 		expect(other.submit).toHaveBeenCalledTimes(1);
-	});
 
-	it("starts a fresh window after a hold has released", async () => {
-		holdAgentMessage(KEY, message(), {});
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		const later = message();
-		expect(holdAgentMessage(KEY, later, {})).toBe(AGENT_MESSAGE_HOLD_IDLE_MS);
-
+		expect(holdAgentMessage(KEY, later, {}), "fresh window").toBe(AGENT_MESSAGE_HOLD_IDLE_MS);
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(later.submit).toHaveBeenCalledTimes(1);
 	});
@@ -145,7 +140,7 @@ describe("holdAgentMessage — the ceiling on message-driven holds", () => {
 });
 
 describe("deferHeldAgentMessagesForTask — the user is typing", () => {
-	it("pushes the hold back a full HUMAN window on every keystroke", async () => {
+	it("pushes the hold back a full HUMAN window on every keystroke, surviving a pause to think", async () => {
 		const item = message();
 		holdAgentMessage(KEY, item, {});
 
@@ -154,17 +149,8 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 			expect(item.deliver).not.toHaveBeenCalled();
 			expect(deferHeldAgentMessagesForTask("task-1")).toBe(1);
 		}
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
-		expect(item.submit).toHaveBeenCalledTimes(1);
-	});
-
-	it("survives a pause to think: the message window alone does not release his hold", async () => {
 		// 15s without a keystroke is an ordinary pause while writing one line, so the
 		// message must not land behind it — only the far longer human window does.
-		const item = message();
-		holdAgentMessage(KEY, item, {});
-		deferHeldAgentMessagesForTask("task-1");
-
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
 		expect(item.deliver).not.toHaveBeenCalled();
 
@@ -172,7 +158,7 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 		expect(item.submit).toHaveBeenCalledTimes(1);
 	});
 
-	it("has NO ceiling: typing without pause holds the message indefinitely", async () => {
+	it("has NO ceiling: typing without pause holds the message indefinitely, even while messages keep arriving", async () => {
 		// The user's half-written line outranks every deadline. Twice the ceiling of
 		// continuous typing must still not paste a peer's text into it.
 		const item = message();
@@ -181,30 +167,19 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 		while (elapsed < AGENT_MESSAGE_HOLD_CEILING_MS * 2) {
 			await vi.advanceTimersByTimeAsync(1_000);
 			elapsed += 1_000;
+			if (elapsed % 5_000 === 0) holdAgentMessage(KEY, message(), {});
 			deferHeldAgentMessagesForTask("task-1");
 		}
 		expect(item.deliver).not.toHaveBeenCalled();
 
 		// It is a hold, not a leak: a long enough silence still releases it.
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
-		expect(item.submit).toHaveBeenCalledTimes(1);
+		expect(item.submit).toHaveBeenCalledTimes(0);
+		expect(item.deliver).toHaveBeenCalledTimes(1);
 	});
 
-	it("keeps the ceiling off once he has typed, even while messages keep arriving", async () => {
-		const first = message();
-		holdAgentMessage(KEY, first, {});
-		deferHeldAgentMessagesForTask("task-1");
-		let elapsed = 0;
-		while (elapsed < AGENT_MESSAGE_HOLD_CEILING_MS * 2) {
-			await vi.advanceTimersByTimeAsync(5_000);
-			elapsed += 5_000;
-			holdAgentMessage(KEY, message(), {});
-			deferHeldAgentMessagesForTask("task-1");
-		}
-		expect(first.deliver).not.toHaveBeenCalled();
-	});
-
-	it("pushes back every pane of that task, and no other task's", async () => {
+	it("pushes back every pane of that task, and no other task's; a no-op when that task holds nothing", async () => {
+		expect(deferHeldAgentMessagesForTask("task-1"), "nothing held").toBe(0);
 		const mine = message();
 		const sibling = message();
 		const stranger = message();
@@ -214,6 +189,7 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS - 1_000);
 		expect(deferHeldAgentMessagesForTask("task-1")).toBe(2);
+		expect(deferHeldAgentMessagesForTask("task-3"), "another task holds nothing").toBe(0);
 
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(stranger.submit).toHaveBeenCalledTimes(1);
@@ -224,57 +200,40 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 		expect(mine.submit).toHaveBeenCalledTimes(1);
 		expect(sibling.submit).toHaveBeenCalledTimes(1);
 	});
-
-	it("is a no-op when that task holds nothing", () => {
-		expect(deferHeldAgentMessagesForTask("task-1")).toBe(0);
-		holdAgentMessage(KEY, message(), {});
-		expect(deferHeldAgentMessagesForTask("task-2")).toBe(0);
-	});
 });
 
 describe("flushHeldAgentMessagesForTask — the user submitted his own line", () => {
-	it("lands everything at once, without waiting for the window", async () => {
+	it("lands this task's holds at once and exactly once, leaving another task's alone", async () => {
 		const one = message();
 		const two = message();
+		const stranger = message();
 		holdAgentMessage(KEY, one, {});
 		holdAgentMessage(OTHER, two, {});
+		holdAgentMessage(agentMessageHoldKey("tmux", "task-2", "%1"), stranger, {});
 		deferHeldAgentMessagesForTask("task-1");
 
 		expect(flushHeldAgentMessagesForTask("task-1")).toBe(2);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(one.submit).toHaveBeenCalledTimes(1);
 		expect(two.submit).toHaveBeenCalledTimes(1);
-		expect(pendingAgentMessageHoldCount()).toBe(0);
-	});
-
-	it("delivers each held message exactly once — the window cannot fire it again", async () => {
-		const item = message();
-		holdAgentMessage(KEY, item, {});
-		flushHeldAgentMessagesForTask("task-1");
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
-		expect(item.deliver).toHaveBeenCalledTimes(1);
-		expect(item.submit).toHaveBeenCalledTimes(1);
-	});
-
-	it("leaves another task's holds alone", async () => {
-		const stranger = message();
-		holdAgentMessage(agentMessageHoldKey("tmux", "task-2", "%1"), stranger, {});
-		expect(flushHeldAgentMessagesForTask("task-1")).toBe(0);
-		await vi.advanceTimersByTimeAsync(0);
 		expect(stranger.deliver).not.toHaveBeenCalled();
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+
+		// The window cannot fire a flushed message again.
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		expect(one.deliver).toHaveBeenCalledTimes(1);
+		expect(one.submit).toHaveBeenCalledTimes(1);
 	});
 });
 
 describe("holdAgentMessage — failures", () => {
-	it("sends no Enter when no text landed", async () => {
-		const submit = vi.fn();
-		holdAgentMessage(KEY, { deliver: (): HeldDeliveryResult => "failed", bytes: 0, submit }, {});
+	it("sends no Enter when no text landed, but still submits a burst when one text of it failed", async () => {
+		const unsent = vi.fn();
+		holdAgentMessage(KEY, { deliver: (): HeldDeliveryResult => "failed", bytes: 0, submit: unsent }, {});
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
-		expect(submit).not.toHaveBeenCalled();
+		expect(unsent).not.toHaveBeenCalled();
 		expect(pendingAgentMessageHoldCount()).toBe(0);
-	});
 
-	it("still submits the burst when one text of it failed", async () => {
 		const submit = vi.fn();
 		holdAgentMessage(KEY, { deliver: () => Promise.reject(new Error("pane died")), bytes: 0, submit: vi.fn() }, {});
 		holdAgentMessage(KEY, { deliver: (): HeldDeliveryResult => "landed", bytes: 0, submit }, {});
@@ -282,26 +241,18 @@ describe("holdAgentMessage — failures", () => {
 		expect(submit).toHaveBeenCalledTimes(1);
 	});
 
-	it("survives a submit that throws and clears the pane", async () => {
-		holdAgentMessage(
-			KEY,
-			{
-				deliver: (): HeldDeliveryResult => "landed",
-				bytes: 0,
-				submit: () => {
-					throw new Error("pane died");
-				},
+	it("survives a submit that throws or rejects and clears the pane", async () => {
+		const submits = [
+			() => {
+				throw new Error("pane died");
 			},
-			{},
-		);
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
-		expect(pendingAgentMessageHoldCount()).toBe(0);
-	});
-
-	it("survives a submit that rejects", async () => {
-		holdAgentMessage(KEY, { deliver: (): HeldDeliveryResult => "landed", bytes: 0, submit: () => Promise.reject(new Error("pane died")) }, {});
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
-		expect(pendingAgentMessageHoldCount()).toBe(0);
+			() => Promise.reject(new Error("pane died")),
+		];
+		for (const submit of submits) {
+			holdAgentMessage(KEY, { deliver: (): HeldDeliveryResult => "landed", bytes: 0, submit }, {});
+			await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+			expect(pendingAgentMessageHoldCount()).toBe(0);
+		}
 	});
 });
 
@@ -660,50 +611,37 @@ describe("a backlog past one read goes out as ONE batch turn", () => {
 		expect(typed).toEqual(["message 1", "message 2", "message 3"]);
 	});
 
-	it("caps one batch at the message bound and sends the rest as the next turn", async () => {
-		const { batch, calls } = batcher();
+	it("caps one batch at the message bound and at the byte bound, sending the rest as the next turn", async () => {
+		const byCount = batcher();
 		const total = AGENT_MESSAGE_BATCH_MAX_MESSAGES + 10;
-		for (let n = 1; n <= total; n += 1) holdAgentMessage(KEY, { ...envelope(n), batch }, {});
-
+		for (let n = 1; n <= total; n += 1) holdAgentMessage(KEY, { ...envelope(n), batch: byCount.batch }, {});
 		await vi.runAllTimersAsync();
+		expect(byCount.calls.map((texts) => texts.length)).toEqual([AGENT_MESSAGE_BATCH_MAX_MESSAGES, 10]);
+		expect(byCount.calls[1]?.[0]).toBe(`message ${AGENT_MESSAGE_BATCH_MAX_MESSAGES + 1}`);
 
-		expect(calls.map((texts) => texts.length)).toEqual([AGENT_MESSAGE_BATCH_MAX_MESSAGES, 10]);
-		expect(calls[1]?.[0]).toBe(`message ${AGENT_MESSAGE_BATCH_MAX_MESSAGES + 1}`);
-	});
-
-	it("caps one batch at the byte bound", async () => {
-		const { batch, calls } = batcher();
+		const byBytes = batcher();
 		const typed: string[] = [];
 		const big = AGENT_MESSAGE_BATCH_MAX_BYTES / 2 - 1;
-		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, big, typed), batch }, {});
-
+		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, big, typed), batch: byBytes.batch }, {});
 		await vi.runAllTimersAsync();
-
 		// Two fit under the bound; the third goes out on its own as it always did.
-		expect(calls).toEqual([["message 1", "message 2"]]);
+		expect(byBytes.calls).toEqual([["message 1", "message 2"]]);
 		expect(typed).toEqual(["message 3"]);
 	});
 
-	it("falls back to one turn per read when the batch cannot be written, losing nothing", async () => {
-		const typed: string[] = [];
-		const batch = vi.fn(async () => null);
-		for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, 600, typed), batch }, {});
-
-		await vi.runAllTimersAsync();
-
-		expect(typed).toEqual(["message 1", "message 2", "message 3"]);
-	});
-
-	it("falls back the same way when the batch throws", async () => {
-		const typed: string[] = [];
-		const batch = vi.fn(async (): Promise<HeldMessageBatch> => {
-			throw new Error("disk full");
-		});
-		for (const n of [1, 2]) holdAgentMessage(KEY, { ...envelope(n, 600, typed), batch }, {});
-
-		await vi.runAllTimersAsync();
-
-		expect(typed).toEqual(["message 1", "message 2"]);
+	it("falls back to one turn per read when the batch cannot be written or throws, losing nothing", async () => {
+		const failing = [
+			vi.fn(async () => null),
+			vi.fn(async (): Promise<HeldMessageBatch> => {
+				throw new Error("disk full");
+			}),
+		];
+		for (const batch of failing) {
+			const typed: string[] = [];
+			for (const n of [1, 2, 3]) holdAgentMessage(KEY, { ...envelope(n, 600, typed), batch }, {});
+			await vi.runAllTimersAsync();
+			expect(typed).toEqual(["message 1", "message 2", "message 3"]);
+		}
 	});
 
 	it("puts the ORIGINAL messages back when the pane refused the pointer, and batches them again", async () => {

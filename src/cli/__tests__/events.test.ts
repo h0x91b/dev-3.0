@@ -99,7 +99,7 @@ describe("dev3 events — the cursor is never guessed", () => {
 		expect(stderrOutput).toContain("Four shapes are accepted");
 	});
 
-	it("accepts a duration and resolves it to an instant before sending", async () => {
+	it("resolves a duration to an instant before sending, and echoes that instant on a quiet sweep", async () => {
 		mockSend.mockResolvedValue(okResp(selection()));
 
 		await handleEvents(args({ from: "2h" }), SOCKET, CTX);
@@ -109,16 +109,16 @@ describe("dev3 events — the cursor is never guessed", () => {
 		const ageMs = Date.now() - Date.parse(sent);
 		expect(ageMs).toBeGreaterThan(2 * 60 * 60 * 1000 - 5000);
 		expect(ageMs).toBeLessThan(2 * 60 * 60 * 1000 + 5000);
+		mockSend.mockResolvedValue(okResp(selection({ events: [], cursor: null, matched: 0 })));
+
+		await handleEvents(args({ from: "2h" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("0 events since 2h.");
+		expect(stdoutOutput).not.toContain("Cursor: 2h");
+		expect(stdoutOutput).toMatch(/Cursor: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\n/);
 	});
 
-	it("is a usage error when --from carries no value", async () => {
-		await expect(handleEvents(args({ from: "true" }), SOCKET, CTX)).rejects.toThrow(
-			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
-		);
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("sends an id prefix as cursorId, leaving the instant for the app to resolve", async () => {
+	it("sends a parsed instant as cursor, and an id prefix as cursorId for the app to resolve", async () => {
 		mockSend.mockResolvedValue(okResp(selection({ from: "2026-08-29T09:00:00.000" })));
 
 		await handleEvents(args({ from: "8eb2da3d" }), SOCKET, CTX);
@@ -129,17 +129,23 @@ describe("dev3 events — the cursor is never guessed", () => {
 			cursorId: "8eb2da3d",
 			projectId: "proj-001",
 		});
-	});
 
-	it("keeps the position after a quiet sweep started from an id", async () => {
+		// A quiet sweep started from an id keeps the position.
 		mockSend.mockResolvedValue(okResp(selection({
 			events: [], cursor: null, matched: 0, from: "2026-08-29T09:00:00.000",
 		})));
-
 		await handleEvents(args({ from: "8eb2da3d" }), SOCKET, CTX);
-
 		expect(stdoutOutput).toContain("Cursor: 2026-08-29T09:00:00.000");
 		expect(stdoutOutput).not.toContain("none yet");
+		mockSend.mockResolvedValue(okResp(selection()));
+
+		await handleEvents(args({ from: "2026-08-29T09:00:00.000" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "events.list", {
+			limit: 100,
+			cursor: "2026-08-29T09:00:00.000Z",
+			projectId: "proj-001",
+		});
 	});
 
 	it("reports an id that resolves to nothing as exit 19, not a failed read", async () => {
@@ -154,17 +160,6 @@ describe("dev3 events — the cursor is never guessed", () => {
 		expect(stderrOutput).not.toContain(EVENT_CURSOR_UNRESOLVED_PREFIX);
 	});
 
-	it("sends the parsed cursor to the app", async () => {
-		mockSend.mockResolvedValue(okResp(selection()));
-
-		await handleEvents(args({ from: "2026-08-29T09:00:00.000" }), SOCKET, CTX);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "events.list", {
-			limit: 100,
-			cursor: "2026-08-29T09:00:00.000Z",
-			projectId: "proj-001",
-		});
-	});
 });
 
 describe("dev3 events — the footer never lies about what was cut", () => {
@@ -179,12 +174,14 @@ describe("dev3 events — the footer never lies about what was cut", () => {
 		expect(stdoutOutput).toContain("Next:   dev3 events --from 2026-08-29T10:12:03.114");
 	});
 
-	it("says plainly when the window cut nothing off", async () => {
+	it("says plainly when the window cut nothing off, with no kind filter sent or mentioned", async () => {
 		mockSend.mockResolvedValue(okResp(selection()));
 
 		await handleEvents(args(), SOCKET, CTX);
 
 		expect(stdoutOutput).toContain("Older than the window: 0 events. Nothing was cut off.");
+		expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("kind");
+		expect(stdoutOutput).not.toContain("advances over");
 	});
 
 	it("reports the cap as a number and says the oldest were kept", async () => {
@@ -235,53 +232,25 @@ describe("dev3 events — the line carries its owner", () => {
 });
 
 describe("dev3 events — argument guards", () => {
-	it("echoes the RESOLVED instant, not the duration, on a quiet sweep", async () => {
-		mockSend.mockResolvedValue(okResp(selection({ events: [], cursor: null, matched: 0 })));
-
-		await handleEvents(args({ from: "2h" }), SOCKET, CTX);
-
-		expect(stdoutOutput).toContain("0 events since 2h.");
-		expect(stdoutOutput).not.toContain("Cursor: 2h");
-		expect(stdoutOutput).toMatch(/Cursor: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\n/);
-	});
-});
-
-describe("dev3 events — argument guards", () => {
-	it("rejects an unknown flag", async () => {
-		await expect(handleEvents(args({ since: "2h" }), SOCKET, CTX)).rejects.toThrow(
-			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
-		);
+	it("is a usage error, before sending, for a valueless --from, unknown flag, positional, bad --limit or unknown --kind", async () => {
+		const cases: Array<[Record<string, string>, string[]]> = [
+			[{ from: "true" }, []], [{ since: "2h" }, []], [{}, ["list"]],
+			[{ limit: "lots" }, []], [{ limit: "0" }, []], [{ kind: "movements" }, []],
+		];
+		for (const [flags, positional] of cases) {
+			await expect(handleEvents(args(flags, positional), SOCKET, CTX), JSON.stringify(flags)).rejects.toThrow(
+				`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
+			);
+		}
 		expect(stderrOutput).toContain("--since");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("rejects a positional, since there is no subcommand", async () => {
-		await expect(handleEvents(args({}, ["list"]), SOCKET, CTX)).rejects.toThrow(
-			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
-		);
-	});
-
-	it("rejects a non-numeric or zero --limit", async () => {
-		await expect(handleEvents(args({ limit: "lots" }), SOCKET, CTX)).rejects.toThrow(
-			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
-		);
-		await expect(handleEvents(args({ limit: "0" }), SOCKET, CTX)).rejects.toThrow(
-			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
-		);
-	});
-
-	it("clamps --limit to the maximum instead of asking the app for everything", async () => {
+	it("clamps --limit to the maximum, and emits the raw selection under --json", async () => {
 		mockSend.mockResolvedValue(okResp(selection()));
 		await handleEvents(args({ limit: "99999" }), SOCKET, CTX);
 		expect(mockSend.mock.calls[0]![2]!.limit).toBe(1000);
-	});
-
-	it("rejects an unknown --kind", async () => {
-		await expect(handleEvents(args({ kind: "movements" }), SOCKET, CTX)).rejects.toThrow(
-			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
-		);
-	});
-
-	it("emits the raw selection under --json", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp(selection({ olderThanWindow: 5 })));
 		await handleEvents(args({ json: "true" }), SOCKET, CTX);
 		expect(JSON.parse(stdoutOutput).olderThanWindow).toBe(5);
@@ -302,25 +271,8 @@ describe("dev3 events — argument guards", () => {
 			expect(mockSend.mock.calls[0]![2]!.kind).toBe("move");
 			expect(stdoutOutput).toContain("move");
 			expect(stdoutOutput).toContain("Agent is Working → Completed");
-		});
-
-		it("sends no kind at all when the caller did not filter", async () => {
-			mockSend.mockResolvedValue(okResp(selection()));
-			await handleEvents(args(), SOCKET, CTX);
-			expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("kind");
-		});
-
-		// A cursor earned under a filter does not cover the kinds that filter hid.
-		it("warns that a filtered cursor only advances over that kind", async () => {
-			mockSend.mockResolvedValue(okResp(selection({ events: [moveEvent()] })));
-			await handleEvents(args({ kind: "move" }), SOCKET, CTX);
+			// A cursor earned under a filter does not cover the kinds that filter hid.
 			expect(stdoutOutput).toContain("the cursor below advances over move events ONLY");
-		});
-
-		it("stays silent about filtering when nothing was filtered", async () => {
-			mockSend.mockResolvedValue(okResp(selection()));
-			await handleEvents(args(), SOCKET, CTX);
-			expect(stdoutOutput).not.toContain("advances over");
 		});
 
 		// Retention loss is stated as a number: a trimmed log presented as complete
@@ -330,12 +282,11 @@ describe("dev3 events — argument guards", () => {
 			await handleEvents(args({ from: "2026-08-01" }), SOCKET, CTX);
 			expect(stdoutOutput).toContain("Retention loss: 7 movements were evicted");
 			expect(stdoutOutput).toContain("NOT complete");
-		});
 
-		it("says nothing about retention when the cap destroyed nothing in range", async () => {
+			stdoutOutput = "";
 			mockSend.mockResolvedValue(okResp(selection({ movementsEvicted: 0 })));
 			await handleEvents(args({ from: "2026-08-01" }), SOCKET, CTX);
-			expect(stdoutOutput).not.toContain("Retention loss");
+			expect(stdoutOutput, "nothing evicted in range").not.toContain("Retention loss");
 		});
 	});
 });

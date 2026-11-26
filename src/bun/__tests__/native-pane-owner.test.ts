@@ -57,14 +57,9 @@ beforeEach(() => {
 });
 
 describe("resolvePaneOwner", () => {
-	it("is local when the host already made this process the writer", async () => {
-		const owner = await resolvePaneOwner(terminal({ hostRole: "writer" }));
-		expect(owner).toEqual({ kind: "local" });
-	});
-
-	it("does not even ask the host who owns it when we are the writer", async () => {
+	it("is local when the host already made this process the writer, without asking who owns it", async () => {
 		const term = terminal({ hostRole: "writer" });
-		await resolvePaneOwner(term);
+		expect(await resolvePaneOwner(term)).toEqual({ kind: "local" });
 		expect(term.writerPid).not.toHaveBeenCalled();
 	});
 
@@ -123,13 +118,10 @@ describe("peerEndpointForPid", () => {
 		expect(peerEndpointForPid(OTHER_PID)).toContain(`${OTHER_PID}.endpoint.json`);
 	});
 
-	it("rejects a dead process instead of handing back a stale path", () => {
-		mocks.kill.mockImplementation(() => { throw new Error("ESRCH"); });
-		expect(peerEndpointForPid(OTHER_PID)).toBeNull();
-	});
-
-	it("rejects a nonsense pid", () => {
+	it("rejects a nonsense pid, and a dead process instead of handing back a stale path", () => {
 		expect(peerEndpointForPid(0)).toBeNull();
 		expect(peerEndpointForPid(-1)).toBeNull();
+		mocks.kill.mockImplementation(() => { throw new Error("ESRCH"); });
+		expect(peerEndpointForPid(OTHER_PID)).toBeNull();
 	});
 });

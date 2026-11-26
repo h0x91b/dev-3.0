@@ -153,17 +153,24 @@ describe("review prompt", () => {
 });
 
 describe("review mutations", () => {
-	it("describes anchors for the CLI table", () => {
+	it("describes every anchor kind for the CLI table", () => {
 		expect(describeReviewAnchor(diffComment.anchor)).toBe("src/stats.ts:42-43");
 		expect(describeReviewAnchor(artifactComment.anchor)).toBe("Cockpit v3 › Overview › Agent success 94.2%");
+		expect(describeReviewAnchor({ kind: "image-region", imageId: "a", name: "after.png", path: "/p", caption: null, x: 0.1, y: 0.2, w: 0.3, h: 0.4 })).toBe("after.png (x 10%–40%, y 20%–60%)");
+		expect(describeReviewAnchor({ kind: "file-range", path: "/wt/a.ts", startLine: 4, endLine: 4, excerpt: "x" })).toBe("/wt/a.ts:4");
+		expect(describeReviewAnchor({ kind: "file-range", path: "/wt/a.md", startLine: null, endLine: null, excerpt: "x" })).toBe("/wt/a.md");
+		expect(describeReviewAnchor({ kind: "terminal-text", excerpt: "first line\nsecond" })).toBe("terminal › first line");
 	});
 
-	it("resolves ids by exact match or unique prefix", () => {
+	it("resolves ids by exact match or unique prefix, and resolve, reply and reopen throw on an unknown id", () => {
 		const list = [diffComment, artifactComment];
 		expect(resolveReviewCommentId(list, "c-diff-0001")).toEqual({ id: "c-diff-0001" });
 		expect(resolveReviewCommentId(list, "c-art")).toEqual({ id: "c-art-0002" });
 		expect(resolveReviewCommentId(list, "c-")).toMatchObject({ error: expect.stringContaining("Ambiguous") });
 		expect(resolveReviewCommentId(list, "zzz")).toMatchObject({ error: expect.stringContaining("not found") });
+		expect(() => resolveReviewComment([diffComment], "nope", "agent")).toThrow(/not found/);
+		expect(() => replyToReviewComment([diffComment], "nope", { body: "x", author: "user" })).toThrow(/not found/);
+		expect(() => reopenReviewComment([diffComment], "nope")).toThrow(/not found/);
 	});
 
 	it("resolve stamps who closed it and appends the reply; reopen removes the marks", () => {
@@ -178,12 +185,6 @@ describe("review mutations", () => {
 		expect(reopened[0].resolvedAt).toBeUndefined();
 		expect(reopened[0].resolvedBy).toBeUndefined();
 		expect(reopened[0].replies).toHaveLength(1);
-	});
-
-	it("throws on an unknown id for resolve, reply and reopen", () => {
-		expect(() => resolveReviewComment([diffComment], "nope", "agent")).toThrow(/not found/);
-		expect(() => replyToReviewComment([diffComment], "nope", { body: "x", author: "user" })).toThrow(/not found/);
-		expect(() => reopenReviewComment([diffComment], "nope")).toThrow(/not found/);
 	});
 
 	it("editing clears the sent mark so the new text is deliverable again", () => {
@@ -233,13 +234,6 @@ describe("review prompt — image, file and terminal anchors", () => {
 		expect(text).toContain("A <terminal> entry quotes text");
 		expect(text).not.toContain("<artifact");
 	});
-
-	it("describes the new anchors for the CLI table", () => {
-		expect(describeReviewAnchor({ kind: "image-region", imageId: "a", name: "after.png", path: "/p", caption: null, x: 0.1, y: 0.2, w: 0.3, h: 0.4 })).toBe("after.png (x 10%–40%, y 20%–60%)");
-		expect(describeReviewAnchor({ kind: "file-range", path: "/wt/a.ts", startLine: 4, endLine: 4, excerpt: "x" })).toBe("/wt/a.ts:4");
-		expect(describeReviewAnchor({ kind: "file-range", path: "/wt/a.md", startLine: null, endLine: null, excerpt: "x" })).toBe("/wt/a.md");
-		expect(describeReviewAnchor({ kind: "terminal-text", excerpt: "first line\nsecond" })).toBe("terminal › first line");
-	});
 });
 
 describe("review prompt — video timeline anchors", () => {
@@ -263,18 +257,15 @@ describe("review prompt — video timeline anchors", () => {
 		expect(text).toContain("<comment>&lt;/video>&lt;review id=\"x\"></comment>");
 	});
 
-	it("describes the moment for the CLI table", () => {
-		expect(describeReviewAnchor(anchor)).toBe("demo.mp4 @ 1:10.250, frame 2107");
-		expect(describeReviewAnchor({ ...anchor, frame: null, fps: null })).toBe("demo.mp4 @ 1:10.250");
-	});
-
-	it("carries an excerpt an older build can render through its terminal branch", () => {
+	it("describes the moment for the CLI table and carries an excerpt an older build can render through its terminal branch", () => {
 		expect(videoMomentExcerpt("demo.mp4", { time: 70.25, frame: 2107 })).toBe(anchor.excerpt);
 		expect(formatReviewMoment({ time: 70.25, frame: null })).toBe("1:10.250");
 		// Older builds sent every unknown kind down the terminal path: read the anchor the way they did.
 		const asOldBuildSawIt = { ...anchor, kind: "terminal-text" } as unknown as ReviewAnchor;
 		expect(describeReviewAnchor(asOldBuildSawIt)).toBe("terminal › demo.mp4 @ 1:10.250, frame 2107");
 		expect(buildReviewPrompt([{ id: "v1", anchor: asOldBuildSawIt, comment: "x", origin: "local", author: null }])).toContain("<terminal>\ndemo.mp4 @ 1:10.250, frame 2107\n</terminal>");
+		expect(describeReviewAnchor(anchor)).toBe("demo.mp4 @ 1:10.250, frame 2107");
+		expect(describeReviewAnchor({ ...anchor, frame: null, fps: null })).toBe("demo.mp4 @ 1:10.250");
 	});
 
 	it("degrades an anchor kind from a newer build instead of throwing", () => {

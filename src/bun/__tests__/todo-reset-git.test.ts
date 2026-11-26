@@ -4,7 +4,11 @@ import { join } from "path";
 import type { Project, Task } from "../../shared/types";
 import { RESET_REQUIRES_CONSENT_ERROR, TODO_OWNS_WORKTREE_ERROR } from "../../shared/types";
 
-const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/todo-reset-git`);
+const TEST_HOME = vi.hoisted(() => {
+	// No `git maintenance run --auto` child after every commit and fetch: nothing here reads it.
+	Object.assign(process.env, { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "maintenance.auto", GIT_CONFIG_VALUE_0: "false" });
+	return `${process.env.DEV3_TEST_ROOT}/todo-reset-git`;
+});
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -49,8 +53,7 @@ function branchExists(repo: TestRepo, name: string): boolean {
 }
 function commit(dir: string, file: string): string {
 	writeFileSync(join(dir, file), `${file}\n`);
-	g(`git add ${file} && git commit -m ${file}`, dir);
-	return g("git rev-parse HEAD", dir).trim();
+	return g(`git add ${file} && git commit -q -m ${file} && git rev-parse HEAD`, dir).trim();
 }
 
 let repo: TestRepo;
@@ -223,17 +226,17 @@ describe("createWorktree judges leftovers before destroying anything", () => {
 		expect(g(`git rev-parse ${OWN}`, repo.local).trim()).toBe(sha);
 	});
 
-	it.each([
-		["an uncommitted edit", (wt: string) => writeFileSync(join(wt, "README.md"), "edited\n")],
-		["an untracked file", (wt: string) => writeFileSync(join(wt, "new.txt"), "new\n")],
-	])("refuses a stale folder with %s, keeping it", async (_label, dirty) => {
+	it("refuses a stale folder with an uncommitted edit, and one with an untracked file, keeping it", async () => {
 		const p = project(repo.local);
 		const first = await createWorktree(p, task());
-		g(`git checkout --detach`, first.worktreePath);
-		g(`git branch -D ${OWN}`, repo.local);
-		dirty(first.worktreePath);
+		g(`git checkout -q --detach && git branch -D ${OWN}`, first.worktreePath);
+		writeFileSync(join(first.worktreePath, "app.ts"), "edited\n");
 		await expect(createWorktree(p, task())).rejects.toMatchObject({ kind: "dirty-dir" });
-		expect(existsSync(first.worktreePath)).toBe(true);
+		expect(existsSync(join(first.worktreePath, "app.ts"))).toBe(true);
+		g("git checkout -- app.ts", first.worktreePath);
+		writeFileSync(join(first.worktreePath, "new.txt"), "new\n");
+		await expect(createWorktree(p, task())).rejects.toMatchObject({ kind: "dirty-dir" });
+		expect(existsSync(join(first.worktreePath, "new.txt"))).toBe(true);
 	});
 
 	it("refuses a detached stale folder whose HEAD holds commits no ref reaches", async () => {
@@ -413,8 +416,8 @@ describe("F4: fresh variant branch, old one kept", () => {
 	it("all candidate names taken → typed refusal naming how to clean up; nothing created or deleted", async () => {
 		const p = project(repo.local);
 		g("git branch feat/x", repo.local);
-		g("git branch feat/x-v1", repo.local);
-		for (let i = 2; i <= 20; i++) g(`git branch feat/x-v1-${i}`, repo.local);
+		const taken = Array.from({ length: 19 }, (_, i) => `feat/x-v1-${i + 2}`).join(" ");
+		g(`sha=$(git rev-parse main) && printf "create refs/heads/%s $sha\\n" feat/x-v1 ${taken} | git update-ref --stdin`, repo.local);
 		const before = g("git for-each-ref '--format=%(refname)' refs/heads", repo.local);
 		await expect(createWorktree(p, VARIANT(), "feat/x", "feat/x-v1")).rejects.toMatchObject({
 			name: "WorkspaceReclaimRefusedError", kind: "no-fresh-branch", message: expect.stringContaining("git branch -D"),
@@ -458,13 +461,9 @@ describe("F4: fresh variant branch, old one kept", () => {
 // VERIFIED against its remote whenever it has one — never a silent stale base.
 describe("F4 base freshness", () => {
 	const origin = () => join(repo.dir, "origin.git");
-	function otherClonePush(branch: string, file: string): string {
-		const other = join(repo.dir, `other-${file}`);
-		g(`git clone -q "${origin()}" "${other}"`, repo.dir);
-		g(`git checkout -q ${branch}`, other);
-		commit(other, file);
-		g(`git push -q origin ${branch}`, other);
-		return g("git rev-parse HEAD", other).trim();
+	/** Someone else pushed to `branch`: a commit written straight into the bare origin, no clone. */
+	function otherClonePush(branch: string, message: string): string {
+		return g(`sha=$(git commit-tree -p refs/heads/${branch} -m ${message} "refs/heads/${branch}^{tree}") && git update-ref refs/heads/${branch} $sha && echo $sha`, origin()).trim();
 	}
 	const heads = () => g("git for-each-ref '--format=%(refname) %(objectname)' refs/heads", repo.local);
 	const variantTask = (existing: string) => task({ existingBranch: existing, variantIndex: 1 });
@@ -556,11 +555,7 @@ describe("F4 base: upstream metadata", () => {
 		const p = project(repo.local);
 		g("git branch other-name && git push -q origin other-name", repo.local);
 		g("git branch --track feat/u origin/other-name", repo.local);
-		const other = join(repo.dir, "other-u");
-		g(`git clone -q "${join(repo.dir, "origin.git")}" "${other}"`, repo.dir);
-		g("git checkout -q other-name", other);
-		const remoteTip = commit(other, "remote-side.txt");
-		g("git push -q origin other-name", other);
+		const remoteTip = g(`sha=$(git commit-tree -p refs/heads/other-name -m remote-side "refs/heads/other-name^{tree}") && git update-ref refs/heads/other-name $sha && echo $sha`, join(repo.dir, "origin.git")).trim();
 		const wt = await createWorktree(p, variantTask("feat/u"), "feat/u", "feat/u-v1");
 		expect(g("git rev-parse HEAD", wt.worktreePath).trim()).toBe(remoteTip);
 	});

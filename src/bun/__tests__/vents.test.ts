@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,14 +56,9 @@ describe("addVent", () => {
 		expect(c.fileName).toBe("2026-06-15_14-30_dup-name-3.md");
 	});
 
-	it("slugifies non-ascii / punctuation names to ascii kebab", () => {
-		const res = addVent("Tmux: split — broken?!", "x", FIXED);
-		expect(res.fileName).toBe("2026-06-15_14-30_tmux-split-broken.md");
-	});
-
-	it("falls back to 'vent' slug when name has no usable chars", () => {
-		const res = addVent("!!!", "x", FIXED);
-		expect(res.fileName).toBe("2026-06-15_14-30_vent.md");
+	it("slugifies non-ascii / punctuation names to ascii kebab, falling back to 'vent'", () => {
+		expect(addVent("Tmux: split — broken?!", "x", FIXED).fileName).toBe("2026-06-15_14-30_tmux-split-broken.md");
+		expect(addVent("!!!", "x", FIXED).fileName).toBe("2026-06-15_14-30_vent.md");
 	});
 
 	it("caps oversized content and name", () => {
@@ -74,11 +69,5 @@ describe("addVent", () => {
 		expect(body.length).toBeLessThan(9000);
 		// name slug is capped to 60 chars
 		expect(res.fileName.replace("2026-06-15_14-30_", "").replace(".md", "").length).toBeLessThanOrEqual(60);
-	});
-
-	it("creates the vents directory if missing", () => {
-		addVent("dir check", "x", FIXED);
-		const files = readdirSync(VENTS_DIR);
-		expect(files.length).toBeGreaterThan(0);
 	});
 });

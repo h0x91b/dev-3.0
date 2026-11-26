@@ -42,18 +42,12 @@ const testProject: Project = {
 const MIN = 60_000;
 
 describe("status-duration accumulation", () => {
-	it("seeds statusEnteredAt at creation with no durations yet", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-07-01T00:00:00.000Z"));
-		const task = await addTask(testProject, "Timed task");
-		expect(task.statusEnteredAt).toBe("2026-07-01T00:00:00.000Z");
-		expect(task.statusDurations ?? {}).toEqual({});
-	});
-
-	it("credits the leaving status on each transition and re-stamps statusEnteredAt", async () => {
+	it("seeds statusEnteredAt at creation, then credits the leaving status on each transition", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-07-01T00:00:00.000Z"));
 		const task = await addTask(testProject, "Timed task"); // todo @ t0
+		expect(task.statusEnteredAt).toBe("2026-07-01T00:00:00.000Z");
+		expect(task.statusDurations ?? {}).toEqual({});
 
 		vi.setSystemTime(new Date("2026-07-01T00:10:00.000Z")); // +10m
 		let u = await updateTask(testProject, task.id, { status: "in-progress" });
@@ -121,6 +115,7 @@ describe("addTaskFocusMs", () => {
 
 		const got = await getTask(testProject, task.id);
 		expect(got.focusMs).toBe(120_000);
+		expect(got.focusByHour).toBeUndefined(); // no split given (older caller shape)
 		expect(got.updatedAt).toBe(beforeUpdatedAt);
 		// History lives in the task's sidecar; still only the seeded 'created' entry.
 		expect(await loadEffectiveTaskHistory(testProject, got)).toHaveLength(1);
@@ -133,14 +128,6 @@ describe("addTaskFocusMs", () => {
 		const got = await getTask(testProject, task.id);
 		expect(got.focusMs).toBe(105_000);
 		expect(got.focusByHour).toEqual({ "493000": 60_000, "493001": 45_000 });
-	});
-
-	it("writes no focusByHour when no split is given (older caller shape)", async () => {
-		const task = await addTask(testProject, "T");
-		await addTaskFocusMs(testProject, task.id, 10_000);
-		const got = await getTask(testProject, task.id);
-		expect(got.focusMs).toBe(10_000);
-		expect(got.focusByHour).toBeUndefined();
 	});
 
 	it("ignores non-positive deltas and unknown task ids", async () => {

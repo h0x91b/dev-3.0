@@ -1,3 +1,5 @@
+> Superseded in part on 2026-11-24 by `decisions/2026/11/24/shared-media-retention-tiers.md`: the size floor is now 15 MiB (`LARGE_SHARED_MEDIA_BYTES`), a pinned clip is held on any task, and closed tasks' show-media clips also follow rank-based retention tiers.
+
 # Large shared media expires after 60 days
 
 ## Context

@@ -49,25 +49,15 @@ function seedProjects(projects: Partial<Project>[]): void {
 }
 
 describe("daily projects.json backups", () => {
-	it("writes a daily .bak with the pre-save content on first save of the day", async () => {
-		seedProjects([{ id: "old", name: "Old", path: "/tmp/old" } as Project]);
-
-		await addProject("/tmp/new-repo", "New Repo");
-
-		const backup = todayBackupFile();
-		expect(existsSync(backup)).toBe(true);
-		const backedUp = JSON.parse(readFileSync(backup, "utf-8"));
-		expect(backedUp).toHaveLength(1);
-		expect(backedUp[0].id).toBe("old");
-	});
-
-	it("does not overwrite the same day's backup on subsequent saves", async () => {
+	it("writes a daily .bak with the pre-save content on the first save of the day, and never overwrites it that day", async () => {
 		seedProjects([{ id: "old", name: "Old", path: "/tmp/old" } as Project]);
 
 		const added = await addProject("/tmp/new-repo", "New Repo");
 		await updateProject(added.id, { devScript: "bun run dev" });
 
-		const backedUp = JSON.parse(readFileSync(todayBackupFile(), "utf-8"));
+		const backup = todayBackupFile();
+		expect(existsSync(backup)).toBe(true);
+		const backedUp = JSON.parse(readFileSync(backup, "utf-8"));
 		expect(backedUp).toHaveLength(1);
 		expect(backedUp[0].id).toBe("old");
 	});

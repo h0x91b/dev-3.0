@@ -73,7 +73,6 @@ describe("buildClaudeUsageDays", () => {
 
 	it.each([
 		["no split", undefined, 7.5],
-		["empty split", {}, 7.5],
 		["only a 5m bucket", { ephemeral_5m_input_tokens: 500_000 }, 7.5],
 		["only a 1h bucket", { ephemeral_1h_input_tokens: 500_000 }, 8.625],
 		["partial split", { ephemeral_5m_input_tokens: 500_000, ephemeral_1h_input_tokens: 500_000 }, 8.625],

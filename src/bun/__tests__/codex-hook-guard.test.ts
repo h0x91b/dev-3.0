@@ -42,7 +42,7 @@ posixOnly("Codex hook command guard (executed through a real shell)", () => {
 		});
 	};
 
-	it("does not launch dev3 at all in a session that is not a dev3 task", () => {
+	it("does not launch dev3 at all in a session that is not a dev3 task (unset or empty DEV3_TASK_ID)", () => {
 		const result = runHook({});
 		expect(existsSync(marker)).toBe(false);
 		// A non-zero hook exit is a failure Codex shows the user, and 2 blocks the
@@ -50,17 +50,15 @@ posixOnly("Codex hook command guard (executed through a real shell)", () => {
 		expect(result.status).toBe(0);
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
+		// An empty DEV3_TASK_ID is no task either.
+		runHook({ DEV3_TASK_ID: "" });
+		expect(existsSync(marker)).toBe(false);
 	});
 
 	it("still launches dev3 inside a dev3 task", () => {
 		const result = runHook({ DEV3_TASK_ID: "task-1234" });
 		expect(existsSync(marker)).toBe(true);
 		expect(result.status).toBe(0);
-	});
-
-	it("treats an empty DEV3_TASK_ID as no task", () => {
-		runHook({ DEV3_TASK_ID: "" });
-		expect(existsSync(marker)).toBe(false);
 	});
 
 	it("guards every event dev3 declares, not just one", () => {

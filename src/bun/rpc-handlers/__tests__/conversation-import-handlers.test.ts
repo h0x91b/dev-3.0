@@ -168,7 +168,7 @@ describe("scanImportableConversations", () => {
 });
 
 describe("importConversations", () => {
-	it("creates a task titled by Claude, labelled imported, keyed on the session", async () => {
+	it("creates a labelled, session-keyed task with a worktree, a request-led description, and tells the renderer", async () => {
 		mocks.scanImportableConversations.mockReturnValue([conversation()]);
 		const result = await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1"] });
 
@@ -179,6 +179,27 @@ describe("importConversations", () => {
 		expect(extras.title).toBe("Fix the parser");
 		expect(extras.importedSessionId).toBe("sess-1");
 		expect(extras.labelIds).toHaveLength(1);
+
+		// The description leads with the user's own request and says where it came from.
+		const { description } = addTaskCall();
+		expect(description).toContain("## The request that started this");
+		expect(description).toContain("Please fix the parser");
+		expect(description).toContain("Fixed it, tests pass.");
+		expect(description.indexOf("Please fix the parser")).toBeLessThan(description.indexOf("Fixed it, tests pass."));
+
+		// A recent conversation gets a worktree branched off the branch it ran on.
+		expect(extras.baseBranch).toBe("feat/parser");
+		expect(mocks.createWorktree).toHaveBeenCalledTimes(1);
+		expect(mocks.updateTask.mock.calls[0][2]).toMatchObject({
+			worktreePath: "/wt/task/worktree",
+			branchName: "dev3/task-abcd1234",
+		});
+
+		// The renderer gets the project carrying the new label, and every surface hears of the task.
+		const pushed = mocks.push.mock.calls.find(([name]) => name === "projectUpdated");
+		expect(pushed, "a card labelled with an id the renderer never received shows no chip").toBeDefined();
+		expect((pushed![1] as { project: Project }).project.labels?.[0].name).toBe("imported");
+		expect(mocks.push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "p1" }));
 	});
 
 	// A session its agent never named imports exactly like any other — the title is
@@ -195,17 +216,6 @@ describe("importConversations", () => {
 		expect(extras.importedSessionId).toBe("sess-9");
 	});
 
-	it("leads the description with the user's own request and says where it came from", async () => {
-		mocks.scanImportableConversations.mockReturnValue([conversation()]);
-		await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1"] });
-
-		const { description } = addTaskCall();
-		expect(description).toContain("## The request that started this");
-		expect(description).toContain("Please fix the parser");
-		expect(description).toContain("Fixed it, tests pass.");
-		expect(description.indexOf("Please fix the parser")).toBeLessThan(description.indexOf("Fixed it, tests pass."));
-	});
-
 	it("creates the `imported` label once and reuses it afterwards", async () => {
 		mocks.scanImportableConversations.mockReturnValue([conversation(), conversation({ sessionId: "sess-2" })]);
 		await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1", "sess-2"] });
@@ -216,27 +226,6 @@ describe("importConversations", () => {
 		const labelWrites = updates.filter((u) => Array.isArray(u.updates.labels));
 		expect(labelWrites).toHaveLength(1);
 		expect((labelWrites[0].updates.labels as { name: string }[])[0].name).toBe("imported");
-	});
-
-	it("hands the renderer the project carrying the new label, not just the tasks", async () => {
-		mocks.scanImportableConversations.mockReturnValue([conversation()]);
-		await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1"] });
-
-		const pushed = mocks.push.mock.calls.find(([name]) => name === "projectUpdated");
-		expect(pushed, "a card labelled with an id the renderer never received shows no chip").toBeDefined();
-		expect((pushed![1] as { project: Project }).project.labels?.[0].name).toBe("imported");
-	});
-
-	it("gives a recent conversation a worktree branched off the branch it ran on", async () => {
-		mocks.scanImportableConversations.mockReturnValue([conversation()]);
-		await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1"] });
-
-		expect(addTaskCall().extras.baseBranch).toBe("feat/parser");
-		expect(mocks.createWorktree).toHaveBeenCalledTimes(1);
-		expect(mocks.updateTask.mock.calls[0][2]).toMatchObject({
-			worktreePath: "/wt/task/worktree",
-			branchName: "dev3/task-abcd1234",
-		});
 	});
 
 	it("falls back to the project's base branch when the conversation's branch is gone", async () => {
@@ -292,11 +281,6 @@ describe("importConversations", () => {
 		expect(result.problems).toHaveLength(1);
 	});
 
-	it("tells every open surface about each new task", async () => {
-		mocks.scanImportableConversations.mockReturnValue([conversation()]);
-		await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1"] });
-		expect(mocks.push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "p1" }));
-	});
 });
 
 describe("markConversationImportOffered", () => {

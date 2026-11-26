@@ -76,16 +76,13 @@ function facts(overrides?: Partial<MemoryFacts>): MemoryFacts {
 }
 
 describe("parseMacMemory", () => {
-	it("reports Activity Monitor's used figure, excluding the file cache", () => {
+	it("reports Activity Monitor's used figure, cache as headroom, and the swap-out counter", () => {
 		const result = parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "1")!;
 
 		// (anonymous 4372930 - purgeable 198029 + wired 393186 + compressor 1422659) * 16384
 		expect(result.used).toBe(5990746 * 16384);
 		expect(result.used / GIB).toBeCloseTo(91.4, 1);
-	});
-
-	it("keeps the used/cached/free balance closed against total RAM", () => {
-		const result = parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "1")!;
+		expect(result.swapOutCount).toBe(64);
 
 		// The strongest available check that `used` is defined the way Activity
 		// Monitor defines it: used + cached files + free must reconstruct total.
@@ -93,10 +90,6 @@ describe("parseMacMemory", () => {
 		const speculative = 42628 * 16384;
 		const reconstructed = result.used + result.cached + free + speculative;
 		expect(reconstructed / result.total).toBeCloseTo(1, 1);
-	});
-
-	it("treats reclaimable file cache as headroom, not as used", () => {
-		const result = parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "1")!;
 
 		// `top` calls this machine "894M unused". If headroom followed that, the
 		// widget would be in permanent alarm while the OS reports normal pressure.
@@ -108,23 +101,23 @@ describe("parseMacMemory", () => {
 		expect(parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "1")!.osPressure).toBe("normal");
 		expect(parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "2")!.osPressure).toBe("warn");
 		expect(parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "4")!.osPressure).toBe("critical");
-	});
-
-	it("reports no OS verdict for an unknown pressure level", () => {
+		// An unknown level is no verdict at all.
 		expect(parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "7")!.osPressure).toBeNull();
 		expect(parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "")!.osPressure).toBeNull();
 	});
 
-	it("exposes the cumulative swap-out counter", () => {
-		expect(parseMacMemory(MAC_VM_STAT, MAC_MEMSIZE, MAC_SWAP, "1")!.swapOutCount).toBe(64);
-	});
-
-	it("falls back to active pages when Anonymous pages is missing", () => {
+	it("falls back to active pages when Anonymous pages is missing, and clamps used to total", () => {
 		const older = MAC_VM_STAT.replace(/^Anonymous pages:.*$/m, "");
 		const result = parseMacMemory(older, MAC_MEMSIZE, MAC_SWAP, "1")!;
 
 		// active 3239942 + wired 393186 + compressor 1422659
 		expect(result.used).toBe(5055787 * 16384);
+
+		// Never used above total, never negative headroom.
+		const absurd = MAC_VM_STAT.replace("Pages wired down:                        393186.", "Pages wired down:                    999999999.");
+		const clamped = parseMacMemory(absurd, MAC_MEMSIZE, MAC_SWAP, "1")!;
+		expect(clamped.used).toBe(clamped.total);
+		expect(clamped.headroom).toBe(0);
 	});
 
 	it("returns null on unusable input instead of inventing numbers", () => {
@@ -133,42 +126,30 @@ describe("parseMacMemory", () => {
 		expect(parseMacMemory(MAC_VM_STAT, "not-a-number", MAC_SWAP, "1")).toBeNull();
 		expect(parseMacMemory("Mach Virtual Memory Statistics: (page size of 16384 bytes)", MAC_MEMSIZE, MAC_SWAP, "1")).toBeNull();
 	});
-
-	it("never reports used above total or negative headroom", () => {
-		const absurd = MAC_VM_STAT.replace("Pages wired down:                        393186.", "Pages wired down:                    999999999.");
-		const result = parseMacMemory(absurd, MAC_MEMSIZE, MAC_SWAP, "1")!;
-		expect(result.used).toBe(result.total);
-		expect(result.headroom).toBe(0);
-	});
 });
 
 describe("parseSwapUsage", () => {
-	it("scales the unit suffix to bytes", () => {
+	it("scales the unit suffix to bytes, and reads no swap or junk as zeros (never NaN)", () => {
 		expect(parseSwapUsage(MAC_SWAP)).toEqual({ total: 1024 * 1024 ** 2, used: 1024 ** 2 });
-	});
-
-	it("reads a machine with no swap configured as zero", () => {
 		expect(parseSwapUsage("total = 0.00M  used = 0.00M  free = 0.00M")).toEqual({ total: 0, used: 0 });
-	});
-
-	it("returns zeros for junk rather than NaN", () => {
 		expect(parseSwapUsage("")).toEqual({ total: 0, used: 0 });
 		expect(parseSwapUsage("total = wat")).toEqual({ total: 0, used: 0 });
 	});
 });
 
 describe("parseLinuxMemory", () => {
-	it("defines used as total minus available", () => {
+	it("defines used as total minus available, swap used as total minus free, and reads pswpout", () => {
 		const result = parseLinuxMemory(LINUX_MEMINFO, LINUX_PSI, LINUX_VMSTAT)!;
 		expect(result.total).toBe(16384000 * 1024);
 		expect(result.headroom).toBe(4194304 * 1024);
 		expect(result.used).toBe(result.total - result.headroom);
-	});
-
-	it("derives swap in use from total minus free", () => {
-		const result = parseLinuxMemory(LINUX_MEMINFO, LINUX_PSI, LINUX_VMSTAT)!;
 		expect(result.swapTotal).toBe(2097152 * 1024);
 		expect(result.swapUsed).toBe(1048576 * 1024);
+		expect(result.swapOutCount).toBe(4242);
+		expect(parseLinuxMemory(LINUX_MEMINFO, LINUX_PSI, "")!.swapOutCount).toBe(0);
+		// Unusable meminfo → null.
+		expect(parseLinuxMemory("", LINUX_PSI, LINUX_VMSTAT)).toBeNull();
+		expect(parseLinuxMemory("MemTotal: 16384000 kB", LINUX_PSI, LINUX_VMSTAT)).toBeNull();
 	});
 
 	it("classifies pressure from PSI full avg10", () => {
@@ -180,26 +161,13 @@ describe("parseLinuxMemory", () => {
 		expect(at("0.50")).toBe("warn");
 		expect(at("4.99")).toBe("warn");
 		expect(at("5.00")).toBe("critical");
-	});
-
-	it("reports no OS verdict when PSI is unavailable", () => {
-		const result = parseLinuxMemory(LINUX_MEMINFO, "", LINUX_VMSTAT)!;
-		expect(result.osPressure).toBeNull();
-	});
-
-	it("reads the cumulative pswpout counter", () => {
-		expect(parseLinuxMemory(LINUX_MEMINFO, LINUX_PSI, LINUX_VMSTAT)!.swapOutCount).toBe(4242);
-		expect(parseLinuxMemory(LINUX_MEMINFO, LINUX_PSI, "")!.swapOutCount).toBe(0);
-	});
-
-	it("returns null when meminfo is unusable", () => {
-		expect(parseLinuxMemory("", LINUX_PSI, LINUX_VMSTAT)).toBeNull();
-		expect(parseLinuxMemory("MemTotal: 16384000 kB", LINUX_PSI, LINUX_VMSTAT)).toBeNull();
+		// No PSI → no OS verdict.
+		expect(parseLinuxMemory(LINUX_MEMINFO, "", LINUX_VMSTAT)!.osPressure).toBeNull();
 	});
 });
 
 describe("classifyPressure", () => {
-	it("trusts the OS verdict over any share of total", () => {
+	it("trusts the OS verdict over any share of total, escalating only for active swapping", () => {
 		// 3% headroom left, but the OS says it is fine — the OS wins, and the
 		// result is not marked estimated.
 		const result = classifyPressure(
@@ -207,6 +175,10 @@ describe("classifyPressure", () => {
 			{ swapping: false },
 		);
 		expect(result).toEqual({ pressure: "normal", estimated: false });
+
+		// Active swapping escalates an OS "normal" to warn (still not estimated), never downgrades critical.
+		expect(classifyPressure(facts({ osPressure: "normal" }), { swapping: true })).toEqual({ pressure: "warn", estimated: false });
+		expect(classifyPressure(facts({ osPressure: "critical" }), { swapping: true }).pressure).toBe("critical");
 	});
 
 	it("falls back to a share of total when the OS gives no verdict", () => {
@@ -219,30 +191,14 @@ describe("classifyPressure", () => {
 		expect(at(14)).toEqual({ pressure: "warn", estimated: true });
 		expect(at(4)).toEqual({ pressure: "critical", estimated: true });
 	});
-
-	it("escalates to warn while actively swapping even when the OS says normal", () => {
-		const result = classifyPressure(facts({ osPressure: "normal" }), { swapping: true });
-		expect(result.pressure).toBe("warn");
-		expect(result.estimated).toBe(false);
-	});
-
-	it("does not downgrade critical because of the swap escalation", () => {
-		expect(classifyPressure(facts({ osPressure: "critical" }), { swapping: true }).pressure).toBe("critical");
-	});
 });
 
 describe("isSwapping", () => {
-	it("is false on the first sample, with nothing to compare against", () => {
+	it("is true only when the counter moved — not on the first sample, nor on a reset", () => {
 		expect(isSwapping(null, 64)).toBe(false);
-	});
-
-	it("is true only when the counter moved", () => {
 		expect(isSwapping(64, 64)).toBe(false);
 		expect(isSwapping(64, 65)).toBe(true);
-	});
-
-	it("ignores a counter reset (reboot) rather than reporting it as swapping", () => {
-		expect(isSwapping(9000, 0)).toBe(false);
+		expect(isSwapping(9000, 0)).toBe(false); // reboot
 	});
 });
 
@@ -252,9 +208,8 @@ describe("deriveDisplayName", () => {
 			"/Applications/Google Chrome.app/Contents/Frameworks/Chromium Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer",
 		);
 		expect(helper.name).toBe("Google Chrome");
-	});
 
-	it("keeps a bundle path with spaces and dashes intact", () => {
+		// A bundle path with spaces and dashes stays intact.
 		const vscode = deriveDisplayName(
 			"/Applications/Visual Studio Code - Insiders.app/Contents/Frameworks/Code - Insiders Helper (Plugin).app/Contents/MacOS/Code - Insiders Helper (Plugin)",
 		);
@@ -265,20 +220,15 @@ describe("deriveDisplayName", () => {
 	it("uses the executable basename outside a bundle", () => {
 		expect(deriveDisplayName("/usr/libexec/logd").name).toBe("logd");
 		expect(deriveDisplayName("/usr/bin/node /srv/app/server.js --port 3000").name).toBe("node");
-	});
-
-	it("stops the program part at the first flag", () => {
+		// The program part stops at the first flag.
 		const result = deriveDisplayName("/usr/bin/node --max-old-space-size=8192 server.js");
 		expect(result.name).toBe("node");
 		expect(result.path).toBe("/usr/bin/node");
 	});
 
-	it("applies the alias table to unrecognisable daemon names", () => {
+	it("applies the alias table to unrecognisable daemon names, and returns an empty name for an empty line", () => {
 		expect(deriveDisplayName("/usr/local/bin/dockerd --host=fd://").name).toBe("Docker");
 		expect(deriveDisplayName("/opt/homebrew/bin/com.docker.backend").name).toBe("Docker");
-	});
-
-	it("returns an empty name for an empty command line", () => {
 		expect(deriveDisplayName("")).toEqual({ name: "", path: "" });
 		expect(deriveDisplayName("   ")).toEqual({ name: "", path: "" });
 	});
@@ -302,20 +252,11 @@ describe("groupConsumers", () => {
 		expect(groups[0].name).toBe("Google Chrome");
 		expect(groups[0].rss).toBe(9 * GIB);
 		expect(groups[0].processCount).toBe(3);
+		// The heaviest member's command line is shown, not the first one seen.
+		expect(groups[0].cmdline).toContain("--id=2");
 	});
 
-	it("shows the heaviest member's command line, not the first one seen", () => {
-		const groups = groupConsumers(
-			[
-				{ pid: 1, rss: 1 * GIB, cmdline: chromeHelper(111) },
-				{ pid: 2, rss: 8 * GIB, cmdline: chromeHelper(999) },
-			],
-			5,
-		);
-		expect(groups[0].cmdline).toContain("--id=999");
-	});
-
-	it("orders by summed memory, so a swarm of helpers outranks one fat process", () => {
+	it("orders by summed memory (ties by name) and keeps only the top N", () => {
 		const groups = groupConsumers(
 			[
 				{ pid: 1, rss: 5 * GIB, cmdline: "/usr/bin/node server.js" },
@@ -325,37 +266,31 @@ describe("groupConsumers", () => {
 			5,
 		);
 		expect(groups.map((g) => g.name)).toEqual(["Google Chrome", "node"]);
-	});
 
-	it("keeps only the top N groups", () => {
-		const processes = Array.from({ length: 12 }, (_, i) => ({
-			pid: i + 1,
-			rss: (i + 1) * GIB,
-			cmdline: `/usr/bin/app${i}`,
-		}));
-		const groups = groupConsumers(processes, 5);
-		expect(groups).toHaveLength(5);
-		expect(groups[0].name).toBe("app11");
-	});
-
-	it("breaks an exact tie by name so the order does not flicker between polls", () => {
-		const groups = groupConsumers(
+		// An exact tie breaks by name so the order does not flicker between polls.
+		const tied = groupConsumers(
 			[
 				{ pid: 1, rss: GIB, cmdline: "/usr/bin/zebra" },
 				{ pid: 2, rss: GIB, cmdline: "/usr/bin/alpha" },
 			],
 			5,
 		);
-		expect(groups.map((g) => g.name)).toEqual(["alpha", "zebra"]);
+		expect(tied.map((g) => g.name)).toEqual(["alpha", "zebra"]);
+
+		// Only the top N groups are kept.
+		const processes = Array.from({ length: 12 }, (_, i) => ({
+			pid: i + 1,
+			rss: (i + 1) * GIB,
+			cmdline: `/usr/bin/app${i}`,
+		}));
+		const top = groupConsumers(processes, 5);
+		expect(top).toHaveLength(5);
+		expect(top[0].name).toBe("app11");
 	});
 
-	it("caps the stored command line", () => {
+	it("caps the stored command line and skips processes with none rather than inventing a group", () => {
 		const long = `/usr/bin/node ${"x".repeat(2000)}`;
-		const groups = groupConsumers([{ pid: 1, rss: GIB, cmdline: long }], 5);
-		expect(groups[0].cmdline.length).toBe(CMDLINE_CAP);
-	});
-
-	it("skips processes with no command line rather than inventing a group", () => {
+		expect(groupConsumers([{ pid: 1, rss: GIB, cmdline: long }], 5)[0].cmdline.length).toBe(CMDLINE_CAP);
 		const groups = groupConsumers(
 			[
 				{ pid: 1, rss: GIB, cmdline: "" },
@@ -364,29 +299,16 @@ describe("groupConsumers", () => {
 			5,
 		);
 		expect(groups.map((g) => g.name)).toEqual(["node"]);
-	});
-
-	it("returns nothing for no input", () => {
 		expect(groupConsumers([], 5)).toEqual([]);
 	});
 });
 
 describe("median", () => {
-	it("returns null with no active tasks, so the banner omits its forecast", () => {
-		expect(median([])).toBeNull();
-	});
-
-	it("takes the middle value for an odd count", () => {
-		expect(median([5, 1, 3])).toBe(3);
-	});
-
-	it("averages the two middle values for an even count", () => {
+	it("is null when empty, the middle for odd counts, the mean of the middle two for even, and never mutates", () => {
+		expect(median([])).toBeNull(); // no active tasks → the banner omits its forecast
+		const odd = [5, 1, 3];
+		expect(median(odd)).toBe(3);
+		expect(odd).toEqual([5, 1, 3]);
 		expect(median([1, 2, 3, 4])).toBe(3);
-	});
-
-	it("does not mutate the caller's array", () => {
-		const input = [3, 1, 2];
-		median(input);
-		expect(input).toEqual([3, 1, 2]);
 	});
 });

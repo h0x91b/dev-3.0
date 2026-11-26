@@ -213,16 +213,11 @@ describe("the ledger clock ignores the wall clock", () => {
 });
 
 describe("one delivery id runs at most once while the record survives", () => {
-	it("executes a first attempt and stamps the executor incarnation", async () => {
-		const execute = vi.fn(async () => delivered(program()));
-		const outcome = await run(program(), execute);
-		expect(execute).toHaveBeenCalledTimes(1);
-		expect(outcome).toMatchObject({ status: "delivered", executor: ledger.incarnation });
-	});
-
-	it("replays the recorded outcome instead of writing a second time", async () => {
+	it("executes a first attempt, stamps the executor incarnation, and replays it instead of writing again", async () => {
 		const execute = vi.fn(async () => delivered(program()));
 		const first = await run(program(), execute);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(first).toMatchObject({ status: "delivered", executor: ledger.incarnation });
 		const second = await run(program(), execute);
 		expect(execute).toHaveBeenCalledTimes(1);
 		expect(second).toEqual(first);
@@ -288,12 +283,17 @@ describe("the guarantee is scoped, and says so when the record is gone", () => {
 		});
 	});
 
-	it("still replays a record it does have, whatever the attempt number says", async () => {
+	it("still replays a record it does have, whatever the attempt number says, up to the end of the retention window", async () => {
 		const execute = vi.fn(async () => delivered(program()));
 		const first = await run(program(), execute);
 		const resend = await run(program({ attempt: 3 }), execute);
 		expect(execute).toHaveBeenCalledTimes(1);
 		expect(resend).toEqual(first);
+
+		clock += RETENTION_MS - 1;
+		const late = await run(program({ attempt: 2 }), execute);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(late).toEqual(first);
 	});
 
 	it("treats a resend after the owning process was replaced as unknown, not as new", async () => {
@@ -314,16 +314,6 @@ describe("the guarantee is scoped, and says so when the record is gone", () => {
 		const outcome = await run(program({ attempt: 2 }), execute);
 		expect(execute).toHaveBeenCalledTimes(1);
 		expect(outcome).toMatchObject({ status: "indeterminate", reason: "owner-process-replaced" });
-	});
-
-	it("keeps answering inside the retention window", async () => {
-		const execute = vi.fn(async () => delivered(program()));
-		const first = await run(program(), execute);
-
-		clock += RETENTION_MS - 1;
-		const resend = await run(program({ attempt: 2 }), execute);
-		expect(execute).toHaveBeenCalledTimes(1);
-		expect(resend).toEqual(first);
 	});
 
 	it("re-admits a first attempt whose record expired, because nothing remembers it", async () => {

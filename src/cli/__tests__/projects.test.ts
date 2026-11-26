@@ -87,10 +87,10 @@ afterEach(() => {
 });
 
 describe("projects list", () => {
-	it("lists projects in a table with their spaces", async () => {
+	it("lists projects in a table with their spaces and short ids, as the default subcommand", async () => {
 		answerLists();
 
-		await handleProjects("list", { positional: [], flags: {} }, SOCKET);
+		await handleProjects(undefined, { positional: [], flags: {} }, SOCKET);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "projects.list");
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "spaces.list");
@@ -100,6 +100,8 @@ describe("projects list", () => {
 		expect(stdoutOutput).toContain("PATH");
 		expect(stdoutOutput).toMatch(/My App\s+Work \/ Side\s+\/Users\/dev\/my-app/);
 		expect(stdoutOutput).toMatch(/Backend API\s+-\s+\/Users\/dev\/backend/);
+		expect(stdoutOutput).toContain("proj-aaa");
+		expect(stdoutOutput).not.toContain("proj-aaaa-bbbb");
 	});
 
 	it("prints full ids and space ids with --json", async () => {
@@ -120,7 +122,7 @@ describe("projects list", () => {
 	});
 
 	// A CLI updated before the app restarted must not lose the command it already had.
-	it("still lists projects when the app is older than spaces.list", async () => {
+	it("still lists projects when the app is older than spaces.list, and says when there are none", async () => {
 		mockSend.mockImplementation(async (_socket, method) =>
 			method === "spaces.list" ? errResp("Unknown method: spaces.list") : okResp(PROJECTS));
 
@@ -128,18 +130,6 @@ describe("projects list", () => {
 
 		expect(stdoutOutput).toMatch(/My App\s+-\s+\/Users\/dev\/my-app/);
 		expect(stderrOutput).toBe("");
-	});
-
-	it("shows short (8-char) project IDs", async () => {
-		answerLists();
-
-		await handleProjects("list", { positional: [], flags: {} }, SOCKET);
-
-		expect(stdoutOutput).toContain("proj-aaa");
-		expect(stdoutOutput).not.toContain("proj-aaaa-bbbb");
-	});
-
-	it("prints message for empty project list", async () => {
 		answerLists([]);
 
 		await handleProjects("list", { positional: [], flags: {} }, SOCKET);
@@ -147,23 +137,12 @@ describe("projects list", () => {
 		expect(stdoutOutput).toContain("No projects configured");
 	});
 
-	it("defaults to 'list' when no subcommand", async () => {
-		answerLists();
-
-		await handleProjects(undefined, { positional: [], flags: {} }, SOCKET);
-
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "projects.list");
-	});
-
-	it("exits on server error", async () => {
+	it("exits 1 on server error and 3 for an unknown subcommand", async () => {
 		mockSend.mockResolvedValue(errResp("Internal error"));
-
 		await expect(
 			handleProjects("list", { positional: [], flags: {} }, SOCKET),
 		).rejects.toThrow("EXIT_1");
-	});
 
-	it("exits with error for unknown subcommand", async () => {
 		await expect(
 			handleProjects("create", { positional: [], flags: {} }, SOCKET),
 		).rejects.toThrow("EXIT_3");
@@ -206,38 +185,28 @@ describe("projects add", () => {
 		expect(stdoutOutput).toContain("Spaces: Work / Side");
 	});
 
-	it("resolves a relative path against the current directory", async () => {
+	it("resolves a relative path, and keeps the path when a boolean flag comes right before it", async () => {
 		mockSend.mockResolvedValue(okResp(added()));
 
 		await run(["add", "some/repo"]);
 
 		expect(mockSend.mock.calls[0][2]).toMatchObject({ path: resolve("some/repo") });
-	});
 
-	// `parseArgs` hands a bare flag the next word; `--init <path>` must not eat the path.
-	it("keeps the path when a boolean flag comes right before it", async () => {
-		mockSend.mockResolvedValue(okResp(added()));
-
+		// `parseArgs` hands a bare flag the next word; `--init <path>` must not eat the path.
 		await run(["add", "--init", "/Users/dev/side-project", "--no-space"]);
 
-		expect(mockSend.mock.calls[0][2]).toMatchObject({ path: "/Users/dev/side-project", init: true, noSpace: true });
+		expect(mockSend.mock.calls[1][2]).toMatchObject({ path: "/Users/dev/side-project", init: true, noSpace: true });
 	});
 
-	it("refuses a git URL and points at clone, sending nothing", async () => {
+	it("refuses a git URL (pointing at clone), --no-space with --space, and a bare --space, sending nothing", async () => {
 		await expect(run(["add", "https://gitlab.example.com/group/notes-app"])).rejects.toThrow("EXIT_3");
 
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(stderrOutput).toContain("dev3 projects clone https://gitlab.example.com/group/notes-app");
-	});
-
-	it("refuses --no-space with --space", async () => {
 		await expect(run(["add", "/x", "--no-space", "--space", "A"])).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
-	it("refuses a bare --space with no value", async () => {
 		await expect(run(["add", "/x", "--space"])).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("--space needs a value");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("exits 33 for an already-registered folder, printing it", async () => {
@@ -247,17 +216,14 @@ describe("projects add", () => {
 
 		expect(stdoutOutput).toContain('Already a project: a1b2c3d4 "side-project"');
 		expect(stdoutOutput).toContain("Nothing changed");
-	});
 
-	it("still prints the JSON result before exiting 33", async () => {
-		mockSend.mockResolvedValue(okResp(added("exists")));
-
+		stdoutOutput = "";
 		await expect(run(["add", "/Users/dev/side-project", "--json"])).rejects.toThrow("EXIT_33");
 
 		expect(JSON.parse(stdoutOutput)).toMatchObject({ outcome: "exists", project: { id: "a1b2c3d4-0000-0000-0000-000000000000" } });
 	});
 
-	it("exits 34 when the app refuses a space, without the prefix", async () => {
+	it("exits 34 for a refused space, but 1 for a later failure quoting one and for an app too old for the method", async () => {
 		mockSend.mockResolvedValue(errResp(`${SPACE_REF_INVALID_PREFIX}No space matches "Nope". Spaces: "A" (sp_11111111).`));
 
 		await expect(run(["add", "/x", "--space", "Nope"])).rejects.toThrow("EXIT_34");
@@ -265,22 +231,17 @@ describe("projects add", () => {
 		expect(stderrOutput).toContain('error: No space matches "Nope"');
 		expect(stderrOutput).not.toContain(SPACE_REF_INVALID_PREFIX);
 		expect(stderrOutput).toContain("dev3 spaces list");
-	});
-
-	// The project exists by then, so exit 34 ("nothing written") would be a lie.
-	it("does not read a space-ref message inside a later failure as exit 34", async () => {
+		// The project exists by then, so exit 34 ("nothing written") would be a lie.
 		mockSend.mockResolvedValue(errResp(`Project a1b2c3d4 was added, but setting its spaces failed: ${SPACE_REF_INVALID_PREFIX}No space matches "X".`));
 
 		await expect(run(["add", "/x", "--space", "X"])).rejects.toThrow("EXIT_1");
-	});
-
-	it("says the app is too old when it does not know the method", async () => {
 		mockSend.mockResolvedValue(errResp("Unknown method: projects.add"));
 
 		await expect(run(["add", "/x"])).rejects.toThrow("EXIT_1");
 
 		expect(stderrOutput).toContain("older than this CLI");
 	});
+
 });
 
 describe("projects clone", () => {
@@ -297,14 +258,9 @@ describe("projects clone", () => {
 			newSpaces: [],
 			noSpace: false,
 		}, expect.objectContaining({ timeoutMs: expect.any(Number) }));
-	});
-
-	it("leaves the folder to the app's clone setting without --dir", async () => {
-		mockSend.mockResolvedValue(okResp(added()));
 
 		await run(["clone", "https://example.com/group/app.git"]);
-
-		expect(mockSend.mock.calls[0][2]).toMatchObject({ dir: undefined });
+		expect(mockSend.mock.calls[1][2], "no --dir leaves the folder to the app").toMatchObject({ dir: undefined });
 	});
 
 	it("needs exactly one URL", async () => {
@@ -320,15 +276,13 @@ describe("projects get|set", () => {
 		handleProjects(argv[0], parseArgs(argv.slice(1)), SOCKET, context);
 	const VALUES = { name: "My App", gitWorkflow: true, storageRoot: "home", useRepoConfig: true, boardCopy: false, boardCopyMessages: false };
 
-	it("prints every switch with its meaning", async () => {
+	it("prints every switch with its meaning, or one value raw or as JSON", async () => {
 		mockSend.mockResolvedValue(okResp(VALUES));
 		await runIn(["get", "--project", PROJECT_ID]);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "projects.settings.get", { projectId: PROJECT_ID });
 		expect(stdoutOutput).toMatch(/gitWorkflow\s+on\s+Worktrees/);
 		expect(stdoutOutput).toMatch(/storageRoot\s+home/);
-	});
-
-	it("prints one value raw, or as JSON with --json", async () => {
+		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp(VALUES));
 		await runIn(["get", "boardCopy"], TASK_CTX);
 		expect(stdoutOutput).toBe("off\n");
@@ -344,15 +298,12 @@ describe("projects get|set", () => {
 		expect(stdoutOutput).toBe("gitWorkflow: on -> off\n");
 	});
 
-	it("names the calling task so the app can refuse it, and exits 49 when it does", async () => {
+	it("exits 49 when the app refuses the calling task, and 50 when the project cannot take the value", async () => {
 		mockSend.mockResolvedValue(errResp("project-setting-forbidden: Only the user or a coordinator task can change gitWorkflow."));
 		await expect(runIn(["set", "gitWorkflow", "off"], TASK_CTX)).rejects.toThrow("EXIT_49");
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sourceTaskId: TASK_CTX.taskId });
 		expect(stderrOutput).toContain("Only the user or a coordinator task can change gitWorkflow.");
 		expect(stderrOutput).not.toContain("project-setting-forbidden");
-	});
-
-	it("exits 50 when the project cannot take the value", async () => {
 		mockSend.mockResolvedValue(errResp("project-setting-unavailable: boardCopyMessages needs boardCopy. Turn boardCopy on first: dev3 projects set boardCopy on"));
 		await expect(runIn(["set", "boardCopyMessages", "on", "--project", PROJECT_ID])).rejects.toThrow("EXIT_50");
 		expect(stderrOutput).toContain("Turn boardCopy on first");

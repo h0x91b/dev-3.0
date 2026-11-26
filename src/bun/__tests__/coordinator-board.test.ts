@@ -38,23 +38,13 @@ function snapshot(overrides: Partial<BoardSnapshot> = {}): BoardSnapshot {
 }
 
 describe("boardRef", () => {
-	it("addresses an ordinary task by its seq alone", () => {
+	// A live variant group is the one case where `--task seq:N` is ambiguous, so the id
+	// is the only address that resolves; the survivor of a group keeps variantIndex
+	// forever while its seq becomes unambiguous, so its id buys nothing.
+	it("adds the id (and variant index) only while the seq is shared", () => {
 		expect(boardRef(row())).toBe("<seq:1620>");
-	});
-
-	// A live variant group is the one case where `--task seq:N` is ambiguous, so
-	// the id is not decoration — it is the only address that resolves.
-	it("carries the variant index and the id when the seq is still shared", () => {
 		expect(boardRef(row({ seqShared: true, variantIndex: 2 }))).toBe("<seq:1620> v2 (b21e9f30)");
-	});
-
-	it("keeps the id but drops the index for a shared seq with no variant index", () => {
 		expect(boardRef(row({ seqShared: true }))).toBe("<seq:1620> (b21e9f30)");
-	});
-
-	// The survivor of a variant group keeps variantIndex forever while its seq
-	// becomes unambiguous; spending bytes on its id every turn buys nothing.
-	it("drops the id once the task is the last of its variant group", () => {
 		expect(boardRef(row({ seqShared: false, variantIndex: 3 }))).toBe("<seq:1620>");
 	});
 });
@@ -68,11 +58,14 @@ describe("renderCoordinatorBoard", () => {
 		expect(text).toContain("moved 41m ago");
 		expect(text).toContain('live="1"');
 		expect(text.endsWith("</dev3-board>")).toBe(true);
-	});
-
-	// An empty block on every turn is pure noise, and a coordinator with nothing
-	// on its board learns nothing from being told so repeatedly.
-	it("renders nothing at all for an empty board", () => {
+		expect(text).toContain("instead of running `dev3 task list`");
+		expect(text).toContain("`P0`…`P4`");
+		// Column age, not terminal silence: `window_activity` moves for every idle shell.
+		expect(text).not.toContain("quiet");
+		expect(text).not.toContain("per tmux window");
+		// The priority sits between the ref and the column.
+		expect(text).toMatch(/<seq:1620>\s+P2\s+In Progress\s+Fix auth race/);
+		// An empty board renders nothing at all: an empty block every turn is pure noise.
 		expect(renderCoordinatorBoard(snapshot({ live: [], finished: [] }), NOW)).toBe("");
 	});
 
@@ -83,45 +76,29 @@ describe("renderCoordinatorBoard", () => {
 		expect(text).toContain("Finished in the last 24 hours:");
 		expect(text).toContain("finished 2h ago");
 		expect(text).toContain('finished-24h="1"');
+		// Seen on the real board: a completed-then-hibernated task said "hibernated"
+		// and hid the one thing that mattered — when it finished.
+		const hibernated = renderCoordinatorBoard(snapshot({
+			live: [],
+			finished: [row({ column: "Completed", hibernated: true, finishedAt: "2026-08-25T16:00:00.000Z" })],
+		}), NOW);
+		expect(hibernated).toContain("finished 2h ago");
+		expect(hibernated).not.toContain("hibernated");
 	});
 
 	// A legacy task with no stamp must not read as "just moved here" — zero is the
 	// one value a coordinator would act on.
-	it("says the stint is unknown rather than rendering it as zero", () => {
+	it("says the stint is unknown rather than zero, and reports hibernated and draft tasks as such", () => {
 		const text = renderCoordinatorBoard(snapshot({ live: [row({ columnSince: null })] }), NOW);
 		expect(text).toContain("moved at an unknown time");
 		expect(text).not.toContain("moved 0s");
-	});
-
-	it("reports a hibernated task as hibernated, whatever its stamp says", () => {
-		const text = renderCoordinatorBoard(snapshot({ live: [row({ hibernated: true })] }), NOW);
-		expect(text).toContain("hibernated");
-		expect(text).not.toContain("moved 41m ago");
-	});
-
-	// Seen on the real board: a completed-then-hibernated task said "hibernated"
-	// and hid the one thing that mattered — when it finished.
-	it("still dates a finished task that is also hibernated", () => {
-		const text = renderCoordinatorBoard(snapshot({
-			live: [],
-			finished: [row({ column: "Completed", hibernated: true, finishedAt: "2026-08-25T16:00:00.000Z" })],
-		}), NOW);
-		expect(text).toContain("finished 2h ago");
-		expect(text).not.toContain("hibernated");
-	});
-
-	it("reports a draft as never started rather than as a stint", () => {
-		const text = renderCoordinatorBoard(snapshot({ live: [row({ draft: true })] }), NOW);
-		expect(text).toContain("draft, never started");
-		expect(text).not.toContain("moved 41m ago");
-	});
-
-	// The column is column age, not terminal silence: `window_activity` moves for
-	// every idle shell at once, so promising quietness here would be a lie.
-	it("never claims anything about how quiet a task's terminal is", () => {
-		const text = renderCoordinatorBoard(snapshot(), NOW);
-		expect(text).not.toContain("quiet");
-		expect(text).not.toContain("per tmux window");
+		// A hibernated task reads as hibernated and a draft as never started, whatever the stamp says.
+		const hibernated = renderCoordinatorBoard(snapshot({ live: [row({ hibernated: true })] }), NOW);
+		expect(hibernated).toContain("hibernated");
+		expect(hibernated).not.toContain("moved 41m ago");
+		const draft = renderCoordinatorBoard(snapshot({ live: [row({ draft: true })] }), NOW);
+		expect(draft).toContain("draft, never started");
+		expect(draft).not.toContain("moved 41m ago");
 	});
 
 	// Silent truncation reads as "this is the whole board", which is exactly the
@@ -132,25 +109,8 @@ describe("renderCoordinatorBoard", () => {
 		expect(text).toContain(String(BOARD_MAX_ROWS));
 	});
 
-	it("tells the agent to read the block instead of running task list", () => {
-		const text = renderCoordinatorBoard(snapshot(), NOW);
-		expect(text).toContain("instead of running `dev3 task list`");
-	});
-
-	it("escapes a project name that would otherwise break the opening tag", () => {
-		const text = renderCoordinatorBoard(snapshot({ projectName: 'a"b<c' }), NOW);
-		expect(text).toContain('project="a&quot;b&lt;c"');
-	});
-
-	it("keeps every row on its own line", () => {
-		const text = renderCoordinatorBoard(snapshot({
-			live: [row({ seq: 1620 }), row({ seq: 1631, title: "Windows packaging step" })],
-		}), NOW);
-		const rows = text.split("\n").filter((l) => l.startsWith("<seq:"));
-		expect(rows).toHaveLength(2);
-	});
-
-	it("truncates an overlong title instead of letting it run the line away", () => {
+	it("escapes a project name that would break the opening tag, and truncates an overlong title", () => {
+		expect(renderCoordinatorBoard(snapshot({ projectName: 'a"b<c' }), NOW)).toContain('project="a&quot;b&lt;c"');
 		const long = "x".repeat(200);
 		const text = renderCoordinatorBoard(snapshot({ live: [row({ title: long })] }), NOW);
 		expect(text).toContain("…");
@@ -159,14 +119,9 @@ describe("renderCoordinatorBoard", () => {
 });
 
 describe("priority cell", () => {
-	it("prints the priority between the ref and the column", () => {
-		const text = renderCoordinatorBoard(snapshot({ live: [row({ priority: "P0" })] }), NOW);
-		expect(text).toMatch(/<seq:1620>\s+P0\s+In Progress\s+Fix auth race/);
-	});
-
 	// The cell sits between two padded columns, so a wider ref on one row must not
 	// shift the column of the row below it.
-	it("keeps the columns aligned across rows of differing ref width", () => {
+	it("keeps every row on its own line, columns aligned across rows of differing ref width", () => {
 		const text = renderCoordinatorBoard(
 			snapshot({ live: [row({ seq: 7, priority: "P0" }), row({ seq: 1631, priority: "P4" })] }),
 			NOW,
@@ -176,9 +131,5 @@ describe("priority cell", () => {
 		expect(lines[0].indexOf("In Progress")).toBe(lines[1].indexOf("In Progress"));
 		expect(lines[0]).toContain("P0");
 		expect(lines[1]).toContain("P4");
-	});
-
-	it("names the priority column in the instruction line", () => {
-		expect(renderCoordinatorBoard(snapshot(), NOW)).toContain("`P0`…`P4`");
 	});
 });

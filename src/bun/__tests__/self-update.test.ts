@@ -40,13 +40,10 @@ describe("detectInstallMethod", () => {
 		["/srv/dev-3.0.app/dev3", "linux", "tarball"],
 	];
 
-	for (const [path, platform, expected] of cases) {
-		it(`classifies ${path} on ${platform} as ${expected}`, () => {
-			expect(detectInstallMethod(path, platform)).toBe(expected);
-		});
-	}
-
-	it("normalises Windows separators before matching", () => {
+	it("classifies source checkouts, brew kegs, app bundles and tarballs by path and platform, Windows separators included", () => {
+		for (const [path, platform, expected] of cases) {
+			expect(detectInstallMethod(path, platform), `${path} on ${platform}`).toBe(expected);
+		}
 		expect(detectInstallMethod("C:\\Users\\x\\.bun\\bin\\bun.exe", "win32")).toBe("source");
 	});
 
@@ -60,26 +57,14 @@ describe("detectInstallMethod", () => {
 	describe("the copies dev3 keeps inside its own data dir", () => {
 		const home = "/Users/x/.dev3.0";
 
-		it("does not treat the app's PATH copy as an install", () => {
+		it("treats the PATH copy and the rollback copy (trailing slash or not) as path-copy, and nothing else", () => {
 			expect(detectInstallMethod(`${home}/bin/dev3`, "darwin", home)).toBe("path-copy");
-		});
-
-		// The one that bites hardest: a rolled-back server IS this process, so its own
-		// watch would keep updating a directory inside the data layout while the real
-		// brew install stays on the build that would not boot.
-		it("does not treat the self-update rollback copy as an install", () => {
+			// The one that bites hardest: a rolled-back server IS this process, so its own
+			// watch would keep updating a directory inside the data layout while the real
+			// brew install stays on the build that would not boot.
 			expect(detectInstallMethod(`${home}/remote/rollback/dev3`, "darwin", home)).toBe("path-copy");
-		});
-
-		it("is recognised with a trailing slash on the home dir too", () => {
 			expect(detectInstallMethod(`${home}/bin/dev3`, "darwin", `${home}/`)).toBe("path-copy");
-		});
-
-		it("does not swallow a real install that merely starts with a similar name", () => {
 			expect(detectInstallMethod("/Users/x/.dev3.0-old/dev3", "darwin", home)).toBe("tarball");
-		});
-
-		it("still classifies everything else normally when the home dir is known", () => {
 			expect(detectInstallMethod("/opt/homebrew/Cellar/dev3/1.45.2/libexec/dev3", "darwin", home))
 				.toBe("brew-formula");
 			expect(detectInstallMethod("/opt/homebrew/bin/bun", "darwin", home)).toBe("source");
@@ -88,12 +73,16 @@ describe("detectInstallMethod", () => {
 });
 
 describe("tarballUrl", () => {
-	it("uses the release TAG directory on stable", () => {
+	it("uses the release TAG directory on stable, without build metadata, mapping an unexpected arch onto x64", () => {
 		expect(tarballUrl({ channel: "stable", platform: "darwin", arch: "arm64", version: "1.45.2" }))
 			.toBe("https://releases.h0x91b.com/dev-3.0/v1.45.2/dev3-cli-macos-arm64.tar.gz");
+		expect(tarballUrl({ channel: "stable", platform: "darwin", arch: "x64", version: "1.45.2+canary.abc" }))
+			.toContain("/v1.45.2/");
+		expect(tarballUrl({ channel: "stable", platform: "linux", arch: "riscv64", version: "1.0.0" }))
+			.toContain("dev3-cli-linux-x64.tar.gz");
 	});
 
-	it("uses the COMMIT directory on canary, because canary has no tag", () => {
+	it("uses the COMMIT directory on canary, which has no tag, and refuses to guess without a sha", () => {
 		expect(tarballUrl({
 			channel: "canary",
 			platform: "linux",
@@ -101,20 +90,7 @@ describe("tarballUrl", () => {
 			version: "1.45.2+canary.abc12345",
 			sha: "abc12345def",
 		})).toBe("https://releases.h0x91b.com/dev-3.0/abc12345def/dev3-cli-linux-x64.tar.gz");
-	});
-
-	it("strips the build-metadata suffix out of a stable directory name", () => {
-		expect(tarballUrl({ channel: "stable", platform: "darwin", arch: "x64", version: "1.45.2+canary.abc" }))
-			.toContain("/v1.45.2/");
-	});
-
-	it("refuses to guess a directory when a canary manifest has no sha", () => {
 		expect(tarballUrl({ channel: "canary", platform: "linux", arch: "arm64", version: "1.45.2" })).toBeNull();
-	});
-
-	it("maps any unexpected arch onto x64 rather than inventing a URL", () => {
-		expect(tarballUrl({ channel: "stable", platform: "linux", arch: "riscv64", version: "1.0.0" }))
-			.toContain("dev3-cli-linux-x64.tar.gz");
 	});
 });
 
@@ -149,10 +125,6 @@ describe("planUpdate", () => {
 		const plan = planUpdate({ ...base, platform: "win32" });
 		expect(plan.kind).toBe("refused");
 		if (plan.kind === "refused") expect(plan.reason).toContain("Windows");
-	});
-
-	it("reports up-to-date when nothing is offered", () => {
-		expect(planUpdate({ ...base, offered: null })).toEqual({ kind: "up-to-date", version: "1.45.0" });
 	});
 
 	it("hands a stable brew formula to brew", () => {
@@ -226,10 +198,11 @@ describe("planUpdate", () => {
 		if (plan.kind === "refused") expect(plan.reason).toContain("desktop app");
 	});
 
-	it("plans a tarball install for a tarball install", () => {
+	it("plans a tarball install, and reports up-to-date without an offer", () => {
 		const plan = planUpdate(base);
 		expect(plan.kind).toBe("tarball");
 		if (plan.kind === "tarball") expect(plan.url).toContain("/v1.45.2/dev3-cli-linux-x64.tar.gz");
+		expect(planUpdate({ ...base, offered: null })).toEqual({ kind: "up-to-date", version: "1.45.0" });
 	});
 
 	it("refuses rather than guessing when the canary tarball cannot be located", () => {
@@ -256,6 +229,18 @@ describe("evaluateQuietWindow", () => {
 		expect(verdict.decision).toBe("apply");
 	});
 
+	it("starts the hold clock on the first quiet tick instead of applying immediately", () => {
+		const verdict = evaluateQuietWindow({ ...base, quietSinceMs: null });
+		expect(verdict.decision).toBe("wait");
+		expect(verdict.quietSinceMs).toBe(now);
+	});
+
+	it("keeps waiting until the hold is fully served", () => {
+		const verdict = evaluateQuietWindow({ ...base, quietSinceMs: now - (QUIET_HOLD_MS - 1_000) });
+		expect(verdict.decision).toBe("wait");
+		expect(verdict.quietSinceMs).toBe(now - (QUIET_HOLD_MS - 1_000));
+	});
+
 	it("waits while a browser is connected — someone is looking at the board", () => {
 		const verdict = evaluateQuietWindow({ ...base, browserClients: 1 });
 		expect(verdict.decision).toBe("wait");
@@ -274,18 +259,6 @@ describe("evaluateQuietWindow", () => {
 		expect(verdict.reason).toContain("could not be read");
 	});
 
-	it("starts the hold clock on the first quiet tick instead of applying immediately", () => {
-		const verdict = evaluateQuietWindow({ ...base, quietSinceMs: null });
-		expect(verdict.decision).toBe("wait");
-		expect(verdict.quietSinceMs).toBe(now);
-	});
-
-	it("keeps waiting until the hold is fully served", () => {
-		const verdict = evaluateQuietWindow({ ...base, quietSinceMs: now - (QUIET_HOLD_MS - 1_000) });
-		expect(verdict.decision).toBe("wait");
-		expect(verdict.quietSinceMs).toBe(now - (QUIET_HOLD_MS - 1_000));
-	});
-
 	it("past the 72h ceiling, a connected browser and a busy terminal stop mattering", () => {
 		const verdict = evaluateQuietWindow({
 			...base,
@@ -300,10 +273,13 @@ describe("evaluateQuietWindow", () => {
 
 	// Past the ceiling the quiet conditions stop applying, so WITHOUT a backoff a
 	// permanently broken update re-attempts on every 30-minute tick, 48 times a day.
-	it("backs off after a failure instead of retrying on the very next tick", () => {
+	it("backs off after a failure, doubling and capped", () => {
 		const verdict = evaluateQuietWindow({ ...base, failedAttempts: 1, lastFailureMs: now - 60_000 });
 		expect(verdict.decision).toBe("wait");
 		expect(verdict.reason).toContain("backing off");
+		expect(retryBackoffMs(0)).toBe(0);
+		expect(retryBackoffMs(2)).toBe(retryBackoffMs(1) * 2);
+		expect(retryBackoffMs(99)).toBe(RETRY_MAX_MS);
 	});
 
 	it("tries again once the backoff has elapsed", () => {
@@ -335,62 +311,41 @@ describe("evaluateQuietWindow", () => {
 		expect(verdict.decision).toBe("wait");
 		expect(verdict.reason).toContain("all failed");
 	});
-
-	it("doubles the wait per failure and then caps it", () => {
-		expect(retryBackoffMs(0)).toBe(0);
-		expect(retryBackoffMs(2)).toBe(retryBackoffMs(1) * 2);
-		expect(retryBackoffMs(99)).toBe(RETRY_MAX_MS);
-	});
 });
 
 describe("brewLinkedBin", () => {
 	// A formula upgrade puts the new build in a NEW keg and only moves
 	// `<prefix>/bin/dev3`; restarting the keg path we were started from comes back on
 	// the OLD version and offers the same update forever.
-	it("points at the brew symlink, not the version-pinned keg", () => {
+	it("points at the brew symlink, not the version-pinned keg, and null for anything that is not a keg", () => {
 		expect(brewLinkedBin("/opt/homebrew/Cellar/dev3/1.45.2/libexec/dev3")).toBe("/opt/homebrew/bin/dev3");
 		expect(brewLinkedBin("/home/linuxbrew/.linuxbrew/Cellar/dev3/1.45.2/libexec/dev3"))
 			.toBe("/home/linuxbrew/.linuxbrew/bin/dev3");
-	});
-
-	it("returns null for anything that is not a keg, rather than guessing a prefix", () => {
 		expect(brewLinkedBin("/Users/x/.dev3/dev3")).toBeNull();
 		expect(brewLinkedBin("/Applications/dev-3.0.app/Contents/MacOS/dev3")).toBeNull();
 	});
 });
 
 describe("chooseRestartStrategy", () => {
-	it("lets a systemd unit do the relaunch — a helper would die with the cgroup", () => {
+	it("lets a supervisor (systemd unit, container CMD) relaunch, its markers winning over the TTY either way", () => {
 		expect(chooseRestartStrategy({ INVOCATION_ID: "abc", DEV3_REMOTE_LOG_FILE: "/tmp/x.log" }))
 			.toBe("supervisor-exit");
-	});
-
-	it("spawns a helper for the unsupervised background server", () => {
-		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" })).toBe("helper");
-	});
-
-	// A human watching a terminal is NOT a supervisor. Exiting there leaves the box
-	// dark until somebody notices — the exact failure this feature exists to prevent.
-	it("refuses to exit an interactive foreground run, because nothing would relaunch it", () => {
-		expect(chooseRestartStrategy({}, true)).toBe("none");
-	});
-
-	it("exits for a container CMD, which has a restart policy", () => {
 		expect(chooseRestartStrategy({}, false, true)).toBe("supervisor-exit");
 		expect(chooseRestartStrategy({ container: "podman" }, false, false)).toBe("supervisor-exit");
-	});
-
-	// "No TTY" is not evidence of a supervisor. `nohup dev3 remote start --no-detach
-	// >log 2>&1 &`, a CI runner and any launcher that redirects stdout all look like
-	// this — and exiting 75 there leaves the box permanently unreachable. An
-	// unnecessary helper costs one short-lived process; a wrong exit costs the box.
-	it("spawns a helper for a non-interactive run with nothing proven to own it", () => {
-		expect(chooseRestartStrategy({}, false, false)).toBe("helper");
-	});
-
-	it("lets the markers win over the TTY either way", () => {
 		expect(chooseRestartStrategy({ INVOCATION_ID: "abc" }, true, false)).toBe("supervisor-exit");
 		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" }, true, false)).toBe("helper");
 		expect(chooseRestartStrategy({}, true, true)).toBe("supervisor-exit");
+	});
+
+	it("spawns a helper when nothing proven owns the run, and refuses to exit an interactive foreground run", () => {
+		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" })).toBe("helper");
+		// A human watching a terminal is NOT a supervisor. Exiting there leaves the box
+		// dark until somebody notices — the exact failure this feature exists to prevent.
+		expect(chooseRestartStrategy({}, true)).toBe("none");
+		// "No TTY" is not evidence of a supervisor. `nohup dev3 remote start --no-detach
+		// >log 2>&1 &`, a CI runner and any launcher that redirects stdout all look like
+		// this — and exiting 75 there leaves the box permanently unreachable. An
+		// unnecessary helper costs one short-lived process; a wrong exit costs the box.
+		expect(chooseRestartStrategy({}, false, false)).toBe("helper");
 	});
 });

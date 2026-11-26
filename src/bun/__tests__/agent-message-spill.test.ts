@@ -35,16 +35,12 @@ afterAll(async () => {
 });
 
 describe("a body a pane can carry", () => {
-	it("travels as text, untouched, and writes nothing", async () => {
+	it("travels as text, untouched, up to exactly the threshold, and writes nothing", async () => {
 		const result = await spillOversizedAgentMessage(task, "fix the retry loop");
 		expect(result).toEqual({ text: "fix the retry loop", spilledPath: null });
 		expect(getProject).not.toHaveBeenCalled();
-	});
-
-	it("still travels as text at exactly the threshold", async () => {
-		const text = "x".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES);
-		const result = await spillOversizedAgentMessage(task, text);
-		expect(result.spilledPath).toBeNull();
+		const atThreshold = await spillOversizedAgentMessage(task, "x".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES));
+		expect(atThreshold.spilledPath, "exactly the threshold").toBeNull();
 	});
 
 	// The threshold is UTF-8 bytes, not characters: a Cyrillic body is two bytes per
@@ -58,13 +54,15 @@ describe("a body a pane can carry", () => {
 });
 
 describe("a body too large to type", () => {
-	it("is written whole to a file and replaced by a pointer to it", async () => {
+	it("is written whole to a file and replaced by a pointer that fits a single tmux send", async () => {
 		const text = "y".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES + 1);
 		const result = await spillOversizedAgentMessage(task, text);
 		expect(result.spilledPath).toMatch(new RegExp(`^${taskDirRoot}/messages/message-.*\\.md$`));
 		expect(await readFile(result.spilledPath!, "utf8")).toBe(text);
 		expect(result.text).toContain(result.spilledPath);
 		expect(result.text).not.toContain(text);
+		const huge = await spillOversizedAgentMessage(task, "z".repeat(80_000));
+		expect(utf8Length(huge.text)).toBeLessThan(PANE_INPUT_LIMITS.maxStageBytes);
 	});
 
 	it("gives the file the sender's project on every bare ref when the sender sits on another board", async () => {
@@ -72,11 +70,6 @@ describe("a body too large to type", () => {
 		const text = `<seq:12> ${"y".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES)}`;
 		const result = await spillOversizedAgentMessage(task, text, { source });
 		expect(await readFile(result.spilledPath!, "utf8")).toBe(text.replace("<seq:12>", "<seq:bbbbbbbb/12>"));
-	});
-
-	it("produces a pointer that itself fits a single tmux send", async () => {
-		const result = await spillOversizedAgentMessage(task, "z".repeat(80_000));
-		expect(utf8Length(result.text)).toBeLessThan(PANE_INPUT_LIMITS.maxStageBytes);
 	});
 });
 
@@ -104,19 +97,14 @@ describe("the threshold is measured on the typed envelope, not the body", () => 
 		expect(await readFile(result.spilledPath!, "utf8")).toBe(body);
 	});
 
-	it("leaves a body whose whole envelope fits as text", async () => {
+	it("leaves a body whose whole envelope fits as text, and measures the raw text when there is no envelope", async () => {
 		const body = "b".repeat(300);
 		const result = await spillOversizedAgentMessage(task, body, { source: SOURCE, subject: SUBJECT });
+		expect(result, "envelope fits").toEqual({ text: body, spilledPath: null });
 
-		expect(result).toEqual({ text: body, spilledPath: null });
-	});
-
-	// A human's own message is typed bare, so there is no header to account for.
-	it("measures the raw text when there is no envelope", async () => {
-		const text = "h".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES - 10);
-		const result = await spillOversizedAgentMessage(task, text, null);
-
-		expect(result.spilledPath).toBeNull();
+		// A human's own message is typed bare, so there is no header to account for.
+		const bare = await spillOversizedAgentMessage(task, "h".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES - 10), null);
+		expect(bare.spilledPath, "no envelope").toBeNull();
 	});
 
 	// One pty read is 1 022 bytes on macOS; anything above it is two chunks, and the

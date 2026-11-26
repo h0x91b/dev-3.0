@@ -39,129 +39,50 @@ const task = (id: string, status: Task["status"] = "in-progress", extra: Partial
 	({ id, status, ...extra } as Task);
 
 describe("parseDeepLink", () => {
-	it("parses a task link", () => {
+	it("parses task, project and new-task links (host case-insensitive, trailing slash tolerated), rejects the rest", () => {
 		expect(parseDeepLink("dev3://task/abc-123")).toEqual({ kind: "task", taskId: "abc-123" });
-	});
-
-	it("parses a project link", () => {
-		expect(parseDeepLink("dev3://project/proj-9")).toEqual({ kind: "project", projectId: "proj-9" });
-	});
-
-	it("parses a new-task link with project and text", () => {
-		expect(parseDeepLink("dev3://new-task?project=p1&text=hello%20world")).toEqual({
-			kind: "new-task",
-			projectId: "p1",
-			text: "hello world",
-		});
-	});
-
-	it("parses a new-task link with no params", () => {
-		expect(parseDeepLink("dev3://new-task")).toEqual({
-			kind: "new-task",
-			projectId: undefined,
-			text: undefined,
-		});
-	});
-
-	it("is case-insensitive on the host but keeps id casing", () => {
-		expect(parseDeepLink("dev3://TASK/AbC")).toEqual({ kind: "task", taskId: "AbC" });
-	});
-
-	it("tolerates trailing slashes", () => {
 		expect(parseDeepLink("dev3://project/p1/")).toEqual({ kind: "project", projectId: "p1" });
-	});
-
-	it("rejects the wrong scheme", () => {
-		expect(parseDeepLink("https://task/abc")).toBeNull();
-	});
-
-	it("rejects an unknown host", () => {
-		expect(parseDeepLink("dev3://bogus/abc")).toBeNull();
-	});
-
-	it("rejects a task link with no id", () => {
-		expect(parseDeepLink("dev3://task/")).toBeNull();
-	});
-
-	it("rejects a non-URL string", () => {
-		expect(parseDeepLink("not a url")).toBeNull();
+		expect(parseDeepLink("dev3://TASK/AbC")).toEqual({ kind: "task", taskId: "AbC" });
+		expect(parseDeepLink("dev3://new-task?project=p1&text=hello%20world")).toEqual({ kind: "new-task", projectId: "p1", text: "hello world" });
+		expect(parseDeepLink("dev3://new-task")).toEqual({ kind: "new-task", projectId: undefined, text: undefined });
+		// Rejects the wrong scheme, an unknown host, a missing id and a non-URL.
+		for (const raw of ["https://task/abc", "dev3://bogus/abc", "dev3://task/", "not a url"]) {
+			expect(parseDeepLink(raw), raw).toBeNull();
+		}
 	});
 });
 
 describe("build* + round-trip", () => {
-	it("builds and re-parses a task link", () => {
-		expect(parseDeepLink(buildTaskDeepLink("t1"))).toEqual({ kind: "task", taskId: "t1" });
-	});
-
-	it("builds and re-parses a project link", () => {
+	it("builds and re-parses task, project, space and new-task links, escaping ids and text", () => {
+		expect(parseDeepLink(buildTaskDeepLink("a/b c"))).toEqual({ kind: "task", taskId: "a/b c" });
 		expect(parseDeepLink(buildProjectDeepLink("p1"))).toEqual({ kind: "project", projectId: "p1" });
 		expect(parseDeepLink(buildSpaceDeepLink("sp 1/x"))).toEqual({ kind: "space", spaceId: "sp 1/x" });
 		expect(buildSpaceWebLink("sp_1")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?space=sp_1`);
-	});
-
-	it("round-trips new-task text with special characters", () => {
-		const text = "fix: café & <naïve> \"quotes\"\nnewline 日本語";
-		const parsed = parseDeepLink(buildNewTaskDeepLink({ projectId: "p1", text }));
-		expect(parsed).toEqual({ kind: "new-task", projectId: "p1", text });
-	});
-
-	it("omits absent params", () => {
-		expect(buildNewTaskDeepLink()).toBe("dev3://new-task");
-	});
-
-	it("round-trips an id that needs escaping, like the web link does", () => {
-		expect(parseDeepLink(buildTaskDeepLink("a/b c"))).toEqual({ kind: "task", taskId: "a/b c" });
-	});
-
-	it("keeps an unescaped legacy link readable", () => {
-		expect(parseDeepLink("dev3://task/plain-id")).toEqual({ kind: "task", taskId: "plain-id" });
-	});
-});
-
-describe("buildTaskWebLink", () => {
-	it("points at the https open page on the landing domain", () => {
-		expect(buildTaskWebLink("t1")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=t1`);
-	});
-
-	it("url-encodes the task id", () => {
 		expect(buildTaskWebLink("a/b c")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=a%2Fb%20c`);
+		// New-task text with special characters round-trips; absent params are omitted.
+		const text = "fix: café & <naïve> \"quotes\"\nnewline 日本語";
+		expect(parseDeepLink(buildNewTaskDeepLink({ projectId: "p1", text }))).toEqual({ kind: "new-task", projectId: "p1", text });
+		expect(buildNewTaskDeepLink()).toBe("dev3://new-task");
 	});
 });
 
 describe("buildTaskPrDeepLinkLine", () => {
-	it("carries both links and names the opt-out", () => {
+	// It rides inside the handoff prompt, which is typed into the pane byte for byte:
+	// one newline could submit the prompt early on a non-Claude agent.
+	it("line and section carry both links and the opt-out; the line has no newline", () => {
 		const line = buildTaskPrDeepLinkLine("abc-123");
 		expect(line).toContain(buildTaskWebLink("abc-123"));
 		expect(line).toContain("`dev3://task/abc-123`");
 		expect(line).toContain("Settings → Tasks");
-	});
+		expect(line).not.toContain("\n");
 
-	// It rides inside the handoff prompt, which is typed into the pane byte for byte:
-	// one newline could submit the prompt early on a non-Claude agent.
-	it("contains no newline", () => {
-		expect(buildTaskPrDeepLinkLine("abc-123")).not.toContain("\n");
-	});
-});
-
-describe("buildTaskPrDeepLinkSection", () => {
-	it("carries both the clickable https link and the raw dev3:// link", () => {
-		const section = buildTaskPrDeepLinkSection("abc-123");
-		expect(section).toContain(buildTaskWebLink("abc-123"));
-		expect(section).toContain(buildTaskDeepLink("abc-123"));
-	});
-
-	it("puts a blank line before the rule so it cannot turn a text line into a heading", () => {
+		// The section carries both links, the opt-out, and a blank line before the rule so it cannot make a heading.
 		const section = buildTaskPrDeepLinkSection("t1");
+		expect(section).toContain(buildTaskWebLink("t1"));
+		expect(section).toContain("`dev3://task/t1`");
+		expect(section).toContain("Settings → Tasks");
 		expect(section.startsWith("\n\n---")).toBe(true);
 		expect(section).not.toMatch(/[^\n]\n---/);
-	});
-
-	it("wraps the raw scheme link in a code span for copy-paste", () => {
-		expect(buildTaskPrDeepLinkSection("t1")).toContain("`dev3://task/t1`");
-	});
-
-	it("tells the reader the footer can be turned off", () => {
-		expect(buildTaskPrDeepLinkSection("t1")).toContain("Settings → Tasks");
 	});
 });
 
@@ -174,12 +95,13 @@ describe("resolveDeepLink", () => {
 		);
 	});
 
-	it("resolves a task to its owning project", async () => {
+	it("resolves a task to its owning project, and an unknown task to null", async () => {
 		expect(await resolveDeepLink({ kind: "task", taskId: "t-in-p2" })).toEqual({
 			kind: "task",
 			taskId: "t-in-p2",
 			projectId: "p2",
 		});
+		expect(await resolveDeepLink({ kind: "task", taskId: "ghost" })).toBeNull();
 	});
 
 	it("flags a task with no terminal (To Do, completed, cancelled) to open as its board card (#2347)", async () => {
@@ -194,22 +116,15 @@ describe("resolveDeepLink", () => {
 		expect(await resolveDeepLink({ kind: "task", taskId: "t-zz" })).toEqual({ kind: "task", taskId: "t-zz", projectId: "p1" });
 	});
 
-	it("returns null for an unknown task", async () => {
-		expect(await resolveDeepLink({ kind: "task", taskId: "ghost" })).toBeNull();
-	});
-
-	it("resolves an existing project (including virtual)", async () => {
+	it("resolves an existing project (including virtual), and an unknown one to null", async () => {
 		expect(await resolveDeepLink({ kind: "project", projectId: "ops" })).toEqual({
 			kind: "project",
 			projectId: "ops",
 		});
-	});
-
-	it("returns null for an unknown project", async () => {
 		expect(await resolveDeepLink({ kind: "project", projectId: "nope" })).toBeNull();
 	});
 
-	it("resolves a space to its first member project that exists here", async () => {
+	it("resolves a space to its first member project that exists here, else null", async () => {
 		vi.mocked(spacesData.loadSpacesFile).mockResolvedValue({
 			version: 1,
 			spaces: [{ id: "sp_1", name: "Client X", parentId: null, projectIds: ["ghost", "p2"], createdAt: 1 }],
@@ -220,9 +135,7 @@ describe("resolveDeepLink", () => {
 			spaceId: "sp_1",
 			projectId: "p2",
 		});
-	});
-
-	it("returns null for a deleted space, and for one whose members are all gone", async () => {
+		// Null for a deleted space, one whose members are all gone, and an unknown one.
 		vi.mocked(spacesData.loadSpacesFile).mockResolvedValue({
 			version: 1,
 			spaces: [
@@ -236,28 +149,19 @@ describe("resolveDeepLink", () => {
 		expect(await resolveDeepLink({ kind: "space", spaceId: "sp_never" })).toBeNull();
 	});
 
-	it("keeps a valid requested project for new-task", async () => {
+	it("new-task keeps a valid project, falls back to the first one, and is null with no projects", async () => {
 		expect(await resolveDeepLink({ kind: "new-task", projectId: "p2", text: "hi" })).toEqual({
 			kind: "new-task",
 			projectId: "p2",
 			text: "hi",
 		});
-	});
-
-	it("falls back to the first project when new-task omits one", async () => {
 		expect(await resolveDeepLink({ kind: "new-task" })).toEqual({
 			kind: "new-task",
 			projectId: "p1",
 			text: "",
 		});
-	});
-
-	it("falls back to the first project when new-task names a missing one", async () => {
 		const nav = await resolveDeepLink({ kind: "new-task", projectId: "gone", text: "x" });
 		expect(nav).toEqual({ kind: "new-task", projectId: "p1", text: "x" });
-	});
-
-	it("returns null for new-task when there are no projects at all", async () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([]);
 		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
 		expect(await resolveDeepLink({ kind: "new-task", text: "x" })).toBeNull();
@@ -292,23 +196,19 @@ describe("findDeepLinksInText", () => {
 		expect(match!.raw).toBe("dev3://task/a21540d6-4890-426f-81c1-41cfc460715e");
 		expect(text.slice(match!.start, match!.end + 1)).toBe(match!.raw);
 		expect(match!.target).toEqual({ kind: "task", taskId: "a21540d6-4890-426f-81c1-41cfc460715e" });
+		// Ignores an unknown kind, an empty id and any other scheme.
+		expect(findDeepLinksInText("dev3://bogus/x dev3://task/ http://example.com javascript:alert(1)")).toEqual([]);
 	});
 
-	it("drops trailing prose punctuation but keeps a query string", () => {
+	it("drops trailing prose punctuation but keeps a query string, and finds every link on the line", () => {
+		expect(findDeepLinksInText("dev3://task/t1 and dev3://space/s2").map((m) => m.raw)).toEqual([
+			"dev3://task/t1",
+			"dev3://space/s2",
+		]);
 		expect(findDeepLinksInText("open dev3://project/p1.").map((m) => m.raw)).toEqual(["dev3://project/p1"]);
 		const [newTask] = findDeepLinksInText("(dev3://new-task?project=p1&text=hello%20world)");
 		expect(newTask!.raw).toBe("dev3://new-task?project=p1&text=hello%20world");
 		expect(newTask!.target).toEqual({ kind: "new-task", projectId: "p1", text: "hello world" });
 	});
 
-	it("finds every link on the line", () => {
-		expect(findDeepLinksInText("dev3://task/t1 and dev3://space/s2").map((m) => m.raw)).toEqual([
-			"dev3://task/t1",
-			"dev3://space/s2",
-		]);
-	});
-
-	it("ignores an unknown kind, an empty id and any other scheme", () => {
-		expect(findDeepLinksInText("dev3://bogus/x dev3://task/ http://example.com javascript:alert(1)")).toEqual([]);
-	});
 });

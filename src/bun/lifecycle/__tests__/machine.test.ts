@@ -35,25 +35,23 @@ describe("task lifecycle transition table", () => {
 		expect(reviewed.next.column.status).toBe("review-by-ai");
 		expect(lateBell.next.column.status).toBe("review-by-ai");
 		expect(lateBell.effects).toEqual([]);
-	});
 
-	it("lets the Stop-hook win when the bell move was processed first", () => {
+		// Reverse order: the Stop-hook still wins when the bell move was processed first.
 		const bell = transition(state("in-progress"), {
 			type: "moveRequested",
 			target: { status: "user-questions", customColumnId: null },
 			guards: { ifStatus: "in-progress" },
 		});
-		const reviewed = transition(bell.next, {
+		const reviewedAfterBell = transition(bell.next, {
 			type: "moveRequested",
 			target: { status: "review-by-ai", customColumnId: null },
 			guards: { ifStatus: "in-progress,user-questions" },
 		});
-
-		expect(reviewed.next.column.status).toBe("review-by-ai");
+		expect(reviewedAfterBell.next.column.status).toBe("review-by-ai");
 	});
 
-	it("rejects a merge finding after the task leaves an eligible column", () => {
-		const result = transition(state("in-progress"), {
+	it("rejects a merge finding outside an eligible column or duplicating the actor's reservation", () => {
+		const ineligible = transition(state("in-progress"), {
 			type: "mergeDetected",
 			branchName: "refactor/lifecycle",
 			fingerprint: "v1:refactor/lifecycle:abc123",
@@ -61,11 +59,8 @@ describe("task lifecycle transition table", () => {
 			detectedAt: "2026-07-21T12:00:00.000Z",
 			suggestCompletion: true,
 		});
+		expect(ineligible.effects).toEqual([]);
 
-		expect(result.effects).toEqual([]);
-	});
-
-	it("rejects a duplicate merge finding from the actor's declared reservation", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
@@ -90,7 +85,7 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects).toEqual([]);
 	});
 
-	it("reserves without persisting a merge prompt when completion is manual", () => {
+	it("reserves a notice-only merge prompt for manual completion and keeps the notice when suggestions are off", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
@@ -116,10 +111,8 @@ describe("task lifecycle transition table", () => {
 			message: "branchMerged",
 			payload: { noticeOnly: true, shouldNotify: false },
 		});
-	});
 
-	it("keeps the informational notice when global merge suggestions are disabled", () => {
-		const result = transition(state("review-by-user"), {
+		const suggestionsOff = transition(state("review-by-user"), {
 			type: "mergeDetected",
 			branchName: "refactor/lifecycle",
 			fingerprint: "v1:refactor/lifecycle:abc123",
@@ -127,15 +120,14 @@ describe("task lifecycle transition table", () => {
 			detectedAt: "2026-07-21T12:00:00.000Z",
 			suggestCompletion: false,
 		});
-
-		expect(result.effects[1]).toMatchObject({
+		expect(suggestionsOff.effects[1]).toMatchObject({
 			type: "push",
 			message: "branchMerged",
 			payload: { noticeOnly: true, shouldNotify: true },
 		});
 	});
 
-	it("reopens a completed task into a custom column through preparation", () => {
+	it("reopens a completed task into a custom column, and reserves background launches, through preparation", () => {
 		const result = transition(state("completed"), {
 			type: "moveRequested",
 			target: { customColumnId: "custom-review" },
@@ -157,36 +149,37 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects[0]).toMatchObject({
 			column: { status: "in-progress", customColumnId: "custom-review" },
 		});
-	});
 
-	it("reserves background launches through the same moveRequested transition", () => {
-		const result = transition(state("todo"), {
-			type: "moveRequested",
-			runId: "variant-run",
-			target: { status: "in-progress", customColumnId: null },
-			taskPatch: { groupId: "group-1", variantIndex: 1, agentId: "agent-1" },
-			preparation: {
-				launch: { label: "variant", agentId: "agent-1", configId: null },
+		{
+			// Reserves background launches through the same moveRequested transition.
+			const result = transition(state("todo"), {
+				type: "moveRequested",
+				runId: "variant-run",
+				target: { status: "in-progress", customColumnId: null },
+				taskPatch: { groupId: "group-1", variantIndex: 1, agentId: "agent-1" },
+				preparation: {
+					launch: { label: "variant", agentId: "agent-1", configId: null },
+					awaitCompletion: false,
+					publishColumn: true,
+				},
+			});
+
+			expect(result.effects.map((candidate) => candidate.type)).toEqual([
+				"persistRuntime",
+				"clearMergeThrottle",
+				"push",
+				"notifyStatusChange",
+				"prepareTask",
+			]);
+			expect(result.effects[0]).toMatchObject({
+				column: { status: "in-progress", customColumnId: null },
+				taskPatch: { groupId: "group-1", variantIndex: 1, agentId: "agent-1" },
+			});
+			expect(result.effects[4]).toMatchObject({
 				awaitCompletion: false,
-				publishColumn: true,
-			},
-		});
-
-		expect(result.effects.map((candidate) => candidate.type)).toEqual([
-			"persistRuntime",
-			"clearMergeThrottle",
-			"push",
-			"notifyStatusChange",
-			"prepareTask",
-		]);
-		expect(result.effects[0]).toMatchObject({
-			column: { status: "in-progress", customColumnId: null },
-			taskPatch: { groupId: "group-1", variantIndex: 1, agentId: "agent-1" },
-		});
-		expect(result.effects[4]).toMatchObject({
-			awaitCompletion: false,
-			columnReserved: true,
-		});
+				columnReserved: true,
+			});
+		}
 	});
 
 	it("reverts a failed preparation to todo and declares the failure push", () => {
@@ -233,87 +226,27 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
-	it("declares the terminal PTY teardown as an abort with a teardown-failure compensation", () => {
-		const result = transition(state("in-progress"), {
-			type: "moveRequested",
-			target: { status: "completed" },
-			runId: "run-teardown",
-		});
-		const pty = result.effects.find((candidate) => candidate.type === "destroyTaskPty");
+	it("asks the agent to quit right before the terminal is killed on every teardown path", () => {
+		const cases = [
+			["completion", { type: "moveRequested", target: { status: "completed" }, runId: "run-x" }],
+			["cancellation", { type: "moveRequested", target: { status: "cancelled" }, runId: "run-x" }],
+			["hibernation", { type: "hibernateRequested" }],
+			["deletion", { type: "deleteRequested" }],
+		] as const;
+		for (const [label, event] of cases) {
+			const result = transition(state("in-progress"), event as LifecycleEvent);
+			const types = result.effects.map((candidate) => candidate.type);
+			const exit = types.indexOf("gracefulAgentExit");
 
-		expect(pty).toMatchObject({
-			onError: "abort",
-			compensatingEvent: { type: "teardownFailed", runId: "run-teardown" },
-		});
-		const types = result.effects.map((candidate) => candidate.type);
-		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
-		expect(types.indexOf("runCleanupScript")).toBeLessThan(types.indexOf("removeWorktree"));
+			expect(exit, label).toBeGreaterThanOrEqual(0);
+			expect(types[exit + 1], label).toBe("destroyTaskPty");
+			// Never an abort: a hook that hangs, or an agent that ignores the request, must
+			// not keep the worktree alive — the kill that follows is the guarantee.
+			expect(result.effects[exit], label).toMatchObject({ onError: "continue" });
+		}
 	});
 
-	it.each([
-		["completion", { type: "moveRequested", target: { status: "completed" }, runId: "run-x" }],
-		["cancellation", { type: "moveRequested", target: { status: "cancelled" }, runId: "run-x" }],
-		["hibernation", { type: "hibernateRequested" }],
-		["deletion", { type: "deleteRequested" }],
-	] as const)("asks the agent to quit right before the terminal is killed on %s", (_label, event) => {
-		const result = transition(state("in-progress"), event as LifecycleEvent);
-		const types = result.effects.map((candidate) => candidate.type);
-		const exit = types.indexOf("gracefulAgentExit");
-
-		expect(exit).toBeGreaterThanOrEqual(0);
-		expect(types[exit + 1]).toBe("destroyTaskPty");
-		// Never an abort: a hook that hangs, or an agent that ignores the request, must
-		// not keep the worktree alive — the kill that follows is the guarantee.
-		expect(result.effects[exit]).toMatchObject({ onError: "continue" });
-	});
-
-	it("reaps worktree processes after the cleanup script and before the worktree is removed", () => {
-		const result = transition(state("in-progress"), {
-			type: "moveRequested",
-			target: { status: "completed" },
-			runId: "run-reap",
-		});
-		const types = result.effects.map((candidate) => candidate.type);
-
-		// The reap kills everything whose cwd is inside the worktree, so it must run
-		// after the cleanup script and the diff capture (both work in there) and
-		// before the directory disappears.
-		expect(types.indexOf("captureCompletedDiffStats")).toBeLessThan(types.indexOf("reapWorktreeProcesses"));
-		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeWorktree"));
-		// Best-effort: one stubborn foreign process must not abort a completion.
-		expect(result.effects.find((candidate) => candidate.type === "reapWorktreeProcesses")).not.toMatchObject({
-			onError: "abort",
-		});
-	});
-
-	it("archives the conversation once, on the way to a terminal status", () => {
-		const result = transition(state("in-progress"), {
-			type: "moveRequested",
-			target: { status: "completed" },
-			runId: "run-dump",
-		});
-		const types = result.effects.map((candidate) => candidate.type);
-
-		expect(types.filter((type) => type === "dumpTaskConversations")).toHaveLength(1);
-		// Before the worktree goes: the store is keyed on the path a completed task
-		// no longer keeps.
-		expect(types.indexOf("dumpTaskConversations")).toBeLessThan(types.indexOf("removeWorktree"));
-		// Best-effort: a missing archive must not block a completion.
-		expect(result.effects.find((candidate) => candidate.type === "dumpTaskConversations")).not.toMatchObject({
-			onError: "abort",
-		});
-	});
-
-	it("aborts a delete before cleanup and the record delete when the PTY teardown fails", () => {
-		const result = transition(state("in-progress"), { type: "deleteRequested" });
-		const types = result.effects.map((candidate) => candidate.type);
-
-		expect(result.effects.find((candidate) => candidate.type === "destroyTaskPty")).toMatchObject({ onError: "abort" });
-		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
-		expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("deleteTaskRecord"));
-	});
-
-	it("ignores cancellation from an obsolete preparation run", () => {
+	it("ignores cancellation from an obsolete run, cancels the current preparation and ignores its late success", () => {
 		const preparing = state("in-progress", {
 			runtime: {
 				phase: "preparing",
@@ -322,25 +255,13 @@ describe("task lifecycle transition table", () => {
 				origin: { status: "todo", customColumnId: null },
 			},
 		});
-
-		const result = transition(preparing, {
+		const obsolete = transition(preparing, {
 			type: "preparationCancelled",
 			runId: "obsolete-run",
 		});
+		expect(obsolete.next).toEqual(preparing);
+		expect(obsolete.effects).toEqual([]);
 
-		expect(result.next).toEqual(preparing);
-		expect(result.effects).toEqual([]);
-	});
-
-	it("cancels the current preparation and ignores its late success", () => {
-		const preparing = state("in-progress", {
-			runtime: {
-				phase: "preparing",
-				stage: "creating-worktree",
-				runId: "current-run",
-				origin: { status: "todo", customColumnId: null },
-			},
-		});
 		const cancelled = transition(preparing, {
 			type: "preparationCancelled",
 			runId: "current-run",
@@ -400,79 +321,39 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
-	it("silences the merge prompt for the head a reopened task comes back on", () => {
-		const preparing = state("review-by-user", {
-			runtime: {
-				phase: "preparing",
-				stage: "creating-worktree",
-				runId: "reopen-run",
-				origin: { status: "completed", customColumnId: null },
-			},
-		});
-		const prepared = transition(preparing, {
-			type: "preparationSucceeded",
-			runId: "reopen-run",
-			worktreePath: "/tmp/reopened",
-			branchName: "fix/thing",
-			origin: { status: "completed", customColumnId: null },
-			target: { status: "review-by-user", customColumnId: null },
-			mode: "activation",
-		});
+	it("silences the merge prompt only for a reopened task with a branch, never on a first start", () => {
+		const dismisses = (
+			origin: "completed" | "todo",
+			target: "review-by-user" | "in-progress",
+			branchName: string | null,
+			usesWorktrees = true,
+		) => {
+			const preparing = state(target, {
+				runtime: {
+					phase: "preparing",
+					stage: "creating-worktree",
+					runId: "run",
+					origin: { status: origin, customColumnId: null },
+				},
+				facts: { hasWorktree: true, usesWorktrees, hasPrIdentity: false, peerReviewEnabled: true },
+			});
+			return transition(preparing, {
+				type: "preparationSucceeded",
+				runId: "run",
+				worktreePath: "/tmp/wt",
+				branchName,
+				origin: { status: origin, customColumnId: null },
+				target: { status: target, customColumnId: null },
+				mode: "activation",
+			}).effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead");
+		};
 
-		expect(prepared.effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead")).toBe(true);
+		expect(dismisses("completed", "review-by-user", "fix/thing"), "reopen").toBe(true);
+		expect(dismisses("todo", "in-progress", "feat/thing"), "first start").toBe(false);
+		expect(dismisses("completed", "review-by-user", null, false), "virtual project, no branch").toBe(false);
 	});
 
-	it("leaves the merge prompt alone when a To Do task is started for the first time", () => {
-		const preparing = state("in-progress", {
-			runtime: {
-				phase: "preparing",
-				stage: "creating-worktree",
-				runId: "first-run",
-				origin: { status: "todo", customColumnId: null },
-			},
-		});
-		const prepared = transition(preparing, {
-			type: "preparationSucceeded",
-			runId: "first-run",
-			worktreePath: "/tmp/fresh",
-			branchName: "feat/thing",
-			origin: { status: "todo", customColumnId: null },
-			target: { status: "in-progress", customColumnId: null },
-			mode: "activation",
-		});
-
-		expect(prepared.effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead")).toBe(false);
-	});
-
-	it("skips the reopen dismissal for a virtual project with no branch to merge", () => {
-		const preparing = state("review-by-user", {
-			runtime: {
-				phase: "preparing",
-				stage: "creating-worktree",
-				runId: "reopen-run",
-				origin: { status: "completed", customColumnId: null },
-			},
-			facts: {
-				hasWorktree: true,
-				usesWorktrees: false,
-				hasPrIdentity: false,
-				peerReviewEnabled: true,
-			},
-		});
-		const prepared = transition(preparing, {
-			type: "preparationSucceeded",
-			runId: "reopen-run",
-			worktreePath: "/tmp/ops",
-			branchName: null,
-			origin: { status: "completed", customColumnId: null },
-			target: { status: "review-by-user", customColumnId: null },
-			mode: "activation",
-		});
-
-		expect(prepared.effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead")).toBe(false);
-	});
-
-	it("clears a deleted custom column without launching the underlying built-in agent", () => {
+	it("clears a deleted custom column without launching the built-in agent, and on a terminal task without repeating teardown", () => {
 		const current = state("review-by-ai", {
 			column: { status: "review-by-ai", customColumnId: "obsolete-column" },
 		});
@@ -484,75 +365,83 @@ describe("task lifecycle transition table", () => {
 
 		expect(result.next.column).toEqual({ status: "review-by-ai", customColumnId: null });
 		expect(result.effects.some((effect) => effect.type === "launchColumnAgent")).toBe(false);
-	});
 
-	describe.each(["completed", "cancelled"] as const)("Operations tasks moved to %s", (target) => {
-		const opsState = (opsWorktree: boolean) => state("in-progress", {
-			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(opsWorktree ? { opsWorktree } : {}) },
-		});
-		const teardown = (current: LifecycleState) => transition(current, {
-			type: "moveRequested",
-			target: { status: target, customColumnId: null },
-			runId: "run",
-		}).effects.map((effect) => effect.type);
-
-		it("removes the workspace of a worktree-mode task, after the reap and before it is persisted", () => {
-			const types = teardown(opsState(true));
-			expect(types).toContain("removeTaskWorkspace");
-			expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeTaskWorkspace"));
-			expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("persistTerminalTask"));
-			expect(types).not.toContain("removeWorktree");
-		});
-
-		it("still removes a worktree-mode task's workspace from To Do, where the record has no path (reset or failed preparation)", () => {
-			const todo = state("todo", {
-				facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+		{
+			// Clears a custom column on a terminal task without repeating teardown.
+			const current = state("completed", {
+				column: { status: "completed", customColumnId: "legacy-column" },
 			});
-			const result = transition(todo, { type: "moveRequested", target: { status: target, customColumnId: null }, runId: "run" });
+			const result = transition(current, {
+				type: "moveRequested",
+				target: { customColumnId: null },
+			});
 
-			expect(result.effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
-			const types = result.effects.map((e) => e.type);
-			expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("persistTerminalTask"));
-		});
+			expect(result.next.column).toEqual({ status: "completed", customColumnId: null });
+			expect(result.effects.some((effect) => effect.type === "persistTerminalTask")).toBe(false);
+			expect(result.effects[0]).toMatchObject({ type: "persistColumn", patch: "custom" });
+		}
+	});
 
-		it("keeps the folder of a plain Operations task", () => {
-			const types = teardown(opsState(false));
-			expect(types).not.toContain("removeTaskWorkspace");
-			expect(types).not.toContain("removeWorktree");
+	describe("Operations tasks moved to completed or cancelled", () => {
+		it("removes a worktree-mode task's workspace (also from To Do, via a derived path) and keeps a plain task's folder", () => {
+			for (const target of ["completed", "cancelled"] as const) {
+			const opsState = (opsWorktree: boolean) => state("in-progress", {
+				facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(opsWorktree ? { opsWorktree } : {}) },
+			});
+			const teardown = (current: LifecycleState) => transition(current, {
+				type: "moveRequested",
+				target: { status: target, customColumnId: null },
+				runId: "run",
+			}).effects.map((effect) => effect.type);
+
+				const types = teardown(opsState(true));
+				expect(types).toContain("removeTaskWorkspace");
+				expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeTaskWorkspace"));
+				expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("persistTerminalTask"));
+				expect(types).not.toContain("removeWorktree");
+
+				// From To Do the record has no path (reset or failed preparation).
+				const todo = state("todo", {
+					facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+				});
+				const fromTodo = transition(todo, { type: "moveRequested", target: { status: target, customColumnId: null }, runId: "run" });
+				expect(fromTodo.effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
+				const todoTypes = fromTodo.effects.map((e) => e.type);
+				expect(todoTypes.indexOf("removeTaskWorkspace")).toBeLessThan(todoTypes.indexOf("persistTerminalTask"));
+
+				const plain = teardown(opsState(false));
+				expect(plain).not.toContain("removeTaskWorkspace");
+				expect(plain).not.toContain("removeWorktree");
+			}
 		});
 	});
 
-	describe.each(["completed", "cancelled"] as const)("plain Operations task with a repo in its own folder moved to %s", (target) => {
-		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
-			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
-		});
-		const teardown = (current: LifecycleState, approvedAttachedRepo?: string | null) => transition(current, {
-			type: "moveRequested",
-			target: { status: target, customColumnId: null },
-			runId: "run",
-			...(approvedAttachedRepo !== undefined ? { approvedAttachedRepo } : {}),
-		}).effects;
+	describe("plain Operations task with a repo in its own folder moved to completed or cancelled", () => {
+		it("removes the attached worktree best-effort with the approved repo, after the reap, and only with the fact", () => {
+			for (const target of ["completed", "cancelled"] as const) {
+			const make = (attachedRepoInFolder: boolean) => state("in-progress", {
+				facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
+			});
+			const teardown = (current: LifecycleState, approvedAttachedRepo?: string | null) => transition(current, {
+				type: "moveRequested",
+				target: { status: target, customColumnId: null },
+				runId: "run",
+				...(approvedAttachedRepo !== undefined ? { approvedAttachedRepo } : {}),
+			}).effects;
 
-		it("carries the repo the user approved into the effect, and null when the move carried none", () => {
-			expect(teardown(make(true), "/ops/s/ab/work/wt").find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: "/ops/s/ab/work/wt" });
-			expect(teardown(make(true)).find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: null });
-		});
-
-		it("removes the attached worktree best-effort, after the reap and before it is persisted", () => {
-			const effects = teardown(make(true));
-			const types = effects.map((e) => e.type);
-			expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue" });
-			expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
-			expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistTerminalTask"));
-			expect(types).not.toContain("removeTaskWorkspace");
-		});
-
-		it("emits nothing without the fact", () => {
-			expect(teardown(make(false)).map((e) => e.type)).not.toContain("removeAttachedWorktree");
+				expect(teardown(make(true), "/ops/s/ab/work/wt").find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: "/ops/s/ab/work/wt" });
+				const effects = teardown(make(true));
+				const types = effects.map((e) => e.type);
+				expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue", approvedAttachedRepo: null });
+				expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
+				expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistTerminalTask"));
+				expect(types).not.toContain("removeTaskWorkspace");
+				expect(teardown(make(false)).map((e) => e.type)).not.toContain("removeAttachedWorktree");
+			}
 		});
 	});
 
-	it("reset removes the attached worktree of a plain Operations task only with the fact, and only the consented repo", () => {
+	it("reset removes the attached worktree of a plain Operations task only with the fact and consent, and the workspace of a worktree-mode one (also on delete from To Do)", () => {
 		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt", approvedAttachedRepo: "/w/wt" };
 		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
 			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt", ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
@@ -571,31 +460,33 @@ describe("task lifecycle transition table", () => {
 		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
 		expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistResetTask"));
 		expect(transition(make(false), { type: "resetRequested", consent }).effects.map((e) => e.type)).not.toContain("removeAttachedWorktree");
-	});
 
-	it("reset removes the workspace of a worktree-mode Operations task and not of a plain one", () => {
-		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: null, approvedAttachedRepo: null };
-		const make = (opsWorktree: boolean) => state("in-progress", {
-			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
-		});
-		const types = (opsWorktree: boolean) => transition(make(opsWorktree), { type: "resetRequested", consent }).effects.map((e) => e.type);
+		{
+			// Reset removes the workspace of a worktree-mode Operations task and not of a plain one.
+			const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: null, approvedAttachedRepo: null };
+			const make = (opsWorktree: boolean) => state("in-progress", {
+				facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
+			});
+			const types = (opsWorktree: boolean) => transition(make(opsWorktree), { type: "resetRequested", consent }).effects.map((e) => e.type);
 
-		const owned = types(true);
-		expect(owned).toContain("removeTaskWorkspace");
-		expect(owned.indexOf("removeTaskWorkspace")).toBeLessThan(owned.indexOf("persistResetTask"));
-		expect(owned).not.toContain("resetWorktree");
-		expect(types(false)).not.toContain("removeTaskWorkspace");
-	});
+			const owned = types(true);
+			expect(owned).toContain("removeTaskWorkspace");
+			expect(owned.indexOf("removeTaskWorkspace")).toBeLessThan(owned.indexOf("persistResetTask"));
+			expect(owned).not.toContain("resetWorktree");
+			expect(types(false)).not.toContain("removeTaskWorkspace");
+		}
 
-	it("deleting a worktree-mode Operations task from To Do still removes its derived workspace", () => {
-		const todo = state("todo", {
-			facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
-		});
-		const { effects } = transition(todo, { type: "deleteRequested" });
+		{
+			// Deleting a worktree-mode Operations task from To Do still removes its derived workspace.
+			const todo = state("todo", {
+				facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+			});
+			const { effects } = transition(todo, { type: "deleteRequested" });
 
-		expect(effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
-		const plain = transition(state("todo", { facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true } }), { type: "deleteRequested" });
-		expect(plain.effects.some((e) => e.type === "removeTaskWorkspace")).toBe(false);
+			expect(effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
+			const plain = transition(state("todo", { facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true } }), { type: "deleteRequested" });
+			expect(plain.effects.some((e) => e.type === "removeTaskWorkspace")).toBe(false);
+		}
 	});
 
 	it("declares teardown effects in the load-bearing order", () => {
@@ -635,18 +526,26 @@ describe("task lifecycle transition table", () => {
 			message: "taskUpdated",
 			view: "shuttingDown",
 		});
+		// The PTY teardown aborts with a recovery event; the reap (one stubborn foreign
+		// process) and the conversation archive (a missing archive) are best-effort.
+		expect(result.effects.find((candidate) => candidate.type === "destroyTaskPty")).toMatchObject({
+			onError: "abort",
+			compensatingEvent: { type: "teardownFailed", runId: "teardown-run" },
+		});
+		for (const type of ["reapWorktreeProcesses", "dumpTaskConversations"] as const) {
+			expect(result.effects.find((candidate) => candidate.type === type), type).not.toMatchObject({ onError: "abort" });
+		}
 	});
 
-	it.each(["completed", "cancelled"] as const)(
-		"aborts worktree removal during %s teardown with a recovery event",
-		(targetStatus) => {
+	it("aborts worktree removal during teardown, and on a forced retry, with a recovery event", () => {
+		for (const targetStatus of ["completed", "cancelled"] as const) {
 			const result = transition(state("in-progress"), {
 				type: "moveRequested",
 				target: { status: targetStatus, customColumnId: null },
 				runId: "teardown-run",
 			});
 
-			expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
+			expect(result.effects.find((candidate) => candidate.type === "removeWorktree"), targetStatus).toMatchObject({
 				type: "removeWorktree",
 				onError: "abort",
 				compensatingEvent: {
@@ -654,28 +553,29 @@ describe("task lifecycle transition table", () => {
 					runId: "teardown-run",
 				},
 			});
-		},
-	);
+		}
 
-	it("retries worktree removal for a forced interrupted teardown", () => {
-		const result = transition(state("in-progress", {
-			runtime: {
-				phase: "tearing-down",
-				targetStatus: "completed",
-				runId: "failed-run",
-			},
-		}), {
-			type: "moveRequested",
-			target: { status: "completed", customColumnId: null },
-			runId: "retry-run",
-			force: true,
-		});
+		{
+			// Retries worktree removal for a forced interrupted teardown.
+			const result = transition(state("in-progress", {
+				runtime: {
+					phase: "tearing-down",
+					targetStatus: "completed",
+					runId: "failed-run",
+				},
+			}), {
+				type: "moveRequested",
+				target: { status: "completed", customColumnId: null },
+				runId: "retry-run",
+				force: true,
+			});
 
-		expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
-			type: "removeWorktree",
-			onError: "abort",
-			compensatingEvent: { type: "teardownFailed", runId: "retry-run" },
-		});
+			expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
+				type: "removeWorktree",
+				onError: "abort",
+				compensatingEvent: { type: "teardownFailed", runId: "retry-run" },
+			});
+		}
 	});
 
 	it("publishes recovery state before rejecting a matching teardown failure", () => {
@@ -700,17 +600,7 @@ describe("task lifecycle transition table", () => {
 				{ type: "reject", message: "Git removal failed", onError: "abort" },
 			],
 		});
-	});
-
-	it("ignores a stale teardown failure event", () => {
-		const current = state("in-progress", {
-			runtime: {
-				phase: "tearing-down",
-				targetStatus: "completed",
-				runId: "current-run",
-			},
-		});
-
+		// A stale run's failure is ignored.
 		expect(transition(current, {
 			type: "teardownFailed",
 			runId: "stale-run",
@@ -740,7 +630,7 @@ describe("task lifecycle transition table", () => {
 		}
 	});
 
-	it("rejects a guarded move against the fresh dequeued state", () => {
+	it("rejects a guarded move and an invalid CLI transition against the fresh dequeued state", () => {
 		const current = state("review-by-user");
 		const result = transition(current, {
 			type: "moveRequested",
@@ -749,36 +639,20 @@ describe("task lifecycle transition table", () => {
 		});
 
 		expect(result).toEqual({ next: current, effects: [] });
-	});
 
-	it("declares a fresh-state rejection for an invalid CLI transition", () => {
-		const current = state("todo");
-		const result = transition(current, {
+		// An invalid CLI transition declares a fresh-state rejection.
+		const todo = state("todo");
+		const cli = transition(todo, {
 			type: "moveRequested",
 			target: { status: "review-by-user", customColumnId: null },
 			enforceAllowedTransition: true,
 		});
-
-		expect(result.next).toBe(current);
-		expect(result.effects[0]).toMatchObject({
+		expect(cli.next).toBe(todo);
+		expect(cli.effects[0]).toMatchObject({
 			type: "reject",
 			message: expect.stringContaining('Cannot move task from "todo" to "review-by-user"'),
 			onError: "abort",
 		});
-	});
-
-	it("clears a custom column on a terminal task without repeating teardown", () => {
-		const current = state("completed", {
-			column: { status: "completed", customColumnId: "legacy-column" },
-		});
-		const result = transition(current, {
-			type: "moveRequested",
-			target: { customColumnId: null },
-		});
-
-		expect(result.next.column).toEqual({ status: "completed", customColumnId: null });
-		expect(result.effects.some((effect) => effect.type === "persistTerminalTask")).toBe(false);
-		expect(result.effects[0]).toMatchObject({ type: "persistColumn", patch: "custom" });
 	});
 
 	it("declares task deletion and preparation cancellation in one ordered plan", () => {
@@ -811,9 +685,16 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects.find((effect) => effect.type === "removeTaskWorkspace")).toMatchObject({
 			allowDerivedPath: true,
 		});
+
+		// A running task's delete aborts before cleanup and the record delete when the PTY teardown fails.
+		const running = transition(state("in-progress"), { type: "deleteRequested" });
+		const types = running.effects.map((candidate) => candidate.type);
+		expect(running.effects.find((candidate) => candidate.type === "destroyTaskPty")).toMatchObject({ onError: "abort" });
+		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
+		expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("deleteTaskRecord"));
 	});
 
-	it("declares merge prompt resolution and PR identity pushes", () => {
+	it("declares merge prompt resolution and PR identity pushes, and routes PR promotion and review-agent fallback through moveRequested", () => {
 		const current = state("review-by-user");
 		const dismissed = transition(current, {
 			type: "mergePromptDismissed",
@@ -837,62 +718,63 @@ describe("task lifecycle transition table", () => {
 			"push",
 		]);
 		expect(identified.effects[1]).toMatchObject({ message: "taskUpdated" });
-	});
 
-	it("routes PR promotion and review-agent fallback through moveRequested", () => {
-		const review = state("review-by-user");
-		const detected = transition(review, {
-			type: "prDetected",
-			openNonDraft: true,
-			payload: {
-				projectId: "project-1",
-				taskId: "task-1",
-				prNumber: 42,
-				prUrl: "https://github.com/example/repo/pull/42",
-				autoMergeEnabled: null,
-				ciStatus: null,
-				reviewState: null,
-				reviewDecision: null,
-				unresolvedCount: null,
-				mergeState: null,
-				checks: [],
-				prTitle: null,
-				isDraft: false,
-			},
-		});
-		const promotion = detected.effects.find((candidate) => candidate.type === "sendEvent");
+		{
+			// Routes PR promotion and review-agent fallback through moveRequested.
+			const review = state("review-by-user");
+			const detected = transition(review, {
+				type: "prDetected",
+				openNonDraft: true,
+				payload: {
+					projectId: "project-1",
+					taskId: "task-1",
+					prNumber: 42,
+					prUrl: "https://github.com/example/repo/pull/42",
+					autoMergeEnabled: null,
+					ciStatus: null,
+					reviewState: null,
+					reviewDecision: null,
+					unresolvedCount: null,
+					mergeState: null,
+					checks: [],
+					prTitle: null,
+					isDraft: false,
+				},
+			});
+			const promotion = detected.effects.find((candidate) => candidate.type === "sendEvent");
 
-		expect(promotion).toMatchObject({
-			type: "sendEvent",
-			event: {
-				type: "moveRequested",
-				cause: "pr-promotion",
-				target: { status: "review-by-colleague" },
-			},
-		});
-		if (promotion?.type !== "sendEvent") throw new Error("Expected PR promotion event");
-		const promoted = transition(review, promotion.event);
-		expect(promoted.next.column.status).toBe("review-by-colleague");
-		expect(promoted.effects[0]).toMatchObject({ type: "persistColumn", patch: "statusOnly" });
+			expect(promotion).toMatchObject({
+				type: "sendEvent",
+				event: {
+					type: "moveRequested",
+					cause: "pr-promotion",
+					target: { status: "review-by-colleague" },
+				},
+			});
+			if (promotion?.type !== "sendEvent") throw new Error("Expected PR promotion event");
+			const promoted = transition(review, promotion.event);
+			expect(promoted.next.column.status).toBe("review-by-colleague");
+			expect(promoted.effects[0]).toMatchObject({ type: "persistColumn", patch: "statusOnly" });
 
-		const failedReview = transition(state("review-by-ai"), {
-			type: "columnAgentFailed",
-			column: { kind: "builtin", status: "review-by-ai" },
-			error: "launch failed",
-		});
-		const fallback = failedReview.effects.find((candidate) => candidate.type === "sendEvent");
-		expect(fallback).toMatchObject({
-			type: "sendEvent",
-			event: {
-				type: "moveRequested",
-				cause: "column-agent-fallback",
-				target: { status: "review-by-user" },
-				columnAgentFailure: { column: { kind: "builtin", status: "review-by-ai" }, error: "launch failed" },
-			},
-		});
-		// The failure rides on the move rather than being pushed here, so the report
-		// cannot claim a move that never landed.
-		expect(failedReview.effects.some((candidate) => candidate.type === "push")).toBe(false);
+			const failedReview = transition(state("review-by-ai"), {
+				type: "columnAgentFailed",
+				column: { kind: "builtin", status: "review-by-ai" },
+				error: "launch failed",
+			});
+			const fallback = failedReview.effects.find((candidate) => candidate.type === "sendEvent");
+			expect(fallback).toMatchObject({
+				type: "sendEvent",
+				event: {
+					type: "moveRequested",
+					cause: "column-agent-fallback",
+					target: { status: "review-by-user" },
+					columnAgentFailure: { column: { kind: "builtin", status: "review-by-ai" }, error: "launch failed" },
+				},
+			});
+			// The failure rides on the move rather than being pushed here, so the report
+			// cannot claim a move that never landed.
+			expect(failedReview.effects.some((candidate) => candidate.type === "push")).toBe(false);
+		}
 	});
 
 	it("reports a fallback move only after the column write, and claims the column it wrote", () => {
@@ -918,15 +800,14 @@ describe("task lifecycle transition table", () => {
 		expect(moved.effects[reportIndex]).toMatchObject({
 			payload: { reason: "terminal-not-running", movedTo: "review-by-user" },
 		});
-	});
 
-	it("says nothing extra on an ordinary move", () => {
-		const moved = transition(state("review-by-ai"), {
+		// An ordinary move says nothing extra.
+		const ordinary = transition(state("review-by-ai"), {
 			type: "moveRequested",
 			target: { status: "review-by-user", customColumnId: null },
 		});
 		expect(
-			moved.effects.some((candidate) => candidate.type === "push" && candidate.message === "columnAgentFailed"),
+			ordinary.effects.some((candidate) => candidate.type === "push" && candidate.message === "columnAgentFailed"),
 		).toBe(false);
 	});
 });
@@ -936,9 +817,8 @@ describe("needs-you chime", () => {
 		return effects.filter((candidate) => candidate.type === "emitTaskSound");
 	}
 
-	it.each(["review-by-user", "user-questions"] as const)(
-		"chimes when a hook moves the task into %s, after the column write",
-		(target) => {
+	it("chimes only for a needs-you move made by a hook or a failed AI review fallback, after the column write", () => {
+		for (const target of ["review-by-user", "user-questions"] as const) {
 			const moved = transition(state("in-progress"), {
 				type: "moveRequested",
 				target: { status: target, customColumnId: null },
@@ -947,52 +827,46 @@ describe("needs-you chime", () => {
 			const persistIndex = moved.effects.findIndex((candidate) => candidate.type === "persistColumn");
 			const soundIndex = moved.effects.findIndex((candidate) => candidate.type === "emitTaskSound");
 
-			expect(soundsOf(moved.effects)).toEqual([expect.objectContaining({ status: target })]);
+			expect(soundsOf(moved.effects), target).toEqual([expect.objectContaining({ status: target })]);
 			// A guard-rejected write stops the effect run, so a refused hook stays silent.
-			expect(soundIndex).toBeGreaterThan(persistIndex);
-		},
-	);
+			expect(soundIndex, target).toBeGreaterThan(persistIndex);
+		}
 
-	it("chimes when a failed AI review falls back to Your Review", () => {
-		const moved = transition(state("review-by-ai"), {
+		const fallback = transition(state("review-by-ai"), {
 			type: "moveRequested",
 			target: { status: "review-by-user", customColumnId: null },
 			cause: "column-agent-fallback",
 			guards: { ifStatus: "review-by-ai" },
 		});
-		expect(soundsOf(moved.effects)).toEqual([expect.objectContaining({ status: "review-by-user" })]);
-	});
+		expect(soundsOf(fallback.effects)).toEqual([expect.objectContaining({ status: "review-by-user" })]);
 
-	it("stays silent when the UI already owns the sound", () => {
-		const moved = transition(state("in-progress"), {
-			type: "moveRequested",
-			target: { status: "review-by-user", customColumnId: null },
-			clientPlayedSound: true,
-		});
-		expect(soundsOf(moved.effects)).toEqual([]);
-	});
-
-	it("stays silent for a move that does not change the status", () => {
-		const moved = transition(state("review-by-user", {
-			column: { status: "review-by-user", customColumnId: "qa-column" },
-		}), {
-			type: "moveRequested",
-			target: { status: "review-by-user", customColumnId: null },
-		});
-		expect(moved.effects.some((candidate) => candidate.type === "persistColumn")).toBe(true);
-		expect(soundsOf(moved.effects)).toEqual([]);
-	});
-
-	it.each(["in-progress", "review-by-ai", "review-by-colleague"] as const)(
-		"stays silent for a move into %s",
-		(target) => {
-			const moved = transition(state("user-questions"), {
+		{
+			// Stays silent when the UI owns the sound, the status does not change, or the target is not a needs-you column.
+			const uiOwned = transition(state("in-progress"), {
 				type: "moveRequested",
-				target: { status: target, customColumnId: null },
+				target: { status: "review-by-user", customColumnId: null },
+				clientPlayedSound: true,
 			});
-			expect(soundsOf(moved.effects)).toEqual([]);
-		},
-	);
+			expect(soundsOf(uiOwned.effects), "UI owns the sound").toEqual([]);
+
+			const sameStatus = transition(state("review-by-user", {
+				column: { status: "review-by-user", customColumnId: "qa-column" },
+			}), {
+				type: "moveRequested",
+				target: { status: "review-by-user", customColumnId: null },
+			});
+			expect(sameStatus.effects.some((candidate) => candidate.type === "persistColumn")).toBe(true);
+			expect(soundsOf(sameStatus.effects), "same status").toEqual([]);
+
+			for (const target of ["in-progress", "review-by-ai", "review-by-colleague"] as const) {
+				const moved = transition(state("user-questions"), {
+					type: "moveRequested",
+					target: { status: target, customColumnId: null },
+				});
+				expect(soundsOf(moved.effects), target).toEqual([]);
+			}
+		}
+	});
 });
 
 describe("User questions badge", () => {
@@ -1000,7 +874,7 @@ describe("User questions badge", () => {
 		return effects.filter((candidate) => candidate.type === "raiseQuestionsAttention");
 	}
 
-	it("raises the badge when a hook moves the task into User questions, after the column write", () => {
+	it("raises the badge only when a hook moves the task into User questions, after the column write", () => {
 		const moved = transition(state("in-progress"), {
 			type: "moveRequested",
 			target: { status: "user-questions", customColumnId: null },
@@ -1011,97 +885,101 @@ describe("User questions badge", () => {
 
 		expect(badgesOf(moved.effects)).toHaveLength(1);
 		expect(badgeIndex).toBeGreaterThan(persistIndex);
-	});
 
-	it("raises no badge when the UI made the move", () => {
-		const moved = transition(state("in-progress"), {
-			type: "moveRequested",
-			target: { status: "user-questions", customColumnId: null },
-			clientPlayedSound: true,
-		});
-		expect(badgesOf(moved.effects)).toEqual([]);
+		{
+			// Raises no badge for a UI move, a caller-raised badge, a move within User questions, or another target.
+			const cases: Array<[string, LifecycleState, LifecycleEvent]> = [
+				["UI made the move", state("in-progress"), { type: "moveRequested", target: { status: "user-questions", customColumnId: null }, clientPlayedSound: true }],
+				["caller raises its own", state("in-progress"), { type: "moveRequested", target: { status: "user-questions", customColumnId: null }, skipQuestionsBadge: true }],
+				[
+					"stays in User questions",
+					state("user-questions", { column: { status: "user-questions", customColumnId: "qa-column" } }),
+					{ type: "moveRequested", target: { status: "user-questions", customColumnId: null } },
+				],
+				...(["review-by-user", "in-progress", "review-by-ai"] as const).map((target): [string, LifecycleState, LifecycleEvent] => [
+					`move into ${target}`,
+					state("in-progress"),
+					{ type: "moveRequested", target: { status: target, customColumnId: null } },
+				]),
+			];
+			for (const [label, current, event] of cases) {
+				expect(badgesOf(transition(current, event).effects), label).toEqual([]);
+			}
+		}
 	});
-
-	it("raises no badge when the caller raises its own", () => {
-		const moved = transition(state("in-progress"), {
-			type: "moveRequested",
-			target: { status: "user-questions", customColumnId: null },
-			skipQuestionsBadge: true,
-		});
-		expect(badgesOf(moved.effects)).toEqual([]);
-	});
-
-	it("raises no badge for a move that stays in User questions", () => {
-		const moved = transition(state("user-questions", {
-			column: { status: "user-questions", customColumnId: "qa-column" },
-		}), {
-			type: "moveRequested",
-			target: { status: "user-questions", customColumnId: null },
-		});
-		expect(badgesOf(moved.effects)).toEqual([]);
-	});
-
-	it.each(["review-by-user", "in-progress", "review-by-ai"] as const)(
-		"raises no badge for a move into %s",
-		(target) => {
-			const moved = transition(state("in-progress"), {
-				type: "moveRequested",
-				target: { status: target, customColumnId: null },
-			});
-			expect(badgesOf(moved.effects)).toEqual([]);
-		},
-	);
 });
 
 describe("boot runtime reconciliation", () => {
-	it.each([
-		["idle", false, false, "idle", []],
-		["idle", false, true, "idle", []],
-		["idle", true, false, "idle", []],
-		["idle", true, true, "running", ["persistRuntime"]],
-		["running", false, false, "idle", ["persistRuntime"]],
-		["running", false, true, "running", []],
-		["running", true, true, "running", []],
-		["running", true, false, "idle", ["persistRuntime"]],
-	] as const)(
-		"reconciles %s with worktree=%s tmux=%s to %s",
-		(runtime, worktreeExists, terminalAlive, expectedRuntime, expectedEffects) => {
-			const current = state("in-progress", {
-				runtime: { phase: runtime },
-				facts: {
-					hasWorktree: worktreeExists,
-					usesWorktrees: true,
-					hasPrIdentity: false,
-					peerReviewEnabled: true,
-				},
-			});
-			const result = transition(current, {
+	const facts = (hasWorktree: boolean) => ({
+		hasWorktree,
+		usesWorktrees: true,
+		hasPrIdentity: false,
+		peerReviewEnabled: true,
+	});
+
+	it("reconciles idle and running runtimes against every worktree/tmux combination", () => {
+		const table = [
+			["idle", false, false, "idle", []],
+			["idle", false, true, "idle", []],
+			["idle", true, false, "idle", []],
+			["idle", true, true, "running", ["persistRuntime"]],
+			["running", false, false, "idle", ["persistRuntime"]],
+			["running", false, true, "running", []],
+			["running", true, true, "running", []],
+			["running", true, false, "idle", ["persistRuntime"]],
+		] as const;
+		for (const [runtime, worktreeExists, terminalAlive, expectedRuntime, expectedEffects] of table) {
+			const label = `${runtime} worktree=${worktreeExists} tmux=${terminalAlive}`;
+			const result = transition(state("in-progress", { runtime: { phase: runtime }, facts: facts(worktreeExists) }), {
 				type: "bootObserved",
 				reality: { worktreeExists, terminalAlive },
 			});
 
-			expect(result.next.runtime.phase).toBe(expectedRuntime);
-			expect(result.effects.map((effect) => effect.type)).toEqual(expectedEffects);
-		},
-	);
+			expect(result.next.runtime.phase, label).toBe(expectedRuntime);
+			expect(result.effects.map((effect) => effect.type), label).toEqual(expectedEffects);
+		}
+	});
 
-	it.each([
-		[false, false, "todo", "idle"],
-		[false, true, "todo", "idle"],
-		[true, false, "todo", "idle"],
-		[true, true, "in-progress", "running"],
-	] as const)(
-		"reconciles preparing with worktree=%s tmux=%s",
-		(worktreeExists, terminalAlive, expectedStatus, expectedRuntime) => {
+	it("reconciles an interrupted preparation: reverts to To Do unless both the worktree and tmux survived, then persists the probed workspace", () => {
+		const table = [
+			[false, false, "todo", "idle"],
+			[false, true, "todo", "idle"],
+			[true, false, "todo", "idle"],
+			[true, true, "in-progress", "running"],
+		] as const;
+		for (const [worktreeExists, terminalAlive, expectedStatus, expectedRuntime] of table) {
+			const label = `worktree=${worktreeExists} tmux=${terminalAlive}`;
+			const result = transition(state("in-progress", {
+				runtime: {
+					phase: "preparing",
+					stage: "launching-pty",
+					runId: "crashed-run",
+					origin: { status: "todo", customColumnId: null },
+				},
+				facts: facts(worktreeExists),
+			}), {
+				type: "bootObserved",
+				reality: { worktreeExists, terminalAlive },
+			});
+
+			expect(result.next.column.status, label).toBe(expectedStatus);
+			expect(result.next.runtime.phase, label).toBe(expectedRuntime);
+			if (expectedStatus === "todo") {
+				expect(result.effects[result.effects.length - 1], label).toMatchObject({ type: "push", message: "taskUpdated" });
+			}
+		}
+
+		{
+			// Persists the probed workspace when preparation already launched tmux.
 			const current = state("in-progress", {
 				runtime: {
 					phase: "preparing",
-					stage: "creating-worktree",
-					runId: "boot-preparing",
+					stage: "launching-pty",
+					runId: "crashed-run",
 					origin: { status: "todo", customColumnId: null },
 				},
 				facts: {
-					hasWorktree: worktreeExists,
+					hasWorktree: false,
 					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
@@ -1109,195 +987,113 @@ describe("boot runtime reconciliation", () => {
 			});
 			const result = transition(current, {
 				type: "bootObserved",
-				reality: { worktreeExists, terminalAlive },
-			});
-
-			expect(result.next.column.status).toBe(expectedStatus);
-			expect(result.next.runtime.phase).toBe(expectedRuntime);
-		},
-	);
-
-	it.each([
-		[false, false],
-		[false, true],
-		[true, false],
-		[true, true],
-	] as const)(
-		"reconciles tearing-down with worktree=%s tmux=%s",
-		(worktreeExists, terminalAlive) => {
-			const current = state("in-progress", {
-				runtime: {
-					phase: "tearing-down",
-					targetStatus: "completed",
-					runId: "boot-teardown",
-				},
-				facts: {
-					hasWorktree: worktreeExists,
-					usesWorktrees: true,
-					hasPrIdentity: false,
-					peerReviewEnabled: true,
+				reality: {
+					worktreeExists: true,
+					terminalAlive: true,
+					worktreePath: "/tmp/recovered",
+					branchName: "dev3/recovered",
 				},
 			});
-			const result = transition(current, {
+
+			expect(result.next.runtime.phase).toBe("running");
+			expect(result.effects[0]).toMatchObject({
+				type: "persistRuntime",
+				taskPatch: {
+					worktreePath: "/tmp/recovered",
+					branchName: "dev3/recovered",
+				},
+			});
+		}
+	});
+
+	it("finishes an interrupted teardown for every worktree/tmux combination, aborting if worktree removal fails and removing a plain Operations task's linked worktree only with the fact", () => {
+		for (const worktreeExists of [false, true]) {
+			for (const terminalAlive of [false, true]) {
+				const label = `worktree=${worktreeExists} tmux=${terminalAlive}`;
+				const result = transition(state("in-progress", {
+					runtime: { phase: "tearing-down", targetStatus: "cancelled", runId: "teardown-crash" },
+					facts: facts(worktreeExists),
+				}), {
+					type: "bootObserved",
+					reality: { worktreeExists, terminalAlive },
+				});
+
+				expect(result.next.column.status, label).toBe("cancelled");
+				expect(result.next.runtime.phase, label).toBe("idle");
+				expect(result.effects.some((effect) => effect.type === "persistTerminalTask"), label).toBe(true);
+			}
+		}
+
+		const alreadyGone = transition(state("in-progress", {
+			runtime: { phase: "tearing-down", targetStatus: "cancelled", runId: "teardown-crash" },
+		}), { type: "bootObserved", reality: { worktreeExists: false, terminalAlive: false } });
+		expect(alreadyGone.effects.map((effect) => effect.type)).toEqual(["persistTerminalTask", "push"]);
+
+		const worktreeLeft = transition(state("in-progress", {
+			runtime: { phase: "tearing-down", targetStatus: "cancelled", runId: "teardown-crash" },
+		}), { type: "bootObserved", reality: { worktreeExists: true, terminalAlive: false } });
+		expect(worktreeLeft.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
+			type: "removeWorktree",
+			onError: "abort",
+			compensatingEvent: { type: "teardownFailed", runId: "teardown-crash" },
+		});
+
+		{
+			// Removes a linked worktree of a plain Operations task when boot recovery finishes its teardown, and only with the fact.
+			const resumed = (attachedRepoInFolder: boolean) => transition(state("in-progress", {
+				runtime: { phase: "tearing-down", targetStatus: "cancelled", runId: "teardown-crash" },
+				facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
+			}), {
 				type: "bootObserved",
-				reality: { worktreeExists, terminalAlive },
-			});
+				reality: { worktreeExists: true, terminalAlive: false },
+			}).effects;
 
-			expect(result.next.column.status).toBe("completed");
-			expect(result.next.runtime.phase).toBe("idle");
-			expect(result.effects.some((effect) => effect.type === "persistTerminalTask")).toBe(true);
-		},
-	);
+			const withFact = resumed(true);
+			const types = withFact.map((effect) => effect.type);
+			expect(withFact.find((effect) => effect.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue" });
+			expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
+			expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistTerminalTask"));
+			expect(resumed(false).map((effect) => effect.type)).not.toContain("removeAttachedWorktree");
+		}
+	});
 
-	it("puts a disconnected task back to running once a terminal attaches", () => {
+	it("puts a disconnected task back to running once a terminal attaches, and only such a task", () => {
 		const disconnected = state("in-progress", { runtime: { phase: "idle" } });
 		const result = transition(disconnected, { type: "terminalAttached" });
 
 		expect(result.next.runtime.phase).toBe("running");
 		expect(result.effects.map((effect) => effect.type)).toEqual(["persistRuntime", "push"]);
-	});
 
-	it("never lets an attaching terminal overwrite a runtime that owns itself", () => {
-		for (const phase of ["running", "preparing", "tearing-down"] as const) {
-			const runtime = phase === "preparing"
-				? { phase, stage: "launching-pty" as const, runId: "r", origin: { status: "todo" as const, customColumnId: null } }
-				: phase === "tearing-down"
-					? { phase, targetStatus: "completed" as const, runId: "r" }
-					: { phase };
-			const result = transition(state("in-progress", { runtime }), { type: "terminalAttached" });
-			expect(result.next.runtime.phase).toBe(phase);
-			expect(result.effects).toEqual([]);
+		{
+			// Ignores an attaching terminal on a self-owned runtime or a hibernated, parked or worktree-less task.
+			for (const phase of ["running", "preparing", "tearing-down"] as const) {
+				const runtime = phase === "preparing"
+					? { phase, stage: "launching-pty" as const, runId: "r", origin: { status: "todo" as const, customColumnId: null } }
+					: phase === "tearing-down"
+						? { phase, targetStatus: "completed" as const, runId: "r" }
+						: { phase };
+				const result = transition(state("in-progress", { runtime }), { type: "terminalAttached" });
+				expect(result.next.runtime.phase, phase).toBe(phase);
+				expect(result.effects, phase).toEqual([]);
+			}
+
+			const hibernated = state("in-progress", {
+				runtime: { phase: "idle" },
+				facts: { hasWorktree: true, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
+			});
+			expect(transition(hibernated, { type: "terminalAttached" }).effects).toEqual([]);
+
+			const todo = state("todo", { runtime: { phase: "idle" } });
+			expect(transition(todo, { type: "terminalAttached" }).effects).toEqual([]);
+
+			const noWorktree = state("in-progress", {
+				runtime: { phase: "idle" },
+				facts: { hasWorktree: false, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true },
+			});
+			expect(transition(noWorktree, { type: "terminalAttached" }).effects).toEqual([]);
 		}
 	});
 
-	it("ignores an attaching terminal on a hibernated, parked or worktree-less task", () => {
-		const hibernated = state("in-progress", {
-			runtime: { phase: "idle" },
-			facts: { hasWorktree: true, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
-		});
-		expect(transition(hibernated, { type: "terminalAttached" }).effects).toEqual([]);
-
-		const todo = state("todo", { runtime: { phase: "idle" } });
-		expect(transition(todo, { type: "terminalAttached" }).effects).toEqual([]);
-
-		const noWorktree = state("in-progress", {
-			runtime: { phase: "idle" },
-			facts: { hasWorktree: false, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true },
-		});
-		expect(transition(noWorktree, { type: "terminalAttached" }).effects).toEqual([]);
-	});
-
-	it("reverts an interrupted preparation with no live tmux process", () => {
-		const current = state("in-progress", {
-			runtime: {
-				phase: "preparing",
-				stage: "launching-pty",
-				runId: "crashed-run",
-				origin: { status: "todo", customColumnId: null },
-			},
-		});
-		const result = transition(current, {
-			type: "bootObserved",
-			reality: { worktreeExists: true, terminalAlive: false },
-		});
-
-		expect(result.next.column.status).toBe("todo");
-		expect(result.next.runtime.phase).toBe("idle");
-		expect(result.effects[result.effects.length - 1]).toMatchObject({ type: "push", message: "taskUpdated" });
-	});
-
-	it("persists the probed workspace when preparation already launched tmux", () => {
-		const current = state("in-progress", {
-			runtime: {
-				phase: "preparing",
-				stage: "launching-pty",
-				runId: "crashed-run",
-				origin: { status: "todo", customColumnId: null },
-			},
-			facts: {
-				hasWorktree: false,
-				usesWorktrees: true,
-				hasPrIdentity: false,
-				peerReviewEnabled: true,
-			},
-		});
-		const result = transition(current, {
-			type: "bootObserved",
-			reality: {
-				worktreeExists: true,
-				terminalAlive: true,
-				worktreePath: "/tmp/recovered",
-				branchName: "dev3/recovered",
-			},
-		});
-
-		expect(result.next.runtime.phase).toBe("running");
-		expect(result.effects[0]).toMatchObject({
-			type: "persistRuntime",
-			taskPatch: {
-				worktreePath: "/tmp/recovered",
-				branchName: "dev3/recovered",
-			},
-		});
-	});
-
-	it("finishes an interrupted teardown when the worktree is already gone", () => {
-		const current = state("in-progress", {
-			runtime: {
-				phase: "tearing-down",
-				targetStatus: "cancelled",
-				runId: "teardown-crash",
-			},
-		});
-		const result = transition(current, {
-			type: "bootObserved",
-			reality: { worktreeExists: false, terminalAlive: false },
-		});
-
-		expect(result.next.column.status).toBe("cancelled");
-		expect(result.next.runtime.phase).toBe("idle");
-		expect(result.effects.map((effect) => effect.type)).toEqual([
-			"persistTerminalTask",
-			"push",
-		]);
-	});
-
-	it("removes a linked worktree of a plain Operations task when boot recovery finishes its teardown, and only with the fact", () => {
-		const resumed = (attachedRepoInFolder: boolean) => transition(state("in-progress", {
-			runtime: { phase: "tearing-down", targetStatus: "cancelled", runId: "teardown-crash" },
-			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
-		}), {
-			type: "bootObserved",
-			reality: { worktreeExists: true, terminalAlive: false },
-		}).effects;
-
-		const withFact = resumed(true);
-		const types = withFact.map((effect) => effect.type);
-		expect(withFact.find((effect) => effect.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue" });
-		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
-		expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistTerminalTask"));
-		expect(resumed(false).map((effect) => effect.type)).not.toContain("removeAttachedWorktree");
-	});
-
-	it("aborts boot recovery when worktree removal fails", () => {
-		const current = state("in-progress", {
-			runtime: {
-				phase: "tearing-down",
-				targetStatus: "cancelled",
-				runId: "teardown-crash",
-			},
-		});
-		const result = transition(current, {
-			type: "bootObserved",
-			reality: { worktreeExists: true, terminalAlive: false },
-		});
-
-		expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
-			type: "removeWorktree",
-			onError: "abort",
-			compensatingEvent: { type: "teardownFailed", runId: "teardown-crash" },
-		});
-	});
 });
 
 // A draft is a task the user explicitly marked unfinished. The rule lives here,
@@ -1314,25 +1110,23 @@ describe("draft tasks cannot be activated", () => {
 		},
 	});
 
-	for (const target of ["in-progress", "user-questions", "review-by-ai", "review-by-user", "review-by-colleague"] as const) {
-		it(`refuses a move to ${target}`, () => {
+	it("refuses a draft every activation, yet lets it move inside To Do and be deleted; an ordinary To Do task stays activatable", () => {
+		for (const target of ["in-progress", "user-questions", "review-by-ai", "review-by-user", "review-by-colleague"] as const) {
 			const result = transition(draft(), {
 				type: "moveRequested",
 				target: { status: target, customColumnId: null },
 			});
 
-			expect(result.next.column.status).toBe("todo");
-			expect(result.next.runtime.phase).toBe("idle");
-			expect(result.effects).toHaveLength(1);
-			expect(result.effects[0]).toMatchObject({
+			expect(result.next.column.status, target).toBe("todo");
+			expect(result.next.runtime.phase, target).toBe("idle");
+			expect(result.effects, target).toHaveLength(1);
+			expect(result.effects[0], target).toMatchObject({
 				type: "reject",
 				message: expect.stringContaining("draft"),
 			});
-		});
-	}
+		}
 
-	it("refuses a launch that carries preparation instructions", () => {
-		const result = transition(draft(), {
+		const launch = transition(draft(), {
 			type: "moveRequested",
 			target: { status: "in-progress", customColumnId: null },
 			runId: "run-1",
@@ -1342,31 +1136,28 @@ describe("draft tasks cannot be activated", () => {
 				publishColumn: true,
 			},
 		});
+		expect(launch.next.column.status).toBe("todo");
+		expect(launch.effects.map((e) => e.type)).toEqual(["reject"]);
 
-		expect(result.next.column.status).toBe("todo");
-		expect(result.effects.map((e) => e.type)).toEqual(["reject"]);
-	});
+		{
+			// Still allows a draft to move inside To Do and be deleted, and leaves an ordinary To Do task activatable.
+			const toCustomColumn = transition(draft(), {
+				type: "moveRequested",
+				target: { customColumnId: "col-1" },
+			});
+			const deleted = transition(draft(), { type: "deleteRequested" });
 
-	it("still allows a draft to move inside To Do and to be deleted", () => {
-		const toCustomColumn = transition(draft(), {
-			type: "moveRequested",
-			target: { customColumnId: "col-1" },
-		});
-		const deleted = transition(draft(), { type: "deleteRequested" });
+			expect(toCustomColumn.effects.some((e) => e.type === "reject")).toBe(false);
+			expect(deleted.effects.some((e) => e.type === "reject")).toBe(false);
 
-		expect(toCustomColumn.effects.some((e) => e.type === "reject")).toBe(false);
-		expect(deleted.effects.some((e) => e.type === "reject")).toBe(false);
-	});
-
-	it("leaves an ordinary To Do task activatable", () => {
-		const result = transition(state("todo"), {
-			type: "moveRequested",
-			target: { status: "in-progress", customColumnId: null },
-			explicitLaunch: true,
-		});
-
-		expect(result.next.column.status).toBe("in-progress");
-		expect(result.effects.some((e) => e.type === "prepareTask")).toBe(true);
+			const ordinary = transition(state("todo"), {
+				type: "moveRequested",
+				target: { status: "in-progress", customColumnId: null },
+				explicitLaunch: true,
+			});
+			expect(ordinary.next.column.status).toBe("in-progress");
+			expect(ordinary.effects.some((e) => e.type === "prepareTask")).toBe(true);
+		}
 	});
 });
 
@@ -1381,7 +1172,7 @@ describe("hibernation", () => {
 		};
 	};
 
-	it("kills the session, keeps the worktree, and records the flag", () => {
+	it("kills the session, keeps the worktree, records the flag, and never reaps on an inactivity timer", () => {
 		const result = transition(active(), { type: "hibernateRequested" });
 
 		expect(result.next.facts.hibernated).toBe(true);
@@ -1400,55 +1191,35 @@ describe("hibernation", () => {
 		// Nothing may remove the worktree or run the cleanup script.
 		expect(result.effects.map((e) => e.type)).not.toContain("removeWorktree");
 		expect(result.effects.map((e) => e.type)).not.toContain("runCleanupScript");
+		// Aborts the freeze if the terminal tree cannot be confirmed gone.
+		expect(result.effects.find((e) => e.type === "destroyTaskPty")?.onError).toBe("abort");
+
+		{
+			// Never reaps unrelated worktree processes on an inactivity timer.
+			const result = transition(active(), {
+				type: "hibernateRequested", inactivity: { lastActivityAt: 1, timeoutMinutes: 60 },
+			});
+			expect(result.next.facts.hibernated).toBe(true);
+			expect(result.effects.map(effect => effect.type)).toContain("destroyTaskPty");
+			expect(result.effects.map(effect => effect.type)).not.toContain("reapWorktreeProcesses");
+		}
 	});
 
-	it("aborts the freeze if the terminal tree cannot be confirmed gone", () => {
-		const result = transition(active(), { type: "hibernateRequested" });
-		const destroy = result.effects.find((e) => e.type === "destroyTaskPty");
+	it("refuses a To Do, preparing or tearing-down task", () => {
+		const todo = transition(state("todo"), { type: "hibernateRequested" });
+		expect(todo.next.facts.hibernated).toBeUndefined();
+		expect(todo.effects, "todo").toMatchObject([{ type: "reject" }]);
 
-		expect(destroy?.onError).toBe("abort");
-	});
-
-	it("never reaps unrelated worktree processes on an inactivity timer", () => {
-		const result = transition(active(), {
-			type: "hibernateRequested", inactivity: { lastActivityAt: 1, timeoutMinutes: 60 },
-		});
-		expect(result.next.facts.hibernated).toBe(true);
-		expect(result.effects.map(effect => effect.type)).toContain("destroyTaskPty");
-		expect(result.effects.map(effect => effect.type)).not.toContain("reapWorktreeProcesses");
-	});
-
-	it("refuses a To Do task, which has nothing running to free", () => {
-		const result = transition(state("todo"), { type: "hibernateRequested" });
-
-		expect(result.next.facts.hibernated).toBeUndefined();
-		expect(result.effects).toMatchObject([{ type: "reject" }]);
-	});
-
-	it("refuses a task that is still preparing", () => {
 		const preparing = active({
 			runtime: { phase: "preparing", stage: "creating-worktree", runId: "r1", origin: { status: "todo", customColumnId: null } },
 		});
-		const result = transition(preparing, { type: "hibernateRequested" });
+		expect(transition(preparing, { type: "hibernateRequested" }).effects, "preparing").toMatchObject([{ type: "reject" }]);
 
-		expect(result.effects).toMatchObject([{ type: "reject" }]);
-	});
-
-	it("refuses a task that is tearing down", () => {
 		const tearing = active({ runtime: { phase: "tearing-down", targetStatus: "completed", runId: "r1" } });
-		const result = transition(tearing, { type: "hibernateRequested" });
-
-		expect(result.effects).toMatchObject([{ type: "reject" }]);
+		expect(transition(tearing, { type: "hibernateRequested" }).effects, "tearing-down").toMatchObject([{ type: "reject" }]);
 	});
 
-	it("treats a repeat freeze as a no-op, not an error", () => {
-		const result = transition(frozen(), { type: "hibernateRequested" });
-
-		expect(result.effects).toEqual([]);
-		expect(result.next.facts.hibernated).toBe(true);
-	});
-
-	it("refuses every column change while hibernated", () => {
+	it("refuses every column change while hibernated, an automation's included, but still lets the task be completed", () => {
 		const result = transition(frozen(), {
 			type: "moveRequested",
 			target: { status: "in-progress", customColumnId: null },
@@ -1456,30 +1227,28 @@ describe("hibernation", () => {
 
 		expect(result.next.column.status).toBe("user-questions");
 		expect(result.effects).toMatchObject([{ type: "reject" }]);
-	});
 
-	it("refuses an automation's column change too", () => {
-		const result = transition(frozen(), {
+		const automation = transition(frozen(), {
 			type: "moveRequested",
 			target: { status: "review-by-colleague" },
 			cause: "pr-promotion",
 		});
+		expect(automation.effects).toMatchObject([{ type: "reject" }]);
 
-		expect(result.effects).toMatchObject([{ type: "reject" }]);
+		{
+			// Still lets a hibernated task be completed.
+			const result = transition(frozen(), {
+				type: "moveRequested",
+				target: { status: "completed", customColumnId: null },
+			});
+
+			expect(result.next.column.status).toBe("completed");
+			expect(result.next.facts.hibernated).toBe(false);
+			expect(result.effects.map((e) => e.type)).toContain("removeWorktree");
+		}
 	});
 
-	it("still lets a hibernated task be completed", () => {
-		const result = transition(frozen(), {
-			type: "moveRequested",
-			target: { status: "completed", customColumnId: null },
-		});
-
-		expect(result.next.column.status).toBe("completed");
-		expect(result.next.facts.hibernated).toBe(false);
-		expect(result.effects.map((e) => e.type)).toContain("removeWorktree");
-	});
-
-	it("clears the flag on wake and leaves the column alone", () => {
+	it("clears the flag on wake and leaves the column alone; a repeat freeze or a live wake is a no-op", () => {
 		const result = transition(frozen(), { type: "wakeRequested" });
 
 		expect(result.next.facts.hibernated).toBe(false);
@@ -1488,15 +1257,18 @@ describe("hibernation", () => {
 			{ type: "persistTaskPatch", taskPatch: { hibernated: false } },
 			{ type: "push" },
 		]);
+
+		{
+			// Treats a repeat freeze and a wake on a live task as no-ops, not errors.
+			const refreeze = transition(frozen(), { type: "hibernateRequested" });
+			expect(refreeze.effects).toEqual([]);
+			expect(refreeze.next.facts.hibernated).toBe(true);
+
+			expect(transition(active(), { type: "wakeRequested" }).effects).toEqual([]);
+		}
 	});
 
-	it("treats a wake on a live task as a no-op", () => {
-		const result = transition(active(), { type: "wakeRequested" });
-
-		expect(result.effects).toEqual([]);
-	});
-
-	it("defers PR promotion while hibernated and promotes on the first poll after wake", () => {
+	it("defers PR promotion while hibernated, keeps watching, and promotes on the first poll after wake", () => {
 		const detected: LifecycleEvent = {
 			type: "prDetected",
 			openNonDraft: true,
@@ -1525,9 +1297,10 @@ describe("hibernation", () => {
 		expect(afterWake.effects.find((e) => e.type === "sendEvent")).toMatchObject({
 			event: { type: "moveRequested", cause: "pr-promotion", target: { status: "review-by-colleague" } },
 		});
-	});
 
-	it("keeps merge and PR watching running while hibernated", () => {
-		expect(activitiesFor(frozen())).toContain("mergeWatch");
+		{
+			// Keeps merge and PR watching running while hibernated.
+			expect(activitiesFor(frozen())).toContain("mergeWatch");
+		}
 	});
 });

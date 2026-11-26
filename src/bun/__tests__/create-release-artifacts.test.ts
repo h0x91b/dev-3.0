@@ -46,37 +46,41 @@ describe("create-release-artifacts.sh", () => {
 	// name and the update manifest, so a default would let a future caller publish one
 	// channel's build into the other channel's feed with every test still green — an
 	// omission that reads as a valid choice.
-	it("refuses to run without a channel instead of guessing one", () => {
+	//
+	// `unstable` on purpose: it is the name this channel USED to have, so it is the exact
+	// string a stale caller, an old workflow copy or a half-applied rename would pass.
+	//
+	// `windows` is the word every runner label, workflow filename and English sentence uses,
+	// and it is the wrong one: the in-app updater fetches `{channel}-win-{arch}-update.json`
+	// (getPlatformPrefix, src/bun/updater.ts). Before the guard, an unknown OS fell through to
+	// the linux branch and produced a flawless `canary-windows-x64-update.json` that no client
+	// ever asks for — green run, files in the bucket, nobody updated.
+	it("refuses a missing channel, a channel it does not publish, and the os 'windows'", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
 		tempDirs.push(tempDir);
-
-		const result = spawnSync("bash", [SCRIPT_PATH, "macos", "arm64"], { cwd: tempDir, encoding: "utf8" });
-
-		expect(
-			result.status,
-			"the script must FAIL when <channel> is missing. Fix: keep the `${3:?...}` guard in scripts/create-release-artifacts.sh — do not give CHANNEL a default, or an omitted argument silently publishes into the wrong channel's feed.",
-		).not.toBe(0);
-		expect(
-			`${result.stdout}${result.stderr}`,
-			"the failure must name the missing argument AND what it prevents, so the caller learns the rule from the error rather than from a decision record.",
-		).toMatch(/missing <channel> argument/);
+		const cases: Array<{ args: string[]; error: RegExp; why: string }> = [
+			{
+				args: ["macos", "arm64"],
+				error: /missing <channel> argument/,
+				why: "the script must FAIL when <channel> is missing. Fix: keep the `${3:?...}` guard in scripts/create-release-artifacts.sh — do not give CHANNEL a default, or an omitted argument silently publishes into the wrong channel's feed. The failure must name the missing argument AND what it prevents.",
+			},
+			{
+				args: ["macos", "arm64", "unstable"],
+				error: /unknown channel 'unstable'/,
+				why: "an unknown channel must fail. Otherwise the script happily writes `unstable-macos-arm64-*` artifacts that no client ever asks for — and since that was this channel's previous name, a caller left behind by the rename would publish into a feed nobody polls, with the run green.",
+			},
+			{
+				args: ["windows", "x64", "canary"],
+				error: /unknown os 'windows'/,
+				why: "an unknown os must fail. Falling through to the linux branch names every artifact `canary-windows-x64-*`, which is well-formed, published, and invisible to every client.",
+			},
+		];
+		for (const c of cases) {
+			const result = spawnSync("bash", [SCRIPT_PATH, ...c.args], { cwd: tempDir, encoding: "utf8" });
+			expect(result.status, c.why).not.toBe(0);
+			expect(`${result.stdout}${result.stderr}`, c.why).toMatch(c.error);
+		}
 	});
-
-	it("rejects a channel it does not publish, rather than prefixing artifacts with it", () => {
-		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
-		tempDirs.push(tempDir);
-
-		// `unstable` on purpose: it is the name this channel USED to have, so it is the exact
-		// string a stale caller, an old workflow copy or a half-applied rename would pass.
-		const result = spawnSync("bash", [SCRIPT_PATH, "macos", "arm64", "unstable"], { cwd: tempDir, encoding: "utf8" });
-
-		expect(
-			result.status,
-			"an unknown channel must fail. Otherwise the script happily writes `unstable-macos-arm64-*` artifacts that no client ever asks for — and since that was this channel's previous name, a caller left behind by the rename would publish into a feed nobody polls, with the run green.",
-		).not.toBe(0);
-		expect(`${result.stdout}${result.stderr}`).toMatch(/unknown channel 'unstable'/);
-	});
-
 
 	// THE RECOVERY PATH (Case 2) IS NOT DEAD CODE — it is what ships when electrobun crashes
 	// after tarring, which is a real and recurring failure. It is also only reachable when
@@ -243,7 +247,7 @@ describe("create-release-artifacts.sh", () => {
 		};
 	}
 
-	it("publishes the canary build under a version that says it is a canary build", () => {
+	it("publishes canary under a version that says so, and stable exactly as the bundle reports it", () => {
 		const canary = stageBundleAndRun("canary");
 		expect(canary.result.status, `the canary run must succeed. Output:\n${canary.output}`).toBe(0);
 		expect(
@@ -254,33 +258,14 @@ describe("create-release-artifacts.sh", () => {
 			JSON.parse(readFileSync(canary.recoveredVersionJson, "utf8")).version,
 			"the BUNDLE's version.json must stay bare. `dev3 doctor` compares it against the CLI version by string equality, so a suffix in here reports a spurious CLI/app mismatch on every canary install.",
 		).toBe("1.42.3");
-	});
 
-	it("leaves the stable manifest's version exactly as the bundle reports it", () => {
+		// Stable keeps the manifest's version exactly as the bundle reports it.
 		const stable = stageBundleAndRun("stable");
 		expect(stable.result.status, `the stable run must succeed. Output:\n${stable.output}`).toBe(0);
 		expect(
 			stable.manifest?.version,
 			"stable must publish the bundle version untouched. If this ever grows a suffix, every stable client compares a version whose patch component semver silently reads as 0 — they would be offered a permanent phantom downgrade.",
 		).toBe("1.42.3");
-	});
-
-	// `windows` is the word every runner label, workflow filename and English sentence uses,
-	// and it is the wrong one: the in-app updater fetches `{channel}-win-{arch}-update.json`
-	// (getPlatformPrefix, src/bun/updater.ts). Before the guard, an unknown OS fell through to
-	// the linux branch and produced a flawless `canary-windows-x64-update.json` that no client
-	// ever asks for — green run, files in the bucket, nobody updated.
-	it("rejects 'windows' rather than publishing a manifest key nobody fetches", () => {
-		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
-		tempDirs.push(tempDir);
-
-		const result = spawnSync("bash", [SCRIPT_PATH, "windows", "x64", "canary"], { cwd: tempDir, encoding: "utf8" });
-
-		expect(
-			result.status,
-			"an unknown os must fail. Falling through to the linux branch names every artifact `canary-windows-x64-*`, which is well-formed, published, and invisible to every client.",
-		).not.toBe(0);
-		expect(`${result.stdout}${result.stderr}`).toMatch(/unknown os 'windows'/);
 	});
 
 	// The whole Windows branch in one pass: the build-folder name electrobun uses

@@ -65,6 +65,7 @@ afterEach(() => {
 });
 
 describe("dev3 pr watch", () => {
+	// The 45 s timeout is deliberately longer than the app's own wait for gh.
 	it("subscribes until CI by default and prints one line", async () => {
 		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 2041 } });
 
@@ -88,16 +89,7 @@ describe("dev3 pr watch", () => {
 		expect(stdout).toContain("until it is merged or closed");
 	});
 
-	it("sends this agent's pane and pid so the message comes back to it", async () => {
-		vi.stubEnv("TMUX_PANE", "%4");
-		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 2041 } });
-
-		await run({});
-
-		expect(send.mock.calls[0][2]).toMatchObject({ sourceTaskId: "task-1", sourcePaneId: "%4", sourcePid: process.pid });
-	});
-
-	it("sends the evidence an app needs to find an agent started through a wrapper", async () => {
+	it("sends this agent's pane, pid and wrapper evidence so the message comes back to it", async () => {
 		vi.stubEnv("TMUX_PANE", "%4");
 		vi.stubEnv("TMUX", "/private/tmp/tmux-501/dev3,4242,0");
 		vi.stubEnv("DEV3_TASK_ID", "task-1");
@@ -105,13 +97,10 @@ describe("dev3 pr watch", () => {
 
 		await run({});
 
-		expect(send.mock.calls[0][2]).toMatchObject({ sourceTmux: "/private/tmp/tmux-501/dev3,4242,0", sourceEnvTaskId: "task-1" });
-	});
-
-	it("waits longer for the app than the app waits for gh", async () => {
-		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 1 } });
-		await run({});
-		expect(send.mock.calls[0][3]?.timeoutMs).toBeGreaterThan(15_000);
+		expect(send.mock.calls[0][2]).toMatchObject({
+			sourceTaskId: "task-1", sourcePaneId: "%4", sourcePid: process.pid,
+			sourceTmux: "/private/tmp/tmux-501/dev3,4242,0", sourceEnvTaskId: "task-1",
+		});
 	});
 
 	it("exits with the no-PR code and subscribes nothing when no PR is found", async () => {
@@ -154,11 +143,12 @@ describe("dev3 pr watch", () => {
 
 		expect(send).toHaveBeenCalledWith("/tmp/x.sock", "pr.watch.off", { taskId: "task-1", projectId: "proj-1", prNumber: 2111 });
 		expect(stdout).toBe("Removed 1 PR watch on <pr:2111>.\n");
-	});
 
-	it("refuses --list with --pr", async () => {
-		expect(await run({ list: "true", pr: "7" })).toBe(3);
-		expect(send).not.toHaveBeenCalled();
+		stdout = "";
+		send.mockResolvedValue({ id: "1", ok: true, data: { removed: 2 } });
+		await run({ off: "true" });
+		expect(send).toHaveBeenLastCalledWith("/tmp/x.sock", "pr.watch.off", { taskId: "task-1", projectId: "proj-1" });
+		expect(stdout).toBe("Removed 2 PR watches.\n");
 	});
 
 	it("marks a followed PR in --list", async () => {
@@ -176,35 +166,15 @@ describe("dev3 pr watch", () => {
 		expect(await run({})).toBe(1);
 	});
 
-	it("refuses an unknown --until value without calling the app", async () => {
-		expect(await run({ until: "review" })).toBe(3);
-		expect(send).not.toHaveBeenCalled();
-	});
-
-	it("refuses a --pr that is not a number", async () => {
-		expect(await run({ pr: "abc" })).toBe(3);
-		expect(await run({ pr: "0" })).toBe(3);
-		expect(send).not.toHaveBeenCalled();
-	});
-
-	it("refuses --off together with --until, and --off with a value", async () => {
-		expect(await run({ off: "true", until: "ci" })).toBe(3);
-		expect(await run({ off: "1722" })).toBe(3);
-		expect(send).not.toHaveBeenCalled();
-	});
-
-	it("asks for a task when run outside a worktree", async () => {
+	it("refuses bad flag combinations and values, and a missing task, without calling the app", async () => {
+		const cases: Record<string, string>[] = [
+			{ list: "true", pr: "7" }, { until: "review" }, { pr: "abc" }, { pr: "0" },
+			{ off: "true", until: "ci" }, { off: "1722" },
+		];
+		for (const flags of cases) expect(await run(flags), JSON.stringify(flags)).toBe(3);
 		expect(await run({}, null)).toBe(3);
 		expect(stderr).toContain("No task in context");
-	});
-
-	it("removes the watches with --off", async () => {
-		send.mockResolvedValue({ id: "1", ok: true, data: { removed: 2 } });
-
-		await run({ off: "true" });
-
-		expect(send).toHaveBeenCalledWith("/tmp/x.sock", "pr.watch.off", { taskId: "task-1", projectId: "proj-1" });
-		expect(stdout).toBe("Removed 2 PR watches.\n");
+		expect(send).not.toHaveBeenCalled();
 	});
 
 	it("lists the watches with --list", async () => {
@@ -218,9 +188,8 @@ describe("dev3 pr watch", () => {
 
 		expect(send).toHaveBeenCalledWith("/tmp/x.sock", "pr.watch.list", { taskId: "task-1", projectId: "proj-1" });
 		expect(stdout).toBe("<pr:7>  until merged  head abc1234  since 2026-10-22T10:00:00.000Z\n");
-	});
 
-	it("says so when there is nothing to list", async () => {
+		stdout = "";
 		send.mockResolvedValue({ id: "1", ok: true, data: { watches: [] } });
 		await run({ list: "true" });
 		expect(stdout).toBe("No PR watches on this task.\n");

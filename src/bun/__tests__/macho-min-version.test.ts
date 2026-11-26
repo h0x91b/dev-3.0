@@ -66,13 +66,10 @@ describe("readMinMacOSVersion", () => {
 		expect(info?.hasBuildVersion).toBe(false);
 	});
 
-	it("reports LC_BUILD_VERSION instead, as the arm64 build carries", () => {
+	it("reports LC_BUILD_VERSION instead, as the arm64 build carries, and null for non-thin-64-bit input", () => {
 		const info = readMinMacOSVersion(buildMachO({ buildVersion: true }));
 		expect(info?.hasBuildVersion).toBe(true);
 		expect(info?.commandOffset).toBeNull();
-	});
-
-	it("returns null for anything that is not a thin 64-bit Mach-O", () => {
 		expect(readMinMacOSVersion(new Uint8Array([1, 2, 3]))).toBeNull();
 		expect(readMinMacOSVersion(new Uint8Array(64))).toBeNull();
 	});
@@ -94,21 +91,10 @@ describe("raiseMinMacOSVersion", () => {
 		expect(patched!.byteLength).toBe(original.byteLength);
 	});
 
-	it("is a no-op when the binary already declares enough", () => {
-		const already = buildMachO({ versionMin: packVersion(11, 0) });
-		expect(raiseMinMacOSVersion(already, 10, 15)).toBeNull();
-	});
-
-	it("never lowers a version", () => {
-		const high = buildMachO({ versionMin: packVersion(14, 0) });
-		expect(raiseMinMacOSVersion(high, 10, 15)).toBeNull();
-	});
-
-	it("leaves an LC_BUILD_VERSION binary alone", () => {
+	it("is a no-op when the binary declares enough, never lowers, and leaves LC_BUILD_VERSION and non-Mach-O alone", () => {
+		expect(raiseMinMacOSVersion(buildMachO({ versionMin: packVersion(11, 0) }), 10, 15)).toBeNull();
+		expect(raiseMinMacOSVersion(buildMachO({ versionMin: packVersion(14, 0) }), 10, 15)).toBeNull();
 		expect(raiseMinMacOSVersion(buildMachO({ buildVersion: true }), 10, 15)).toBeNull();
-	});
-
-	it("ignores non-Mach-O input", () => {
 		expect(raiseMinMacOSVersion(new Uint8Array([0xde, 0xad, 0xbe, 0xef]), 10, 15)).toBeNull();
 	});
 });

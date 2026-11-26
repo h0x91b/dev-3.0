@@ -95,17 +95,11 @@ describe("dev3 update --help / flag validation", () => {
 		expect(mockBuildPlan).not.toHaveBeenCalled();
 	});
 
-	it("rejects an unknown flag", async () => {
+	it("rejects an unknown flag, a positional argument, and --check together with --dry-run", async () => {
 		await expect(handleUpdate(args({ force: "true" }))).rejects.toThrow("__exit__");
 		expect(stderr()).toContain("force");
-	});
-
-	it("rejects a positional argument", async () => {
 		await expect(handleUpdate(args({}, ["now"]))).rejects.toThrow("__exit__");
 		expect(stderr()).toContain("Unknown positional");
-	});
-
-	it("rejects --check together with --dry-run", async () => {
 		await expect(handleUpdate(args({ check: "true", "dry-run": "true" }))).rejects.toThrow("__exit__");
 		expect(stderr()).toContain("one or the other");
 	});
@@ -158,9 +152,8 @@ describe("dev3 update --check", () => {
 		expect(stdout()).toContain("Available:      1.45.2");
 		expect(exitCodes).toEqual([0]);
 		expect(mockRunSelfUpdate).not.toHaveBeenCalled();
-	});
 
-	it("says none when there is nothing newer", async () => {
+		// Nothing newer says none.
 		mockBuildPlan.mockResolvedValue({
 			install: "tarball",
 			runningVersion: "1.45.2",
@@ -171,7 +164,7 @@ describe("dev3 update --check", () => {
 		await expect(handleUpdate(args({ check: "true" }))).rejects.toThrow("__exit__");
 
 		expect(stdout()).toContain("Available:      none");
-		expect(exitCodes).toEqual([0]);
+		expect(exitCodes).toEqual([0, 0]);
 	});
 });
 

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+// No `git maintenance run --auto` child after every commit and fetch: nothing here reads it.
+vi.hoisted(() => Object.assign(process.env, { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "maintenance.auto", GIT_CONFIG_VALUE_0: "false" }));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -63,20 +66,16 @@ describe("Operations worktree", () => {
 		await expect(createOpsWorktree(repo.local, task, wtPath, "no-such-branch")).rejects.toThrow(/Failed to create worktree/);
 	});
 
-	it("isWorktreeDirtyOrUnknown: clean is false, edits and an unreadable status are true", async () => {
-		await createOpsWorktree(repo.local, task, wtPath, "main");
-		expect(await isWorktreeDirtyOrUnknown(wtPath)).toBe(false);
-		writeFileSync(join(wtPath, "wip.txt"), "x");
-		expect(await isWorktreeDirtyOrUnknown(wtPath)).toBe(true);
-		expect(await isWorktreeDirtyOrUnknown(join(repo.dir, "no-such-dir"))).toBe(true);
-	});
-
-	it("isWorktreeDirtyOrUnknown sees untracked files even with status.showUntrackedFiles=no", async () => {
+	it("isWorktreeDirtyOrUnknown: clean is false; an edit, an untracked file (even with status.showUntrackedFiles=no) and an unreadable status are true", async () => {
 		await createOpsWorktree(repo.local, task, wtPath, "main");
 		g("git config status.showUntrackedFiles no", repo.local);
+		expect(await isWorktreeDirtyOrUnknown(wtPath)).toBe(false);
 		writeFileSync(join(wtPath, "untracked.txt"), "x");
-
 		expect(await isWorktreeDirtyOrUnknown(wtPath)).toBe(true);
+		rmSync(join(wtPath, "untracked.txt"));
+		writeFileSync(join(wtPath, "app.ts"), "edited\n");
+		expect(await isWorktreeDirtyOrUnknown(wtPath)).toBe(true);
+		expect(await isWorktreeDirtyOrUnknown(join(repo.dir, "no-such-dir"))).toBe(true);
 	});
 
 	it("isWorktreeDirtyOrUnknown sees changes inside a submodule configured with ignore=all", async () => {
@@ -114,21 +113,17 @@ describe("Operations worktree", () => {
 		expect(await getRepoTopLevel(sub)).toBe(await getRepoTopLevel(repo.local));
 		expect(await getRepoTopLevel("/tmp/dev3-not-a-repo-xyz")).toBeNull();
 	});
-	it("classifyLinkedWorktree names the owning repo of a linked worktree", async () => {
-		await createOpsWorktree(repo.local, task, wtPath, "main");
-		expect(await classifyLinkedWorktree(wtPath)).toEqual({ kind: "linked", mainRepo: realpathSync(repo.local) });
-	});
 
 	it("classifyLinkedWorktree says plain only for a checkout git positively confirms owns its git dir", async () => {
 		expect(await classifyLinkedWorktree(repo.local)).toEqual({ kind: "plain" });
 	});
 
-	it("classifyLinkedWorktree says plain for a subfolder of a linked worktree: only its root may be removed", async () => {
+	it("classifyLinkedWorktree names the owning repo of a linked worktree, and says plain for its subfolder: only its root may be removed", async () => {
 		await createOpsWorktree(repo.local, task, wtPath, "main");
 		const sub = join(wtPath, "src");
 		mkdirSync(sub);
+		expect(await classifyLinkedWorktree(wtPath)).toEqual({ kind: "linked", mainRepo: realpathSync(repo.local) });
 		expect(await classifyLinkedWorktree(sub)).toEqual({ kind: "plain" });
-		expect((await classifyLinkedWorktree(wtPath)).kind).toBe("linked");
 	});
 
 	it("classifyLinkedWorktree is unknown for a missing path, a non-repo and a repo with a broken config", async () => {
@@ -181,9 +176,9 @@ describe("Operations worktree", () => {
 
 	it("removeLinkedWorktree never deletes a directory the main repo does not list as a worktree", async () => {
 		// A worktree of ANOTHER repo: this repo's `git worktree remove` refuses it, and it is not in this repo's list.
-		const other = join(repo.dir, "other-repo");
-		g(`git clone "${repo.local}" "${other}"`, repo.dir);
-		const foreign = join(repo.dir, "foreign-wt");
+		const otherRepo = createTestRepo();
+		const other = otherRepo.local;
+		const foreign = join(otherRepo.dir, "foreign-wt");
 		g(`git worktree add -b foreign "${foreign}"`, other);
 		writeFileSync(join(foreign, "dirty.ts"), "uncommitted\n");
 
@@ -191,6 +186,7 @@ describe("Operations worktree", () => {
 
 		expect(readFileSync(join(foreign, "dirty.ts"), "utf-8")).toBe("uncommitted\n");
 		expect(g("git worktree list", other)).toContain("foreign-wt");
+		cleanup(otherRepo);
 	});
 
 	it("removeLinkedWorktree reports a directory that is already gone as removed", async () => {
@@ -202,26 +198,31 @@ describe("Operations worktree", () => {
 		let folder: string;
 		let external: string;
 		const resolve = (attached: string, allowSelf = false) => resolvePathInsideOpsTaskFolder(attached, folder, ops, "the test removal", allowSelf);
-		beforeEach(async () => {
+		// The resolver judges paths only (no git), so plain folders stand in for worktrees.
+		const fakeWorktree = (dir: string) => {
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, ".git"), "gitdir: elsewhere\n");
+		};
+		beforeEach(() => {
 			ops = join(repo.dir, "ops");
 			folder = join(ops, "slug", "abcdef12", "work");
 			mkdirSync(folder, { recursive: true });
 			external = join(repo.dir, "external-wt");
-			await createOpsWorktree(repo.local, task, external, "main");
+			fakeWorktree(external);
 			writeFileSync(join(external, "dirty.ts"), "uncommitted\n");
 		});
 
-		it("returns the real path of a repo strictly inside the folder", async () => {
+		it("returns the real path of a repo strictly inside the folder", () => {
 			const inside = join(folder, "wt");
-			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
+			fakeWorktree(inside);
 			expect(resolve(inside)).toBe(realpathSync(inside));
 		});
 
-		it("keeps working when the managed root itself is behind a symlink", async () => {
+		it("keeps working when the managed root itself is behind a symlink", () => {
 			const link = join(repo.dir, "ops-link");
 			symlinkSync(ops, link);
 			const inside = join(link, "slug", "abcdef12", "work", "wt");
-			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
+			fakeWorktree(inside);
 			expect(resolvePathInsideOpsTaskFolder(inside, join(link, "slug", "abcdef12", "work"), link, "the test removal")).toBe(realpathSync(inside));
 		});
 
@@ -242,7 +243,7 @@ describe("Operations worktree", () => {
 			rmSync(join(ops, "slug", "abcdef12"), { recursive: true });
 			const elsewhere = join(repo.dir, "elsewhere");
 			mkdirSync(join(elsewhere, "work"), { recursive: true });
-			g(`git worktree add -b same-name "${join(elsewhere, "work", "wt")}"`, repo.local);
+			fakeWorktree(join(elsewhere, "work", "wt"));
 			symlinkSync(elsewhere, join(ops, "slug", "abcdef12"));
 			expect(resolve(join(folder, "wt"))).toBeNull();
 		});

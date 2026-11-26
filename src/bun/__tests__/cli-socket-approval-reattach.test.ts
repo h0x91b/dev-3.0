@@ -147,11 +147,22 @@ beforeEach(() => {
 // asking `approval.status`. Neither may ever open a dialog or answer one: the
 // only thing that grants consent is the user's click, delivered through
 // resolveAgentRequest.
-describe.each([
+const KINDS = [
 	{ method: "task.requestCancellation", kind: "cancel", push: "agentCancellationRequested", target: "cancelled" },
 	{ method: "task.requestCompletion", kind: "complete", push: "agentCompletionRequested", target: "completed" },
-] as const)("$method re-attach", ({ method, kind, push, target }) => {
-	it("attachOnly with nothing pending creates no request and pushes no dialog", async () => {
+] as const;
+
+/** Runs one scenario for each approval kind, from a clean request registry. */
+async function eachKind(fn: (k: (typeof KINDS)[number]) => Promise<void>): Promise<void> {
+	for (const k of KINDS) {
+		vi.clearAllMocks();
+		_resetAgentRequestsForTests();
+		await fn(k);
+	}
+}
+
+describe("cancellation and completion re-attach", () => {
+	it("attachOnly with nothing pending creates no request, pushes no dialog, and reports a reached target", () => eachKind(async ({ method, kind, target }) => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -163,9 +174,16 @@ describe.each([
 		expect(pushFn).not.toHaveBeenCalled();
 		expect(listPendingAgentRequests(kind)).toEqual([]);
 		expect(moveTask).not.toHaveBeenCalled();
-	});
 
-	it("attachOnly joins the live request: same id, one entry, and only the user's answer settles both", async () => {
+		// A task that already reached its target is reported, not an error.
+		setupTask(makeTask({ status: target }));
+		const reached = await handleRequest(makeRequest({ ...REF, attachOnly: true }, method));
+		expect(reached.ok).toBe(true);
+		expect(reached.data).toEqual({ attached: false, status: { kind, state: "none", taskStatus: target } });
+		expect(pushFn).not.toHaveBeenCalled();
+	}));
+
+	it("attachOnly joins the live request: same id, one entry, and only the user's answer settles both", () => eachKind(async ({ method, kind, push, target }) => {
 		const task = makeTask();
 		setupTask(task);
 		const pushFn = vi.fn();
@@ -195,9 +213,9 @@ describe.each([
 		const [a, b] = await Promise.all([original, reattached]);
 		expect(a.data).toMatchObject({ approved: true });
 		expect(b.data).toMatchObject({ approved: true });
-	});
+	}));
 
-	it("attachOnly after a decline reports the decline and does not re-ask", async () => {
+	it("attachOnly after a decline reports the decline and does not re-ask", () => eachKind(async ({ method, kind }) => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -214,19 +232,9 @@ describe.each([
 		});
 		expect(pushFn).toHaveBeenCalledTimes(1);
 		expect(listPendingAgentRequests(kind)).toEqual([]);
-	});
+	}));
 
-	it("attachOnly on a task that already reached its target reports it instead of erroring", async () => {
-		setupTask(makeTask({ status: target }));
-		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
-
-		const resp = await handleRequest(makeRequest({ ...REF, attachOnly: true }, method));
-
-		expect(resp.ok).toBe(true);
-		expect(resp.data).toEqual({ attached: false, status: { kind, state: "none", taskStatus: target } });
-	});
-
-	it("approval.status is read-only: pending, answered and none, with no push and no new request", async () => {
+	it("approval.status is read-only: pending, answered and none, with no push and no new request", () => eachKind(async ({ method, kind }) => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -247,19 +255,17 @@ describe.each([
 		expect(answered.data).toEqual({ kind, state: "answered", approved: false, taskStatus: "in-progress" });
 		expect(pushFn).toHaveBeenCalledTimes(1);
 		expect(moveTask).not.toHaveBeenCalled();
-	});
+	}));
 });
 
 describe("approval.status", () => {
-	it("rejects an unknown kind", async () => {
+	it("rejects an unknown kind and keeps the two kinds apart", async () => {
 		setupTask(makeTask());
 		const resp = await handleRequest(makeRequest({ ...REF, kind: "launch" }, "approval.status"));
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("kind must be");
-	});
 
-	it("keeps the two kinds apart", async () => {
-		setupTask(makeTask());
+		// The two kinds are kept apart.
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 

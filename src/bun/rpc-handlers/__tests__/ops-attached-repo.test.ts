@@ -5,6 +5,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// No `git maintenance run --auto` child after every commit and fetch: nothing here reads it.
+vi.hoisted(() => Object.assign(process.env, { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "maintenance.auto", GIT_CONFIG_VALUE_0: "false" }));
+
 const mocks = vi.hoisted(() => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
@@ -109,10 +112,12 @@ afterEach(() => {
 });
 
 describe("setTaskAttachedRepo", () => {
-	it("saves the repo root and pushes taskUpdated", async () => {
+	it("saves the repo root, pushes taskUpdated and tells an active task's agent once", async () => {
 		await handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: root });
 		expect(mocks.updateTask).toHaveBeenCalledWith(VPROJECT, expect.any(String), { attachedRepo: root, baseBranch: "main" });
 		expect(mocks.push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "vp1" }));
+		expect(mocks.deliverAgentPrompt).toHaveBeenCalledTimes(1);
+		expect(String(mocks.deliverAgentPrompt.mock.calls[0][1])).toContain(`attached to this task: ${root}`);
 	});
 
 	it("stores the root when given a subfolder", async () => {
@@ -177,12 +182,6 @@ describe("setTaskAttachedRepo", () => {
 		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "gp1", path: root }))
 			.rejects.toThrow(/Operations task/);
 		expect(mocks.updateTask).not.toHaveBeenCalled();
-	});
-
-	it("tells an active task's agent once", async () => {
-		await handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: root });
-		expect(mocks.deliverAgentPrompt).toHaveBeenCalledTimes(1);
-		expect(String(mocks.deliverAgentPrompt.mock.calls[0][1])).toContain(`attached to this task: ${root}`);
 	});
 
 	it("does not message an inactive task", async () => {
@@ -265,12 +264,14 @@ describe("worktree mode", () => {
 		attachedRepo: root, opsWorktree: true, baseBranch: "main", branchName: "dev3/task-abcdef12", worktreePath: wt, ...overrides,
 	});
 
-	beforeEach(async () => {
+	// Only the tests that read the worktree pay for creating it.
+	const makeWorktree = () => createOpsWorktree(root, vtask(), wt, "main");
+	beforeEach(() => {
 		wt = join(repo.dir, "ops", "abcdef12", "work");
-		await createOpsWorktree(root, vtask(), wt, "main");
 	});
 
 	it("getTaskDiff reads the worktree, not the repo", async () => {
+		await makeWorktree();
 		writeFileSync(join(wt, "app.ts"), "const a = 100;\n");
 		writeFileSync(join(root, "other.ts"), "dirty in the repo, not in the worktree\n");
 		mocks.getTask.mockResolvedValue(wtTask());
@@ -283,6 +284,7 @@ describe("worktree mode", () => {
 	});
 
 	it("branch mode compares the task's commits against the stored base", async () => {
+		await makeWorktree();
 		writeFileSync(join(wt, "feature.ts"), "export const x = 1;\n");
 		g("git add feature.ts", wt);
 		g('git -c user.email=t@t -c user.name=T commit -m feature', wt);
@@ -297,6 +299,7 @@ describe("worktree mode", () => {
 	});
 
 	it("getUnsavedWork reports uncommitted and unpushed work of the worktree", async () => {
+		await makeWorktree();
 		writeFileSync(join(wt, "app.ts"), "const a = 100;\n");
 		writeFileSync(join(wt, "feature.ts"), "export const x = 1;\n");
 		g("git add feature.ts", wt);
@@ -326,6 +329,7 @@ describe("worktree mode", () => {
 	});
 
 	it("a vanished attached repo is an error for unsaved work too", async () => {
+		await makeWorktree();
 		mocks.getTask.mockResolvedValue(wtTask({ attachedRepo: "/tmp/dev3-gone-repo" }));
 		await expect(handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).rejects.toThrow(/Attached repository not found/);
 	});
@@ -351,10 +355,26 @@ describe("a repo inside the task's own managed folder", () => {
 	});
 	afterEach(() => rmSync(`${opsDir}/slug`, { recursive: true, force: true }));
 
-	it("attaches a linked worktree and stores the path as the task writes its folder", async () => {
-		await createOpsWorktree(root, vtask(), `${folder}/wt`, "main");
-		await handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: `${folder}/wt` });
-		expect(mocks.updateTask).toHaveBeenCalledWith(VPROJECT, expect.any(String), { attachedRepo: `${folder}/wt`, baseBranch: "main" });
+	it("attaches a linked worktree as the task writes its folder; diff, status and unsaved work read it", async () => {
+		const wt = `${folder}/wt`;
+		await createOpsWorktree(root, vtask(), wt, "main");
+		await handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: wt });
+		expect(mocks.updateTask).toHaveBeenCalledWith(VPROJECT, expect.any(String), { attachedRepo: wt, baseBranch: "main" });
+
+		writeFileSync(join(wt, "app.ts"), "const a = 100;\n");
+		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: wt, baseBranch: "main" }));
+		const diff = await handlers.getTaskDiff({ taskId: "t", projectId: "vp1", mode: "uncommitted" });
+		const status = await handlers.getBranchStatus({ taskId: "t", projectId: "vp1" });
+		expect(diff.files.map((f) => f.newPath ?? f.oldPath)).toContain("app.ts");
+		expect(status.insertions).toBeGreaterThan(0);
+
+		// The close would remove this worktree, so its uncommitted and unpushed work is reported.
+		writeFileSync(join(wt, "feature.ts"), "export const x = 1;\n");
+		g("git add feature.ts && git -c user.email=t@t -c user.name=T commit -q -m feature", wt);
+		const unsaved = await handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" });
+		expect(unsaved.insertions + unsaved.deletions).toBeGreaterThan(0);
+		expect(unsaved.ahead).toBe(1);
+		expect(unsaved.unpushed).not.toBe(0);
 	});
 
 	it("attaches a plain clone and rewrites the symlink-resolved root onto the folder", async () => {
@@ -370,22 +390,6 @@ describe("a repo inside the task's own managed folder", () => {
 		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: other }))
 			.rejects.toThrow(/another Operations task's folder/);
 		expect(mocks.updateTask).not.toHaveBeenCalled();
-	});
-
-	it("getUnsavedWork reports uncommitted and unpushed work of a linked worktree the close would remove", async () => {
-		const wt = `${folder}/wt`;
-		await createOpsWorktree(root, vtask(), wt, "main");
-		writeFileSync(join(wt, "app.ts"), "const a = 100;\n");
-		writeFileSync(join(wt, "feature.ts"), "export const x = 1;\n");
-		g("git add feature.ts", wt);
-		g("git -c user.email=t@t -c user.name=T commit -m feature", wt);
-		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: wt, baseBranch: "main" }));
-
-		const unsaved = await handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" });
-
-		expect(unsaved.insertions + unsaved.deletions).toBeGreaterThan(0);
-		expect(unsaved.ahead).toBe(1);
-		expect(unsaved.unpushed).not.toBe(0);
 	});
 
 	it("getUnsavedWork fails, never says clean, for a symlink standing in for the attached path", async () => {
@@ -445,18 +449,6 @@ describe("a repo inside the task's own managed folder", () => {
 	it("still attaches a repo outside OPS_DIR", async () => {
 		await handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: root });
 		expect(mocks.updateTask).toHaveBeenCalledWith(VPROJECT, expect.any(String), { attachedRepo: root, baseBranch: "main" });
-	});
-
-	it("diff and branch status read the attached worktree", async () => {
-		await createOpsWorktree(root, vtask(), `${folder}/wt`, "main");
-		writeFileSync(join(folder, "wt", "app.ts"), "const a = 100;\n");
-		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: `${folder}/wt`, baseBranch: "main" }));
-
-		const diff = await handlers.getTaskDiff({ taskId: "t", projectId: "vp1", mode: "uncommitted" });
-		const status = await handlers.getBranchStatus({ taskId: "t", projectId: "vp1" });
-
-		expect(diff.files.map((f) => f.newPath ?? f.oldPath)).toContain("app.ts");
-		expect(status.insertions).toBeGreaterThan(0);
 	});
 });
 

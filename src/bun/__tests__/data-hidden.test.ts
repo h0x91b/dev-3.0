@@ -92,16 +92,6 @@ describe("setTaskHidden", () => {
 		]);
 	});
 
-	it("leaves an already visible task unchanged", async () => {
-		seedTasks([]);
-		const task = await addTask(project, "Visible task");
-		const before = readFileSync(tasksFilePath(), "utf8");
-
-		const changed = await setTaskHidden(project, task.id, false);
-
-		expect(changed).toEqual([]);
-		expect(readFileSync(tasksFilePath(), "utf8")).toBe(before);
-	});
 
 	it("unhides every hidden variant of the group and nothing outside it", async () => {
 		seedTasks([
@@ -121,7 +111,7 @@ describe("setTaskHidden", () => {
 		expect(saved.find((task) => task.id === "other")?.hidden).toBe(true);
 	});
 
-	it("updates only the target when it has no variant group", async () => {
+	it("updates only the target when it has no variant group, and leaves an already visible task unchanged", async () => {
 		seedTasks([
 			makeTask({ id: "target", seq: 1 }),
 			makeTask({ id: "other", seq: 2 }),
@@ -131,20 +121,16 @@ describe("setTaskHidden", () => {
 
 		expect(changed.map((task) => task.id)).toEqual(["target"]);
 		expect(savedTasks().find((task) => task.id === "other")?.hidden).toBeUndefined();
+
+		// An already visible task is left unchanged, byte for byte.
+		const before = readFileSync(tasksFilePath(), "utf8");
+		expect(await setTaskHidden(project, "other", false)).toEqual([]);
+		expect(readFileSync(tasksFilePath(), "utf8")).toBe(before);
 	});
 });
 
 describe("addTask", () => {
-	it("creates a new variant of a hidden group hidden", async () => {
-		seedTasks([makeTask({ id: "source", seq: 1, groupId: "group-1", variantIndex: 1, hidden: true })]);
-
-		const added = await addTask(project, "New attempt", "todo", { groupId: "group-1", autoVariantIndex: true });
-
-		expect(added.hidden).toBe(true);
-		expect(savedTasks().find((task) => task.id === added.id)?.hidden).toBe(true);
-	});
-
-	it("inherits hidden from a group whose first member lacks the field", async () => {
+	it("creates a new variant of a hidden group hidden, even when the group's first member lacks the field", async () => {
 		seedTasks([
 			makeTask({ id: "older", seq: 1, groupId: "group-1", variantIndex: 1 }),
 			makeTask({ id: "hidden-sibling", seq: 1, groupId: "group-1", variantIndex: 2, hidden: true }),
@@ -153,5 +139,6 @@ describe("addTask", () => {
 		const added = await addTask(project, "New attempt", "todo", { groupId: "group-1", autoVariantIndex: true });
 
 		expect(added.hidden).toBe(true);
+		expect(savedTasks().find((task) => task.id === added.id)?.hidden).toBe(true);
 	});
 });

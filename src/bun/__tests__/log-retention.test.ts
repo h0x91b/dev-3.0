@@ -31,7 +31,8 @@ beforeEach(() => {
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe("collectLogRetentionUsage", () => {
-	it("sums the notification log and every project's message log by day", () => {
+	it("sums the notification log and every project's message log by day, and answers no days before any", () => {
+		expect(collectLogRetentionUsage(projects)).toEqual({ days: [] });
 		write(notificationLogDir(), "2026-11-01", 10);
 		write(notificationLogDir(), "2026-11-02", 5);
 		write(messageLogDir(projects[0]), "2026-11-01", 100);
@@ -58,14 +59,10 @@ describe("collectLogRetentionUsage", () => {
 		expect(collectLogRetentionUsage(projects, 365, now).beyond).toEqual({ days: 0, bytes: 0 });
 		expect(collectLogRetentionUsage(projects, undefined, now)).not.toHaveProperty("beyond");
 	});
-
-	it("answers no days when nothing was ever logged", () => {
-		expect(collectLogRetentionUsage(projects)).toEqual({ days: [] });
-	});
 });
 
 describe("pruneAllLogs", () => {
-	it("applies the retention to the notification log and every project", () => {
+	it("applies the retention to the notification log and every project, and deletes nothing for forever", () => {
 		const now = new Date(2026, 10, 15);
 		for (const dir of [notificationLogDir(), messageLogDir(projects[0]), messageLogDir(projects[1])]) {
 			write(dir, "2026-11-14", 1);
@@ -75,13 +72,12 @@ describe("pruneAllLogs", () => {
 		for (const dir of [notificationLogDir(), messageLogDir(projects[0]), messageLogDir(projects[1])]) {
 			expect(readdirSync(dir)).toEqual(["2026-11-14.jsonl"]);
 		}
-	});
 
-	it("deletes nothing for forever", () => {
+		// A forever retention deletes nothing.
 		write(notificationLogDir(), "2001-01-01", 1);
 		write(messageLogDir(projects[0]), "2001-01-01", 1);
-		pruneAllLogs(projects, null, new Date(2026, 10, 15));
-		expect(readdirSync(notificationLogDir())).toHaveLength(1);
-		expect(readdirSync(messageLogDir(projects[0]))).toHaveLength(1);
+		pruneAllLogs(projects, null, now);
+		expect(readdirSync(notificationLogDir())).toHaveLength(2);
+		expect(readdirSync(messageLogDir(projects[0]))).toHaveLength(2);
 	});
 });
