@@ -20,6 +20,7 @@ import { agentHandlers } from "../cli-socket/agent-commands";
 import { exitCliAgent } from "../cli-agent-exit";
 import { recordAgentTurnEvent } from "../extra-agent-exit";
 import * as data from "../data";
+import { capturePaneSession } from "../cli-socket/pane-sessions";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 const base = { taskId: "task", projectId: "project" };
@@ -37,7 +38,7 @@ beforeEach(() => {
 describe("turn reports that feed `dev3 agent exit`", () => {
 	it("records a Claude Stop from a pane, but not a session end or a report with no pane", async () => {
 		await agentHandlers["task.claudeTurnEnded"]!({ ...base, sessionId: SESSION, paneId: "%5" });
-		expect(recordAgentTurnEvent).toHaveBeenCalledWith("task", "%5", "Stop");
+		expect(recordAgentTurnEvent).toHaveBeenCalledWith(fixtures.task, "%5", "Stop", SESSION);
 		vi.mocked(recordAgentTurnEvent).mockClear();
 		await agentHandlers["task.claudeTurnEnded"]!({ ...base, sessionId: SESSION, paneId: "%5", sessionEnded: true });
 		await agentHandlers["task.claudeTurnEnded"]!({ ...base, sessionId: SESSION });
@@ -46,7 +47,7 @@ describe("turn reports that feed `dev3 agent exit`", () => {
 
 	it("records a Claude prompt submission from a pane", async () => {
 		await agentHandlers["task.promptSubmitted"]!({ ...base, harness: "claude", sessionId: SESSION, paneId: "%5", prompt: "hi" });
-		expect(recordAgentTurnEvent).toHaveBeenCalledWith("task", "%5", "UserPromptSubmit");
+		expect(recordAgentTurnEvent).toHaveBeenCalledWith(fixtures.task, "%5", "UserPromptSubmit", SESSION);
 		vi.mocked(recordAgentTurnEvent).mockClear();
 		await agentHandlers["task.promptSubmitted"]!({ ...base, harness: "claude", sessionId: SESSION, prompt: "hi" });
 		expect(recordAgentTurnEvent).not.toHaveBeenCalled();
@@ -55,7 +56,14 @@ describe("turn reports that feed `dev3 agent exit`", () => {
 	it.each(["codex", "omp", "pi", "copilot", "agy"])("records %s status-hook Stop and UserPromptSubmit from a pane", async (harness) => {
 		await agentHandlers["task.agentHook"]!({ ...base, harness, event: "UserPromptSubmit", paneId: "%6" });
 		await agentHandlers["task.agentHook"]!({ ...base, harness, event: "Stop", paneId: "%6" });
-		expect(vi.mocked(recordAgentTurnEvent).mock.calls).toEqual([["task", "%6", "UserPromptSubmit"], ["task", "%6", "Stop"]]);
+		expect(vi.mocked(recordAgentTurnEvent).mock.calls).toEqual([[fixtures.task, "%6", "UserPromptSubmit", null], [fixtures.task, "%6", "Stop", null]]);
+	});
+
+	it("records a status-hook turn report only after the pane's session was captured, with the hook's session id", async () => {
+		await agentHandlers["task.agentHook"]!({ ...base, harness: "agy", event: "Stop", paneId: "%6", sessionId: "conv-1" });
+		expect(capturePaneSession).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(capturePaneSession).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(recordAgentTurnEvent).mock.invocationCallOrder[0]!);
+		expect(recordAgentTurnEvent).toHaveBeenCalledWith(fixtures.task, "%6", "Stop", "conv-1");
 	});
 
 	it("ignores other hook events and reports with no pane", async () => {

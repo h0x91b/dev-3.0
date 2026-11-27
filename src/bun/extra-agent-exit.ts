@@ -14,14 +14,27 @@ import { basename } from "node:path";
 import { getAgentAdapter } from "../shared/agent-adapters";
 import type { PaneSessionEntry, Project, Task } from "../shared/types";
 import { agentPidsUnder, readAgentProcessEvidence, resolveAgentExitTargets, waitForPanesToEmpty, type AgentExitTarget } from "./agent-graceful-exit";
+import { addressedAgentRefusal } from "./agent-message-target";
 import { buildResumeCommand, getAllAgents } from "./agents";
 import { AGENT_ACTOR } from "./board-operations/types";
 import { boardPorts } from "./board-operations/runtime";
 import * as taskNotes from "./board-operations/task-notes";
 import * as data from "./data";
+import {
+	type AgentTurnEvent,
+	type ExitBinding,
+	type PendingExit,
+	exitKey,
+	lastTurn,
+	pending,
+	resetExtraAgentExitStateForTests,
+} from "./extra-agent-exit-state";
 import { createLogger } from "./logger";
 import { sendPaneInput } from "./pane-input";
+import { readPaneAgentIdentity } from "./scheduled-message-author";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
+
+export type { AgentTurnEvent } from "./extra-agent-exit-state";
 
 const log = createLogger("extra-agent-exit");
 
@@ -29,71 +42,130 @@ const log = createLogger("extra-agent-exit");
 export const EXTRA_AGENT_EXIT_DEADLINE_MS = 300_000;
 /** Lets the Stop hook process itself finish before its pane is typed into. */
 export const EXTRA_AGENT_EXIT_SETTLE_MS = 1_000;
-/** Without a process table (Windows) the agent's exit cannot be observed, so it is waited out. */
-export const EXTRA_AGENT_EXIT_BLIND_WAIT_MS = 10_000;
-
-export type AgentTurnEvent = "Stop" | "UserPromptSubmit";
 
 type ExitTrigger = "turn-ended" | "idle" | "deadline";
 
-interface PendingExit {
-	projectId: string;
-	taskId: string;
-	paneId: string;
-	self: boolean;
-	started: boolean;
-	deadlineTimer: ReturnType<typeof setTimeout>;
-}
-
 const MAX_TRACKED_PANES = 500;
-const lastTurnEvent = new Map<string, AgentTurnEvent>();
-const pending = new Map<string, PendingExit>();
 
-const keyOf = (taskId: string, paneId: string) => `${taskId}:${paneId}`;
-
-/** What a pane's agent last reported; fed by the same hooks that move the card. */
-export function recordAgentTurnEvent(taskId: string, paneId: string, event: AgentTurnEvent): void {
-	const key = keyOf(taskId, paneId);
-	lastTurnEvent.delete(key);
-	lastTurnEvent.set(key, event);
-	while (lastTurnEvent.size > MAX_TRACKED_PANES) lastTurnEvent.delete(lastTurnEvent.keys().next().value!);
+/**
+ * What a pane's agent last reported; fed by the same hooks that move the card. A report
+ * from another conversation than the one recorded for the pane is not this agent's turn.
+ */
+export function recordAgentTurnEvent(task: Task, paneId: string, event: AgentTurnEvent, sessionId: string | null): void {
+	const recorded = task.sessionState?.panes?.find((pane) => pane.paneId === paneId)?.sessionId;
+	if (recorded && sessionId && recorded !== sessionId) {
+		log.debug("turn report from another conversation ignored", { taskId: task.id.slice(0, 8), paneId, event });
+		return;
+	}
+	const key = exitKey(task.id, paneId);
+	lastTurn.delete(key);
+	lastTurn.set(key, { event, at: Date.now() });
+	while (lastTurn.size > MAX_TRACKED_PANES) lastTurn.delete(lastTurn.keys().next().value!);
 	const exit = pending.get(key);
-	if (event === "Stop" && exit && !exit.started) start(exit, "turn-ended", EXTRA_AGENT_EXIT_SETTLE_MS);
+	if (!exit) return;
+	if (event === "Stop") {
+		if (exit.phase === "waiting") armSettle(exit, EXTRA_AGENT_EXIT_SETTLE_MS);
+	} else if (exit.phase === "settling") {
+		if (exit.settleTimer) clearTimeout(exit.settleTimer);
+		exit.settleTimer = null;
+		exit.phase = "waiting";
+	}
 }
 
 export function isExtraAgentExitScheduled(taskId: string, paneId: string): boolean {
-	return pending.has(keyOf(taskId, paneId));
+	return pending.has(exitKey(taskId, paneId));
+}
+
+/** Who runs in the pane now, so a later exit can tell it is still the same agent. */
+export async function captureExitBinding(task: Task, target: AgentExitTarget): Promise<ExitBinding> {
+	const identity = await readPaneAgentIdentity(task, target.paneId, { generation: true }).catch(() => null);
+	return { author: identity?.ok ? identity.author : null, sessionId: target.entry.sessionId, rootPid: target.rootPid };
+}
+
+/**
+ * Why the exit no longer applies to the agent it was asked for, or null. `agentMayHaveLeft`:
+ * the agent was asked to quit, so its absence is expected and only a pane taken over by
+ * something else is a refusal.
+ */
+export async function exitBindingRefusal(task: Task, paneId: string, binding: ExitBinding, agentMayHaveLeft: boolean): Promise<string | null> {
+	if (binding.author) return agentMayHaveLeft ? null : addressedAgentRefusal(task, binding.author, paneId);
+	const target = (await resolveAgentExitTargets(task)).find((candidate) => candidate.paneId === paneId);
+	if (!target) return agentMayHaveLeft ? null : `pane ${paneId} is gone`;
+	if (binding.sessionId && target.entry.sessionId !== binding.sessionId) return `pane ${paneId} now holds another conversation`;
+	if (binding.rootPid !== null && target.rootPid !== binding.rootPid) return `pane ${paneId} was restarted`;
+	return null;
 }
 
 /**
  * Plan the exit. `self`: the caller is that agent, so its own turn is running and the
- * next Stop is its end. Another agent that is idle (its last report was a Stop) is
- * closed at once; a busy or unknown one waits for its next Stop, up to the deadline.
+ * next Stop is its end — unless one already arrived after the request started (the turn
+ * ended while a dialog was open). Another agent that is idle (its last report was a Stop)
+ * is closed at once; a busy or unknown one waits for its next Stop, up to the deadline.
  */
-export function scheduleExtraAgentExit(task: Task, paneId: string, opts: { self: boolean }): { scheduled: true; already: boolean } {
-	const key = keyOf(task.id, paneId);
+export function scheduleExtraAgentExit(
+	task: Task,
+	paneId: string,
+	opts: { self: boolean; binding: ExitBinding; requestedAt?: number },
+): { scheduled: true; already: boolean } {
+	const key = exitKey(task.id, paneId);
 	if (pending.has(key)) return { scheduled: true, already: true };
 	const exit: PendingExit = {
 		projectId: task.projectId,
 		taskId: task.id,
 		paneId,
 		self: opts.self,
-		started: false,
-		deadlineTimer: setTimeout(() => start(exit, "deadline", 0), EXTRA_AGENT_EXIT_DEADLINE_MS),
+		binding: opts.binding,
+		requestedAt: opts.requestedAt ?? Date.now(),
+		phase: "waiting",
+		deadlineAt: Date.now() + EXTRA_AGENT_EXIT_DEADLINE_MS,
+		deadlineTimer: setTimeout(() => onDeadline(exit), EXTRA_AGENT_EXIT_DEADLINE_MS),
+		settleTimer: null,
 	};
 	pending.set(key, exit);
 	log.info("extra agent exit scheduled", { taskId: task.id.slice(0, 8), paneId, self: opts.self });
-	if (!opts.self && lastTurnEvent.get(key) === "Stop") start(exit, "idle", 0);
+	const report = lastTurn.get(key);
+	if (opts.self) {
+		if (report?.event === "Stop" && report.at > exit.requestedAt) armSettle(exit, 0);
+	} else if (report?.event === "Stop") {
+		begin(exit, "idle");
+	}
 	return { scheduled: true, already: false };
 }
 
-function start(exit: PendingExit, trigger: ExitTrigger, delayMs: number): void {
-	if (exit.started) return;
-	exit.started = true;
-	clearTimeout(exit.deadlineTimer);
-	const run = () => void runExit(exit, trigger).finally(() => pending.delete(keyOf(exit.taskId, exit.paneId)));
-	if (delayMs > 0) setTimeout(run, delayMs);
-	else run();
+const lastEventIsPrompt = (exit: PendingExit) => lastTurn.get(exitKey(exit.taskId, exit.paneId))?.event === "UserPromptSubmit";
+
+/** A turn ended: type after a short settle, unless a new prompt arrives first. */
+function armSettle(exit: PendingExit, delayMs: number): void {
+	exit.phase = "settling";
+	const fire = () => {
+		exit.settleTimer = null;
+		if (exit.phase !== "settling") return;
+		if (lastEventIsPrompt(exit)) exit.phase = "waiting";
+		else begin(exit, "turn-ended");
+	};
+	if (delayMs > 0) exit.settleTimer = setTimeout(fire, delayMs);
+	else fire();
+}
+
+function onDeadline(exit: PendingExit): void {
+	if (exit.phase !== "running") begin(exit, "deadline");
+}
+
+function begin(exit: PendingExit, trigger: ExitTrigger): void {
+	if (exit.phase === "running") return;
+	exit.phase = "running";
+	if (exit.settleTimer) clearTimeout(exit.settleTimer);
+	exit.settleTimer = null;
+	if (trigger === "deadline") clearTimeout(exit.deadlineTimer);
+	void runExit(exit, trigger).then((outcome) => {
+		if (outcome === "finished") {
+			pending.delete(exitKey(exit.taskId, exit.paneId));
+			return;
+		}
+		// A new turn began before anything was typed: wait for its Stop, under the original deadline.
+		exit.phase = "waiting";
+		if (Date.now() >= exit.deadlineAt) begin(exit, "deadline");
+	});
 }
 
 /** The agent as the user knows it: its name and preset, else the command it runs. */
@@ -133,14 +205,12 @@ async function typeExitCommand(task: Task, target: AgentExitTarget): Promise<boo
 	return false;
 }
 
-async function waitForAgentToLeave(task: Task, target: AgentExitTarget): Promise<void> {
+/** True when the agent left on request. */
+async function waitForAgentToLeave(task: Task, target: AgentExitTarget): Promise<boolean> {
 	const taskId = task.id.slice(0, 8);
-	if (!(await readAgentProcessEvidence())) {
-		await new Promise((resolve) => setTimeout(resolve, EXTRA_AGENT_EXIT_BLIND_WAIT_MS));
-		return;
-	}
 	const waited = await waitForPanesToEmpty([target]);
 	if (waited.kind === "timed-out") log.warn("the agent did not leave on request, closing the pane", { taskId, paneId: target.paneId, elapsedMs: waited.elapsedMs });
+	return waited.kind === "exited";
 }
 
 async function paneIsLive(project: Project, taskId: string, paneId: string): Promise<boolean> {
@@ -183,8 +253,10 @@ function describeClosure(label: string, paneId: string, self: boolean, sessionId
 	return `Closed extra agent ${label} (pane ${paneId}, ${who}). Conversation: ${sessionId ?? "id unknown"}.${resume ? ` Resume: ${resume}` : ""}`;
 }
 
+const addNote = (project: Project, taskId: string, text: string) => taskNotes.addNote(boardPorts, project, taskId, text, AGENT_ACTOR);
+
 /** Never throws: the caller is a timer, and every outcome is in the log. */
-async function runExit(exit: PendingExit, trigger: ExitTrigger): Promise<void> {
+async function runExit(exit: PendingExit, trigger: ExitTrigger): Promise<"finished" | "wait-again"> {
 	const taskId = exit.taskId.slice(0, 8);
 	try {
 		const project = await data.getProject(exit.projectId);
@@ -192,31 +264,52 @@ async function runExit(exit: PendingExit, trigger: ExitTrigger): Promise<void> {
 		const target = (await resolveAgentExitTargets(task)).find((candidate) => candidate.paneId === exit.paneId);
 		if (!target) {
 			log.info("extra agent pane is already gone", { taskId, paneId: exit.paneId, trigger });
-			return;
+			return "finished";
 		}
 		// Read before anything is killed: the pane's entry leaves the task with it.
 		const { entry } = target;
 		const label = await extraAgentLabel(entry);
 		const sessionId = entry.sessionId;
 		const resume = sessionId ? buildResumeCommand(entry.agentCmd, sessionId, entry.agentFamily ?? undefined) : null;
+		const dropped = async (reason: string) => {
+			log.warn("extra agent exit dropped", { taskId, paneId: exit.paneId, trigger, reason });
+			await addNote(project, exit.taskId, `Exit of extra agent ${label} in pane ${exit.paneId} was dropped: ${reason}`);
+			return "finished" as const;
+		};
 
-		if (trigger !== "deadline" && (await typeExitCommand(task, target))) await waitForAgentToLeave(task, target);
-		else if (trigger === "deadline") log.warn("no turn end within the deadline, closing the pane without typing", { taskId, paneId: exit.paneId });
-
-		if (!(await closePane(project, exit.taskId, exit.paneId))) {
-			log.warn("the pane is still open after the close request", { taskId, paneId: exit.paneId });
-			return;
+		let agentMayHaveLeft = false;
+		if (trigger === "deadline") {
+			log.warn("no turn end within the deadline, closing the pane without typing", { taskId, paneId: exit.paneId });
+		} else {
+			const refusal = await exitBindingRefusal(task, exit.paneId, exit.binding, false);
+			if (refusal) return await dropped(refusal);
+			if (lastEventIsPrompt(exit)) return "wait-again";
+			clearTimeout(exit.deadlineTimer);
+			if (await typeExitCommand(task, target)) agentMayHaveLeft = await waitForAgentToLeave(task, target);
 		}
-		await taskNotes.addNote(boardPorts, project, exit.taskId, describeClosure(label, exit.paneId, exit.self, sessionId, resume), AGENT_ACTOR);
+
+		const refusal = await exitBindingRefusal(await data.getTask(project, exit.taskId), exit.paneId, exit.binding, agentMayHaveLeft);
+		if (refusal) return await dropped(refusal);
+		let failure: string | null = null;
+		try {
+			if (!(await closePane(project, exit.taskId, exit.paneId))) failure = "the pane is still open after the close request";
+		} catch (error) {
+			failure = error instanceof Error ? error.message : String(error);
+		}
+		if (failure) {
+			log.warn("the extra agent pane could not be closed", { taskId, paneId: exit.paneId, failure });
+			await addNote(project, exit.taskId, `Could not close extra agent ${label} in pane ${exit.paneId}: ${failure}. Close it by hand.`);
+			return "finished";
+		}
+		await addNote(project, exit.taskId, describeClosure(label, exit.paneId, exit.self, sessionId, resume));
 		log.info("extra agent closed", { taskId, paneId: exit.paneId, trigger, self: exit.self });
 	} catch (error) {
 		log.warn("extra agent exit failed", { taskId, paneId: exit.paneId, trigger, error: String(error) });
 	}
+	return "finished";
 }
 
 /** @internal Tests only. */
 export function _resetExtraAgentExitForTests(): void {
-	for (const exit of pending.values()) clearTimeout(exit.deadlineTimer);
-	pending.clear();
-	lastTurnEvent.clear();
+	resetExtraAgentExitStateForTests();
 }

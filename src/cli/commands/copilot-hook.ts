@@ -1,3 +1,4 @@
+import { selfPaneId } from "../pane-env";
 import { copilotStatusEvent } from "../../shared/agent-hooks";
 import { GENERIC_SKILL_BODY } from "../../shared/agent-skill-content";
 import type { CliContext } from "../context";
@@ -59,9 +60,7 @@ export async function handleCopilotHook(
 	const mapped = copilotStatusEvent(event, payload.toolName);
 
 	if (mapped && socketPath && context?.taskId) {
-		const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE
-			? process.env.TMUX_PANE
-			: undefined;
+		const paneId = selfPaneId() ?? undefined;
 		try {
 			const response = await sendRequest(socketPath, "task.agentHook", {
 				taskId: context.taskId,

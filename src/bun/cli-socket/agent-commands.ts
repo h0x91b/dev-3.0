@@ -100,7 +100,9 @@ export const agentHandlers: Record<string, Handler> = {
 				}
 			}).finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
 		}
-		if (typeof params.paneId === "string" && params.paneId && params.sessionEnded !== true) recordAgentTurnEvent(task.id, params.paneId, "Stop");
+		if (typeof params.paneId === "string" && params.paneId && params.sessionEnded !== true) {
+			recordAgentTurnEvent(task, params.paneId, "Stop", typeof params.sessionId === "string" ? params.sessionId : null);
+		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
 			agentPromptLedger.claudeSessionReturned(task.id, params.sessionId);
@@ -206,6 +208,7 @@ export const agentHandlers: Record<string, Handler> = {
 	// An extra agent ends its own session, or another extra agent is closed by handle.
 	// Only schedules: the pane closes once its turn is over (extra-agent-exit.ts).
 	"agent.exit": async (params) => {
+		const requestedAt = Date.now();
 		for (const key of ["selfPaneId", "agentHandle"]) {
 			if (params[key] !== undefined && params[key] !== null && typeof params[key] !== "string") throw new Error(`${key} must be a string.`);
 		}
@@ -213,7 +216,7 @@ export const agentHandlers: Record<string, Handler> = {
 		const requester = await resolveRequesterTask(params, "exit request");
 		const { exitCliAgent } = await import("../cli-agent-exit");
 		return exitCliAgent({
-			project, task, requester,
+			project, task, requester, requestedAt,
 			selfPaneId: typeof params.selfPaneId === "string" && params.selfPaneId.trim() ? params.selfPaneId.trim() : null,
 			agentHandle: typeof params.agentHandle === "string" && params.agentHandle.trim() ? params.agentHandle.trim() : null,
 			...approvalReasonFromParams(params),
@@ -269,7 +272,6 @@ export const agentHandlers: Record<string, Handler> = {
 		recordTaskActivity(task.id);
 		// The prompt gate first: agy's PostToolUse branch below may return before the card logic.
 		const hookPane = typeof params.paneId === "string" && params.paneId ? params.paneId : null;
-		if (hookPane && (event === "Stop" || event === "UserPromptSubmit")) recordAgentTurnEvent(task.id, hookPane, event);
 		agentPromptLedger.applyStatusHookGate({
 			taskId: task.id,
 			// With no session id, one pane's events must not close another pane's prompt.
@@ -393,6 +395,10 @@ export const agentHandlers: Record<string, Handler> = {
 			await capturePaneSession(project, task.id, paneId, sessionId, harness);
 		}
 		rememberTaskSession(project, task, sessionId);
+		// After the capture, so a Stop that starts an exit sees the pane's session id.
+		if (paneId && (event === "Stop" || event === "UserPromptSubmit")) {
+			recordAgentTurnEvent((await resolveTaskFromParams(params)).task, paneId, event, sessionId);
+		}
 
 		// The submitted text rides on the same payload, so recording costs the
 		// pane no second dev3 process.
@@ -445,7 +451,7 @@ export const agentHandlers: Record<string, Handler> = {
 			: "claude";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		rememberTaskSession(project, task, sessionId);
-		if (typeof params.paneId === "string" && params.paneId) recordAgentTurnEvent(task.id, params.paneId, "UserPromptSubmit");
+		if (typeof params.paneId === "string" && params.paneId) recordAgentTurnEvent(task, params.paneId, "UserPromptSubmit", sessionId);
 
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.

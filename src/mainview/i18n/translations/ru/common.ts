@@ -97,7 +97,7 @@ const common = {
 	"agentLaunch.waking": "Бужу…",
 	"agentLaunch.autoHibernateIn": "Заморозится само через {time}",
 	"agentLaunch.autoWakeIn": "Проснётся само через {time}",
-	"agentLaunch.titleCloseAgent": "Закрыть дополнительного агента?",
+	"agentLaunch.titleCloseAgent": "Агент хочет закрыть дополнительного агента",
 	"agentLaunch.closeAgentNote": "{agent} (панель {pane}) завершит сессию, когда закончит текущий ход. Задача и её главный агент продолжают работать, а разговор остаётся сохранённым на диске.",
 	"agentLaunch.closeAgent": "Закрыть агента",
 	"agentLaunch.closingAgent": "Закрываю…",

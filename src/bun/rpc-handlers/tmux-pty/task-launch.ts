@@ -1,3 +1,4 @@
+import { forgetPaneExitState } from "../../extra-agent-exit-state";
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PaneSessionEntry, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget, isCoordinatorTask, taskProtocolMode } from "../../../shared/types";
@@ -1030,7 +1031,8 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 5. If the task-level agent belonged to a removed pane, put the surviving main
  *    pane's agent back on the task and push the update to the renderer.
  */
-export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
+export async function handlePaneExited(taskId: string, exitedPaneId: string): Promise<void> {
+	forgetPaneExitState(taskId, exitedPaneId);
 	try {
 		const { task, project } = await findTaskAcrossProjects(taskId);
 		if (!task || !project) return;

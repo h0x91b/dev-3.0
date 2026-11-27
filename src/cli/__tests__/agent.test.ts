@@ -134,6 +134,12 @@ describe("agent exit", () => {
 		expect(stderr).toContain("no pane id");
 		expect(sendRequest).not.toHaveBeenCalled();
 	});
+	it("passes an older dev3's handle through, so the app can say why it is refused", async () => {
+		respond({ outcome: "refused", reason: "not-extra", message: "--agent: that handle was written by an older dev3." });
+		await expect(exit({ agent: "a1.eyJwYW5lSWQiOiIlMiJ9" })).rejects.toThrow("EXIT_52");
+		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.exit", expect.objectContaining({ agentHandle: "a1.eyJwYW5lSWQiOiIlMiJ9" }), expect.anything());
+		expect(stderr).toContain("older dev3");
+	});
 	it("rejects bad arguments before sending anything", async () => {
 		const cases: Array<[Record<string, string>, CliContext | null]> = [
 			[{ agent: "true" }, context], [{ agent: "not-a-handle!" }, context], [{ yes: "true" }, context], [{ reason: "" }, context], [{}, null],

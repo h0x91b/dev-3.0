@@ -133,10 +133,10 @@ describe("handleCodexHook", () => {
 
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "session-9", paneId: "pane-1" });
 
-		// $TMUX_PANE wins when both are set.
+		// $DEV3_PANE_ID wins when both are set: TMUX_PANE can leak into a native pane.
 		process.env.TMUX_PANE = "%42";
 		await handleCodexHook(JSON.stringify({ hook_event_name: "SessionStart", session_id: "session-9" }), SOCKET, CONTEXT);
-		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "%42" });
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "pane-1" });
 	});
 
 	it("carries the submitted prompt and its turn id on UserPromptSubmit", async () => {

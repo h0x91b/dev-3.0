@@ -34,9 +34,13 @@ describe("dev3 hook agent-exited", () => {
 		vi.stubEnv("DEV3_PANE_ID", "native-2");
 		await handleAgentExitedHook(wrapperArgs("0"), SOCKET, context);
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ paneId: "native-2" });
+		vi.stubEnv("DEV3_PANE_ID", "");
 		vi.stubEnv("TMUX_PANE", "%4");
 		await handleAgentExitedHook(wrapperArgs("0"), SOCKET, context);
 		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "%4" });
+		vi.stubEnv("DEV3_PANE_ID", "native-2");
+		await handleAgentExitedHook(wrapperArgs("0"), SOCKET, context);
+		expect(mockSend.mock.calls[2]![2]).toMatchObject({ paneId: "native-2" });
 	});
 
 	it("never fails the pane: app offline, socket error, missing session", async () => {

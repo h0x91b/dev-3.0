@@ -1,9 +1,8 @@
-/** The pane the calling agent is sitting in, as its own shell was told. */
-export function selfPaneId(): string | null {
-	// Native panes export DEV3_PANE_ID; tmux exports TMUX_PANE. Nothing is inferred
-	// from the platform — whichever variable is present names the backend in play.
-	const native = process.env.DEV3_PANE_ID?.trim();
-	if (native) return native;
-	const tmuxPane = process.env.TMUX_PANE?.trim();
-	return tmuxPane || null;
+/**
+ * The pane the calling agent is sitting in, as its own shell was told. The native
+ * backend exports DEV3_PANE_ID explicitly, while TMUX_PANE can leak into a native pane
+ * when the app itself was started inside tmux — so DEV3_PANE_ID wins.
+ */
+export function selfPaneId(env: NodeJS.ProcessEnv = process.env): string | null {
+	return env.DEV3_PANE_ID?.trim() || env.TMUX_PANE?.trim() || null;
 }

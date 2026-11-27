@@ -22,6 +22,7 @@ import {
 import type { NativeStreamRole } from "../shared/native-terminal-stream";
 import { NativeBridgeJournal, NativeClientLease } from "./native-terminal-bridge";
 import { randomUUID } from "node:crypto";
+import { forgetTaskExitState } from "./extra-agent-exit-state";
 import { createLogger } from "./logger";
 import { SHARED_MEDIA_ROUTE, serveSharedMedia } from "./shared-media-stream";
 import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
@@ -715,6 +716,7 @@ export async function ensureNativePanePtySession(
 }
 
 export function destroySession(taskId: string, fallbackSocket?: string): void {
+	forgetTaskExitState(taskId);
 	const session = sessions.get(taskId);
 
 	// A native session owns a host + shell tree instead of a tmux session; tearing
@@ -891,6 +893,7 @@ export async function destroySessionAwaited(taskId: string, fallbackSocket?: str
 		destroySession(taskId, fallbackSocket);
 		return;
 	}
+	forgetTaskExitState(taskId);
 	releaseNativeSession(session);
 	// Unconfirmed teardown propagates on purpose: the caller is about to relaunch
 	// this exact session id, and failing here beats a confusing `session-exists`.

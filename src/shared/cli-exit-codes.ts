@@ -112,7 +112,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_LAUNCH_DECLINED",
 		code: CLI_EXIT_CODE_LAUNCH_DECLINED,
 		description:
-			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`), to add an agent (`dev3 agent spawn`) or to resume a saved session (`dev3 agent resume`), and the user declined the approval dialog — or, for spawn and resume, the target task's run ended before anyone answered. Nothing was launched and the target task stays where it was.",
+			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`), to add an agent (`dev3 agent spawn`), to resume a saved session (`dev3 agent resume`) or to close an extra agent (`dev3 agent exit`), and the user declined the approval dialog — or, for spawn, resume and exit, the target task's run ended before anyone answered. Nothing was launched or closed and the target task stays where it was.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_DELIVERY_UNCONFIRMED",

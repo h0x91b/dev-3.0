@@ -155,7 +155,7 @@ const COMMANDS: CommandHelp[] = [
 					"--agent <handle> Close another extra agent of the task; the handle is the one `dev3 pane list` prints.",
 					"The command only schedules the exit. The agent is asked to quit once its turn ends and its pane then closes;",
 					"the conversation stays on disk, and a task note records how to resume it.",
-					"Settings -> Behavior can ask the user first; decline exits 10. A pane with no turn end within 5 minutes is closed hard.",
+					"Asks the user first unless Settings -> Tasks & Board turns it off; decline exits 10. A pane with no turn end within 5 minutes is closed hard.",
 					`The task's main agent or the AI Review agent cannot be closed: the main agent exits ${CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT}, anything that is not an extra agent exits ${CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA}.`,
 					"Asking twice for the same pane is harmless: the second call says the exit is already scheduled.",
 				],

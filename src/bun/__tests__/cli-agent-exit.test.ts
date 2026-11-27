@@ -13,6 +13,8 @@ vi.mock("../scheduled-message-author", () => ({
 	resolveScheduledMessageAuthorPane: vi.fn(),
 }));
 vi.mock("../extra-agent-exit", () => ({
+	captureExitBinding: vi.fn(async () => ({ author: null, sessionId: "s-extra", rootPid: 1 })),
+	exitBindingRefusal: vi.fn(async () => null),
 	extraAgentLabel: vi.fn(async () => "Codex / High"),
 	isExtraAgentExitScheduled: vi.fn(() => false),
 	scheduleExtraAgentExit: vi.fn(() => ({ scheduled: true, already: false })),
@@ -23,7 +25,7 @@ import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { agentPaneRoles } from "../agent-message-target";
 import { resolveAgentExitTargets } from "../agent-graceful-exit";
 import { resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
-import { isExtraAgentExitScheduled, scheduleExtraAgentExit } from "../extra-agent-exit";
+import { captureExitBinding, exitBindingRefusal, isExtraAgentExitScheduled, scheduleExtraAgentExit } from "../extra-agent-exit";
 import { loadSettings } from "../settings";
 import { _resetAgentRequestsForTests, resolveAgentRequest, voidAgentRequest } from "../agent-requests";
 
@@ -48,6 +50,7 @@ beforeEach(() => {
 	vi.mocked(agentPaneRoles).mockResolvedValue(new Map([["%1", "main"], ["%2", "agent"], ["%3", "review"]]));
 	vi.mocked(resolveAgentExitTargets).mockResolvedValue([{ paneId: "%2", rootPid: 1, entry } as never]);
 	vi.mocked(isExtraAgentExitScheduled).mockReturnValue(false);
+	vi.mocked(exitBindingRefusal).mockResolvedValue(null);
 	vi.mocked(loadSettings).mockResolvedValue({ agentLaunchAutoApproveMinutes: 5 } as never);
 });
 afterEach(() => _resetAgentRequestsForTests());
@@ -85,11 +88,12 @@ describe("dev3 agent exit --agent <handle>", () => {
 		const pending = exit({ requester, selfPaneId: "%1", agentHandle: handle });
 		await answer(true);
 		await expect(pending).resolves.toEqual({ outcome: "scheduled", taskId: task.id, seq: 7, paneId: "%2", agent: "Codex / High", self: false, already: false });
-		expect(scheduleExtraAgentExit).toHaveBeenCalledWith(task, "%2", { self: false });
+		expect(scheduleExtraAgentExit).toHaveBeenCalledWith(task, "%2", expect.objectContaining({ self: false, binding: expect.objectContaining({ sessionId: "s-extra" }) }));
 		expect(push.mock.calls[0][1]).toMatchObject({ requesterSeq: 9, sessionAction: { kind: "close-agent", paneId: "%2" } });
 	});
 
 	it("refuses a handle that is malformed, gone, or names the main agent", async () => {
+		await expect(exit({ agentHandle: "a1.eyJwYW5lSWQiOiIlMiJ9" })).resolves.toMatchObject({ outcome: "refused", reason: "not-extra", message: expect.stringContaining("older dev3") });
 		await expect(exit({ agentHandle: "nonsense!" })).resolves.toMatchObject({ outcome: "refused", reason: "not-extra", message: expect.stringContaining("not an agent handle") });
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: false, detail: "the addressed agent is no longer running" });
 		await expect(exit({ agentHandle: handle })).resolves.toMatchObject({ outcome: "refused", reason: "not-extra", message: expect.stringContaining("no longer running") });
@@ -110,7 +114,7 @@ describe("dev3 agent exit — confirmation", () => {
 		expect(scheduleExtraAgentExit).not.toHaveBeenCalled();
 		await answer(true);
 		await expect(pending).resolves.toEqual({ outcome: "scheduled", taskId: task.id, seq: 7, paneId: "%2", agent: "Codex / High", self: true, already: false });
-		expect(scheduleExtraAgentExit).toHaveBeenCalledWith(task, "%2", { self: true });
+		expect(scheduleExtraAgentExit).toHaveBeenCalledWith(task, "%2", expect.objectContaining({ self: true, requestedAt: expect.any(Number) }));
 	});
 
 	it("does not ask when the setting is off", async () => {
@@ -127,8 +131,18 @@ describe("dev3 agent exit — confirmation", () => {
 		await expect(pending).resolves.toMatchObject({ outcome: "scheduled" });
 	});
 
-	it("acts directly, with no dialog, when a person runs it from a plain terminal", async () => {
-		await expect(exit({ requester: null })).resolves.toMatchObject({ outcome: "scheduled", self: false });
+	it("closes only your own pane in your own task without --agent, and says to use a handle otherwise (D)", async () => {
+		const message = "Without --agent, dev3 agent exit closes only your own pane in your own task; pass --agent <handle>.";
+		await expect(exit({ requester: null })).resolves.toEqual({ outcome: "refused", reason: "not-extra", message });
+		await expect(exit({ requester })).resolves.toEqual({ outcome: "refused", reason: "not-extra", message });
+		expect(push).not.toHaveBeenCalled();
+		expect(scheduleExtraAgentExit).not.toHaveBeenCalled();
+	});
+
+	it("acts directly, with no dialog, when a person closes an agent by handle from a plain terminal", async () => {
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%2" });
+		const handle = encodeAgentHandle({ paneId: "%2", sessionId: null, paneToken: "token", agentProcess: "77@Mon Jan 1 00:00:00 2024" });
+		await expect(exit({ requester: null, selfPaneId: null, agentHandle: handle })).resolves.toMatchObject({ outcome: "scheduled", self: false });
 		expect(push).not.toHaveBeenCalled();
 	});
 
@@ -166,5 +180,63 @@ describe("dev3 agent exit — confirmation", () => {
 		await expect(retry).resolves.toMatchObject({ outcome: "scheduled" });
 		expect(push.mock.calls.filter(([event]) => event === "agentLaunchRequested")).toHaveLength(1);
 		expect(scheduleExtraAgentExit).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("the exit stays with the agent the dialog showed (B)", () => {
+	it("captures the agent's identity before the dialog opens", async () => {
+		const pending = exit();
+		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
+		expect(captureExitBinding).toHaveBeenCalledTimes(1);
+		await answer(true);
+		await pending;
+	});
+
+	it("schedules nothing when the agent was replaced, or the task hibernated, while the dialog was open", async () => {
+		vi.mocked(exitBindingRefusal).mockResolvedValueOnce("pane %2 now holds another conversation");
+		const replaced = exit();
+		await answer(true);
+		await expect(replaced).resolves.toMatchObject({ outcome: "refused", reason: "not-extra", message: expect.stringContaining("changed while the dialog was open") });
+		push.mockClear();
+		_resetAgentRequestsForTests();
+		const hibernating = exit();
+		await vi.waitFor(() => expect(push).toHaveBeenCalled());
+		vi.mocked(getTask).mockResolvedValue({ ...task, hibernated: true } as Task);
+		await answer(true);
+		await expect(hibernating).resolves.toMatchObject({ outcome: "refused", message: expect.stringContaining("hibernated") });
+		expect(scheduleExtraAgentExit).not.toHaveBeenCalled();
+	});
+});
+
+describe("concurrent exits are joined per target (K)", () => {
+	beforeEach(() => {
+		vi.mocked(agentPaneRoles).mockResolvedValue(new Map([["%1", "main"], ["%2", "agent"], ["%4", "agent"]]));
+		vi.mocked(resolveAgentExitTargets).mockResolvedValue([
+			{ paneId: "%2", rootPid: 1, entry } as never,
+			{ paneId: "%4", rootPid: 2, entry: { ...entry, paneId: "%4" } } as never,
+		]);
+	});
+
+	it("lets two reviewers exit at the same time when nothing is asked", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ confirmExtraAgentClose: false } as never);
+		const both = await Promise.all([exit({ selfPaneId: "%2" }), exit({ selfPaneId: "%4" })]);
+		expect(both.map((outcome) => outcome.outcome)).toEqual(["scheduled", "scheduled"]);
+		expect(scheduleExtraAgentExit).toHaveBeenCalledTimes(2);
+	});
+
+	it("gives the main agent its refusal while another agent's dialog is open", async () => {
+		const open = exit({ selfPaneId: "%2" });
+		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
+		await expect(exit({ selfPaneId: "%1" })).resolves.toMatchObject({ outcome: "refused", reason: "main-agent" });
+		await answer(true);
+		await expect(open).resolves.toMatchObject({ outcome: "scheduled" });
+	});
+
+	it("refuses a second dialog for the same task only when one would really open", async () => {
+		const open = exit({ selfPaneId: "%2" });
+		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
+		await expect(exit({ selfPaneId: "%4" })).rejects.toThrow("Another approval is pending for this task — answer it first.");
+		await answer(true);
+		await expect(open).resolves.toMatchObject({ outcome: "scheduled" });
 	});
 });

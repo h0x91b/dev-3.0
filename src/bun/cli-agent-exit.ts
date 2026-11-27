@@ -5,7 +5,7 @@ import { LEGACY_AGENT_HANDLE_PREFIX, decodeAgentHandle } from "../shared/agent-h
 import { agentPaneRoles } from "./agent-message-target";
 import { resolveAgentExitTargets } from "./agent-graceful-exit";
 import { askSessionApproval, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
-import { extraAgentLabel, isExtraAgentExitScheduled, scheduleExtraAgentExit } from "./extra-agent-exit";
+import { captureExitBinding, exitBindingRefusal, extraAgentLabel, isExtraAgentExitScheduled, scheduleExtraAgentExit } from "./extra-agent-exit";
 import { AGENT_IDENTITY_UNSUPPORTED_DETAIL, resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
 import { loadSettings } from "./settings";
 
@@ -16,6 +16,8 @@ export interface AgentExitOptions {
 	requester: Task | null;
 	/** The pane the CLI runs in, when its shell was told one. */
 	selfPaneId: string | null;
+	/** When the CLI request started; a turn that ended after it already ended the caller's turn. */
+	requestedAt?: number;
 	/** `--agent <handle>`: another agent of the task. */
 	agentHandle: string | null;
 	reason?: ApprovalReason;
@@ -27,8 +29,11 @@ const notExtra = (message: string) => refused("not-extra", `${message} dev3 agen
 /** The pane the command is about, or the refusal that says why there is none. */
 async function targetPane(opts: AgentExitOptions): Promise<{ paneId: string } | CliAgentExitOutcome> {
 	if (!opts.agentHandle) {
-		if (opts.selfPaneId) return { paneId: opts.selfPaneId };
-		return notExtra("This shell has no pane id, so it is not an agent pane.");
+		if (!opts.selfPaneId) return notExtra("This shell has no pane id, so it is not an agent pane.");
+		if (opts.requester?.id !== opts.task.id) {
+			return refused("not-extra", "Without --agent, dev3 agent exit closes only your own pane in your own task; pass --agent <handle>.");
+		}
+		return { paneId: opts.selfPaneId };
 	}
 	if (process.platform === "win32") return notExtra(`--agent: ${AGENT_IDENTITY_UNSUPPORTED_DETAIL}.`);
 	if (opts.agentHandle.trim().startsWith(LEGACY_AGENT_HANDLE_PREFIX)) return notExtra("--agent: that handle was written by an older dev3.");
@@ -57,6 +62,9 @@ async function performExit(opts: AgentExitOptions): Promise<CliAgentExitOutcome>
 	// Before any dialog: a repeated call must not ask the user twice.
 	if (isExtraAgentExitScheduled(task.id, paneId)) return outcome(true);
 
+	// Before a dialog opens: the exit is for the agent the user is shown.
+	const binding = await captureExitBinding(task, target);
+	let current = task;
 	if (requester && (await loadSettings()).confirmExtraAgentClose !== false) {
 		const answer = await askSessionApproval({
 			project, task, requester, reason: opts.reason,
@@ -64,15 +72,19 @@ async function performExit(opts: AgentExitOptions): Promise<CliAgentExitOutcome>
 			alreadyPending: "Another approval is pending for this task — answer it first.",
 		});
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
-		await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was done.");
+		current = await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was done.");
+		if (current.hibernated) return notExtra(`The task was hibernated while the dialog was open, so pane ${paneId} is gone.`);
+		const refusal = await exitBindingRefusal(current, paneId, binding, false);
+		if (refusal) return notExtra(`The agent in pane ${paneId} changed while the dialog was open (${refusal}).`);
 	}
-	return outcome(scheduleExtraAgentExit(task, paneId, { self }).already);
+	return outcome(scheduleExtraAgentExit(current, paneId, { self, binding, requestedAt: opts.requestedAt }).already);
 }
 
-/** Retries join the whole operation, approval included: one answer schedules once. */
-const joinOrRun = perTaskJoiner("Another session request is pending for this task — wait for its answer first.");
+/** Retries join the whole operation, approval included. Per target: two agents closing at once do not collide. */
+const joinOrRun = perTaskJoiner("Another exit request for this agent is pending — wait for its answer first.");
 
 /** `dev3 agent exit`: schedule an extra agent's exit, asking the user first when the setting says so. */
 export function exitCliAgent(opts: AgentExitOptions): Promise<CliAgentExitOutcome> {
-	return joinOrRun(opts.task.id, `exit:${opts.requester?.id ?? ""}:${opts.agentHandle ?? opts.selfPaneId ?? ""}`, () => performExit(opts));
+	const target = opts.agentHandle ?? opts.selfPaneId ?? "";
+	return joinOrRun(`${opts.task.id}:${target}`, `exit:${opts.requester?.id ?? ""}`, () => performExit({ requestedAt: Date.now(), ...opts }));
 }

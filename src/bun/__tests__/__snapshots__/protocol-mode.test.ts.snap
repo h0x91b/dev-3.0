@@ -109,13 +109,13 @@ You may ask the user to start another task; you never launch anything yourself. 
 - **After another task finishes** → \`dev3 task update --task seq:<N> --start-after seq:<M> [--until merged]\` (or on \`task create\`); it asks when it fires. Never poll.
 - **A throwaway peer agent** → \`dev3 task create --scratch --run\`. It starts idle, with **no prompt by design**: drive it with messages.
 
-Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
+It **inherits your priority** unless it has its own. Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
 
 Use it only for work that needs its own session — never to escape your scope, never several at once: each interrupts the user.
 
 Acting on another task? Pass \`--reason "<why>"\`: its approval dialog shows it.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory; \`dev3 task wake\` brings it back. An extra agent ends itself with \`dev3 agent exit\` (after your turn; may ask the user first), another via \`--agent <handle>\`; a main agent completes the task instead.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory; \`dev3 task wake\` brings it back. An extra agent ends itself with \`dev3 agent exit\` (after your turn), another via \`--agent <handle>\`; a main agent completes the task.
 
 **Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
 
@@ -373,13 +373,13 @@ You may ask the user to start another task; you never launch anything yourself. 
 - **After another task finishes** → \`dev3 task update --task seq:<N> --start-after seq:<M> [--until merged]\` (or on \`task create\`); it asks when it fires. Never poll.
 - **A throwaway peer agent** → \`dev3 task create --scratch --run\`. It starts idle, with **no prompt by design**: drive it with messages.
 
-Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
+It **inherits your priority** unless it has its own. Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
 
 Use it only for work that needs its own session — never to escape your scope, never several at once: each interrupts the user.
 
 Acting on another task? Pass \`--reason "<why>"\`: its approval dialog shows it.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory; \`dev3 task wake\` brings it back. An extra agent ends itself with \`dev3 agent exit\` (after your turn; may ask the user first), another via \`--agent <handle>\`; a main agent completes the task instead.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory; \`dev3 task wake\` brings it back. An extra agent ends itself with \`dev3 agent exit\` (after your turn), another via \`--agent <handle>\`; a main agent completes the task.
 
 **Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
 

@@ -1,3 +1,4 @@
+import { lastTurn } from "../extra-agent-exit-state";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
@@ -13644,6 +13645,15 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...stalePane, paneId: null, parked: true }]);
 		await handlers.resumeTask({ taskId: task.id });
 		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ sessionId }));
+	});
+
+	it("clears the exited pane's `dev3 agent exit` state and no other pane's", async () => {
+		const { task } = arrange([stalePane]);
+		lastTurn.set(`${task.id}:%5`, { event: "Stop", at: 1 });
+		lastTurn.set(`${task.id}:%6`, { event: "Stop", at: 1 });
+		await handlePaneExited(task.id, "%5");
+		expect([...lastTurn.keys()]).toEqual([`${task.id}:%6`]);
+		lastTurn.clear();
 	});
 
 	it("a hook from %6 moves the entry there, so %5's exit keeps it and a later wake resumes it under its own store", async () => {

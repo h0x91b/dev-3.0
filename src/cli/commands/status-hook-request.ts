@@ -1,3 +1,4 @@
+import { selfPaneId } from "../pane-env";
 import type { AgentStatusHookEvent } from "../../shared/agent-hooks";
 import type { PromptSubmitHarness } from "../../shared/agent-terminal-prompt";
 import type { CliContext } from "../context";
@@ -43,7 +44,7 @@ export async function reportStatusHookEvent(
 	// no session id at launch, so this post-hoc capture is the only way to
 	// resume the exact session per pane.
 	// Native panes export DEV3_PANE_ID instead of TMUX_PANE.
-	const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim() || undefined;
+	const paneId = selfPaneId() ?? undefined;
 	try {
 		const response = await sendRequest(socketPath, "task.agentHook", {
 			taskId: context.taskId,

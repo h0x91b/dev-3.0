@@ -1,3 +1,4 @@
+import { selfPaneId } from "../pane-env";
 import type { ParsedArgs } from "../args";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
@@ -16,7 +17,7 @@ export async function handleAgentExitedHook(
 		const taskId = args.flags.task || context?.taskId;
 		const sessionId = args.flags.session;
 		const exitCode = Number.parseInt(args.positional[0] ?? "", 10);
-		const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim();
+		const paneId = selfPaneId() ?? undefined;
 		if (!socketPath || !taskId || !sessionId || taskId === "true" || sessionId === "true") return;
 		await sendRequest(socketPath, "agent.exited", {
 			taskId,

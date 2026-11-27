@@ -331,7 +331,7 @@ const settings = {
 	"settings.diskCriticalBelow": "Свободно на диске: критично ниже",
 	"settings.cpuLoadHint": "Доля занятого времени всех ядер с прошлой проверки; 100% — работают все ядра. Средняя нагрузка (load average) показывается, но не оценивается.",
 	"settings.agentLaunchAutoApproveOff": "Никогда — всегда ждать меня",
-	"settings.confirmExtraAgentClose": "Подтверждать закрытие доп. агентов",
+	"settings.confirmExtraAgentClose": "Подтверждать закрытие дополнительных агентов",
 	"settings.confirmExtraAgentCloseDesc": "Спрашивать, прежде чем агент завершит сессию дополнительного агента — свою или другого в задаче. Выключите, чтобы ревьюеры закрывались сами, без диалога.",
 	"settings.autoApproveHours": "часы",
 	"settings.autoApproveMinutes": "минуты",

@@ -52,8 +52,11 @@ export async function agentPaneRoles(task: Task): Promise<Map<string, AgentPaneR
 		roles.set(NATIVE_AGENT_PANE_ID, "main");
 		for (const agent of await listNativeTaskAgents(task)) roles.set(agent.paneId, "agent");
 	} else {
-		(task.sessionState?.panes ?? []).forEach((pane, index) => {
-			if (pane.paneId && !roles.has(pane.paneId)) roles.set(pane.paneId, index === 0 ? "main" : "agent");
+		// The `main` flag names the main pane; index 0 stands in only for an entry list nobody flagged.
+		const panes = task.sessionState?.panes ?? [];
+		const flagged = panes.some((pane) => pane.main);
+		panes.forEach((pane, index) => {
+			if (pane.paneId && !roles.has(pane.paneId)) roles.set(pane.paneId, (flagged ? pane.main : index === 0) ? "main" : "agent");
 		});
 	}
 	for (const pane of await findAuxPanes(task, "columnAgent", socketOf(task))) {

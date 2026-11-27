@@ -95,7 +95,7 @@ const common = {
 	"agentLaunch.waking": "Waking…",
 	"agentLaunch.autoHibernateIn": "Hibernates on its own in {time}",
 	"agentLaunch.autoWakeIn": "Wakes on its own in {time}",
-	"agentLaunch.titleCloseAgent": "Close extra agent?",
+	"agentLaunch.titleCloseAgent": "Agent wants to close an extra agent",
 	"agentLaunch.closeAgentNote": "{agent} (pane {pane}) ends its session once its current turn is over. The task and its main agent keep running, and the conversation stays saved on disk.",
 	"agentLaunch.closeAgent": "Close agent",
 	"agentLaunch.closingAgent": "Closing…",

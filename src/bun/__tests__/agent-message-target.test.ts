@@ -149,6 +149,20 @@ describe("agentPaneRoles", () => {
 	});
 });
 
+describe("agentPaneRoles — the main flag", () => {
+	it("keeps main on the flagged entry once the main pane is gone, instead of promoting the entry now at index 0", async () => {
+		const parkedMain = { ...entry(null), main: true, parked: true };
+		await expect([...(await agentPaneRoles(task([{ ...entry("%2"), main: false }, parkedMain])))]).toEqual([["%2", "agent"], ["%3", "review"]]);
+		const flagged = task([{ ...entry("%2"), main: false }, { ...entry("%1"), main: true }]);
+		expect((await agentPaneRoles(flagged)).get("%1")).toBe("main");
+		expect((await agentPaneRoles(flagged)).get("%2")).toBe("agent");
+	});
+
+	it("falls back to index 0 when no entry carries the flag", async () => {
+		expect((await agentPaneRoles(task([entry("%1"), entry("%2")]))).get("%1")).toBe("main");
+	});
+});
+
 describe("withAgentPanes — what `dev3 pane list` adds", () => {
 	const line = (paneId: string, index: number, alive: boolean | null = null): PaneRunPaneLine =>
 		({ paneId, index, label: "", active: false, self: false, alive, runId: null });

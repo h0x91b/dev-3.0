@@ -226,7 +226,7 @@ describe("AgentLaunchRequestModal", () => {
 			autoApproveAt: Date.now() + 5 * 60_000,
 			sessionAction: { kind: "close-agent", paneId: "%7", agentLabel: "Codex / High" },
 		}));
-		expect(await screen.findByRole("heading", { name: "Close extra agent?" })).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "Agent wants to close an extra agent" })).toBeInTheDocument();
 		const body = screen.getByTestId("agent-launch-session-action");
 		expect(body).toHaveTextContent("Codex / High (pane %7)");
 		expect(body).toHaveTextContent("The task and its main agent keep running");

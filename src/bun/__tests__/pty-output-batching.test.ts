@@ -58,6 +58,7 @@ bun.Bun.serve = (config: unknown) => {
 };
 
 const pty = await import("../pty-server");
+import { lastTurn } from "../extra-agent-exit-state";
 const { createSession, destroySession, hasSession, registerBackpressureProbe } = pty;
 
 const BATCH_MS = 16;
@@ -274,6 +275,15 @@ describe("pressure changing mid-session", () => {
 		// tmux is the DEFAULT backend, so a leak here is one entry per task ever
 		// launched — and the overlay would keep listing sessions that are long gone.
 		expect(throughputSnapshot()).not.toHaveProperty("task-throughput-1");
+	});
+
+	it("drops the task's `dev3 agent exit` state when the session is destroyed", () => {
+		startSession("task-exit-state-1");
+		lastTurn.set("task-exit-state-1:%5", { event: "Stop", at: 1 });
+		lastTurn.set("task-exit-state-2:%5", { event: "Stop", at: 1 });
+		destroySession("task-exit-state-1");
+		expect([...lastTurn.keys()]).toEqual(["task-exit-state-2:%5"]);
+		lastTurn.clear();
 	});
 
 	it("does not strand bytes already pending when the pressure lifts", () => {

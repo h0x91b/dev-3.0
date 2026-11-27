@@ -3,7 +3,7 @@ import { formatTaskRef } from "../../shared/task-refs";
 import type { SpawnAgentResult } from "../../shared/conversation-handoff-model";
 import type { CliResumeOutcome, ResumePaneReport } from "../../shared/agent-resume";
 import type { CliAgentExitOutcome } from "../../shared/agent-exit";
-import { decodeAgentHandle } from "../../shared/agent-handle";
+import { LEGACY_AGENT_HANDLE_PREFIX, decodeAgentHandle } from "../../shared/agent-handle";
 import {
 	CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT,
 	CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA,
@@ -88,7 +88,8 @@ async function handleExit(args: ParsedArgs, socketPath: string, context: CliCont
 	if (args.positional.length) return exitUsage("agent exit takes flags, not positional arguments");
 	const handle = args.flags.agent?.trim();
 	if (args.flags.agent !== undefined && (!handle || handle === "true")) return exitUsage("--agent needs a handle. Copy one from `dev3 pane list --task <id>`.");
-	if (handle && !decodeAgentHandle(handle)) return exitUsage(`"${handle}" is not an agent handle. Copy one from \`dev3 pane list --task <id>\`.`);
+	// An older dev3's handle passes through: the app says why it is refused.
+	if (handle && !handle.startsWith(LEGACY_AGENT_HANDLE_PREFIX) && !decodeAgentHandle(handle)) return exitUsage(`"${handle}" is not an agent handle. Copy one from \`dev3 pane list --task <id>\`.`);
 	const paneId = selfPaneId();
 	if (!handle && !paneId) {
 		return exitError("dev3 agent exit without --agent must run inside an agent pane, and this shell has no pane id", "Pass --agent <handle> from `dev3 pane list` to close another extra agent.", CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA);
