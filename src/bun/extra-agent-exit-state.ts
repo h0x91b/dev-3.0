@@ -34,6 +34,12 @@ export interface PendingExit {
 	/** `waiting` for a turn end, `settling` after one, `running` once the exit has begun. */
 	phase: "waiting" | "settling" | "running";
 	deadlineAt: number;
+	/** Set by a pane exit or a terminal teardown: a run in flight stops at its next check. */
+	cancelled: boolean;
+	/** The quit command went out: the pane leaving is the expected result, not a reason to stop. */
+	typed: boolean;
+	/** The pane is being closed: nothing left to cancel. */
+	closing: boolean;
 	deadlineTimer: ReturnType<typeof setTimeout>;
 	settleTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -43,19 +49,26 @@ export const pending = new Map<string, PendingExit>();
 
 export const exitKey = (taskId: string, paneId: string) => `${taskId}:${paneId}`;
 
-function dropPending(key: string): void {
+function dropPending(key: string, cancelRunning: (exit: PendingExit) => boolean): void {
 	const exit = pending.get(key);
 	if (!exit) return;
+	if (cancelRunning(exit)) exit.cancelled = true;
 	clearTimeout(exit.deadlineTimer);
 	if (exit.settleTimer) clearTimeout(exit.settleTimer);
 	pending.delete(key);
+}
+
+/** A finished run leaves the table, timers included — unless a newer exit already took the key. */
+export function finishPendingExit(exit: PendingExit): void {
+	const key = exitKey(exit.taskId, exit.paneId);
+	if (pending.get(key) === exit) dropPending(key, () => false);
 }
 
 /** A pane that exited carries no idle state and no scheduled exit into whatever takes its id. */
 export function forgetPaneExitState(taskId: string, paneId: string): void {
 	const key = exitKey(taskId, paneId);
 	lastTurn.delete(key);
-	dropPending(key);
+	dropPending(key, (exit) => !exit.typed && !exit.closing);
 }
 
 /** The task's terminal is torn down: every pane of it is gone. */
@@ -64,11 +77,11 @@ export function forgetTaskExitState(taskId: string): void {
 	for (const key of [...lastTurn.keys(), ...pending.keys()]) {
 		if (!key.startsWith(prefix)) continue;
 		lastTurn.delete(key);
-		dropPending(key);
+		dropPending(key, (exit) => !exit.closing);
 	}
 }
 
 export function resetExtraAgentExitStateForTests(): void {
-	for (const key of [...pending.keys()]) dropPending(key);
+	for (const key of [...pending.keys()]) dropPending(key, () => true);
 	lastTurn.clear();
 }

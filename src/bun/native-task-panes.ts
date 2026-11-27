@@ -17,6 +17,7 @@
  */
 
 import { createLogger } from "./logger";
+import { forgetPaneExitState, forgetTaskExitState } from "./extra-agent-exit-state";
 import type { SplitTree } from "../shared/split-tree";
 import { serializeSplitTree } from "../shared/split-tree";
 import { readRecord } from "./native-terminal-registry/record";
@@ -290,6 +291,7 @@ export async function closeNativeTaskPane(
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	await backend.closeView(coordId, paneId);
+	forgetPaneExitState(taskId, paneId);
 	// A null state IS the teardown signal: no pane of the set survived the close.
 	const state = await buildState(taskId);
 	return state ? { sessionTornDown: false, state } : { sessionTornDown: true, state: null };
@@ -337,6 +339,7 @@ export function captureNativeTaskPane(
 }
 
 export async function stopNativeTaskPanes(taskId: string): Promise<void> {
+	forgetTaskExitState(taskId);
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	await backend.cleanupSession(coordId, { ignoreMissing: true });

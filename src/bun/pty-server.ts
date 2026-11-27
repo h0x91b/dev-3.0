@@ -864,6 +864,7 @@ function destroyNativeSession(session: PtySession): Promise<void> {
  * that spawns and adopts nothing, so retries stay idempotent.
  */
 export async function destroyNativeTaskSession(taskId: string): Promise<void> {
+	forgetTaskExitState(taskId);
 	const session = sessions.get(taskId);
 	if (session?.backend === "native") {
 		releaseNativeSession(session);

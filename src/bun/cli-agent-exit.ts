@@ -74,7 +74,7 @@ async function performExit(opts: AgentExitOptions): Promise<CliAgentExitOutcome>
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
 		current = await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was done.");
 		if (current.hibernated) return notExtra(`The task was hibernated while the dialog was open, so pane ${paneId} is gone.`);
-		const refusal = await exitBindingRefusal(current, paneId, binding, false);
+		const refusal = await exitBindingRefusal(current, paneId, binding);
 		if (refusal) return notExtra(`The agent in pane ${paneId} changed while the dialog was open (${refusal}).`);
 	}
 	return outcome(scheduleExtraAgentExit(current, paneId, { self, binding, requestedAt: opts.requestedAt }).already);

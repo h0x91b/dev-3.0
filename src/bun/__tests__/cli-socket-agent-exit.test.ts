@@ -9,7 +9,8 @@ vi.mock("../cli-socket/task-resolution", () => ({
 }));
 vi.mock("../data", async (importOriginal) => ({ ...(await importOriginal<typeof import("../data")>()), updateTask: vi.fn(), updateTaskWith: vi.fn() }));
 vi.mock("../rpc-handlers", () => ({ getPushMessage: vi.fn(() => vi.fn()), moveTask: vi.fn(async () => fixtures.task), pushCliAttention: vi.fn() }));
-vi.mock("../cli-socket/pane-sessions", () => ({ capturePaneSession: vi.fn(async () => {}) }));
+vi.mock("../cli-socket/pane-sessions", () => ({ capturePaneSession: vi.fn(async () => {}), taskCodexHomes: vi.fn(async () => ["/codex-home"]) }));
+vi.mock("../codex-resume-home", () => ({ isInteractiveCodexConversation: vi.fn(async () => false) }));
 vi.mock("../agent-terminal-prompt-log", () => ({ recordTerminalPromptSubmission: vi.fn(() => "suppressed") }));
 vi.mock("../rate-limit-monitor", () => ({ forgetClaudeSessionDump: vi.fn() }));
 vi.mock("../task-sessions", () => ({ rememberTaskSession: vi.fn() }));
@@ -21,6 +22,7 @@ import { exitCliAgent } from "../cli-agent-exit";
 import { recordAgentTurnEvent } from "../extra-agent-exit";
 import * as data from "../data";
 import { capturePaneSession } from "../cli-socket/pane-sessions";
+import { isInteractiveCodexConversation } from "../codex-resume-home";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 const base = { taskId: "task", projectId: "project" };
@@ -56,14 +58,28 @@ describe("turn reports that feed `dev3 agent exit`", () => {
 	it.each(["codex", "omp", "pi", "copilot", "agy"])("records %s status-hook Stop and UserPromptSubmit from a pane", async (harness) => {
 		await agentHandlers["task.agentHook"]!({ ...base, harness, event: "UserPromptSubmit", paneId: "%6" });
 		await agentHandlers["task.agentHook"]!({ ...base, harness, event: "Stop", paneId: "%6" });
-		expect(vi.mocked(recordAgentTurnEvent).mock.calls).toEqual([[fixtures.task, "%6", "UserPromptSubmit", null], [fixtures.task, "%6", "Stop", null]]);
+		const codexProof = harness === "codex" ? expect.any(Function) : undefined;
+		expect(vi.mocked(recordAgentTurnEvent).mock.calls).toEqual([[fixtures.task, "%6", "UserPromptSubmit", null, codexProof], [fixtures.task, "%6", "Stop", null, codexProof]]);
+	});
+
+	it("hands a Codex Stop the proof that its conversation is interactive, and never proves a Codex report without a session id", async () => {
+		await agentHandlers["task.agentHook"]!({ ...base, harness: "codex", event: "Stop", paneId: "%6", sessionId: "conv-1" });
+		const prove = vi.mocked(recordAgentTurnEvent).mock.calls[0]![4]!;
+		await expect(prove()).resolves.toBe(false);
+		expect(isInteractiveCodexConversation).toHaveBeenCalledWith("conv-1", ["/codex-home"]);
+		vi.mocked(isInteractiveCodexConversation).mockResolvedValueOnce(true);
+		await expect(prove()).resolves.toBe(true);
+
+		vi.mocked(recordAgentTurnEvent).mockClear();
+		await agentHandlers["task.agentHook"]!({ ...base, harness: "codex", event: "Stop", paneId: "%6" });
+		await expect(vi.mocked(recordAgentTurnEvent).mock.calls[0]![4]!()).resolves.toBe(false);
 	});
 
 	it("records a status-hook turn report only after the pane's session was captured, with the hook's session id", async () => {
 		await agentHandlers["task.agentHook"]!({ ...base, harness: "agy", event: "Stop", paneId: "%6", sessionId: "conv-1" });
 		expect(capturePaneSession).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(capturePaneSession).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(recordAgentTurnEvent).mock.invocationCallOrder[0]!);
-		expect(recordAgentTurnEvent).toHaveBeenCalledWith(fixtures.task, "%6", "Stop", "conv-1");
+		expect(recordAgentTurnEvent).toHaveBeenCalledWith(fixtures.task, "%6", "Stop", "conv-1", undefined);
 	});
 
 	it("ignores other hook events and reports with no pane", async () => {

@@ -101,7 +101,7 @@ export const agentHandlers: Record<string, Handler> = {
 			}).finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
 		}
 		if (typeof params.paneId === "string" && params.paneId && params.sessionEnded !== true) {
-			recordAgentTurnEvent(task, params.paneId, "Stop", typeof params.sessionId === "string" ? params.sessionId : null);
+			await recordAgentTurnEvent(task, params.paneId, "Stop", typeof params.sessionId === "string" ? params.sessionId : null);
 		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
@@ -397,7 +397,10 @@ export const agentHandlers: Record<string, Handler> = {
 		rememberTaskSession(project, task, sessionId);
 		// After the capture, so a Stop that starts an exit sees the pane's session id.
 		if (paneId && (event === "Stop" || event === "UserPromptSubmit")) {
-			recordAgentTurnEvent((await resolveTaskFromParams(params)).task, paneId, event, sessionId);
+			const current = (await resolveTaskFromParams(params)).task;
+			await recordAgentTurnEvent(current, paneId, event, sessionId, harness === "codex"
+				? async () => !!sessionId && isInteractiveCodexConversation(sessionId, await taskCodexHomes(project, current))
+				: undefined);
 		}
 
 		// The submitted text rides on the same payload, so recording costs the
@@ -451,7 +454,7 @@ export const agentHandlers: Record<string, Handler> = {
 			: "claude";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		rememberTaskSession(project, task, sessionId);
-		if (typeof params.paneId === "string" && params.paneId) recordAgentTurnEvent(task, params.paneId, "UserPromptSubmit", sessionId);
+		if (typeof params.paneId === "string" && params.paneId) await recordAgentTurnEvent(task, params.paneId, "UserPromptSubmit", sessionId);
 
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.

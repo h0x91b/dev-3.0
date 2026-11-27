@@ -150,16 +150,24 @@ describe("agentPaneRoles", () => {
 });
 
 describe("agentPaneRoles — the main flag", () => {
-	it("keeps main on the flagged entry once the main pane is gone, instead of promoting the entry now at index 0", async () => {
+	it("never promotes an extra marked `main: false`, whatever its position, once the main entry is gone", async () => {
+		const roles = await agentPaneRoles(task([{ ...entry("%2"), main: false }]));
+		expect(roles.get("%2")).toBe("agent");
+		expect((await agentPaneRoles(task([{ ...entry("%2"), main: false }, { ...entry("%1"), main: true }]))).get("%1")).toBe("main");
 		const parkedMain = { ...entry(null), main: true, parked: true };
-		await expect([...(await agentPaneRoles(task([{ ...entry("%2"), main: false }, parkedMain])))]).toEqual([["%2", "agent"], ["%3", "review"]]);
-		const flagged = task([{ ...entry("%2"), main: false }, { ...entry("%1"), main: true }]);
-		expect((await agentPaneRoles(flagged)).get("%1")).toBe("main");
-		expect((await agentPaneRoles(flagged)).get("%2")).toBe("agent");
+		expect([...(await agentPaneRoles(task([{ ...entry("%2"), main: false }, parkedMain])))]).toEqual([["%2", "agent"], ["%3", "review"]]);
 	});
 
-	it("falls back to index 0 when no entry carries the flag", async () => {
-		expect((await agentPaneRoles(task([entry("%1"), entry("%2")]))).get("%1")).toBe("main");
+	it("falls back to index 0 only for entries that carry no `main` key at all", async () => {
+		expect([...(await agentPaneRoles(task([entry("%1"), entry("%2")])))].slice(0, 2)).toEqual([["%1", "main"], ["%2", "agent"]]);
+		expect((await agentPaneRoles(task([entry("%1"), { ...entry("%2"), main: false }]))).get("%1")).toBe("agent");
+	});
+
+	it("routes plain messages to the main entry only, and to no one once just extras are left", () => {
+		live = ["%1", "%2"];
+		expect(mainAgentPaneId(task([{ ...entry("%2"), main: false }, { ...entry("%1"), main: true }]), live)).toBe("%1");
+		expect(mainAgentPaneId(task([{ ...entry("%2"), main: false }]), live)).toBeNull();
+		expect(mainAgentPaneId(task([entry("%1"), entry("%2")]), live)).toBe("%1");
 	});
 });
 

@@ -1,4 +1,5 @@
 import { lastTurn } from "../extra-agent-exit-state";
+import { mainPaneEntry } from "../../shared/main-pane-entry";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
@@ -11487,6 +11488,7 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
 			agentId: "builtin-claude",
 			configId: "claude-default",
+			sessionState: { panes: [expect.objectContaining({ main: false })] },
 		}));
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: updatedTask });
 	});
@@ -11608,7 +11610,7 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(write).toBeDefined();
 		expect(write[2].sessionState.panes).toHaveLength(1);
 		expect(write[2].sessionState.panes[0]).toMatchObject({ paneId: "%7", agentId: "builtin-claude", configId: "claude-default" });
-		expect(write[2].sessionState.panes[0]).not.toHaveProperty("main");
+		expect(write[2].sessionState.panes[0]).toHaveProperty("main", false);
 	});
 });
 
@@ -12028,6 +12030,8 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			sessionState: {
 				panes: [
 					expect.objectContaining({
+						main: false,
+						hunter: true,
 						paneId: "%10",
 						agentId: "hunter-agent",
 						configId: "hunter-config",
@@ -12263,7 +12267,7 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		expect(persistedTask.sessionState?.panes).toEqual([mainParked]);
 	});
 
-	it("does not flag the hunter pane entry as the task's main pane", async () => {
+	it("writes `main: false` on the hunter pane entry", async () => {
 		const project = makeProject();
 		let persistedTask = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
 		(data.getProject as any).mockResolvedValue(project);
@@ -12278,7 +12282,7 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		await launchTmuxHunters(1);
 
 		expect(persistedTask.sessionState?.panes).toEqual([expect.objectContaining({ paneId: "%10" })]);
-		expect(persistedTask.sessionState?.panes?.[0]).not.toHaveProperty("main");
+		expect(persistedTask.sessionState?.panes?.[0]).toHaveProperty("main", false);
 	});
 
 	it("throws when task has no worktree", async () => {
@@ -12843,6 +12847,19 @@ describe("resumeTaskSession — the Resume Session path dev3 agent resume reuses
 		expect(writes.some((patch) => patch.sessionState?.panes[0]?.parked)).toBe(true);
 		expect(writes[writes.length - 1]?.sessionState?.panes[0]).toMatchObject({ sessionId: LIVE, accountId: "account-1" });
 		expect(writes.some((patch) => patch.hibernated !== undefined)).toBe(false);
+	});
+
+	it("forgets the task's `dev3 agent exit` state while the old terminal is torn down, and no other task's", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		(pty.hasSession as any).mockReturnValue(true);
+		lastTurn.set(`${task.id}:%1`, { event: "Stop", at: 1 });
+		lastTurn.set("other-task:%1", { event: "Stop", at: 1 });
+
+		await handlers.resumeTask({ taskId: task.id, restart: true });
+
+		expect([...lastTurn.keys()]).toEqual(["other-task:%1"]);
+		lastTurn.clear();
 	});
 
 	it("checks the task's own workspace before a restart, so an own worktree gets its .git link checked", async () => {
@@ -13645,6 +13662,17 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...stalePane, paneId: null, parked: true }]);
 		await handlers.resumeTask({ taskId: task.id });
 		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ sessionId }));
+	});
+
+	it("keeps `main: false` on the survivor when the main pane exits, so no extra is promoted to main", async () => {
+		const main = { ...stalePane, paneId: "%1", main: true };
+		const extra = { ...stalePane, paneId: "%2", sessionId: "extra-session", main: false };
+		const { project, task } = arrange([main, extra]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%2"]);
+		await handlePaneExited(task.id, "%1");
+		const panes = (await data.getTask(project, task.id)).sessionState!.panes;
+		expect(panes).toEqual([extra]);
+		expect(mainPaneEntry(panes)).toBeUndefined();
 	});
 
 	it("clears the exited pane's `dev3 agent exit` state and no other pane's", async () => {
