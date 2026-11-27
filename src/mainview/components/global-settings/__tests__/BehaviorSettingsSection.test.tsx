@@ -26,6 +26,7 @@ function renderSection(
 ) {
 	const onReviewModePromptChange = vi.fn();
 	const onPrOriginTaskLinkToggle = vi.fn();
+	const onConfirmExtraAgentCloseToggle = vi.fn();
 	const onOpenArtifactsInPopupToggle = vi.fn();
 	const onArtifactTemplateChange = vi.fn();
 	const onAutoHibernateChange = vi.fn();
@@ -44,6 +45,7 @@ function renderSection(
 				onCompletionOfferStyleChange={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
+				onConfirmExtraAgentCloseToggle={onConfirmExtraAgentCloseToggle}
 				onAutoHibernateChange={onAutoHibernateChange}
 				onAutoHibernateConfirmChange={onAutoHibernateConfirmChange}
 				prOriginTaskLinkSupported={prOriginTaskLinkSupported}
@@ -58,7 +60,7 @@ function renderSection(
 	);
 	const textarea = screen.getByLabelText("settings.reviewModePrompt") as HTMLTextAreaElement;
 	const reset = screen.getByRole("button", { name: "settings.reviewModePromptReset" });
-	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateChange, onAutoHibernateChange, onAutoHibernateConfirmChange };
+	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onConfirmExtraAgentCloseToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateChange, onAutoHibernateChange, onAutoHibernateConfirmChange };
 }
 
 describe("automatic hibernation policy", () => {
@@ -184,6 +186,26 @@ describe("BehaviorSettingsSection — PR origin-task link toggle", () => {
 		);
 		await userEvent.click(prSwitch());
 		expect(onPrOriginTaskLinkToggle).not.toHaveBeenCalled();
+	});
+});
+
+describe("BehaviorSettingsSection — confirm closing extra agents toggle", () => {
+	function closeSwitch() {
+		return screen.getByRole("switch", { name: "settings.confirmExtraAgentClose" });
+	}
+
+	it("is on by default and turning it off reports false", async () => {
+		const { onConfirmExtraAgentCloseToggle } = renderSection();
+		expect(closeSwitch()).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(closeSwitch());
+		expect(onConfirmExtraAgentCloseToggle).toHaveBeenCalledWith(false);
+	});
+
+	it("reflects a stored opt-out and turning it on reports true", async () => {
+		const { onConfirmExtraAgentCloseToggle } = renderSection({ confirmExtraAgentClose: false });
+		expect(closeSwitch()).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(closeSwitch());
+		expect(onConfirmExtraAgentCloseToggle).toHaveBeenCalledWith(true);
 	});
 });
 

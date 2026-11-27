@@ -159,6 +159,7 @@ describe("saveSettings", () => {
 			// Default-on: consumers gate with `!== false`; explicit true normalizes back to absent.
 			["importShellEnv", undefined, false, undefined],
 			["prOriginTaskLink", undefined, false, undefined],
+			["confirmExtraAgentClose", undefined, false, undefined],
 			// Legacy key of the removed low-battery feature: `true` is the proof startup needs
 			// to delete dev3's files, and the `false` it stores afterwards must survive.
 			["lowBatteryEnabled", undefined, false, true],
@@ -360,6 +361,7 @@ describe("saveSettings", () => {
 			remoteTunnel: { provider: "custom", command: "ngrok http {port} --log stdout", urlPattern: "https://\\S+" },
 			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
+			confirmExtraAgentClose: false,
 			resourceLevels: { cpuBusyWarnPercent: 70, diskCriticalGb: 10 },
 			autoHibernateMinutes: 60,
 			autoHibernateConfirmMinutes: 45,

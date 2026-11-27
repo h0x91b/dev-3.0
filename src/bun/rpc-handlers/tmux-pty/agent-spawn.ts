@@ -210,6 +210,7 @@ export async function spawnAgentInTask(params: {
 	// reconcile it against live tmux panes. A native pane is owned by the coordinator
 	// record instead, so writing it here would leave a phantom entry forever.
 	const paneEntry = {
+		main: false,
 		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,

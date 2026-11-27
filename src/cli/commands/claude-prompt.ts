@@ -1,3 +1,4 @@
+import { selfPaneId } from "../pane-env";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 import { homedir } from "node:os";
@@ -38,7 +39,7 @@ function parsePayload(rawInput: string): ClaudePromptPayload | null {
 export function claudeHookPaneId(env: NodeJS.ProcessEnv): string | undefined {
 	const entrypoint = env.CLAUDE_CODE_ENTRYPOINT;
 	if (entrypoint && entrypoint !== "cli") return undefined;
-	return env.DEV3_PANE_ID?.trim() || env.TMUX_PANE?.trim() || undefined;
+	return selfPaneId(env) ?? undefined;
 }
 
 // One serialized prompt event arms native session observation and marks work

@@ -1,3 +1,4 @@
+import { selfPaneId } from "../pane-env";
 import { createHash } from "node:crypto";
 import {
 	AGENT_STATUS_HOOK_EVENTS,
@@ -114,7 +115,7 @@ export async function handleCodexHook(
 		// bug hunters) share one worktree. Codex has no launch-time --session-id, so
 		// this post-hoc capture is the only way to resume the exact session per pane.
 		// Native panes export DEV3_PANE_ID instead; without it their session was never recorded (#1847).
-		const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim() || undefined;
+		const paneId = selfPaneId() ?? undefined;
 		try {
 			const response = await sendRequest(socketPath, "task.agentHook", {
 				taskId: context.taskId,

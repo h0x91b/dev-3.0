@@ -78,6 +78,7 @@ Commands:
   dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]
   dev3 agent resume [--task <id>] [--allow-agent-latest] [--json]
                                          Add one managed agent to an existing task (asks for approval from a task worktree)
+  dev3 agent exit [--agent <handle>] [--task <id>] [--json]  An extra agent ends its own session after its turn (or closes another extra agent)
   dev3 current [--brief]                Show current project, task, status
                                          (--brief: hide the full description if you already have it in your prompt)
   dev3 task show [--task <id>] [--notes] [--history] [--json]  Full task details

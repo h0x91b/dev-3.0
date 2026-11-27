@@ -18,7 +18,9 @@ export type CliWakeOutcome =
 /** What an agent asks to do to a task's session, shown in the launch-approval dialog instead of an agent picker. */
 export type AgentSessionAction =
 	| { kind: "hibernate"; paneCount: number }
-	| { kind: "wake-shell" };
+	| { kind: "wake-shell" }
+	/** An extra agent ends its session; `agentLabel` names it as the user knows it. */
+	| { kind: "close-agent"; paneId: string; agentLabel: string };
 
 /** The first line of a task woken with a plain shell: the agent did not start, and its conversation is still saved. */
 export const WAKE_SHELL_NOTICE =

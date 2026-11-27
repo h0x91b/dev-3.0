@@ -1,4 +1,5 @@
 import type { CliContext } from "./context";
+import { selfPaneId } from "./pane-env";
 
 /**
  * Our pane and pid, so the app can tell WHICH agent in the worktree ran this
@@ -7,7 +8,7 @@ import type { CliContext } from "./context";
  */
 export function senderAgentParams(context: CliContext | null): { sourcePaneId?: string; sourcePid?: number; sourceTmux?: string; sourceEnvTaskId?: string } {
 	if (!context?.taskId) return {};
-	const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim();
+	const paneId = selfPaneId();
 	if (!paneId) return {};
 	// Evidence for an agent started through a wrapper, which hides it from this process's ancestry.
 	const sourceTmux = process.env.TMUX?.trim();

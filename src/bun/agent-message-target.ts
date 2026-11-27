@@ -15,6 +15,7 @@ import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
 import { listNativeTaskAgents } from "./native-agent-attribution";
 import { nativeTaskPanesState } from "./native-task-panes";
 import { liveAgentPaneIds, readPaneAgentIdentity, resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
+import { mainPaneEntry } from "../shared/main-pane-entry";
 import { findAuxPanes } from "./task-aux-panes";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { DEFAULT_TMUX_SOCKET, PANE_ID_FORMAT, taskSessionName, tmux } from "./tmux";
@@ -52,9 +53,11 @@ export async function agentPaneRoles(task: Task): Promise<Map<string, AgentPaneR
 		roles.set(NATIVE_AGENT_PANE_ID, "main");
 		for (const agent of await listNativeTaskAgents(task)) roles.set(agent.paneId, "agent");
 	} else {
-		(task.sessionState?.panes ?? []).forEach((pane, index) => {
-			if (pane.paneId && !roles.has(pane.paneId)) roles.set(pane.paneId, index === 0 ? "main" : "agent");
-		});
+		const panes = task.sessionState?.panes ?? [];
+		const main = mainPaneEntry(panes);
+		for (const pane of panes) {
+			if (pane.paneId && !roles.has(pane.paneId)) roles.set(pane.paneId, pane === main ? "main" : "agent");
+		}
 	}
 	for (const pane of await findAuxPanes(task, "columnAgent", socketOf(task))) {
 		if (!roles.has(pane.paneId)) roles.set(pane.paneId, "review");
@@ -81,14 +84,16 @@ export async function withAgentPanes(task: Task, listing: PaneRunListing): Promi
 }
 
 /**
- * The task's main agent pane. On tmux it is the first `sessionState` entry; a task
- * with no registry, or whose first entry has no pane id yet (Codex before its hook),
- * uses its oldest live pane. A swap reorders the list, but tmux never reuses a `%N`.
+ * The task's main agent pane. On tmux it is the `main` entry of `sessionState` (null
+ * once only extras are left); a task with no registry, or whose main entry has no pane
+ * id yet (Codex before its hook), uses its oldest live pane. A swap reorders the list, but tmux never reuses a `%N`.
  */
 export function mainAgentPaneId(task: Task, live: string[]): string | null {
 	if (taskTerminalBackendIdentity(task) === "native") return NATIVE_AGENT_PANE_ID;
 	const entries = task.sessionState?.panes ?? [];
-	return entries[0]?.paneId || oldestTmuxPane(live);
+	if (entries.length === 0) return oldestTmuxPane(live);
+	const main = mainPaneEntry(entries);
+	return main ? main.paneId || oldestTmuxPane(live) : null;
 }
 
 function oldestTmuxPane(live: string[]): string | null {

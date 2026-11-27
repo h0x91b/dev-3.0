@@ -96,8 +96,9 @@ export interface PaneSessionEntry {
 	parked?: boolean;
 	/** A one-shot bug-hunter pane: never parked, dropped when its pane is gone. */
 	hunter?: boolean;
-	/** The task's own agent pane, written by its launch. Only this pane may restore the
-	 *  task-level agent after another pane exits; entries saved before it lack the flag. */
+	/** `true` on the task's own agent pane (written by its launch), `false` on every agent
+	 *  spawned later. Only the main pane may restore the task-level agent after another pane
+	 *  exits. Entries saved before the flag lack the key; see `mainPaneEntry`. */
 	main?: boolean;
 }
 

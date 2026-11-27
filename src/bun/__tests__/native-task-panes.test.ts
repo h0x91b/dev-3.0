@@ -148,6 +148,7 @@ import {
 	type NativeTaskPanesState,
 } from "../native-task-panes";
 import { spawn } from "../spawn";
+import { lastTurn } from "../extra-agent-exit-state";
 
 const TASK_ID = "abc-def-123";
 const LAUNCH = { executable: "/bin/zsh", argv: [] as string[] };
@@ -327,5 +328,17 @@ describe("closeNativeTaskPane teardown detection", () => {
 		const state = await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
 		const { sessionTornDown } = await closeNativeTaskPane(TASK_ID, state.panes[0]!.paneId);
 		expect(sessionTornDown).toBe(true);
+	});
+
+	it("drops `dev3 agent exit` state of the closed pane only; stopping the pane set drops the rest", async () => {
+		const state = await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
+		const { paneId } = await splitNativeTaskPane(TASK_ID, state.panes[0]!.paneId, "horizontal", { cwd: "/work", env: {} });
+		const first = state.panes[0]!.paneId;
+		lastTurn.set(`${TASK_ID}:${paneId}`, { event: "Stop", at: 1 });
+		lastTurn.set(`${TASK_ID}:${first}`, { event: "Stop", at: 1 });
+		await closeNativeTaskPane(TASK_ID, paneId);
+		expect([...lastTurn.keys()]).toEqual([`${TASK_ID}:${first}`]);
+		await stopNativeTaskPanes(TASK_ID);
+		expect(lastTurn.size).toBe(0);
 	});
 });

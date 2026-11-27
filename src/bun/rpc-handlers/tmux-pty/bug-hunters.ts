@@ -189,6 +189,7 @@ async function spawnSingleBugHunterPane(opts: {
 	// phantom entry that no tmux pane can ever match.
 	if (handle.backend === "tmux") {
 		const paneEntry = {
+			main: false,
 			paneId: handle.paneId,
 			agentCmd: resolvedBaseCmd,
 			sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,

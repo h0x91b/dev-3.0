@@ -481,6 +481,8 @@ describe("launchArgs — agy", () => {
 			expect(allow).toEqual(["dev3", "~/.dev3.0/bin/dev3"].flatMap((cli) => DEV3_AUTO_APPROVED_SUBCOMMANDS.map((sub) => `command(${cli} ${sub})`)));
 			expect(allow).toContain("command(dev3 note)");
 			expect(allow).toContain("command(dev3 projects list)");
+			// The confirmation setting is the gate for closing an extra agent; the harness does not ask on top.
+			expect(allow).toContain("command(dev3 agent exit)");
 			// Whatever starts a process stays behind agy's own prompt.
 			for (const rule of ["command(dev3 pane run)", "command(dev3 dev-server start)", "command(dev3 agent spawn)", "command(dev3 remote)"]) {
 				expect(allow).not.toContain(rule);

@@ -3,6 +3,7 @@ import { exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { selfPaneId } from "../pane-env";
 import { CLI_EXIT_CODE_PANE_NO_ROOM } from "../../shared/cli-exit-codes";
 import {
 	PANE_RUN_NO_ROOM_CODE,
@@ -18,16 +19,6 @@ const USAGE = `Usage:
   dev3 pane run "<command>" [--below] [--label <name>]        Run a command in a neighbouring pane (--below: stack vertically only); prints the run id
   dev3 pane logs <run-id> [--lines <N>] [--json]              The run's outcome + the tail of what it printed
   dev3 pane close <run-id>                                    Close the run's pane (kills the command)`;
-
-/** The pane the calling agent is sitting in, as its own shell was told. */
-function selfPaneId(): string | null {
-	// Native panes export DEV3_PANE_ID; tmux exports TMUX_PANE. Nothing is inferred
-	// from the platform — whichever variable is present names the backend in play.
-	const native = process.env.DEV3_PANE_ID?.trim();
-	if (native) return native;
-	const tmuxPane = process.env.TMUX_PANE?.trim();
-	return tmuxPane || null;
-}
 
 /**
  * Which task the pane call is about, scoped to the project the shell sits in.

@@ -23,6 +23,7 @@ import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskRes
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { mainAgentNeverStarted } from "../../../shared/agent-launch-failure";
 import { forgetAgyTask } from "../../agy-session-state";
+import { forgetTaskExitState } from "../../extra-agent-exit-state";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
 import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
@@ -172,6 +173,8 @@ const TEARDOWN_POLL_MS = 100;
 async function tearDownTaskTerminal(task: Task): Promise<void> {
 	// Every agent of the task goes with its terminal; what agy panes were waiting on goes too.
 	forgetAgyTask(task.id);
+	// Covers the branches that never reach `destroySession`.
+	forgetTaskExitState(task.id);
 	if (taskTerminalBackendIdentity(task) === "native") {
 		if (pty.hasSession(task.id)) await pty.destroySessionAwaited(task.id);
 		else await stopNativeTaskPanes(task.id);

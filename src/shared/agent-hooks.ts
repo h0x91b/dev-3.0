@@ -793,7 +793,7 @@ export const DEV3_AUTO_APPROVED_SUBCOMMANDS = [
 	"projects list", "project list", "keep-alive", "events", "message", "notify", "attention",
 	"peek", "show-image", "show-video", "show-artifact", "artifact-template", "conversations",
 	"vents", "pr", "config show", "config export", "automations list", "automations show",
-	"automations templates", "agent list", "agent resume", "dev-server status", "dev-server logs",
+	"automations templates", "agent list", "agent resume", "agent exit", "dev-server status", "dev-server logs",
 	"dev-server stop", "pane list", "pane logs", "pane close", "ui state",
 ] as const;
 

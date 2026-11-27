@@ -49,6 +49,8 @@ export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
 export const CLI_EXIT_CODE_WORKTREE_HALF_REMOVED = 48;
 export const CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN = 49;
 export const CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE = 50;
+export const CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT = 51;
+export const CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA = 52;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -110,7 +112,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_LAUNCH_DECLINED",
 		code: CLI_EXIT_CODE_LAUNCH_DECLINED,
 		description:
-			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`), to add an agent (`dev3 agent spawn`) or to resume a saved session (`dev3 agent resume`), and the user declined the approval dialog — or, for spawn and resume, the target task's run ended before anyone answered. Nothing was launched and the target task stays where it was.",
+			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`), to add an agent (`dev3 agent spawn`), to resume a saved session (`dev3 agent resume`) or to close an extra agent (`dev3 agent exit`), and the user declined the approval dialog — or, for spawn, resume and exit, the target task's run ended before anyone answered. Nothing was launched or closed and the target task stays where it was.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_DELIVERY_UNCONFIRMED",
@@ -351,5 +353,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE,
 		description:
 			"`dev3 projects set` asked for a switch the project cannot take in its current state, so **nothing** was changed: `boardCopyMessages on` while `boardCopy` is off (turn `boardCopy` on first), or `boardCopy on` on an operations board, which has no project folder to copy into. Project Settings hides the same toggles in that state. Distinct from exit 1 so an agent changes the prerequisite instead of retrying.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT",
+		code: CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT,
+		description:
+			"`dev3 agent exit` named the task's main agent (its own pane, or one picked with `--agent`). The command only closes extra agents (\"+ Agent\" panes), so **nothing** was scheduled and no dialog was shown. A main agent finishes with `dev3 task move --status completed`. Distinct from exit 52 so an agent can tell \"wrong target, use task completion\" from \"not an agent pane at all\".",
+	},
+	{
+		constant: "CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA",
+		code: CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA,
+		description:
+			"`dev3 agent exit` found no extra agent to close, so **nothing** was scheduled: the calling pane is not an agent pane (a plain shell, a `dev3 pane run` pane, a dev server), the shell has no pane environment, the `--agent` handle names no live agent, or the target is the AI Review column's agent. Only extra agents started with `dev3 agent spawn` or \"+ Agent\" can be closed.",
 	},
 ] as const;

@@ -71,9 +71,10 @@ describe("handleAgyHook", () => {
 		process.env.DEV3_PANE_ID = "native-2";
 		await handleAgyHook("PreInvocation", JSON.stringify({ conversationId: "conv-n" }), SOCKET, CONTEXT);
 		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "conv-n", paneId: "native-2" });
+		// A TMUX_PANE leaked into a native pane must not win over the explicit native id.
 		process.env.TMUX_PANE = "%4";
 		await handleAgyHook("PreInvocation", JSON.stringify({ conversationId: "conv-n" }), SOCKET, CONTEXT);
-		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "%4" });
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "native-2" });
 	});
 
 	it("drops a conversation id that is not a plain token instead of sending it on", async () => {

@@ -287,6 +287,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			d.agentLaunchAutoApproveMinutes >= 0
 				? d.agentLaunchAutoApproveMinutes
 				: undefined,
+		// Default-on toggle — only an explicit false is a stored opt-out.
+		confirmExtraAgentClose: d.confirmExtraAgentClose === false ? false : undefined,
 		resourceLevels: sanitizeResourceLevels(d.resourceLevels),
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		prOriginTaskLink: d.prOriginTaskLink === false ? false : undefined,

@@ -12,7 +12,7 @@ import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../sh
 import type { CliCommandSpec } from "../shared/codex-exec-policy";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
-import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT, CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
@@ -144,6 +144,20 @@ const COMMANDS: CommandHelp[] = [
 					`From another task's worktree, asks the user to approve in the app; decline exits ${CLI_EXIT_CODE_LAUNCH_DECLINED}.`,
 					"Outside a task worktree, runs directly, as if the user had clicked the button.",
 					"A retry while the dialog is open joins it; it never resumes twice.",
+				],
+			},
+			{
+				name: "exit",
+				usage: "dev3 agent exit [--agent <handle>] [--task <id>] [--project <id>] [--reason <text>] [--json]",
+				summary: "End an extra agent's session after its current turn; the task and its main agent keep running.",
+				details: [
+					"Without --agent it closes the agent that runs this command; end your turn right after it returns.",
+					"--agent <handle> Close another extra agent of the task; the handle is the one `dev3 pane list` prints.",
+					"The command only schedules the exit. The agent is asked to quit once its turn ends and its pane then closes;",
+					"the conversation stays on disk, and a task note records how to resume it.",
+					"Asks the user first unless Settings -> Tasks & Board turns it off; decline exits 10. A pane with no turn end within 5 minutes is closed hard.",
+					`The task's main agent or the AI Review agent cannot be closed: the main agent exits ${CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT}, anything that is not an extra agent exits ${CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA}.`,
+					"Asking twice for the same pane is harmless: the second call says the exit is already scheduled.",
 				],
 			},
 		],

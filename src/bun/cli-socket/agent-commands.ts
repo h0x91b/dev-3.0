@@ -19,6 +19,7 @@ import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, resumeAcc
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
 import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
+import { recordAgentTurnEvent } from "../extra-agent-exit";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
 import { applyClaudeHookStatus, scheduleClaudeBackgroundExpiry } from "./claude-hook-status";
@@ -98,6 +99,9 @@ export const agentHandlers: Record<string, Handler> = {
 					await moveTask({ projectId: task.projectId, taskId: task.id, newStatus: target, ifStatus: current.status });
 				}
 			}).finally(() => scheduleClaudeBackgroundExpiry(task.id, task.projectId));
+		}
+		if (typeof params.paneId === "string" && params.paneId && params.sessionEnded !== true) {
+			await recordAgentTurnEvent(task, params.paneId, "Stop", typeof params.sessionId === "string" ? params.sessionId : null);
 		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
@@ -198,6 +202,23 @@ export const agentHandlers: Record<string, Handler> = {
 			project, task, requester,
 			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null },
 			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
+			...approvalReasonFromParams(params),
+		});
+	},
+	// An extra agent ends its own session, or another extra agent is closed by handle.
+	// Only schedules: the pane closes once its turn is over (extra-agent-exit.ts).
+	"agent.exit": async (params) => {
+		const requestedAt = Date.now();
+		for (const key of ["selfPaneId", "agentHandle"]) {
+			if (params[key] !== undefined && params[key] !== null && typeof params[key] !== "string") throw new Error(`${key} must be a string.`);
+		}
+		const { project, task } = await requirePaneTask(params);
+		const requester = await resolveRequesterTask(params, "exit request");
+		const { exitCliAgent } = await import("../cli-agent-exit");
+		return exitCliAgent({
+			project, task, requester, requestedAt,
+			selfPaneId: typeof params.selfPaneId === "string" && params.selfPaneId.trim() ? params.selfPaneId.trim() : null,
+			agentHandle: typeof params.agentHandle === "string" && params.agentHandle.trim() ? params.agentHandle.trim() : null,
 			...approvalReasonFromParams(params),
 		});
 	},
@@ -374,6 +395,13 @@ export const agentHandlers: Record<string, Handler> = {
 			await capturePaneSession(project, task.id, paneId, sessionId, harness);
 		}
 		rememberTaskSession(project, task, sessionId);
+		// After the capture, so a Stop that starts an exit sees the pane's session id.
+		if (paneId && (event === "Stop" || event === "UserPromptSubmit")) {
+			const current = (await resolveTaskFromParams(params)).task;
+			await recordAgentTurnEvent(current, paneId, event, sessionId, harness === "codex"
+				? async () => !!sessionId && isInteractiveCodexConversation(sessionId, await taskCodexHomes(project, current))
+				: undefined);
+		}
 
 		// The submitted text rides on the same payload, so recording costs the
 		// pane no second dev3 process.
@@ -426,6 +454,7 @@ export const agentHandlers: Record<string, Handler> = {
 			: "claude";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		rememberTaskSession(project, task, sessionId);
+		if (typeof params.paneId === "string" && params.paneId) await recordAgentTurnEvent(task, params.paneId, "UserPromptSubmit", sessionId);
 
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.

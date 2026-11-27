@@ -323,6 +323,8 @@ const settings = {
 	"settings.diskCriticalBelow": "Disco libre: crítico por debajo de",
 	"settings.cpuLoadHint": "Parte de todos los núcleos ocupada desde la última comprobación; 100% significa que todos trabajan. La carga media se muestra, pero no se evalúa.",
 	"settings.agentLaunchAutoApproveOff": "Nunca — esperar siempre mi respuesta",
+	"settings.confirmExtraAgentClose": "Confirmar el cierre de agentes adicionales",
+	"settings.confirmExtraAgentCloseDesc": "Preguntar antes de que un agente cierre la sesión de un agente adicional, la suya o la de otro en la tarea. Desactívalo para que los revisores se cierren solos, sin diálogo.",
 	"settings.autoApproveHours": "horas",
 	"settings.autoApproveMinutes": "minutos",
 	"settings.autoApproveSeconds": "segundos",

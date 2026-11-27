@@ -219,6 +219,27 @@ describe("AgentLaunchRequestModal", () => {
 		expect(screen.getByTestId("agent-launch-accept")).toHaveTextContent("Wake with a plain shell");
 	});
 
+	it("shows a close-extra-agent request that names the agent and keeps the conversation", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({
+			canAddVariants: false,
+			autoApproveAt: Date.now() + 5 * 60_000,
+			sessionAction: { kind: "close-agent", paneId: "%7", agentLabel: "Codex / High" },
+		}));
+		expect(await screen.findByRole("heading", { name: "Agent wants to close an extra agent" })).toBeInTheDocument();
+		const body = screen.getByTestId("agent-launch-session-action");
+		expect(body).toHaveTextContent("Codex / High (pane %7)");
+		expect(body).toHaveTextContent("The task and its main agent keep running");
+		expect(body).toHaveTextContent("stays saved on disk");
+		expect(screen.getByTestId("agent-launch-countdown")).toHaveTextContent(/Closes on its own in (5:00|4:59)/);
+		expect(screen.queryByTestId("agent-config-picker")).not.toBeInTheDocument();
+		const accept = screen.getByTestId("agent-launch-accept");
+		expect(accept).toHaveTextContent("Close agent");
+		await waitFor(() => expect(accept).toBeEnabled());
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, undefined);
+	});
+
 	it("names the asking task and the task to be launched", async () => {
 		renderModal();
 

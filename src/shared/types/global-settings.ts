@@ -375,6 +375,8 @@ export interface GlobalSettings {
 	 * applied to the completion dialog: that one destroys a worktree.
 	 */
 	agentLaunchAutoApproveMinutes?: number;
+	/** When false, `dev3 agent exit` closes an extra agent without asking. Undefined ⇒ ask. */
+	confirmExtraAgentClose?: boolean;
 	/** Where the CPU and disk readouts turn yellow / red. Sparse: absent keys use the defaults. */
 	resourceLevels?: Partial<ResourceLevels>;
 	/** Inactivity before a hibernation suggestion; absent uses 24 hours, 0 disables. */

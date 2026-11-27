@@ -47,6 +47,7 @@ vi.mock("../native-task-terminal", () => ({
 }));
 
 import { spawn } from "../spawn";
+import { lastTurn } from "../extra-agent-exit-state";
 import { bindNativeTaskPane } from "../native-task-terminal";
 import { startNativeTaskPanes, stopNativeTaskPanes } from "../native-task-panes";
 import { tmux } from "../tmux";
@@ -212,6 +213,16 @@ describe("destroyNativeTaskSession", () => {
 		expect(terminal.detach).toHaveBeenCalledTimes(1);
 		expect(stopNativeTaskPanes).toHaveBeenCalledWith(TASK_ID);
 		expect(hasSession(TASK_ID)).toBe(false);
+	});
+
+	it("forgets the task's `dev3 agent exit` state, attached or not, and no other task's", async () => {
+		lastTurn.set(`${TASK_ID}:pane-2`, { event: "Stop", at: 1 });
+		lastTurn.set("other-task:pane-2", { event: "Stop", at: 1 });
+
+		await destroyNativeTaskSession(TASK_ID);
+
+		expect([...lastTurn.keys()]).toEqual(["other-task:pane-2"]);
+		lastTurn.clear();
 	});
 
 	it("stops an unattached tree after an app restart, without spawning anything", async () => {

@@ -1,3 +1,4 @@
+import { mainPaneEntry } from "../../shared/main-pane-entry";
 import type { TaskCompletionOwner, AgentFamily, ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
@@ -135,7 +136,7 @@ function draftPlaceholderTitle(now: Date = new Date()): string {
 /** The main pane names the agent that really launched, even when the task follows the default agent. */
 async function bellAgentOf(task: Task): Promise<{ baseCommand: string; family?: AgentFamily } | null> {
 	const panes = task.sessionState?.panes ?? [];
-	const main = panes.find((pane) => pane.main) ?? panes[0];
+	const main = mainPaneEntry(panes);
 	if (main?.agentCmd) return { baseCommand: main.agentCmd, family: main.agentFamily ?? undefined };
 	return resolveTaskAgentHooks(task);
 }

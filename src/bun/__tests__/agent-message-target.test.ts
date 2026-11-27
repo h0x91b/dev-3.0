@@ -149,6 +149,36 @@ describe("agentPaneRoles", () => {
 	});
 });
 
+describe("agentPaneRoles — the main flag", () => {
+	it("never promotes an extra marked `main: false`, whatever its position, once the main entry is gone", async () => {
+		const roles = await agentPaneRoles(task([{ ...entry("%2"), main: false }]));
+		expect(roles.get("%2")).toBe("agent");
+		expect((await agentPaneRoles(task([{ ...entry("%2"), main: false }, { ...entry("%1"), main: true }]))).get("%1")).toBe("main");
+		const parkedMain = { ...entry(null), main: true, parked: true };
+		expect([...(await agentPaneRoles(task([{ ...entry("%2"), main: false }, parkedMain])))]).toEqual([["%2", "agent"], ["%3", "review"]]);
+	});
+
+	it("falls back to index 0 only for entries that carry no `main` key at all", async () => {
+		expect([...(await agentPaneRoles(task([entry("%1"), entry("%2")])))].slice(0, 2)).toEqual([["%1", "main"], ["%2", "agent"]]);
+		expect((await agentPaneRoles(task([{ ...entry("%2"), main: false }, entry("%1")]))).get("%1")).toBe("agent");
+	});
+
+	it("keeps main on a legacy entry without the key when an extra marked `main: false` is added", async () => {
+		const legacy = task([entry("%1"), { ...entry("%2"), main: false }]);
+		const roles = await agentPaneRoles(legacy);
+		expect([roles.get("%1"), roles.get("%2")]).toEqual(["main", "agent"]);
+		live = ["%1", "%2"];
+		expect(mainAgentPaneId(legacy, live)).toBe("%1");
+	});
+
+	it("routes plain messages to the main entry only, and to no one once just extras are left", () => {
+		live = ["%1", "%2"];
+		expect(mainAgentPaneId(task([{ ...entry("%2"), main: false }, { ...entry("%1"), main: true }]), live)).toBe("%1");
+		expect(mainAgentPaneId(task([{ ...entry("%2"), main: false }]), live)).toBeNull();
+		expect(mainAgentPaneId(task([entry("%1"), entry("%2")]), live)).toBe("%1");
+	});
+});
+
 describe("withAgentPanes — what `dev3 pane list` adds", () => {
 	const line = (paneId: string, index: number, alive: boolean | null = null): PaneRunPaneLine =>
 		({ paneId, index, label: "", active: false, self: false, alive, runId: null });
