@@ -29,9 +29,10 @@ import {
 	lastTurn,
 	pending,
 	resetExtraAgentExitStateForTests,
+	stateGeneration,
 } from "./extra-agent-exit-state";
 import { createLogger } from "./logger";
-import { sendPaneInput } from "./pane-input";
+import { deliverPaneInput, newPaneInputDeliveryId, pinTaskPane } from "./pane-input";
 import { readPaneAgentIdentity } from "./scheduled-message-author";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 
@@ -69,11 +70,16 @@ export async function recordAgentTurnEvent(
 	sessionId: string | null,
 	isInteractiveCodex?: () => Promise<boolean>,
 ): Promise<void> {
+	const key = exitKey(task.id, paneId);
+	const generation = stateGeneration(task.id, paneId);
 	if (event === "Stop" && !(await stopIsPaneAgents(task, paneId, sessionId, isInteractiveCodex))) {
 		log.debug("stop report not proved to be the pane agent's ignored", { taskId: task.id.slice(0, 8), paneId });
 		return;
 	}
-	const key = exitKey(task.id, paneId);
+	if (stateGeneration(task.id, paneId) !== generation) {
+		log.debug("turn report dropped: its pane or task was torn down while it was judged", { taskId: task.id.slice(0, 8), paneId });
+		return;
+	}
 	lastTurn.delete(key);
 	lastTurn.set(key, { event, at: Date.now() });
 	while (lastTurn.size > MAX_TRACKED_PANES) lastTurn.delete(lastTurn.keys().next().value!);
@@ -183,15 +189,19 @@ function begin(exit: PendingExit, trigger: ExitTrigger): void {
 	if (exit.settleTimer) clearTimeout(exit.settleTimer);
 	exit.settleTimer = null;
 	if (trigger === "deadline") clearTimeout(exit.deadlineTimer);
-	void runExit(exit, trigger).then((outcome) => {
-		if (outcome === "finished") {
-			finishPendingExit(exit);
-			return;
-		}
-		// A new turn began before anything was typed: wait for its Stop, under the original deadline.
-		exit.phase = "waiting";
-		if (Date.now() >= exit.deadlineAt) begin(exit, "deadline");
-	});
+	void runExit(exit, trigger).then((outcome) => afterRun(exit, outcome));
+}
+
+function afterRun(exit: PendingExit, outcome: "finished" | "wait-again"): void {
+	if (outcome === "finished") {
+		finishPendingExit(exit);
+		return;
+	}
+	// A teardown that cancelled the run has already dropped the exit: nothing is re-armed.
+	if (exit.cancelled) return;
+	// A new turn began before anything was typed: wait for its Stop, under the original deadline.
+	exit.phase = "waiting";
+	if (Date.now() >= exit.deadlineAt) begin(exit, "deadline");
 }
 
 /** The agent as the user knows it: its name and preset, else the command it runs. */
@@ -224,19 +234,31 @@ async function typeExitCommand(task: Task, target: AgentExitTarget, exit: Pendin
 		log.info("the agent already left its pane, nothing to type", { taskId: task.id.slice(0, 8), paneId });
 		return "not-typed";
 	}
+	// Pinning awaits, so it comes first: nothing may await between the checks below and the keystrokes.
+	const pin = await pinTaskPane(task, paneId).catch((error): { ok: false; detail: string } => ({ ok: false, detail: String(error) }));
+	if (!pin.ok) {
+		log.warn("quit command not delivered", { taskId: task.id.slice(0, 8), paneId, detail: pin.detail });
+		return "not-typed";
+	}
 	if (exit.cancelled) return "cancelled";
 	if (lastEventIsPrompt(exit)) return "busy";
-	clearTimeout(exit.deadlineTimer);
+	exit.typed = true;
 	try {
-		const outcome = await sendPaneInput(task, paneId, program, { idPrefix: "extra-agent-exit" });
+		const outcome = await deliverPaneInput(task, {
+			deliveryId: newPaneInputDeliveryId("extra-agent-exit"),
+			incarnation: pin.incarnation,
+			stages: program,
+			attempt: 1,
+		});
 		if (outcome.status === "delivered" || outcome.status === "indeterminate") {
-			exit.typed = true;
+			clearTimeout(exit.deadlineTimer);
 			return "typed";
 		}
 		log.warn("quit command not delivered", { taskId: task.id.slice(0, 8), paneId, status: outcome.status, reason: outcome.reason, detail: outcome.detail });
 	} catch (error) {
 		log.warn("quit command could not be sent", { taskId: task.id.slice(0, 8), paneId, error: String(error) });
 	}
+	exit.typed = false;
 	return "not-typed";
 }
 
@@ -251,25 +273,43 @@ async function paneIsLive(project: Project, taskId: string, paneId: string): Pro
 	return (await resolveAgentExitTargets(task)).some((candidate) => candidate.paneId === paneId);
 }
 
+type CloseOutcome = "closed" | "open" | "cancelled" | "replaced";
+
+const sameIncarnation = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
 /**
- * Backend-neutral close; true when the pane is gone afterwards. An agent that quit
- * often takes its pane with it, so absence is checked first and again after a failed
- * close; every other failure still throws.
+ * Backend-neutral close. An agent that quit often takes its pane with it, so absence is
+ * checked first and again after a failed close; every other failure still throws. Neither
+ * backend's close takes an incarnation, so the pane is pinned before the preflight and
+ * again right before the kill, and a teardown that cancelled the exit is checked at each
+ * step: nothing awaits between the last check and the kill call.
  */
-async function closePane(project: Project, taskId: string, paneId: string): Promise<boolean> {
+async function closePane(project: Project, exit: PendingExit): Promise<CloseOutcome> {
+	const { taskId, paneId } = exit;
+	const pinNow = async () => {
+		const pin = await pinTaskPane(await data.getTask(project, taskId), paneId).catch(() => null);
+		return pin?.ok ? pin.incarnation : null;
+	};
+	const before = await pinNow();
+	if (exit.cancelled) return "cancelled";
 	if (!(await paneIsLive(project, taskId, paneId))) {
+		if (exit.cancelled) return "cancelled";
 		await reconcileClosedPane(project, taskId, paneId);
-		return true;
+		return "closed";
 	}
 	const { taskPanesHandlers } = await import("./rpc-handlers/task-panes");
+	const after = await pinNow();
+	if (exit.cancelled) return "cancelled";
+	if (before && after && !sameIncarnation(before, after)) return "replaced";
 	try {
 		const state = await taskPanesHandlers.taskPaneAction({ taskId, action: { kind: "close", paneId } });
-		return !state.panes.some((pane) => pane.paneId === paneId);
+		return state.panes.some((pane) => pane.paneId === paneId) ? "open" : "closed";
 	} catch (error) {
 		if (await paneIsLive(project, taskId, paneId)) throw error;
+		if (exit.cancelled) return "cancelled";
 		log.info("the pane left while it was being closed", { taskId: taskId.slice(0, 8), paneId });
 		await reconcileClosedPane(project, taskId, paneId);
-		return true;
+		return "closed";
 	}
 }
 
@@ -338,12 +378,16 @@ async function runExit(exit: PendingExit, trigger: ExitTrigger): Promise<"finish
 		if (refusal) return await dropped(refusal);
 		if (trigger !== "deadline" && !typed && lastEventIsPrompt(exit)) return "wait-again";
 		exit.closing = true;
+		let closed: CloseOutcome = "closed";
 		let failure: string | null = null;
 		try {
-			if (!(await closePane(project, exit.taskId, exit.paneId))) failure = "the pane is still open after the close request";
+			closed = await closePane(project, exit);
 		} catch (error) {
 			failure = error instanceof Error ? error.message : String(error);
 		}
+		if (stopped(exit, "during the close")) return "finished";
+		if (closed === "replaced") return await dropped(`pane ${exit.paneId} was replaced before it could be closed`);
+		if (closed === "open") failure = "the pane is still open after the close request";
 		if (failure) {
 			log.warn("the extra agent pane could not be closed", { taskId, paneId: exit.paneId, failure });
 			await addNote(project, exit.taskId, `Could not close extra agent ${label} in pane ${exit.paneId}: ${failure}. Close it by hand.`);
@@ -356,6 +400,9 @@ async function runExit(exit: PendingExit, trigger: ExitTrigger): Promise<"finish
 	}
 	return "finished";
 }
+
+/** @internal Tests only. */
+export const _afterRunForTests = afterRun;
 
 /** @internal Tests only. */
 export function _resetExtraAgentExitForTests(): void {

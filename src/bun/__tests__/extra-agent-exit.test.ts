@@ -12,7 +12,7 @@ vi.mock("../agent-graceful-exit", () => ({
 vi.mock("../agents", () => ({ getAllAgents: vi.fn(), buildResumeCommand: vi.fn() }));
 vi.mock("../board-operations/task-notes", () => ({ addNote: vi.fn() }));
 vi.mock("../board-operations/runtime", () => ({ boardPorts: { ports: true } }));
-vi.mock("../pane-input", () => ({ sendPaneInput: vi.fn() }));
+vi.mock("../pane-input", () => ({ pinTaskPane: vi.fn(), deliverPaneInput: vi.fn(), newPaneInputDeliveryId: vi.fn(() => "delivery-1") }));
 vi.mock("../scheduled-message-author", () => ({ readPaneAgentIdentity: vi.fn() }));
 vi.mock("../agent-message-target", () => ({ addressedAgentRefusal: vi.fn() }));
 vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
@@ -22,6 +22,7 @@ vi.mock("../rpc-handlers/task-panes", () => ({ taskPanesHandlers: { taskPaneActi
 import {
 	EXTRA_AGENT_EXIT_DEADLINE_MS,
 	EXTRA_AGENT_EXIT_SETTLE_MS,
+	_afterRunForTests,
 	_resetExtraAgentExitForTests,
 	captureExitBinding,
 	exitBindingRefusal,
@@ -31,13 +32,13 @@ import {
 	scheduleExtraAgentExit,
 } from "../extra-agent-exit";
 import * as data from "../data";
-import { forgetPaneExitState, forgetTaskExitState } from "../extra-agent-exit-state";
+import { forgetPaneExitState, forgetTaskExitState, pending } from "../extra-agent-exit-state";
 import { addressedAgentRefusal } from "../agent-message-target";
 import { readPaneAgentIdentity } from "../scheduled-message-author";
 import { agentPidsUnder, readAgentProcessEvidence, resolveAgentExitTargets, waitForPanesToEmpty } from "../agent-graceful-exit";
 import { buildResumeCommand, getAllAgents } from "../agents";
 import { addNote } from "../board-operations/task-notes";
-import { sendPaneInput } from "../pane-input";
+import { deliverPaneInput, pinTaskPane } from "../pane-input";
 import { taskPanesHandlers } from "../rpc-handlers/task-panes";
 import { handlePaneExited } from "../rpc-handlers/tmux-pty/task-launch";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
@@ -50,6 +51,7 @@ const entry = { paneId: PANE, agentCmd: "claude", agentId: "builtin-claude", con
 const target = { paneId: PANE, rootPid: 4242, entry };
 const author = { paneId: PANE, sessionId: SESSION, paneToken: "token", agentProcess: "77@Mon Jan 1 00:00:00 2024" };
 const binding = { author, sessionId: SESSION, rootPid: 4242 };
+const INCARNATION = { backend: "tmux", taskId: "task-1", paneId: "%5", sessionName: "dev3-task-1", serverToken: "tok" };
 const replacement = { ...author, agentProcess: "99@Mon Jan 1 00:05:00 2024" };
 const replaceAgent = (refusal: string) => {
 	vi.mocked(addressedAgentRefusal).mockResolvedValue(refusal);
@@ -76,7 +78,8 @@ beforeEach(() => {
 	vi.mocked(buildResumeCommand).mockReturnValue(`claude --resume ${SESSION}`);
 	vi.mocked(addressedAgentRefusal).mockResolvedValue(null);
 	vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author });
-	vi.mocked(sendPaneInput).mockResolvedValue({ status: "delivered" } as never);
+	vi.mocked(pinTaskPane).mockResolvedValue({ ok: true, incarnation: INCARNATION } as never);
+	vi.mocked(deliverPaneInput).mockResolvedValue({ status: "delivered" } as never);
 	vi.mocked(taskPanesHandlers.taskPaneAction).mockResolvedValue({ panes: [{ paneId: "%1" }] } as never);
 });
 
@@ -89,15 +92,15 @@ describe("extra agent exit scheduling", () => {
 	it("self: keeps the pane alone while the turn runs, then types the quit command a moment after the Stop", async () => {
 		expect(schedule(PANE, true)).toEqual({ scheduled: true, already: false });
 		await advance(60_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
 
 		await report("Stop", PANE);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS - 1);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		await advance(1);
 
-		expect(sendPaneInput).toHaveBeenCalledWith(task, PANE, expect.any(Array), { idPrefix: "extra-agent-exit" });
+		expect(deliverPaneInput).toHaveBeenCalledWith(task, { deliveryId: "delivery-1", incarnation: INCARNATION, stages: expect.any(Array), attempt: 1 });
 		expect(waitForPanesToEmpty).toHaveBeenCalledWith([target]);
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledWith({ taskId: task.id, action: { kind: "close", paneId: PANE } });
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(false);
@@ -107,14 +110,14 @@ describe("extra agent exit scheduling", () => {
 		await report("Stop", PANE);
 		schedule(PANE, true);
 		await advance(10_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 	});
 
 	it("another agent that is idle (last report Stop) is closed at once", async () => {
 		await report("Stop", PANE);
 		schedule(PANE, false);
 		await advance(0);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
 
@@ -122,16 +125,16 @@ describe("extra agent exit scheduling", () => {
 		await report("UserPromptSubmit", PANE);
 		schedule(PANE, false);
 		await advance(30_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		await report("Stop", PANE);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 
 		_resetExtraAgentExitForTests();
 		vi.clearAllMocks();
 		schedule("%6", false);
 		await advance(30_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 	});
 
 	it("closes the pane hard, typing nothing, when no turn ends within the deadline", async () => {
@@ -139,7 +142,7 @@ describe("extra agent exit scheduling", () => {
 		await advance(EXTRA_AGENT_EXIT_DEADLINE_MS - 1);
 		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
 		await advance(1);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(waitForPanesToEmpty).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 		expect(addNote).toHaveBeenCalledTimes(1);
@@ -151,7 +154,7 @@ describe("extra agent exit scheduling", () => {
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
 		await report("Stop", PANE);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
 
@@ -174,19 +177,19 @@ describe("running the exit", () => {
 	it("closes without typing when the agent has no quit command", async () => {
 		vi.mocked(resolveAgentExitTargets).mockResolvedValue([{ ...target, entry: { ...entry, agentCmd: "my-own-cli", agentId: null } } as never]);
 		await runSelfExit();
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
 
 	it("types nothing at a pane whose agent already left", async () => {
 		vi.mocked(agentPidsUnder).mockReturnValue([]);
 		await runSelfExit();
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
 
 	it("still closes the pane when the quit command was not delivered, without waiting for an exit", async () => {
-		vi.mocked(sendPaneInput).mockResolvedValue({ status: "not-started", reason: "pane-gone" } as never);
+		vi.mocked(deliverPaneInput).mockResolvedValue({ status: "not-started", reason: "pane-gone" } as never);
 		await runSelfExit();
 		expect(waitForPanesToEmpty).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
@@ -237,7 +240,7 @@ describe("running the exit", () => {
 	});
 
 	it("still writes the note when the pane died before the last input step", async () => {
-		vi.mocked(sendPaneInput).mockImplementation(async () => {
+		vi.mocked(deliverPaneInput).mockImplementation(async () => {
 			vi.mocked(resolveAgentExitTargets).mockResolvedValue([]);
 			return { status: "indeterminate" } as never;
 		});
@@ -271,7 +274,7 @@ describe("running the exit", () => {
 	it("does nothing when the pane is already gone", async () => {
 		vi.mocked(resolveAgentExitTargets).mockResolvedValue([]);
 		await runSelfExit();
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(false);
 	});
@@ -290,12 +293,12 @@ describe("which conversation's turn counts (A)", () => {
 		schedule(PANE, true);
 		await report("Stop", PANE, "ffffffff-0000-4000-8000-000000000000");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS * 3);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		_resetExtraAgentExitForTests();
 		await report("Stop", PANE, "ffffffff-0000-4000-8000-000000000000");
 		schedule(PANE, false);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS * 3);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 	});
 
 	it("accepts a report while the pane has no recorded session yet", async () => {
@@ -303,7 +306,7 @@ describe("which conversation's turn counts (A)", () => {
 		scheduleExtraAgentExit(fresh, PANE, { self: true, binding });
 		await recordAgentTurnEvent(fresh, PANE, "Stop", "whatever");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -314,12 +317,12 @@ describe("a new turn inside the settle window (C)", () => {
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS - 100);
 		await report("UserPromptSubmit");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS * 3);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
 		await report("Stop");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
 
@@ -331,10 +334,10 @@ describe("a new turn inside the settle window (C)", () => {
 			return task;
 		});
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
 		await advance(EXTRA_AGENT_EXIT_DEADLINE_MS - EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
 });
@@ -346,7 +349,7 @@ describe("a turn that ended while the dialog was open (G)", () => {
 		await report("Stop");
 		schedule(PANE, true, { requestedAt });
 		await advance(0);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 	});
 
 	it("still waits when the Stop came before the request began, or a prompt followed it", async () => {
@@ -354,7 +357,7 @@ describe("a turn that ended while the dialog was open (G)", () => {
 		await advance(5_000);
 		schedule(PANE, true, { requestedAt: Date.now() });
 		await advance(2_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		_resetExtraAgentExitForTests();
 		const requestedAt = Date.now();
 		await advance(1_000);
@@ -362,7 +365,7 @@ describe("a turn that ended while the dialog was open (G)", () => {
 		await report("UserPromptSubmit");
 		schedule(PANE, true, { requestedAt });
 		await advance(2_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 	});
 });
 
@@ -372,7 +375,7 @@ describe("the exit belongs to the agent it was asked for (B)", () => {
 		schedule(PANE, true);
 		await report("Stop");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
 		expect(vi.mocked(addNote).mock.calls[0]![3]).toBe(`Exit of extra agent Claude / Opus · auto in pane ${PANE} was dropped: the addressed agent is no longer running in this task`);
 	});
@@ -412,7 +415,7 @@ describe("the exit belongs to the agent it was asked for (B)", () => {
 		schedule(PANE, true);
 		await report("Stop");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(addNote).mock.calls[0]![3]).toContain("Closed extra agent");
 
@@ -426,7 +429,7 @@ describe("the exit belongs to the agent it was asked for (B)", () => {
 		schedule(PANE, true);
 		await report("Stop");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(addNote).mock.calls[0]![3]).toContain("Closed extra agent");
 	});
@@ -457,7 +460,7 @@ describe("the exit belongs to the agent it was asked for (B)", () => {
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(false);
 		schedule(PANE, false);
 		await advance(10_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 
 		await report("Stop", "%6");
 		schedule("%7", true);
@@ -465,7 +468,7 @@ describe("the exit belongs to the agent it was asked for (B)", () => {
 		expect(isExtraAgentExitScheduled(task.id, "%7")).toBe(false);
 		schedule("%6", false);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS * 3);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		await advance(EXTRA_AGENT_EXIT_DEADLINE_MS);
 	});
 });
@@ -477,29 +480,29 @@ describe("whose Stop counts for a pane with no recorded session (P)", () => {
 		scheduleExtraAgentExit(unrecorded, PANE, { self: true, binding });
 		await recordAgentTurnEvent(unrecorded, PANE, "Stop", "nested-exec", async () => false);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS * 3);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		await recordAgentTurnEvent(unrecorded, PANE, "Stop", "interactive", async () => true);
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 
 		_resetExtraAgentExitForTests();
 		vi.clearAllMocks();
 		await recordAgentTurnEvent(unrecorded, PANE, "Stop", "nested-exec", async () => false);
 		scheduleExtraAgentExit(unrecorded, PANE, { self: false, binding });
 		await advance(10_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 	});
 
 	it("a Codex Stop without a session id is not proved, and a non-Codex Stop counts", async () => {
 		await recordAgentTurnEvent(unrecorded, PANE, "Stop", null, async () => true);
 		scheduleExtraAgentExit(unrecorded, PANE, { self: false, binding });
 		await advance(10_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		_resetExtraAgentExitForTests();
 		await recordAgentTurnEvent(unrecorded, PANE, "Stop", null);
 		scheduleExtraAgentExit(unrecorded, PANE, { self: false, binding });
 		await advance(0);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -509,7 +512,7 @@ describe("a prompt of another conversation (R)", () => {
 		await report("UserPromptSubmit", PANE, "bbbbbbbb-0000-4000-8000-000000000000");
 		schedule(PANE, false);
 		await advance(10_000);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
 	});
 });
@@ -526,7 +529,7 @@ describe("a running exit stops on teardown (Q)", () => {
 		schedule(PANE, true);
 		await report("Stop");
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
-		expect(sendPaneInput).toHaveBeenCalledTimes(1);
+		expect(deliverPaneInput).toHaveBeenCalledTimes(1);
 		forgetTaskExitState(task.id);
 		vi.mocked(resolveAgentExitTargets).mockResolvedValue([{ ...target, rootPid: 1 } as never]);
 		finishWait();
@@ -559,8 +562,40 @@ describe("the turn is re-read right before acting (S)", () => {
 		await report("UserPromptSubmit");
 		release();
 		await advance(0);
-		expect(sendPaneInput).not.toHaveBeenCalled();
+		expect(deliverPaneInput).not.toHaveBeenCalled();
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
+		await advance(EXTRA_AGENT_EXIT_DEADLINE_MS);
+		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps the deadline alive when the quit command was not delivered and a prompt lands during the re-check", async () => {
+		vi.mocked(deliverPaneInput).mockResolvedValue({ status: "not-started", reason: "pane-gone" } as never);
+		vi.mocked(addressedAgentRefusal).mockResolvedValueOnce(null).mockImplementationOnce(async () => {
+			await report("UserPromptSubmit");
+			return null;
+		});
+		schedule(PANE, true);
+		await report("Stop");
+		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
+		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
+		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
+		await advance(EXTRA_AGENT_EXIT_DEADLINE_MS);
+		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
+	});
+
+	it("a prompt that lands while the pane is being pinned sends no quit command and leaves the exit waiting under its deadline (AC)", async () => {
+		let pinned = () => {};
+		vi.mocked(pinTaskPane).mockImplementation(() => new Promise((resolve) => { pinned = () => resolve({ ok: true, incarnation: INCARNATION } as never); }));
+		schedule(PANE, true);
+		await report("Stop");
+		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
+		await vi.waitFor(() => expect(pinTaskPane).toHaveBeenCalled());
+		await report("UserPromptSubmit");
+		pinned();
+		await advance(0);
+		expect(deliverPaneInput).not.toHaveBeenCalled();
+		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(true);
+		vi.mocked(pinTaskPane).mockResolvedValue({ ok: true, incarnation: INCARNATION } as never);
 		await advance(EXTRA_AGENT_EXIT_DEADLINE_MS);
 		expect(taskPanesHandlers.taskPaneAction).toHaveBeenCalledTimes(1);
 	});
@@ -572,6 +607,77 @@ describe("the turn is re-read right before acting (S)", () => {
 		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
 		expect(isExtraAgentExitScheduled(task.id, PANE)).toBe(false);
 		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe("a cancelled exit stays cancelled (AE, AF)", () => {
+	it("a wait-again that finds the exit cancelled re-arms nothing", async () => {
+		schedule(PANE, true);
+		const exit = pending.get(`${task.id}:${PANE}`)!;
+		exit.phase = "running";
+		exit.cancelled = true;
+		_afterRunForTests(exit, "wait-again");
+		expect(exit.phase).toBe("running");
+		exit.cancelled = false;
+		_afterRunForTests(exit, "wait-again");
+		expect(exit.phase).toBe("waiting");
+	});
+
+	it("a turn report that was being judged when the task was torn down is not written afterwards", async () => {
+		const unrecorded = { ...task, sessionState: { panes: [] } } as Task;
+		let answerProof = (_interactive: boolean) => {};
+		const proof = () => new Promise<boolean>((resolve) => { answerProof = resolve; });
+		const recording = recordAgentTurnEvent(unrecorded, PANE, "Stop", "interactive", proof);
+		forgetTaskExitState(task.id);
+		answerProof(true);
+		await recording;
+		scheduleExtraAgentExit(task, PANE, { self: false, binding });
+		await advance(10_000);
+		expect(deliverPaneInput).not.toHaveBeenCalled();
+
+		_resetExtraAgentExitForTests();
+		const paneRecording = recordAgentTurnEvent(unrecorded, PANE, "Stop", "interactive", proof);
+		forgetPaneExitState(task.id, PANE);
+		answerProof(true);
+		await paneRecording;
+		scheduleExtraAgentExit(task, PANE, { self: false, binding });
+		await advance(10_000);
+		expect(deliverPaneInput).not.toHaveBeenCalled();
+	});
+});
+
+describe("the close holds a teardown and a replaced pane (AB)", () => {
+	const closeRun = async () => {
+		schedule(PANE, true);
+		await report("Stop");
+		await advance(EXTRA_AGENT_EXIT_SETTLE_MS);
+	};
+
+	it("a task teardown during the close lookup cancels it, so a replacement pane is not closed", async () => {
+		await report("Stop");
+		let release = () => {};
+		// the first lookup serves the run itself, the second is the close preflight
+		vi.mocked(resolveAgentExitTargets)
+			.mockResolvedValueOnce([target as never])
+			.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve([target as never]); }));
+		schedule(PANE, false);
+		await advance(0);
+		await vi.waitFor(() => expect(resolveAgentExitTargets).toHaveBeenCalledTimes(2));
+		forgetTaskExitState(task.id);
+		release();
+		await advance(0);
+		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
+		expect(addNote).not.toHaveBeenCalled();
+	});
+
+	it("drops the exit, closing nothing, when the pane's incarnation changed between the two pins", async () => {
+		vi.mocked(pinTaskPane)
+			.mockResolvedValueOnce({ ok: true, incarnation: INCARNATION } as never)
+			.mockResolvedValueOnce({ ok: true, incarnation: INCARNATION } as never)
+			.mockResolvedValueOnce({ ok: true, incarnation: { ...INCARNATION, serverToken: "other" } } as never);
+		await closeRun();
+		expect(taskPanesHandlers.taskPaneAction).not.toHaveBeenCalled();
+		expect(vi.mocked(addNote).mock.calls[0]![3]).toContain("was replaced before it could be closed");
 	});
 });
 

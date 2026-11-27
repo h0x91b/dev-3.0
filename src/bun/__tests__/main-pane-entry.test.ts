@@ -9,11 +9,15 @@ describe("mainPaneEntry", () => {
 		expect(mainPaneEntry<Entry>([{ main: false, id: "x" }, main])).toBe(main);
 	});
 
-	it("is index 0 only when no entry carries a `main` key (data saved before the flag)", () => {
+	it("is index 0 when that entry carries no `main` key (data saved before the flag), whatever the later entries say", () => {
 		const first = { id: "a" };
 		expect(mainPaneEntry<Entry>([first, { id: "b" }])).toBe(first);
-		expect(mainPaneEntry<Entry>([{ id: "a" }, { main: false, id: "b" }])).toBeUndefined();
+		expect(mainPaneEntry<Entry>([first, { main: false, id: "b" }])).toBe(first);
 		expect(mainPaneEntry<Entry>([])).toBeUndefined();
+	});
+
+	it("is nobody when index 0 is an extra marked `main: false` and no entry is flagged", () => {
+		expect(mainPaneEntry<Entry>([{ main: false, id: "x" }, { id: "legacy" }])).toBeUndefined();
 	});
 
 	it("never promotes an entry marked `main: false`", () => {

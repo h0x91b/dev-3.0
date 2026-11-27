@@ -208,6 +208,17 @@ describe("the exit stays with the agent the dialog showed (B)", () => {
 	});
 });
 
+describe("the pane is looked up again after the approval (AD)", () => {
+	it("refuses with `not-extra` when the agent's pane is gone by the time the dialog is answered", async () => {
+		const pending = exit();
+		await vi.waitFor(() => expect(push).toHaveBeenCalled());
+		vi.mocked(resolveAgentExitTargets).mockResolvedValue([]);
+		await answer(true);
+		await expect(pending).resolves.toMatchObject({ outcome: "refused", reason: "not-extra", message: expect.stringContaining("The agent in pane %2 is no longer running.") });
+		expect(scheduleExtraAgentExit).not.toHaveBeenCalled();
+	});
+});
+
 describe("concurrent exits are joined per target (K)", () => {
 	beforeEach(() => {
 		vi.mocked(agentPaneRoles).mockResolvedValue(new Map([["%1", "main"], ["%2", "agent"], ["%4", "agent"]]));

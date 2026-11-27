@@ -76,6 +76,7 @@ async function performExit(opts: AgentExitOptions): Promise<CliAgentExitOutcome>
 		if (current.hibernated) return notExtra(`The task was hibernated while the dialog was open, so pane ${paneId} is gone.`);
 		const refusal = await exitBindingRefusal(current, paneId, binding);
 		if (refusal) return notExtra(`The agent in pane ${paneId} changed while the dialog was open (${refusal}).`);
+		if (!(await resolveAgentExitTargets(current)).some((candidate) => candidate.paneId === paneId)) return notExtra(`The agent in pane ${paneId} is no longer running.`);
 	}
 	return outcome(scheduleExtraAgentExit(current, paneId, { self, binding, requestedAt: opts.requestedAt }).already);
 }

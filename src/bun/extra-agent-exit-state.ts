@@ -38,7 +38,7 @@ export interface PendingExit {
 	cancelled: boolean;
 	/** The quit command went out: the pane leaving is the expected result, not a reason to stop. */
 	typed: boolean;
-	/** The pane is being closed: nothing left to cancel. */
+	/** The pane is being closed: its own exit is expected, but a task teardown still cancels. */
 	closing: boolean;
 	deadlineTimer: ReturnType<typeof setTimeout>;
 	settleTimer: ReturnType<typeof setTimeout> | null;
@@ -48,6 +48,13 @@ export const lastTurn = new Map<string, TurnReport>();
 export const pending = new Map<string, PendingExit>();
 
 export const exitKey = (taskId: string, paneId: string) => `${taskId}:${paneId}`;
+
+const paneGeneration = new Map<string, number>();
+const taskGeneration = new Map<string, number>();
+const bump = (counts: Map<string, number>, key: string) => counts.set(key, (counts.get(key) ?? 0) + 1);
+
+/** Changes whenever the pane's or its task's state was forgotten: a report judged before that is stale. */
+export const stateGeneration = (taskId: string, paneId: string) => `${taskGeneration.get(taskId) ?? 0}.${paneGeneration.get(exitKey(taskId, paneId)) ?? 0}`;
 
 function dropPending(key: string, cancelRunning: (exit: PendingExit) => boolean): void {
 	const exit = pending.get(key);
@@ -67,6 +74,7 @@ export function finishPendingExit(exit: PendingExit): void {
 /** A pane that exited carries no idle state and no scheduled exit into whatever takes its id. */
 export function forgetPaneExitState(taskId: string, paneId: string): void {
 	const key = exitKey(taskId, paneId);
+	bump(paneGeneration, key);
 	lastTurn.delete(key);
 	dropPending(key, (exit) => !exit.typed && !exit.closing);
 }
@@ -74,14 +82,17 @@ export function forgetPaneExitState(taskId: string, paneId: string): void {
 /** The task's terminal is torn down: every pane of it is gone. */
 export function forgetTaskExitState(taskId: string): void {
 	const prefix = `${taskId}:`;
+	bump(taskGeneration, taskId);
 	for (const key of [...lastTurn.keys(), ...pending.keys()]) {
 		if (!key.startsWith(prefix)) continue;
 		lastTurn.delete(key);
-		dropPending(key, (exit) => !exit.closing);
+		dropPending(key, () => true);
 	}
 }
 
 export function resetExtraAgentExitStateForTests(): void {
+	paneGeneration.clear();
+	taskGeneration.clear();
 	for (const key of [...pending.keys()]) dropPending(key, () => true);
 	lastTurn.clear();
 }
