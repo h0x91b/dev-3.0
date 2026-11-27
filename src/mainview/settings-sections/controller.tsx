@@ -453,6 +453,12 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 		},
 		[persistSettingChange],
 	);
+	const handleConfirmExtraAgentCloseToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ confirmExtraAgentClose: enabled });
+		},
+		[persistSettingChange],
+	);
 	const handleAutoHibernateChange = useCallback(
 		(minutes: number) => persistSettingChange({ autoHibernateMinutes: minutes }),
 		[persistSettingChange],
@@ -1044,6 +1050,7 @@ export function useGlobalSettingsController(focus: SettingsPresetFocus) {
 		handleAddExternalApp,
 		handleAgentEnvDefaultsChange,
 		handleAgentLaunchAutoApproveChange,
+		handleConfirmExtraAgentCloseToggle,
 		handleAgentTrafficToggle,
 		handleArtifactTemplateChange,
 		handleArtifactTemplatePathChange,

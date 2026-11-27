@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { handleAgent } from "../commands/agent";
+import { encodeAgentHandle } from "../../shared/agent-handle";
 import { sendRequest } from "../socket-client";
 import type { CliContext } from "../context";
 vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
@@ -66,6 +67,83 @@ it("lists agent and preset IDs", async () => {
 	vi.mocked(sendRequest).mockResolvedValue({ id: "1", ok: true, data: [{ id: "agent-1", name: "Agent", configurations: [{ id: "preset-1", name: "Preset" }] }] });
 	await handleAgent("list", { flags: {}, positional: [] }, "/tmp/agent.sock", context);
 	expect(output).toContain("preset-1  Preset");
+});
+describe("agent exit", () => {
+	const HANDLE = encodeAgentHandle({ paneId: "%2", sessionId: null, paneToken: "token", agentProcess: "77@Mon Jan 1 00:00:00 2024" });
+	const scheduled = { outcome: "scheduled", taskId: context.taskId, seq: 4, paneId: "%2", agent: "Codex / High", self: true, already: false };
+	const respond = (data: unknown) => vi.mocked(sendRequest).mockImplementation(async (_socket, method) => ({ id: "1", ok: true, data: method === "approval.policy" ? { autoApproveMs: 0 } : data }));
+	const exit = (flags: Record<string, string> = {}, ctx: CliContext | null = context) => handleAgent("exit", { flags, positional: [] }, "/tmp/agent.sock", ctx);
+	let stderr = "";
+	beforeEach(() => {
+		stderr = "";
+		vi.mocked(process.stderr.write).mockImplementation((s) => { stderr += s; return true; });
+		vi.stubEnv("TMUX_PANE", "%2");
+		vi.stubEnv("DEV3_PANE_ID", "");
+		respond(scheduled);
+	});
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("asks for the calling pane's exit, attributed to its task, and tells the agent to end its turn", async () => {
+		await exit();
+		expect(sendRequest).toHaveBeenLastCalledWith("/tmp/agent.sock", "agent.exit", { taskId: context.taskId, projectId: context.projectId, sourceTaskId: context.taskId, selfPaneId: "%2" }, { timeoutMs: 600000 });
+		expect(output).toBe("Exit scheduled for pane %2 (Codex / High). It closes after its current turn ends. End your turn now.\n");
+	});
+	it("takes a native pane id from DEV3_PANE_ID before TMUX_PANE", async () => {
+		vi.stubEnv("DEV3_PANE_ID", "pane-4");
+		await exit();
+		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.exit", expect.objectContaining({ selfPaneId: "pane-4" }), expect.anything());
+	});
+	it("closes another agent by handle, with a task, a project and a reason, without telling it to end its turn", async () => {
+		respond({ ...scheduled, self: false });
+		await exit({ agent: HANDLE, task: "seq:8", project: "project-2", reason: "Review done" });
+		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.exit", {
+			taskId: "seq:8", projectId: "project-2", sourceTaskId: context.taskId, selfPaneId: "%2", agentHandle: HANDLE, reason: "Review done",
+		}, expect.anything());
+		expect(output).toBe("Exit scheduled for pane %2 (Codex / High). It closes after its current turn ends.\n");
+	});
+	it("says so when the exit was already scheduled, and prints the outcome as JSON", async () => {
+		respond({ ...scheduled, already: true });
+		await exit();
+		expect(output).toBe("Exit already scheduled for pane %2.\n");
+		output = "";
+		await exit({ json: "true" });
+		expect(JSON.parse(output)).toEqual({ ...scheduled, already: true });
+	});
+	it("maps a decline to the launch-declined exit code and a timeout to a non-blind-retry message", async () => {
+		respond({ outcome: "declined", taskId: context.taskId, seq: 4 });
+		await expect(exit()).rejects.toThrow("EXIT_10");
+		expect(stderr).toContain("User declined closing the agent");
+		stderr = "";
+		vi.mocked(sendRequest).mockImplementation(async (_socket, method) => {
+			if (method === "approval.policy") return { id: "1", ok: true, data: { autoApproveMs: 0 } };
+			throw new Error("Socket timeout after 600000ms");
+		});
+		await expect(exit()).rejects.toThrow("EXIT_1");
+		expect(stderr).toContain("Timed out waiting for the exit request");
+	});
+	it("maps the main agent to its own exit code and everything else that is not an extra agent to another", async () => {
+		respond({ outcome: "refused", reason: "main-agent", message: "This is the task's main agent; dev3 agent exit only closes extra agents. To finish the task, request completion: dev3 task move --status completed" });
+		await expect(exit()).rejects.toThrow("EXIT_51");
+		expect(stderr).toContain("dev3 task move --status completed");
+		respond({ outcome: "refused", reason: "not-extra", message: "Pane %9 is not an agent pane." });
+		await expect(exit()).rejects.toThrow("EXIT_52");
+	});
+	it("refuses with the not-extra code, asking nothing, when the shell has no pane id and no handle is given", async () => {
+		vi.stubEnv("TMUX_PANE", "");
+		await expect(exit()).rejects.toThrow("EXIT_52");
+		expect(stderr).toContain("no pane id");
+		expect(sendRequest).not.toHaveBeenCalled();
+	});
+	it("rejects bad arguments before sending anything", async () => {
+		const cases: Array<[Record<string, string>, CliContext | null]> = [
+			[{ agent: "true" }, context], [{ agent: "not-a-handle!" }, context], [{ yes: "true" }, context], [{ reason: "" }, context], [{}, null],
+		];
+		for (const [flags, ctx] of cases) {
+			await expect(exit(flags, ctx), JSON.stringify(flags)).rejects.toThrow("EXIT_3");
+		}
+		await expect(handleAgent("exit", { flags: {}, positional: ["extra"] }, "/tmp/agent.sock", context)).rejects.toThrow("EXIT_3");
+		expect(sendRequest).not.toHaveBeenCalled();
+	});
 });
 describe("agent resume", () => {
 	const resumed = {

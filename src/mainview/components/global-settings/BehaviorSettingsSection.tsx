@@ -163,6 +163,7 @@ interface BehaviorSettingsSectionProps {
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
 	onAgentLaunchAutoApproveChange: (minutes: number) => void;
+	onConfirmExtraAgentCloseToggle: (enabled: boolean) => void;
 	onAutoHibernateChange: (minutes: number) => void;
 	onAutoHibernateConfirmChange: (minutes: number) => void;
 	/** False on a host with no OS-registered `dev3://` handler (Windows, Linux) — the
@@ -190,6 +191,7 @@ export default function BehaviorSettingsSection({
 	onCompletionOfferStyleChange,
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
+	onConfirmExtraAgentCloseToggle,
 	onAutoHibernateChange,
 	onAutoHibernateConfirmChange,
 	prOriginTaskLinkSupported,
@@ -326,6 +328,20 @@ export default function BehaviorSettingsSection({
 				minutes={globalSettings.agentLaunchAutoApproveMinutes ?? DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES}
 				onChange={onAgentLaunchAutoApproveChange}
 			/>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="confirm-extra-agent-close">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">{t("settings.confirmExtraAgentClose")}</p>
+				<p className="text-fg-3 text-sm mb-3">{t("settings.confirmExtraAgentCloseDesc")}</p>
+				<SettingsToggle
+					checked={globalSettings.confirmExtraAgentClose !== false}
+					ariaLabel={t("settings.confirmExtraAgentClose")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
+					onToggle={() => onConfirmExtraAgentCloseToggle(globalSettings.confirmExtraAgentClose === false)}
+				/>
+			</div>
 			</SettingsEntry>
 
 			<SettingsEntry anchor="pr-origin-task-link">

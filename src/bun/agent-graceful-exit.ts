@@ -243,6 +243,40 @@ function paneSubtreeEmpty(rootPid: number, evidence: AgentProcessEvidence): bool
 	return collectDescendants(rootPid, evidence.tree).length === 0;
 }
 
+export type PaneEmptyWait =
+	| { kind: "exited"; elapsedMs: number }
+	| { kind: "timed-out"; elapsedMs: number; stillRunning: string[]; evidence: "read" | "unreadable" };
+
+/** Wait, bounded, until nothing runs under any of `targets`' pane roots; a transient unreadable table keeps waiting. */
+export async function waitForPanesToEmpty(
+	targets: AgentExitTarget[],
+	options: Pick<GracefulAgentExitOptions, "timeoutMs" | "pollMs" | "sleep" | "now"> = {},
+): Promise<PaneEmptyWait> {
+	const timeoutMs = options.timeoutMs ?? GRACEFUL_AGENT_EXIT_TIMEOUT_MS;
+	const pollMs = options.pollMs ?? GRACEFUL_AGENT_EXIT_POLL_MS;
+	const sleep = options.sleep ?? defaultSleep;
+	const now = options.now ?? Date.now;
+	const startedAt = now();
+	const deadline = startedAt + timeoutMs;
+	for (;;) {
+		const fresh = await readAgentProcessEvidence();
+		if (fresh === null) {
+			// The table was readable a moment ago; treat a transient read failure as
+			// "keep waiting" rather than as "the pane is quiet".
+		} else if (targets.every((target) => paneSubtreeEmpty(target.rootPid, fresh))) {
+			return { kind: "exited", elapsedMs: now() - startedAt };
+		}
+		if (now() >= deadline) break;
+		await sleep(Math.min(pollMs, Math.max(1, deadline - now())));
+	}
+	const elapsedMs = now() - startedAt;
+	const final = await readAgentProcessEvidence();
+	const stillRunning = targets
+		.filter((target) => !final || !paneSubtreeEmpty(target.rootPid, final))
+		.map((target) => target.paneId);
+	return { kind: "timed-out", elapsedMs, stillRunning, evidence: final ? "read" : "unreadable" };
+}
+
 /**
  * Type each live agent's quit command and wait, bounded, for its pane to go quiet.
  * Never throws: every failure is logged and reported as an outcome, because the kill
@@ -258,10 +292,6 @@ export async function requestGracefulAgentExit(task: Task, options: GracefulAgen
 }
 
 async function runGracefulAgentExit(task: Task, options: GracefulAgentExitOptions): Promise<GracefulAgentExitOutcome> {
-	const timeoutMs = options.timeoutMs ?? GRACEFUL_AGENT_EXIT_TIMEOUT_MS;
-	const pollMs = options.pollMs ?? GRACEFUL_AGENT_EXIT_POLL_MS;
-	const sleep = options.sleep ?? defaultSleep;
-	const now = options.now ?? Date.now;
 	const taskId = task.id.slice(0, 8);
 
 	let targets: AgentExitTarget[];
@@ -334,27 +364,11 @@ async function runGracefulAgentExit(task: Task, options: GracefulAgentExitOption
 		return { kind: "skipped", reason: "not-delivered" };
 	}
 
-	const startedAt = now();
-	const deadline = startedAt + timeoutMs;
-	const pids = asked.map((target) => target.rootPid);
-	for (;;) {
-		const fresh = await readAgentProcessEvidence();
-		if (fresh === null) {
-			// The table was readable a moment ago; treat a transient read failure as
-			// "keep waiting" rather than as "the pane is quiet".
-		} else if (pids.every((pid) => paneSubtreeEmpty(pid, fresh))) {
-			const elapsedMs = now() - startedAt;
-			log.info("graceful agent exit: agent left on request", { taskId, panes: asked.length, elapsedMs });
-			return { kind: "exited", elapsedMs, panes: asked.length };
-		}
-		if (now() >= deadline) break;
-		await sleep(Math.min(pollMs, Math.max(1, deadline - now())));
+	const waited = await waitForPanesToEmpty(asked, options);
+	if (waited.kind === "exited") {
+		log.info("graceful agent exit: agent left on request", { taskId, panes: asked.length, elapsedMs: waited.elapsedMs });
+		return { kind: "exited", elapsedMs: waited.elapsedMs, panes: asked.length };
 	}
-	const elapsedMs = now() - startedAt;
-	const final = await readAgentProcessEvidence();
-	const stillRunning = asked
-		.filter((target) => !final || !paneSubtreeEmpty(target.rootPid, final))
-		.map((target) => target.paneId);
-	log.warn("graceful agent exit: timed out, proceeding to kill", { taskId, timeoutMs, elapsedMs, stillRunning, evidence: final ? "read" : "unreadable" });
-	return { kind: "timed-out", elapsedMs, panes: asked.length, stillRunning };
+	log.warn("graceful agent exit: timed out, proceeding to kill", { taskId, timeoutMs: options.timeoutMs ?? GRACEFUL_AGENT_EXIT_TIMEOUT_MS, elapsedMs: waited.elapsedMs, stillRunning: waited.stillRunning, evidence: waited.evidence });
+	return { kind: "timed-out", elapsedMs: waited.elapsedMs, panes: asked.length, stillRunning: waited.stillRunning };
 }

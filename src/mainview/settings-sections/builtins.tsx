@@ -60,6 +60,7 @@ function BuiltinBehaviorSection() {
 			onCompletionOfferStyleChange={s.handleCompletionOfferStyleChange}
 			onPrOriginTaskLinkToggle={s.handlePrOriginTaskLinkToggle}
 			onAgentLaunchAutoApproveChange={s.handleAgentLaunchAutoApproveChange}
+			onConfirmExtraAgentCloseToggle={s.handleConfirmExtraAgentCloseToggle}
 			onAutoHibernateChange={s.handleAutoHibernateChange}
 			onAutoHibernateConfirmChange={s.handleAutoHibernateConfirmChange}
 			prOriginTaskLinkSupported={s.prOriginTaskLinkSupported}

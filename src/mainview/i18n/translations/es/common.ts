@@ -95,6 +95,11 @@ const common = {
 	"agentLaunch.waking": "Despertando…",
 	"agentLaunch.autoHibernateIn": "Se hiberna sola en {time}",
 	"agentLaunch.autoWakeIn": "Se despierta sola en {time}",
+	"agentLaunch.titleCloseAgent": "¿Cerrar el agente adicional?",
+	"agentLaunch.closeAgentNote": "{agent} (panel {pane}) termina su sesión cuando acabe su turno actual. La tarea y su agente principal siguen en marcha, y la conversación queda guardada en disco.",
+	"agentLaunch.closeAgent": "Cerrar agente",
+	"agentLaunch.closingAgent": "Cerrando…",
+	"agentLaunch.autoCloseAgentIn": "Se cierra solo en {time}",
 	"agentLaunch.autoApproveHeld": "Esperando tu respuesta",
 
 	// Navegación estilo Vimium

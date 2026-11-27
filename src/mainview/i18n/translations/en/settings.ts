@@ -323,6 +323,8 @@ const settings = {
 	"settings.diskCriticalBelow": "Free disk: critical below",
 	"settings.cpuLoadHint": "Share of all cores busy since the last check; 100% means every core is working. Load average is shown but not judged.",
 	"settings.agentLaunchAutoApproveOff": "Never — always wait for me",
+	"settings.confirmExtraAgentClose": "Confirm closing extra agents",
+	"settings.confirmExtraAgentCloseDesc": "Ask before an agent ends an extra agent's session — its own or another one in the task. Turn off to let reviewers close themselves without a dialog.",
 	"settings.autoApproveHours": "hours",
 	"settings.autoApproveMinutes": "minutes",
 	"settings.autoApproveSeconds": "seconds",

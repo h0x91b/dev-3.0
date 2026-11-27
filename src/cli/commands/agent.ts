@@ -2,11 +2,20 @@ import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { formatTaskRef } from "../../shared/task-refs";
 import type { SpawnAgentResult } from "../../shared/conversation-handoff-model";
 import type { CliResumeOutcome, ResumePaneReport } from "../../shared/agent-resume";
-import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE } from "../../shared/cli-exit-codes";
+import type { CliAgentExitOutcome } from "../../shared/agent-exit";
+import { decodeAgentHandle } from "../../shared/agent-handle";
+import {
+	CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT,
+	CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA,
+	CLI_EXIT_CODE_LAUNCH_DECLINED,
+	CLI_EXIT_CODE_RESUME_ALREADY_RUNNING,
+	CLI_EXIT_CODE_RESUME_UNAVAILABLE,
+} from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { launchApprovalTimeoutMs, withWaitHeartbeat } from "../launch-approval";
+import { selfPaneId } from "../pane-env";
 import { readReasonFlag } from "../approval-reason";
 import { exitError, exitUsage } from "../output";
 import { sendRequest } from "../socket-client";
@@ -31,8 +40,9 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		return;
 	}
 	if (subcommand === "resume") return handleResume(args, socketPath, context);
+	if (subcommand === "exit") return handleExit(args, socketPath, context);
 	if (subcommand === "aws-profiles") return handleAwsProfiles(args, socketPath);
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--reason <text>] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--reason <text>] [--json]");
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--reason <text>] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--reason <text>] [--json] | dev3 agent exit [--agent <handle>] [--task <id>] [--project <id>] [--reason <text>] [--json]");
 	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json", "reason"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -67,6 +77,57 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	// The agent is already running here; a missing pane id must not read as a failure worth retrying.
 	if (!result.spawn) return exitError("Unexpected response to agent spawn");
 	process.stdout.write("json" in args.flags ? `${JSON.stringify(result.spawn, null, 2)}\n` : `Spawned agent ${result.spawn.agentId ?? "default"} in pane ${result.spawn.paneId || "(id unknown)"} (${result.spawn.backend}).\n`);
+}
+
+/**
+ * `dev3 agent exit`: an extra agent ends its own session, or the main agent closes one by handle.
+ * The app only schedules the exit and answers; the pane closes once its turn is over.
+ */
+async function handleExit(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "reason", "json"]);
+	if (args.positional.length) return exitUsage("agent exit takes flags, not positional arguments");
+	const handle = args.flags.agent?.trim();
+	if (args.flags.agent !== undefined && (!handle || handle === "true")) return exitUsage("--agent needs a handle. Copy one from `dev3 pane list --task <id>`.");
+	if (handle && !decodeAgentHandle(handle)) return exitUsage(`"${handle}" is not an agent handle. Copy one from \`dev3 pane list --task <id>\`.`);
+	const paneId = selfPaneId();
+	if (!handle && !paneId) {
+		return exitError("dev3 agent exit without --agent must run inside an agent pane, and this shell has no pane id", "Pass --agent <handle> from `dev3 pane list` to close another extra agent.", CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA);
+	}
+	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
+	if (!rawTask) return exitUsage("No task in context — pass --task <id>.");
+	const projectId = resolveProjectId(args.flags.project, context);
+	const params = {
+		taskId: expandShortId(rawTask, context),
+		...(projectId ? { projectId } : {}),
+		...(context?.taskId ? { sourceTaskId: context.taskId } : {}),
+		...(paneId ? { selfPaneId: paneId } : {}),
+		...(handle ? { agentHandle: handle } : {}),
+		...readReasonFlag(args),
+	};
+	let resp;
+	try {
+		resp = await withWaitHeartbeat(sendRequest(socketPath, "agent.exit", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) }));
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
+			return exitError("Timed out waiting for the exit request", "The approval dialog may still be open; a later approval can still schedule the exit. Running the same command again waits on that same request.");
+		}
+		throw err;
+	}
+	if (!resp.ok) return exitError(resp.error || "Failed to schedule the agent exit");
+	const result = resp.data as CliAgentExitOutcome;
+	if (result.outcome === "declined") {
+		return exitError(result.stale ? "The target task's run ended before approval" : "User declined closing the agent", "Nothing was scheduled.", CLI_EXIT_CODE_LAUNCH_DECLINED);
+	}
+	if (result.outcome === "refused") {
+		return exitError(result.message, undefined, result.reason === "main-agent" ? CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT : CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA);
+	}
+	if ("json" in args.flags) {
+		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+	} else if (result.already) {
+		process.stdout.write(`Exit already scheduled for pane ${result.paneId}.\n`);
+	} else {
+		process.stdout.write(`Exit scheduled for pane ${result.paneId} (${result.agent}). It closes after its current turn ends.${result.self ? " End your turn now." : ""}\n`);
+	}
 }
 
 function describePane(pane: ResumePaneReport): string {

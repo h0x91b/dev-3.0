@@ -262,6 +262,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					<h2 id="agent-launch-title" className="text-fg text-lg font-semibold">
 						{sessionAction?.kind === "hibernate" ? t("agentLaunch.titleHibernate")
 							: sessionAction?.kind === "wake-shell" ? t("agentLaunch.titleWakeShell")
+							: sessionAction?.kind === "close-agent" ? t("agentLaunch.titleCloseAgent")
 							: request.resume ? t("agentLaunch.titleResume") : request.spawn ? t("agentLaunch.titleSpawn") : request.scratch ? t("agentLaunch.titleScratch") : t("agentLaunch.title")}
 					</h2>
 
@@ -314,6 +315,8 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						<p data-testid="agent-launch-session-action" className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">
 							{sessionAction.kind === "wake-shell"
 								? t("agentLaunch.wakeShellNote")
+								: sessionAction.kind === "close-agent"
+								? t("agentLaunch.closeAgentNote", { agent: sessionAction.agentLabel, pane: sessionAction.paneId })
 								: sessionAction.paneCount > 1
 									? `${t("task.hibernateConfirmBody")}\n\n${t("task.hibernateConfirmMulti", { count: String(sessionAction.paneCount) })}`
 									: t("task.hibernateConfirmBody")}
@@ -455,6 +458,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						>
 							{t(sessionAction?.kind === "hibernate" ? "agentLaunch.autoHibernateIn"
 								: sessionAction?.kind === "wake-shell" ? "agentLaunch.autoWakeIn"
+								: sessionAction?.kind === "close-agent" ? "agentLaunch.autoCloseAgentIn"
 								: request.resume ? "agentLaunch.autoResumeIn" : "agentLaunch.autoApproveIn", { time: formatCountdown(secondsLeft) })}
 						</p>
 					)}
@@ -501,9 +505,11 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						{launching
 							? sessionAction?.kind === "hibernate" ? t("agentLaunch.hibernating")
 								: sessionAction?.kind === "wake-shell" ? t("agentLaunch.waking")
+								: sessionAction?.kind === "close-agent" ? t("agentLaunch.closingAgent")
 								: request.resume ? t("agentLaunch.resuming") : t("agentLaunch.launching")
 							: sessionAction?.kind === "hibernate" ? t("task.hibernateConfirmCta")
 							: sessionAction?.kind === "wake-shell" ? t("terminal.wakeShell")
+							: sessionAction?.kind === "close-agent" ? t("agentLaunch.closeAgent")
 							: request.resume ? t("agentLaunch.resume")
 							: variants.length > 1
 								? t.plural("agentLaunch.launchVariants", variants.length)

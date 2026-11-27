@@ -33,6 +33,11 @@ describe("CLI exit code registry", () => {
 		expect(exitCodes.CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE).toBe(50);
 	});
 
+	it("gives a refused agent exit its own codes", () => {
+		expect(exitCodes.CLI_EXIT_CODE_AGENT_EXIT_MAIN_AGENT).toBe(51);
+		expect(exitCodes.CLI_EXIT_CODE_AGENT_EXIT_NOT_EXTRA).toBe(52);
+	});
+
 	it("documents every registered exit code in docs/cli-exit-codes.md", () => {
 		const doc = readFileSync(DOC_PATH, "utf-8");
 

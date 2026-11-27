@@ -356,20 +356,20 @@ You may ask the user to start another task; you never launch anything yourself. 
 - **After another task finishes** → \`dev3 task update --task seq:<N> --start-after seq:<M> [--until merged]\` (or on \`task create\`); it asks when it fires. Never poll.
 - **A throwaway peer agent** → \`dev3 task create --scratch --run\`. It starts idle, with **no prompt by design**: drive it with messages.
 
-It **inherits your priority** unless it has its own. Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
+Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
 
 Use it only for work that needs its own session — never to escape your scope, never several at once: each interrupts the user.
 
 Acting on another task? Pass \`--reason "<why>"\`: its approval dialog shows it.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory; \`dev3 task wake\` brings it back. An extra agent ends itself with \`dev3 agent exit\` (after your turn; may ask the user first), another via \`--agent <handle>\`; a main agent completes the task instead.
 
 **Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
 
 **Talking to another task's agent** — \`dev3 message --task seq:<N> --subject "<about 6 words>" "text"\` types straight into any live task's agent, not only one you started; it arrives labeled as agent traffic, with the command to answer you. \`--in 30m\` / \`--at 14:00\` queues it (aim it at yourself for a wake-up).
 
 - **\`--subject\` is mandatory** — the row's line in the agent-traffic view (\`⇧⌘M\`); missing → exit 17. About 6 words, 80 characters max, never naming who is talking (the row shows both tasks). Good: \`"<pr:1577> merged, main green"\`. Bad: \`"<seq:1722> -> Coordinator: CI verdict"\`.
-- For real dependencies only — hand over an interface, ask for a result, report back when yours is ready. Never chatter, never nagging a peer already working.
+- For real dependencies only — hand over an interface, ask for a result, report back when yours is ready. Never chatter or nag.
 - It lands in the main agent, never a shell or the focused pane. One agent only: \`--agent <handle>\` from \`dev3 pane list --task seq:<N>\`, refused once it exits or is replaced. \`<reply-unavailable>\` means the sender is unproven: no reply command.
 - A peer on ANOTHER project needs \`--project <id>\`, else a bare \`--task seq:<N>\` is looked up on your own board and reported as "task not found". An incoming message's reply command already includes it when needed.
 - A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`N-i\` suffix) rather than digging out its UUID.
