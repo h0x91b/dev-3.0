@@ -7,7 +7,7 @@ import { useImageDataUrl } from "../utils/useImageDataUrl";
 import { ArtifactsIcon, ImagesIcon } from "./TaskIcons";
 import Tooltip from "./Tooltip";
 import { useOlderClipsCleanup } from "../shared-media-delete";
-import VideoFrameThumb from "./VideoFrameThumb";
+import VideoFrameThumb, { ClipPlayBadge } from "./VideoFrameThumb";
 
 interface SharedOutputsListProps {
 	task: Task;
@@ -41,7 +41,6 @@ const SECTION_HEADING = "flex items-center gap-1.5 text-xs font-semibold upperca
 const CARD = "rounded-xl border border-edge bg-elevated text-left transition-colors hover:bg-elevated-hover hover:border-accent/50 group";
 
 const CLIP_TILE = "flex h-full w-full items-center justify-center bg-black/80 text-lg text-white";
-const CLIP_BADGE = "absolute inset-0 flex items-center justify-center text-lg text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.8)]";
 const CLIP_ICON_FONT = "'JetBrainsMono Nerd Font Mono'";
 
 function SharedImageThumb({ path, t }: { path: string; t: TFunction }) {
@@ -73,7 +72,7 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
 					? <VideoFrameThumb
 						path={image.storedPath}
 						fallback={<span data-testid="shared-video-card" title={t("imageViewer.video")} className={CLIP_TILE} style={{ fontFamily: CLIP_ICON_FONT }}>{"\uf04b"}</span>}
-						badge={<span data-testid="shared-video-card" title={t("imageViewer.video")} className={CLIP_BADGE} style={{ fontFamily: CLIP_ICON_FONT }}>{"\uf04b"}</span>}
+						badge={<ClipPlayBadge testId="shared-video-card" title={t("imageViewer.video")} size="md" />}
 					/>
 					: <SharedImageThumb path={image.storedPath} t={t} />}
 			</span>

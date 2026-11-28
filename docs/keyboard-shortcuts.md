@@ -31,10 +31,12 @@ this page and the website all read from it.
 | Find in an HTML artifact | ⌘F | Ctrl+F |
 | Find in an open file preview | ⌘F | Ctrl+F |
 | Send a review comment to the agent (in the comment box) | ⌘Enter | Ctrl+Enter |
-| Media viewer, video: previous / next frame | , / . | , / . |
+| Media viewer, video: previous / next frame (hold to keep stepping) | , / . | , / . |
+| Media viewer, video: go to the start / end | Home / End | Home / End |
 | Media viewer, video: back / forward 15 seconds | J / L | J / L |
 | Media viewer, video: slower / faster playback | ⇧, / ⇧. | Shift+, / Shift+. |
 | Media viewer, video: comment on the current moment | C | C |
+| Media viewer, video: mark numbered spots on the paused frame | M | M |
 | Split pane vertically / horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |
 | Zoom the focused pane (toggle) | ⇧⌘Enter | Ctrl+Shift+Enter |
 | Swap pane with previous / next | ⇧⌘, / ⇧⌘. | Ctrl+Shift+, / Ctrl+Shift+. |

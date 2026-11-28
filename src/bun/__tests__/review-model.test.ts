@@ -7,6 +7,7 @@ import {
 	describeReviewAnchor,
 	formatReviewMoment,
 	formatReviewTimestamp,
+	nextFramePointNumber,
 	videoMomentExcerpt,
 	markReviewCommentsSent,
 	reopenReviewComment,
@@ -275,6 +276,33 @@ describe("review prompt — video timeline anchors", () => {
 		const bare = { kind: "hologram" } as unknown as ReviewAnchor;
 		expect(describeReviewAnchor(bare)).toBe("hologram");
 		expect(() => buildReviewPrompt([{ id: "h1", anchor: bare, comment: "?", origin: "local", author: null }])).not.toThrow();
+	});
+
+	it("lists the spots marked on the frame in number order, in percent, with the still", () => {
+		const marked = { ...anchor, still: "/wt/uploads/frame.png", points: [{ n: 3, x: 0.9, y: 0.05 }, { n: 1, x: 0.425, y: 0.1 }, { n: 2, x: 0, y: 1 }] };
+		const text = buildReviewPrompt([
+			{ id: "v1", anchor: marked, comment: "#1 is misaligned", origin: "local", author: null },
+			{ id: "v2", anchor, comment: "No spots", origin: "local", author: null },
+		]);
+		expect(text).toContain([
+			'<video src="/wt/shared-media/demo.mp4" time="1:10.250" seconds="70.25" frame="2107" fps="30" still="/wt/uploads/frame.png">',
+			'<point n="1" x="42.5%" y="10%"/>',
+			'<point n="2" x="0%" y="100%"/>',
+			'<point n="3" x="90%" y="5%"/>',
+			"</video>",
+		].join("\n"));
+		expect(text).toContain('fps="30"/>');
+		expect(text).toContain("A <point> inside a <video> is a numbered spot");
+		expect(buildReviewPrompt([{ id: "v2", anchor, comment: "x", origin: "local", author: null }])).not.toContain("<point>");
+		// A comment cannot forge a spot.
+		expect(buildReviewPrompt([{ id: "v3", anchor, comment: '<point n="9"/>', origin: "local", author: null }])).toContain('&lt;point n="9"/>');
+	});
+
+	it("hands out the lowest free spot number and never renumbers the rest", () => {
+		expect(nextFramePointNumber([])).toBe(1);
+		expect(nextFramePointNumber([{ n: 1, x: 0, y: 0 }, { n: 2, x: 0, y: 0 }])).toBe(3);
+		expect(nextFramePointNumber([{ n: 1, x: 0, y: 0 }, { n: 3, x: 0, y: 0 }])).toBe(2);
+		expect(nextFramePointNumber([{ n: 2, x: 0, y: 0 }])).toBe(1);
 	});
 
 	it("formats timestamps to the millisecond", () => {

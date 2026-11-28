@@ -250,6 +250,9 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "media-speed-down", primary: [{ code: "Comma", mods: ["Shift"] }], descKey: "keymap.shortcut.mediaSpeedDown", category: "view", conflictGroup: "media-viewer" },
 	{ id: "media-speed-up", primary: [{ code: "Period", mods: ["Shift"] }], descKey: "keymap.shortcut.mediaSpeedUp", category: "view", conflictGroup: "media-viewer" },
 	{ id: "media-comment-at-playhead", primary: [{ code: "KeyC", mods: [] }], descKey: "keymap.shortcut.mediaCommentAtPlayhead", category: "create", conflictGroup: "media-viewer" },
+	{ id: "media-mark-spots", primary: [{ code: "KeyM", mods: [] }], descKey: "keymap.shortcut.mediaMarkSpots", category: "create", conflictGroup: "media-viewer" },
+	{ id: "media-seek-start", primary: [{ code: "Home", mods: [] }], descKey: "keymap.shortcut.mediaSeekStart", category: "view", conflictGroup: "media-viewer" },
+	{ id: "media-seek-end", primary: [{ code: "End", mods: [] }], descKey: "keymap.shortcut.mediaSeekEnd", category: "view", conflictGroup: "media-viewer" },
 
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", primary: [mod("Backquote")], descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },

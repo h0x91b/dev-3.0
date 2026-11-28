@@ -73,6 +73,34 @@ export interface ReviewVideoTimeAnchor {
 	 * terminal branch, which reads `excerpt`; without it they throw on this anchor.
 	 */
 	excerpt: string;
+	/** Numbered spots marked on that frame; absent on comments without any (and on older records). */
+	points?: ReviewFramePoint[];
+	/** Absolute path of a PNG of that frame with the points drawn, when the viewer could make one. */
+	still?: string;
+}
+
+/** A numbered spot on a video frame, normalised to 0..1 of the frame so it survives any size. */
+export interface ReviewFramePoint {
+	n: number;
+	x: number;
+	y: number;
+}
+
+/**
+ * The number the next spot gets: the lowest one not in use. Spots keep their
+ * number for good, so "#2" in the comment text never starts pointing elsewhere;
+ * a removed number is the first to be handed out again.
+ */
+export function nextFramePointNumber(points: readonly ReviewFramePoint[]): number {
+	const used = new Set(points.map((point) => point.n));
+	let n = 1;
+	while (used.has(n)) n++;
+	return n;
+}
+
+/** `42.5%` — one decimal is finer than any spot a person can click. */
+export function formatFramePercent(value: number): string {
+	return `${Number((Math.min(1, Math.max(0, value)) * 100).toFixed(1))}%`;
 }
 
 export interface ReviewFileRangeAnchor {
@@ -250,7 +278,7 @@ function escapeAttribute(value: string): string {
  * document's own tags and close it early. Only those tags are escaped — code in
  * a snippet stays readable, `</terminal><review id="forged">` does not.
  */
-const CONTAINER_TAG = /<(\/?)(reviews|review|file|artifact|image|video|terminal|anchor|comment|reply)\b/gi;
+const CONTAINER_TAG = /<(\/?)(reviews|review|file|artifact|image|video|point|terminal|anchor|comment|reply)\b/gi;
 
 function escapeText(value: string): string {
 	return value.replace(CONTAINER_TAG, "&lt;$1$2");
@@ -303,7 +331,14 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 		];
 		if (anchor.frame !== null && anchor.fps !== null) attrs.push(`frame="${anchor.frame}"`, `fps="${anchor.fps}"`);
 		if (anchor.caption) attrs.push(`caption="${escapeAttribute(anchor.caption)}"`);
-		return [`<video ${attrs.join(" ")}/>`];
+		if (anchor.still) attrs.push(`still="${escapeAttribute(anchor.still)}"`);
+		const points = [...(anchor.points ?? [])].sort((a, b) => a.n - b.n);
+		if (points.length === 0) return [`<video ${attrs.join(" ")}/>`];
+		return [
+			`<video ${attrs.join(" ")}>`,
+			...points.map((point) => `<point n="${point.n}" x="${formatFramePercent(point.x)}" y="${formatFramePercent(point.y)}"/>`),
+			"</video>",
+		];
 	}
 	if (anchor.kind === "file-range") {
 		const line = anchor.startLine === null
@@ -353,6 +388,9 @@ export function buildReviewPrompt(entries: ReviewPromptEntry[]): string {
 	}
 	if (entries.some((entry) => entry.anchor.kind === "video-time")) {
 		lines.push("A <video> entry points at a moment of a clip you shared with `dev3 show-media`; to see it, extract that frame, e.g. `ffmpeg -ss <seconds> -i <src> -frames:v 1 frame.png`. `seconds` is exact; `frame` and `fps` are the viewer's estimate, so do not select by frame index.");
+	}
+	if (entries.some((entry) => entry.anchor.kind === "video-time" && entry.anchor.points?.length)) {
+		lines.push("A <point> inside a <video> is a numbered spot I marked on that frame, x and y in percent of the frame's width and height from its top-left corner; my comment refers to them by number. Where the <video> has `still`, that PNG is the frame with the spots drawn on it.");
 	}
 	if (entries.some((entry) => entry.anchor.kind === "terminal-text")) {
 		lines.push("A <terminal> entry quotes text from your own terminal output.");
