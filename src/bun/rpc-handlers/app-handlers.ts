@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Updater, Utils } from "../electrobun-platform";
 import { getLaunchLocationIssue as detectLaunchLocation, installBundleCopy, scheduleRelaunch } from "../launch-location";
 import { readHostClipboardImage } from "../clipboard-image-reader";
+import { resolveDroppedFilePaths as resolveDragPaths, type DroppedFileDescriptor } from "../drag-file-paths";
 import type { AgentSkillInfo, LaunchLocationIssue, AutoConfigureResult, BoardCopyOffer, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, GitInitOffer, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import { parseChangelogCredits } from "../../shared/changelog-credits";
@@ -910,6 +911,12 @@ async function uploadFileBase64(params: { projectId: string; base64: string; fil
 	});
 }
 
+async function resolveDroppedFilePaths(params: { files: DroppedFileDescriptor[] }): Promise<(string | null)[]> {
+	const paths = resolveDragPaths(params.files);
+	log.info("← resolveDroppedFilePaths", { requested: params.files.length, resolved: paths.filter(Boolean).length });
+	return paths;
+}
+
 async function readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {
 	log.info("→ readImageBase64", { path: params.path });
 	if (!isFullyQualifiedPath(params.path, process.platform)) {
@@ -1223,6 +1230,7 @@ export const appHandlers = {
 	previewUpdatePopover,
 	pasteClipboardImage,
 	uploadFileBase64,
+	resolveDroppedFilePaths,
 	uploadImageBase64,
 	readImageBase64,
 	getSharedMediaUrl,

@@ -1,5 +1,7 @@
 # 036 — Drag-and-drop files are uploaded into the task worktree
 
+> Amended on 2026-11-28 by `decisions/2026/11/28/oversized-drop-path-from-drag-pasteboard.md`: on macOS desktop, a file over the 100 MB upload cap now gets its original host path inserted, read from the drag pasteboard and verified by name, size and mtime. Uploading stays the path for everything under the cap.
+
 ## Context
 
 Drag-and-drop in WKWebView never exposes the original host path. The previous `resolveFilename()` workaround depended on macOS Spotlight, was heuristic by design, and could not work consistently in remote/browser sessions.

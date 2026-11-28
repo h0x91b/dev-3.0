@@ -288,6 +288,9 @@ const terminal = {
 	"quickShell.open": "Shell rápido",
 	"quickShell.tooltipWithShortcut": "Shell rápido — nuevo scratch en Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
+	"fileDrop.tooLargePathInserted": "{name} supera los 100 MB, así que no se subió. En su lugar se insertó su ruta original.",
+	"fileDrop.tooLargeNoPath": "{name} supera los 100 MB, así que no se subió, y no se pudo encontrar su ruta original.",
+	"fileDrop.tooLargeRemote": "{name} supera los 100 MB, así que no se subió. Está en este dispositivo, no en el host de la app, así que no se insertó ninguna ruta.",
 	"imagePaste.failed": "No se pudo pegar la imagen del portapapeles. Guárdala como archivo y arrástrala aquí.",
 
 	// Touch composer (mobile input mode)

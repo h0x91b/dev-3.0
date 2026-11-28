@@ -287,6 +287,9 @@ const terminal = {
 	"quickShell.open": "Quick Shell",
 	"quickShell.tooltipWithShortcut": "Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)",
 	"fileDrop.uploadFailed": "File upload failed: {error}",
+	"fileDrop.tooLargePathInserted": "{name} is over 100 MB, so it was not uploaded. Its original path was inserted instead.",
+	"fileDrop.tooLargeNoPath": "{name} is over 100 MB, so it was not uploaded, and its original path could not be found.",
+	"fileDrop.tooLargeRemote": "{name} is over 100 MB, so it was not uploaded. It is on this device, not the app host, so no path was inserted.",
 	"imagePaste.failed": "Couldn't paste the image from the clipboard. Save it as a file and drag it in instead.",
 
 	// Touch composer (mobile input mode)

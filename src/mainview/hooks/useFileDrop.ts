@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useT } from "../i18n";
 import { toast } from "../toast";
-import { uploadDroppedFile } from "../utils/uploadDroppedFile";
+import { dropEntryError, paneShellDialect, placeDroppedFiles, quotePath } from "../utils/droppedFiles";
 
 export function useFileDrop(
 	projectId: string,
@@ -55,17 +55,21 @@ export function useFileDrop(
 				: dropZone.querySelector<HTMLElement>("textarea, input, [contenteditable='true']");
 			editor?.focus();
 
-			void Promise.all(files.map(async (file) => {
-				try {
-					const uploadedPath = await uploadDroppedFile(projectId, file);
-					if (uploadedPath) {
-						onFileDropped(uploadedPath);
+			void placeDroppedFiles(projectId, files).then((entries) => {
+				const inserted: string[] = [];
+				for (const entry of entries) {
+					// A host path is the file's original, not a copy: quoted, it reads as one path.
+					if (entry.kind === "uploaded") inserted.push(entry.path);
+					else if (entry.kind === "host") inserted.push(quotePath(entry.path, paneShellDialect()));
+					const error = dropEntryError(entry, t);
+					if (error) {
+						console.error(`[useFileDrop] dropped file not uploaded (${entry.kind})`);
+						toast.error(error, { taskId });
 					}
-				} catch (err) {
-					console.error(`[useFileDrop] file upload failed for "${file.name}":`, err);
-					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
 				}
-			}));
+				// One insert: back-to-back inserts all read the same stale caret and land reversed.
+				if (inserted.length > 0) onFileDropped(inserted.join("\n"));
+			});
 		},
 		[onFileDropped, projectId, taskId, t],
 	);
