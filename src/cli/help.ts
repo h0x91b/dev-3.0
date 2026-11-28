@@ -1455,14 +1455,14 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "install-hooks",
-		summary: "Install agent hooks, or remove global Cursor usage hooks.",
+		summary: "Install agent hooks, or remove global Cursor hooks.",
 		subcommands: [],
 		usage: "dev3 install-hooks [--remove-cursor]",
 		details: [
 			"Writes Claude Code and Codex status hooks into the current worktree.",
 			"Codex hook hashes are calculated automatically and scoped to each launched session.",
-			"Cursor usage hooks are installed only when ~/.cursor already exists, or when dev3 launches Cursor.",
-			"--remove-cursor removes only dev3's global Cursor usage hooks; preserves custom hooks and settings.",
+			"Cursor status and usage hooks (~/.cursor/hooks.json) are installed only when ~/.cursor already exists, or when dev3 launches Cursor.",
+			"--remove-cursor removes only dev3's global Cursor hooks; preserves custom hooks and settings.",
 			"Removal works outside a worktree and without the app running. Launching Cursor from dev3 installs them again.",
 		],
 	},

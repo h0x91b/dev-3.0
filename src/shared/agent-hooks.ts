@@ -101,6 +101,43 @@ export function copilotStatusEvent(
 }
 
 /**
+ * The Cursor Agent CLI hook events dev3 subscribes to, each paired with the
+ * generic status event it stands for. Read from the installed CLI's hook runner.
+ *
+ * `preToolUse` is deliberately absent: Cursor treats an invalid answer there as
+ * a denial, so a broken dev3 could block every tool. `postToolUse` says the same
+ * thing ("working") one step later, with no permission semantics at all.
+ */
+export const CURSOR_STATUS_HOOK_EVENTS = {
+	beforeSubmitPrompt: "UserPromptSubmit",
+	postToolUse: "PostToolUse",
+	stop: "Stop",
+} as const satisfies Record<string, AgentStatusHookEvent>;
+
+export type CursorStatusHookEvent = keyof typeof CURSOR_STATUS_HOOK_EVENTS;
+
+/**
+ * A shell call of `dev3 task move`. Cursor's protocol has the agent move its own
+ * card at the end of a turn, and the `postToolUse` of that very call must not
+ * pull the card it just parked in Has Questions back to working.
+ */
+const DEV3_TASK_MOVE = /(?:^|[\s/\\"'])dev3(?:\.exe)?["']?\s+task\s+move\b/;
+
+/** The generic status event one Cursor hook delivery stands for, or null to stay silent. */
+export function cursorStatusEvent(event: string, toolInput?: unknown): AgentStatusHookEvent | null {
+	const mapped = CURSOR_STATUS_HOOK_EVENTS[event as CursorStatusHookEvent];
+	if (!mapped) return null;
+	if (mapped === "PostToolUse" && stringLeaves(toolInput).some((text) => DEV3_TASK_MOVE.test(text))) return null;
+	return mapped;
+}
+
+function stringLeaves(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (value === null || typeof value !== "object") return [];
+	return Object.values(value).flatMap(stringLeaves);
+}
+
+/**
  * Where the Copilot CLI reads this machine's user-level hooks from. Verified
  * against copilot 1.0.83: a `<home>/hooks/*.json` file fires, while the
  * documented repository-level `.github/hooks/` was never even consulted in a

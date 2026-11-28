@@ -49,6 +49,7 @@ import { handleAgyHook } from "./commands/agy-hook";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleCursorUsage } from "./commands/cursor-usage";
+import { handleCursorHook } from "./commands/cursor-hook";
 import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudePreTool } from "./commands/claude-pre-tool";
@@ -175,7 +176,7 @@ Commands:
   dev3 config export                     Export settings to .dev3/config.json
   dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running
   dev3 doctor --processes [--json]       Which task owns each native terminal host/shell (seq, pane, role, pid, liveness)
-  dev3 install-hooks [--remove-cursor]   Install agent hooks, or remove global Cursor usage hooks
+  dev3 install-hooks [--remove-cursor]   Install agent hooks, or remove global Cursor hooks
   dev3 install-skills                    Install agent skills globally
   dev3 projects list [--json]           List all projects with the spaces they belong to
   dev3 projects add <path> [--name "..."] [--space <id|name>]... [--new-space "..."]... [--no-space] [--init] [--json]
@@ -348,6 +349,16 @@ async function main(): Promise<void> {
 		// protocol, and stays successful when the app is offline — a non-zero exit
 		// here is fail-closed on preToolUse and would block Copilot's tool call.
 		return await handleCopilotHook(
+			rawArgs[2] ?? "",
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
+	}
+	if (command === "hook" && subcommand === "cursor") {
+		// Internal lifecycle adapter for Cursor's user-level hooks; always prints
+		// `{}` and exits 0, so a status-sync failure never blocks Cursor.
+		return await handleCursorHook(
 			rawArgs[2] ?? "",
 			await Bun.stdin.text(),
 			socketPath || context?.socketPath || null,

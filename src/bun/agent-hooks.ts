@@ -5,7 +5,7 @@
  * so that task status transitions happen automatically via the agent's built-in
  * event system, rather than relying solely on SKILL.md instructions.
  *
- * Currently supports Claude Code, Codex, omp and pi. Extensible for Gemini, Cursor, etc.
+ * Currently supports Claude Code, Codex, Copilot, Cursor, omp, pi and agy.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,7 +31,7 @@ import { quoteIfUnsafe } from "../shared/agent-adapters/shell";
 import { writeOmpStatusExtension } from "../shared/omp-status-extension";
 import { writePiStatusExtension } from "../shared/pi-status-extension";
 import { resolveCopilotHome } from "./copilot-config";
-import { writeCursorUsageHooks } from "./cursor-usage-hooks";
+import { writeCursorHooks } from "./cursor-hooks";
 import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass, resetCodexHelpProbe } from "./codex-config";
 
 export {
@@ -138,10 +138,13 @@ export async function setupAgentHooks(
 		const inherited = refreshClaudePreToolHooks(worktreePath);
 		if (inherited.skippedSymlink) log.warn("Inherited Claude pre-tool hook not refreshed: settings path crosses a symlink", { worktreePath, symlink: inherited.skippedSymlink });
 		try {
-			const result = await writeCursorUsageHooks(undefined, undefined, { create: true });
-			if (result.status === "skipped") log.warn("Cursor usage hooks not installed", { ...result });
-		} catch {
-			log.warn("Could not write Cursor usage hooks");
+			// User-level: the DEV3_TASK_ID guard in each status command keeps them
+			// inert in Cursor sessions outside dev3 (see cursor-hooks.ts).
+			const result = await writeCursorHooks(undefined, undefined, { create: true });
+			if (result.status === "skipped") log.warn("Cursor hooks not installed; the board will not follow this task", { ...result });
+			else log.info("Cursor status and usage hooks installed", { path: result.path });
+		} catch (err) {
+			log.warn("Could not write Cursor hooks", { error: String(err) });
 		}
 		return null;
 	}

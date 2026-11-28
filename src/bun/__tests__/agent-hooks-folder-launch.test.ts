@@ -8,8 +8,8 @@ vi.mock("../codex-config", () => ({
 	detectCodexHookTrustBypass: vi.fn(async () => true),
 	resetCodexHelpProbe: vi.fn(),
 }));
-vi.mock("../cursor-usage-hooks", () => ({
-	writeCursorUsageHooks: vi.fn(async () => ({ status: "installed", path: "/unused/hooks.json" })),
+vi.mock("../cursor-hooks", () => ({
+	writeCursorHooks: vi.fn(async () => ({ status: "installed", path: "/unused/hooks.json" })),
 }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
