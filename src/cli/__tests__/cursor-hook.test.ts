@@ -49,8 +49,9 @@ afterEach(() => {
 describe("cursorStatusEvent", () => {
 	it("maps prompt submit and tool use to working, stop to the turn end, and ignores the rest", () => {
 		expect(cursorStatusEvent("beforeSubmitPrompt")).toBe("UserPromptSubmit");
-		expect(cursorStatusEvent("postToolUse", { command: "bun run lint" })).toBe("PostToolUse");
-		expect(cursorStatusEvent("stop")).toBe("Stop");
+		expect(cursorStatusEvent("postToolUse", { toolInput: { command: "bun run lint" } })).toBe("PostToolUse");
+		expect(cursorStatusEvent("stop", { stopStatus: "completed" })).toBe("Stop");
+		expect(cursorStatusEvent("stop", { stopStatus: "aborted" })).toBe("Interrupt");
 		for (const event of ["preToolUse", "afterAgentResponse", "sessionStart", ""]) {
 			expect(cursorStatusEvent(event), event).toBeNull();
 		}
@@ -62,10 +63,10 @@ describe("cursorStatusEvent", () => {
 			"dev3 task move --status review-by-user && echo done",
 			"\"C:\\Users\\A B\\.dev3.0\\bin\\dev3.exe\" task move --status user-questions",
 		]) {
-			expect(cursorStatusEvent("postToolUse", { command }), command).toBeNull();
+			expect(cursorStatusEvent("postToolUse", { toolInput: { command } }), command).toBeNull();
 		}
-		expect(cursorStatusEvent("postToolUse", { command: "dev3 task show" })).toBe("PostToolUse");
-		expect(cursorStatusEvent("postToolUse", { command: "mydev3 task move" })).toBe("PostToolUse");
+		expect(cursorStatusEvent("postToolUse", { toolInput: { command: "dev3 task show" } })).toBe("PostToolUse");
+		expect(cursorStatusEvent("postToolUse", { toolInput: { command: "mydev3 task move" } })).toBe("PostToolUse");
 	});
 });
 
@@ -85,14 +86,14 @@ describe("handleCursorHook", () => {
 		expect(stdout).toBe("{}");
 	});
 
-	it("reports tool use and a completed or aborted turn as status events", async () => {
+	it("reports tool use, a completed turn, and an aborted one as an interrupt", async () => {
 		await handleCursorHook("postToolUse", payload("postToolUse", { tool_name: "Shell", tool_input: { command: "ls" } }), SOCKET, CONTEXT);
 		await handleCursorHook("stop", payload("stop", { status: "completed", loop_count: 0 }), SOCKET, CONTEXT);
 		await handleCursorHook("stop", payload("stop", { status: "aborted", loop_count: 0 }), SOCKET, CONTEXT);
 		expect(mockSend.mock.calls.map(([, method, params]) => [method, (params as { event: string }).event])).toEqual([
 			["task.agentHook", "PostToolUse"],
 			["task.agentHook", "Stop"],
-			["task.agentHook", "Stop"],
+			["task.agentHook", "Interrupt"],
 		]);
 		expect(stdout).toBe("{}{}{}");
 	});

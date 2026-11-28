@@ -1,5 +1,5 @@
 import { getPrimaryStopTarget } from "../../shared/types";
-import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../../shared/agent-hooks";
+import { AGENT_STATUS_HOOK_EVENTS, SELF_PARKING_HARNESSES, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, describeCodexTurnError, type ClaudeStopFailureError } from "../../shared/agent-stop-failure";
 import type { Project, Task } from "../../shared/types";
 import { getPushMessage, moveTask, notifyFromCliDesktop, isNotificationSuppressed, pushCliAttention, setFocusMode } from "../rpc-handlers";
@@ -325,6 +325,7 @@ export const agentHandlers: Record<string, Handler> = {
 		}
 		// A To Do card has no run to report on — not even a pending question.
 		if (task.status === "todo" || agyHold) target = null;
+		if (SELF_PARKING_HARNESSES.has(harness) && task.status === "user-questions" && event !== "UserPromptSubmit") target = null;
 		const resumeStatus = (event === "PermissionRequest" || approvalHold)
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status

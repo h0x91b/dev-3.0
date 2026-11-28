@@ -895,10 +895,19 @@ describe("task.agentHook", () => {
 			expect(storedTask.status).toBe("in-progress");
 			await hook("Stop");
 			expect(storedTask.status).toBe("review-by-user");
-			// A card the agent already parked in Has Questions stays there at turn end.
+			// The agent parks its own card, then still calls tools (attention, overview) before the
+			// turn ends: the park holds through them and the Stop, until the user's next prompt.
+			await hook("UserPromptSubmit");
 			storedTask = { ...storedTask, status: "user-questions" };
+			await hook("PostToolUse");
+			await hook("PostToolUse");
 			await hook("Stop");
 			expect(storedTask.status).toBe("user-questions");
+			await hook("UserPromptSubmit");
+			expect(storedTask.status).toBe("in-progress");
+			// An aborted turn (Esc) reports Interrupt and moves nothing.
+			await hook("Interrupt");
+			expect(storedTask.status).toBe("in-progress");
 			// AI review is never pulled back to working by a prompt or a tool.
 			storedTask = { ...storedTask, status: "review-by-ai" };
 			await hook("UserPromptSubmit");

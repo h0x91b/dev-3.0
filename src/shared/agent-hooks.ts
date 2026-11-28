@@ -118,18 +118,33 @@ export type CursorStatusHookEvent = keyof typeof CURSOR_STATUS_HOOK_EVENTS;
 
 /**
  * A shell call of `dev3 task move`. Cursor's protocol has the agent move its own
- * card at the end of a turn, and the `postToolUse` of that very call must not
- * pull the card it just parked in Has Questions back to working.
+ * card at the end of a turn; the `postToolUse` of that very call is not "work".
+ * A park in Has Questions is held app-side until the next prompt anyway.
  */
 const DEV3_TASK_MOVE = /(?:^|[\s/\\"'])dev3(?:\.exe)?["']?\s+task\s+move\b/;
 
-/** The generic status event one Cursor hook delivery stands for, or null to stay silent. */
-export function cursorStatusEvent(event: string, toolInput?: unknown): AgentStatusHookEvent | null {
+/**
+ * The generic status event one Cursor hook delivery stands for, or null to stay
+ * silent. A `stop` the user aborted (Esc) is an `Interrupt`, like Codex's: it
+ * moves nothing, so a half-done turn never lands in review.
+ */
+export function cursorStatusEvent(
+	event: string,
+	payload: { toolInput?: unknown; stopStatus?: string } = {},
+): AgentStatusHookEvent | null {
 	const mapped = CURSOR_STATUS_HOOK_EVENTS[event as CursorStatusHookEvent];
 	if (!mapped) return null;
-	if (mapped === "PostToolUse" && stringLeaves(toolInput).some((text) => DEV3_TASK_MOVE.test(text))) return null;
+	if (mapped === "PostToolUse" && stringLeaves(payload.toolInput).some((text) => DEV3_TASK_MOVE.test(text))) return null;
+	if (mapped === "Stop" && payload.stopStatus === "aborted") return "Interrupt";
 	return mapped;
 }
+
+/**
+ * Harnesses whose agent parks its own card at turn end (the manual protocol).
+ * Their Has Questions holds until the user's next prompt: a tool call after the
+ * park (an attention badge, an overview) or the turn's Stop must not undo it.
+ */
+export const SELF_PARKING_HARNESSES: ReadonlySet<string> = new Set(["cursor"]);
 
 function stringLeaves(value: unknown): string[] {
 	if (typeof value === "string") return [value];

@@ -377,7 +377,8 @@ Acting on another task? Pass \`--reason "<why>"\`: its approval dialog shows it.
 - Delivery waits for ~${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that pane (~${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s while the user types, at once on Enter). Messages arriving together become ONE turn and never corrupt a typed line; expect a reply about ${AGENT_MESSAGE_HOLD_IDLE_SECONDS} seconds after the peer writes.
 `;
 
-// Full manual status management — for agents without hooks (Cursor, Gemini, etc.)
+// Full manual status management — for agents without lifecycle hooks (Gemini, etc.),
+// and Cursor, whose hooks are only a safety net under this protocol.
 const skillStatusManual = (mode: ProtocolMode): string => `
 ## Task status management (CRITICAL — NON-NEGOTIABLE)
 

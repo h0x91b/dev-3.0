@@ -10,11 +10,11 @@ Cursor documents `beforeSubmitPrompt`, `preToolUse`, `postToolUse` and `stop` (h
 
 ## Decision
 
-`writeCursorHooks` (`src/bun/cursor-hooks.ts`) merges `beforeSubmitPrompt`, `postToolUse` and `stop` entries into `~/.cursor/hooks.json` next to the usage hooks, replacing only dev3's own entries. Each command checks `DEV3_TASK_ID` and the dev3 executable in the shell and otherwise prints `{}`. `dev3 hook cursor <event>` (`src/cli/commands/cursor-hook.ts`) maps them through `cursorStatusEvent` to the shared `task.agentHook` events, sends an errored `stop` to the stop-failure path, and always prints `{}`. `preToolUse` is not used, and a `postToolUse` of the agent's own `dev3 task move` is ignored: Cursor keeps the manual protocol and parks its card itself at turn end, which an immediate PostToolUse would undo.
+`writeCursorHooks` (`src/bun/cursor-hooks.ts`) merges `beforeSubmitPrompt`, `postToolUse` and `stop` entries into `~/.cursor/hooks.json` next to the usage hooks, replacing only dev3's own entries. Each command checks `DEV3_TASK_ID` and the dev3 executable in the shell and otherwise prints `{}`. `dev3 hook cursor <event>` (`src/cli/commands/cursor-hook.ts`) maps them through `cursorStatusEvent` to the shared `task.agentHook` events, sends an errored `stop` to the stop-failure path, reports an aborted `stop` (Esc) as `Interrupt`, and always prints `{}`. `preToolUse` is not used. Cursor keeps the manual protocol and parks its card itself at turn end, often followed by `dev3 attention` or `dev3 overview set`; `task.agentHook` therefore holds a `cursor` card in Has Questions through PostToolUse and Stop until the next UserPromptSubmit (`SELF_PARKING_HARNESSES` in `src/shared/agent-hooks.ts`).
 
 ## Risks
 
-The `DEV3_TASK_ID` inheritance was read from the bundle, not observed live; if a future Cursor stopped passing the environment, the hooks would go silent (never block). A chained shell call that moves status and then keeps working is also skipped as a move.
+The `DEV3_TASK_ID` inheritance was read from the bundle, not observed live; if a future Cursor stopped passing the environment, the hooks would go silent (never block). An agent that parks itself mid-turn and keeps working stays in Has Questions until the turn's next prompt. The guard is per task, not per agent: a `cursor-agent` run by hand in another pane of the task, or a Cursor IDE launched from a dev3 pane, also drives the card (as with Copilot). After a downgrade the older CLI has no `hook cursor` subcommand, so each event spawns a failing, non-blocking process until `dev3 install-hooks --remove-cursor`.
 
 ## Alternatives considered
 

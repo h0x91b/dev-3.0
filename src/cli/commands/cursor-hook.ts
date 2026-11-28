@@ -55,7 +55,7 @@ export async function handleCursorHook(
 	context: CliContext | null,
 ): Promise<void> {
 	const payload = parsePayload(rawInput);
-	const event = cursorStatusEvent(eventArg, payload.toolInput);
+	const event = cursorStatusEvent(eventArg, { toolInput: payload.toolInput, stopStatus: payload.status });
 	try {
 		if (event && socketPath && context?.taskId) {
 			if (event === "Stop" && payload.status === "error") {
