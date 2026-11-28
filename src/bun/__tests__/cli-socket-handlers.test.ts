@@ -871,6 +871,53 @@ describe("task.agentHook", () => {
 		},
 	);
 
+	it("moves a Cursor task back to work on the user's reply, and parks it at turn end the way the others do", async () => {
+		const project = makeProject();
+		let storedTask = makeTask({ status: "user-questions" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockImplementation(async () => [storedTask]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator: any) => {
+			const { updates, result } = await mutator(storedTask);
+			storedTask = { ...storedTask, ...updates };
+			return { task: storedTask, result };
+		});
+		const hook = async (event: string) => {
+			const response = await handleRequest(makeRequest("task.agentHook", {
+				taskId: storedTask.id, projectId: project.id, harness: "cursor", paneId: "%4", event,
+			}));
+			expect(response.ok).toBe(true);
+			storedTask = response.data as Task;
+		};
+		try {
+			await hook("UserPromptSubmit");
+			expect(storedTask.status).toBe("in-progress");
+			await hook("PostToolUse");
+			expect(storedTask.status).toBe("in-progress");
+			await hook("Stop");
+			expect(storedTask.status).toBe("review-by-user");
+			// The agent parks its own card, then still calls tools (attention, overview) before the
+			// turn ends: the park holds through them and the Stop, until the user's next prompt.
+			await hook("UserPromptSubmit");
+			storedTask = { ...storedTask, status: "user-questions" };
+			await hook("PostToolUse");
+			await hook("PostToolUse");
+			await hook("Stop");
+			expect(storedTask.status).toBe("user-questions");
+			await hook("UserPromptSubmit");
+			expect(storedTask.status).toBe("in-progress");
+			// An aborted turn (Esc) reports Interrupt and moves nothing.
+			await hook("Interrupt");
+			expect(storedTask.status).toBe("in-progress");
+			// AI review is never pulled back to working by a prompt or a tool.
+			storedTask = { ...storedTask, status: "review-by-ai" };
+			await hook("UserPromptSubmit");
+			await hook("PostToolUse");
+			expect(storedTask.status).toBe("review-by-ai");
+		} finally {
+			agentPromptLedger.reset();
+		}
+	});
+
 	it("gates an omp pane until the extension marks the approval's end; frees an agy pane on its own approval's end", async () => {
 		{
 			const project = makeProject();

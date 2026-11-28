@@ -7,7 +7,7 @@ import { resolveDev3Home } from "../../shared/dev3-home";
 import { parseInProjectTaskPath } from "../../shared/project-storage";
 import { excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../../bun/claude-config-git";
 import { setMinLevel } from "../../bun/logger";
-import { removeCursorUsageHooks, writeCursorUsageHooks } from "../../bun/cursor-usage-hooks";
+import { removeCursorHooks, writeCursorHooks } from "../../bun/cursor-hooks";
 
 const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
 
@@ -34,14 +34,14 @@ function detectWorktreePath(cwd: string): string | null {
 	return null;
 }
 
-export async function handleRemoveCursorUsageHooks(home?: string): Promise<void> {
-	const result = await removeCursorUsageHooks(home);
+export async function handleRemoveCursorHooks(home?: string): Promise<void> {
+	const result = await removeCursorHooks(home);
 	const action = result.status === "removed" ? "Removed" : result.status === "skipped" ? "Skipped" : "No installed";
-	process.stdout.write(`${action} Cursor usage hooks → ${result.path}${result.reason ? ` (${result.reason})` : ""}\n`);
+	process.stdout.write(`${action} Cursor hooks → ${result.path}${result.reason ? ` (${result.reason})` : ""}\n`);
 }
 
 export async function handleInstallHooks(options: { removeCursor?: boolean } = {}): Promise<void> {
-	if (options.removeCursor) return handleRemoveCursorUsageHooks();
+	if (options.removeCursor) return handleRemoveCursorHooks();
 	setMinLevel("error");
 	const worktreePath = detectWorktreePath(process.cwd());
 	if (!worktreePath) {
@@ -57,11 +57,14 @@ export async function handleInstallHooks(options: { removeCursor?: boolean } = {
 	if (!codexSymlink) excludeTaskCodexHooks(worktreePath);
 	const ompExtensionPath = writeOmpStatusExtension();
 	const piExtensionPath = writePiStatusExtension();
-	const cursorUsageHooks = await writeCursorUsageHooks();
+	const cursorHooks = await writeCursorHooks();
 	for (const link of [claudeSymlink, codexSymlink]) {
 		if (link) process.stderr.write(`Warning: ${link} is a symlink; dev3 does not write through it, so the hooks under it were not installed.\n`);
 	}
-	process.stdout.write(`${cursorUsageHooks.status === "skipped" ? "Skipped" : "Installed"} Cursor usage hooks → ${cursorUsageHooks.path}${cursorUsageHooks.reason ? ` (${cursorUsageHooks.reason})` : ""}\n`);
+	process.stdout.write(`${cursorHooks.status === "skipped" ? "Skipped" : "Installed"} Cursor hooks → ${cursorHooks.path}${cursorHooks.reason ? ` (${cursorHooks.reason})` : ""}\n`);
+	if (cursorHooks.status !== "skipped") {
+		process.stdout.write(`  beforeSubmitPrompt/postToolUse → in-progress (only in a dev3 pane); stop → review-by-ai or review-by-user\n`);
+	}
 
 	if (claudeSymlink) {
 		process.stdout.write(`Skipped Claude Code hooks → ${claudeSettingsPath} (symlink)\n`);
