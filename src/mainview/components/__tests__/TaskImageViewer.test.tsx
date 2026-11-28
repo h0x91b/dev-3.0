@@ -1,9 +1,10 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskImageViewer from "../TaskImageViewer";
 import { I18nProvider } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { SharedImage } from "../../../shared/types";
+import type { ReviewComment } from "../../../shared/review";
 import { FIRST_FRAME_TIME } from "../../utils/video-first-frame";
 
 vi.mock("../../rpc", () => ({
@@ -15,9 +16,13 @@ vi.mock("../../rpc", () => ({
 			deleteSharedMedia: vi.fn(),
 			previewSharedMediaDelete: vi.fn(),
 			setSharedMediaPinned: vi.fn(),
+			uploadImageBase64: vi.fn(),
 		},
 	},
 }));
+
+const frameStill = vi.hoisted(() => ({ captureFrameStill: vi.fn(async (_url: string, _time: number, _points: unknown[]) => "UE5H" as string | null) }));
+vi.mock("../../utils/frame-still", () => frameStill);
 
 const confirmMock = vi.hoisted(() => ({ confirm: vi.fn(async (_options: { title: string; message: string; danger?: boolean }) => true) }));
 vi.mock("../../confirm", () => confirmMock);
@@ -312,7 +317,7 @@ describe("TaskImageViewer comment mode", () => {
 	const reviewApi = () => mockedApi.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 	beforeEach(() => {
-		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+		for (const name of ["addReviewComment", "setReviewCommentStill", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
 			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
 		}
 	});
@@ -741,18 +746,20 @@ describe("TaskImageViewer video review", () => {
 
 	beforeEach(() => {
 		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: "http://127.0.0.1:4242/shared-media/tok", path: "/shared-media/tok" });
-		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+		for (const name of ["addReviewComment", "setReviewCommentStill", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
 			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
 		}
 	});
 
-	async function renderClip(review: unknown[] = []) {
+	async function renderClip(review: unknown[] = [], media: SharedImage = clip) {
 		render(
 			<I18nProvider>
-				<TaskImageViewer images={[clip]} initialIndex={0} onClose={vi.fn()} taskId="t1" projectId="p1" task={{ id: "t1", review } as never} />
+				<TaskImageViewer images={[media]} initialIndex={0} onClose={vi.fn()} taskId="t1" projectId="p1" task={{ id: "t1", review } as never} />
 			</I18nProvider>,
 		);
 		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
+		// Let the frame-step hold, created in an effect for this element, reach the key handler.
+		await act(async () => {});
 		let time = 0;
 		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; } });
 		Object.defineProperty(video, "duration", { configurable: true, get: () => 120 });
@@ -985,6 +992,372 @@ describe("TaskImageViewer video review", () => {
 		expect(video.paused).toBe(false);
 		expect(screen.getByTestId("video-jump-back")).toHaveAccessibleName("Back 15 seconds");
 		expect(screen.getByTestId("video-jump-forward")).toHaveAttribute("title", expect.stringContaining("Forward 15 seconds"));
+	});
+
+	describe("hold-to-repeat frame step", () => {
+		afterEach(() => { vi.useRealTimers(); });
+
+		it("steps once on press, repeats at half the frame rate after half a second, and stops on release", async () => {
+			const { video, at } = await renderClip();
+			at(1);
+			vi.useFakeTimers();
+			const button = screen.getByTestId("video-frame-forward");
+			fireEvent.pointerDown(button, { button: 0, pointerId: 1 });
+			expect(video.currentTime).toBeCloseTo(31.5 / 30);
+			vi.advanceTimersByTime(499);
+			expect(video.currentTime).toBeCloseTo(31.5 / 30);
+			vi.advanceTimersByTime(1);
+			expect(video.currentTime).toBeCloseTo(32.5 / 30);
+			// 30 fps fallback → 15 steps a second: 7 more by the one-second mark.
+			vi.advanceTimersByTime(500);
+			expect(video.currentTime).toBeCloseTo(39.5 / 30);
+			fireEvent.pointerUp(button, { pointerId: 1 });
+			vi.advanceTimersByTime(2000);
+			expect(video.currentTime).toBeCloseTo(39.5 / 30);
+		});
+
+		it("lets go on pointer leave, pointer cancel and window blur, and a quick click is one step", async () => {
+			const { video, at } = await renderClip();
+			at(10);
+			vi.useFakeTimers();
+			const back = screen.getByTestId("video-frame-back");
+			for (const letGo of [() => fireEvent.pointerLeave(back), () => fireEvent.pointerCancel(back), () => fireEvent.blur(window)]) {
+				const before = video.currentTime;
+				fireEvent.pointerDown(back, { button: 0, pointerId: 1 });
+				vi.advanceTimersByTime(600);
+				const held = video.currentTime;
+				expect(held).toBeLessThan(before);
+				letGo();
+				vi.advanceTimersByTime(1000);
+				expect(video.currentTime).toBe(held);
+			}
+			at(1);
+			fireEvent.pointerDown(back, { button: 0, pointerId: 1 });
+			fireEvent.pointerUp(back, { pointerId: 1 });
+			fireEvent.click(back, { detail: 1 });
+			vi.advanceTimersByTime(1000);
+			expect(video.currentTime).toBeCloseTo(29.5 / 30);
+			// Enter on the focused button: no pointer, one step.
+			fireEvent.click(back, { detail: 0 });
+			expect(video.currentTime).toBeCloseTo(28.5 / 30);
+		});
+
+		it("repeats a held , or . at its own rate, ignoring OS key repeat, until key up", async () => {
+			const { video, at } = await renderClip();
+			at(1);
+			vi.useFakeTimers();
+			fireEvent.keyDown(window, { key: ".", code: "Period" });
+			for (let i = 0; i < 10; i++) fireEvent.keyDown(window, { key: ".", code: "Period", repeat: true });
+			expect(video.currentTime).toBeCloseTo(31.5 / 30);
+			vi.advanceTimersByTime(500);
+			expect(video.currentTime).toBeCloseTo(32.5 / 30);
+			fireEvent.keyUp(window, { key: "c", code: "KeyC" });
+			vi.advanceTimersByTime(200);
+			expect(video.currentTime).toBeCloseTo(35.5 / 30);
+			fireEvent.keyUp(window, { key: ".", code: "Period" });
+			vi.advanceTimersByTime(1000);
+			expect(video.currentTime).toBeCloseTo(35.5 / 30);
+		});
+
+		it("clamps at the first and the last frame and stops repeating there", async () => {
+			const { video, at } = await renderClip();
+			const writes: number[] = [];
+			let time = 0.01;
+			Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; writes.push(v); } });
+			vi.useFakeTimers();
+			fireEvent.pointerDown(screen.getByTestId("video-frame-back"), { button: 0, pointerId: 1 });
+			vi.advanceTimersByTime(2000);
+			expect(writes).toEqual([]);
+			fireEvent.pointerUp(screen.getByTestId("video-frame-back"), { pointerId: 1 });
+			time = 119.9;
+			fireEvent.pointerDown(screen.getByTestId("video-frame-forward"), { button: 0, pointerId: 1 });
+			vi.advanceTimersByTime(5000);
+			// 120 s at 30 fps: frame 3597 → 3598 → 3599, the last one, and no further.
+			expect(writes).toHaveLength(2);
+			expect(writes[1]).toBeCloseTo(3599.5 / 30);
+			void at;
+		});
+
+		it("skips ahead instead of queueing when a seek is slower than the step", async () => {
+			const { video } = await renderClip();
+			let seeking = false;
+			let time = 1;
+			const writes: number[] = [];
+			Object.defineProperty(video, "seeking", { configurable: true, get: () => seeking });
+			Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; writes.push(v); seeking = true; } });
+			vi.useFakeTimers();
+			const button = screen.getByTestId("video-frame-forward");
+			fireEvent.pointerDown(button, { button: 0, pointerId: 1 });
+			vi.advanceTimersByTime(500 + 3 * (1000 / 15));
+			expect(writes).toHaveLength(1);
+			seeking = false;
+			fireEvent(video, new Event("seeked"));
+			// The newest target, four frames on — never the three in between.
+			expect(writes).toHaveLength(2);
+			expect(writes[1]).toBeCloseTo(35.5 / 30);
+			fireEvent.pointerUp(button, { pointerId: 1 });
+		});
+
+		it("follows the measured frame rate: a 60 fps clip repeats 30 times a second", async () => {
+			const { rememberFrameRate } = await import("../../utils/video-playback");
+			// Its own clip id: a remembered rate lives for the session.
+			rememberFrameRate("v60", 60);
+			const { video, at } = await renderClip([], { ...clip, id: "v60" });
+			at(1);
+			vi.useFakeTimers();
+			fireEvent.pointerDown(screen.getByTestId("video-frame-forward"), { button: 0, pointerId: 1 });
+			expect(video.currentTime).toBeCloseTo(61.5 / 60);
+			vi.advanceTimersByTime(1000);
+			// One at 500 ms, then one every 33.3 ms: 16 by the one-second mark.
+			expect(video.currentTime).toBeCloseTo((61 + 16 + 0.5) / 60);
+			fireEvent.pointerUp(screen.getByTestId("video-frame-forward"), { pointerId: 1 });
+		});
+	});
+
+	it("lays the transport out around Play and goes to the start and the end", async () => {
+		const { video, at } = await renderClip();
+		const transport = screen.getByTestId("video-transport");
+		expect(Array.from(transport.querySelectorAll("button")).map((b) => b.dataset.testid)).toEqual([
+			"video-to-start", "video-jump-back", "video-frames-back", "video-frame-back", "video-play",
+			"video-frame-forward", "video-frames-forward", "video-jump-forward", "video-to-end",
+		]);
+		at(60);
+		await userEvent.click(screen.getByTestId("video-frames-forward"));
+		expect(video.currentTime).toBeCloseTo(1805.5 / 30);
+		await userEvent.click(screen.getByTestId("video-frames-back"));
+		await userEvent.click(screen.getByTestId("video-frames-back"));
+		expect(video.currentTime).toBeCloseTo(1795.5 / 30);
+		await userEvent.click(screen.getByTestId("video-to-end"));
+		expect(video.currentTime).toBe(120);
+		fireEvent.keyDown(window, { key: "Home", code: "Home" });
+		expect(video.currentTime).toBe(0);
+		fireEvent.keyDown(window, { key: "End", code: "End" });
+		expect(video.currentTime).toBe(120);
+		expect(screen.getByText("1 / 1")).toBeInTheDocument();
+	});
+
+	describe("numbered spots on a paused frame", () => {
+		function stageVideo(video: HTMLVideoElement) {
+			Object.defineProperty(video, "videoWidth", { configurable: true, get: () => 1920 });
+			Object.defineProperty(video, "videoHeight", { configurable: true, get: () => 1080 });
+			video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 450, right: 800, bottom: 450, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+			fireEvent(video, new Event("loadedmetadata"));
+			fireEvent(video, new Event("seeked"));
+		}
+		function spotsLayer() {
+			const layer = screen.getByTestId("video-spots");
+			layer.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 450, right: 800, bottom: 450, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+			return layer;
+		}
+		const spotNumbers = () => screen.queryAllByTestId("video-spot").map((el) => Number(el.dataset.spot));
+
+		beforeEach(() => {
+			(mockedApi.request.uploadImageBase64 as ReturnType<typeof vi.fn>).mockResolvedValue({ path: "/up/demo-70250ms-spots.png" });
+			frameStill.captureFrameStill.mockClear();
+		});
+
+		it("marks spots 1-3 with M, keeps numbers when one is removed, and refills the lowest free number", async () => {
+			const { at } = await renderClip();
+			at(70.25);
+			stageVideo(screen.getByTestId("viewer-main-video") as HTMLVideoElement);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "true");
+			expect(await screen.findByTestId("video-review-composer")).toBeInTheDocument();
+			const layer = spotsLayer();
+			fireEvent.pointerDown(layer, { button: 0, clientX: 200, clientY: 90 });
+			fireEvent.pointerDown(layer, { button: 0, clientX: 400, clientY: 225 });
+			fireEvent.pointerDown(layer, { button: 0, clientX: 720, clientY: 405 });
+			expect(spotNumbers()).toEqual([1, 2, 3]);
+			expect(screen.getByTestId("video-review-composer")).toHaveTextContent("3 spots");
+			// Clicks landing in one batch still get numbers of their own.
+			act(() => {
+				for (const x of [10, 20]) layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: x, clientY: 10 }));
+			});
+			expect(spotNumbers()).toEqual([1, 2, 3, 4, 5]);
+			fireEvent.keyDown(screen.getByRole("button", { name: "Spot 5" }), { key: "Delete" });
+			fireEvent.keyDown(screen.getByRole("button", { name: "Spot 4" }), { key: "Backspace" });
+			await userEvent.click(screen.getByRole("button", { name: "Spot 2" }));
+			await userEvent.click(screen.getByRole("button", { name: "Remove spot 2" }));
+			expect(spotNumbers()).toEqual([1, 3]);
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 100, clientY: 100 });
+			expect(spotNumbers()).toEqual([1, 3, 2]);
+			await userEvent.click(screen.getByRole("button", { name: "Spot 3" }));
+			fireEvent.keyDown(screen.getByRole("button", { name: "Spot 3" }), { key: "Delete" });
+			expect(spotNumbers()).toEqual([1, 2]);
+		});
+
+		it("stores the comment at once with its spots, patches the still in after, and sends both to the agent", async () => {
+			let resolveStill: (value: string | null) => void = () => {};
+			frameStill.captureFrameStill.mockImplementationOnce(() => new Promise((resolve) => { resolveStill = resolve; }));
+			const user = userEvent.setup();
+			const { at } = await renderClip();
+			at(70.25);
+			stageVideo(screen.getByTestId("viewer-main-video") as HTMLVideoElement);
+			await user.click(screen.getByTestId("video-mark-spots"));
+			const layer = spotsLayer();
+			fireEvent.pointerDown(layer, { button: 0, clientX: 200, clientY: 90 });
+			fireEvent.pointerDown(layer, { button: 0, clientX: 400, clientY: 225 });
+			fireEvent.pointerDown(layer, { button: 0, clientX: 720, clientY: 405 });
+			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "#1 is cut off");
+			await user.click(screen.getByRole("button", { name: "Add comment" }));
+			const points = [{ n: 1, x: 0.25, y: 0.2 }, { n: 2, x: 0.5, y: 0.5 }, { n: 3, x: 0.9, y: 0.9 }];
+			// Stored and drawn before the still exists.
+			await waitFor(() => expect(reviewApi().addReviewComment).toHaveBeenCalled());
+			const { comment } = reviewApi().addReviewComment.mock.calls[0][0] as { comment: ReviewComment };
+			expect(comment.anchor).toEqual(expect.objectContaining({ kind: "video-time", time: 70.25, points }));
+			expect(comment.anchor).not.toHaveProperty("still");
+			expect(await screen.findByTestId("video-marker")).toBeInTheDocument();
+			expect(reviewApi().setReviewCommentStill).not.toHaveBeenCalled();
+			expect(frameStill.captureFrameStill).toHaveBeenCalledWith("http://127.0.0.1:4242/shared-media/tok", 70.25, points);
+			// Until the still lands nothing can send the comment without it.
+			expect(screen.getByTestId("video-stage-status")).toHaveTextContent("Saving the frame with its spots…");
+			const sendAll = screen.getByTestId("video-review-send-all");
+			expect(sendAll).toBeDisabled();
+			expect(sendAll).toHaveTextContent("Saving the frame with its spots…");
+			fireEvent.click(sendAll);
+			expect(reviewApi().sendAgentMessageNow).not.toHaveBeenCalled();
+			resolveStill("UE5H");
+			await waitFor(() => expect(reviewApi().setReviewCommentStill).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: comment.id, still: "/up/demo-70250ms-spots.png" }));
+			expect(mockedApi.request.uploadImageBase64).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1", base64: "UE5H", mimeType: "image/png" }));
+			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "false");
+			expect(screen.queryAllByTestId("video-spot")).toHaveLength(0);
+			await waitFor(() => expect(screen.getByTestId("video-review-send-all")).toBeEnabled());
+			expect(screen.queryByTestId("video-stage-status")).toBeNull();
+
+			await user.click(screen.getByTestId("video-review-send-all"));
+			await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
+			const { text } = reviewApi().sendAgentMessageNow.mock.calls[0][0] as { text: string };
+			expect(text).toContain('<video src="/wt/shared-media/v.mp4" time="1:10.250" seconds="70.25" still="/up/demo-70250ms-spots.png">');
+			expect(text).toContain('<point n="1" x="25%" y="20%"/>\n<point n="2" x="50%" y="50%"/>\n<point n="3" x="90%" y="90%"/>');
+			expect(text).toContain("<comment>#1 is cut off</comment>");
+		});
+
+		it("keeps the draft on its frame: the tool off that frame seeks back instead of moving the spots", async () => {
+			const { video, at } = await renderClip();
+			at(70.25);
+			stageVideo(video);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 200, clientY: 90 });
+			expect(spotNumbers()).toEqual([1]);
+			at(80);
+			fireEvent(video, new Event("seeked"));
+			// Off the draft's frame its spots are not drawn over the wrong picture.
+			expect(spotNumbers()).toEqual([]);
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			expect(video.currentTime).toBe(70.25);
+			// Said inside the viewer: the app's toasts render under the lightbox.
+			expect(screen.getByTestId("video-stage-status")).toHaveTextContent("Spots go on the comment's frame, 1:10.250: back there now.");
+			fireEvent(video, new Event("seeked"));
+			expect(spotNumbers()).toEqual([1]);
+			expect(screen.getByTestId("video-review-composer")).toHaveTextContent("1:10.250 · 1 spot");
+			// Toggling the tool off and on away from the frame also goes back first.
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			at(90);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			expect(video.currentTime).toBe(70.25);
+		});
+
+		it("drops the draft's spots when the header Comments toggle leaves comment mode", async () => {
+			const { video, at } = await renderClip();
+			at(70.25);
+			stageVideo(video);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 200, clientY: 90 });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			expect(spotNumbers()).toEqual([1, 2]);
+			await userEvent.click(screen.getByTestId("image-viewer-comment"));
+			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "false");
+			at(80);
+			fireEvent(video, new Event("seeked"));
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 720, clientY: 405 });
+			// A new draft on the new frame, holding only the spot placed on it.
+			expect(spotNumbers()).toEqual([1]);
+			expect(screen.getByTestId("video-review-composer")).toHaveTextContent("1:20.000 · 1 spot");
+		});
+
+		it("restarts the stage hint's timer when the same hint comes up again", async () => {
+			const { video, at } = await renderClip();
+			at(70.25);
+			stageVideo(video);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 200, clientY: 90 });
+			vi.useFakeTimers();
+			const clickOffFrame = () => {
+				at(80);
+				fireEvent(video, new Event("seeked"));
+				fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			};
+			clickOffFrame();
+			act(() => { vi.advanceTimersByTime(2000); });
+			clickOffFrame();
+			act(() => { vi.advanceTimersByTime(2000); });
+			expect(screen.getByTestId("video-stage-status")).toHaveTextContent("Spots go on the comment's frame");
+			act(() => { vi.advanceTimersByTime(1100); });
+			vi.useRealTimers();
+			expect(screen.queryByTestId("video-stage-status")).toBeNull();
+		});
+
+		it("waits for the still before Send now hands the comment to the agent, and says so", async () => {
+			let resolveStill: (value: string | null) => void = () => {};
+			frameStill.captureFrameStill.mockImplementationOnce(() => new Promise((resolve) => { resolveStill = resolve; }));
+			const user = userEvent.setup();
+			const { at } = await renderClip();
+			at(5);
+			stageVideo(screen.getByTestId("viewer-main-video") as HTMLVideoElement);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "here");
+			await user.click(screen.getByRole("button", { name: "Send now" }));
+			expect(await screen.findByTestId("video-stage-status")).toHaveTextContent("Saving the frame with its spots…");
+			expect(reviewApi().sendAgentMessageNow).not.toHaveBeenCalled();
+			resolveStill("UE5H");
+			await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
+			expect(reviewApi().setReviewCommentStill).toHaveBeenCalled();
+			expect((reviewApi().sendAgentMessageNow.mock.calls[0][0] as { text: string }).text).toContain('still="/up/demo-70250ms-spots.png"');
+		});
+
+		it("still stores the comment and its spots when no still can be made", async () => {
+			frameStill.captureFrameStill.mockResolvedValueOnce(null);
+			const user = userEvent.setup();
+			const { at } = await renderClip();
+			at(5);
+			stageVideo(screen.getByTestId("viewer-main-video") as HTMLVideoElement);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "here");
+			await user.click(screen.getByRole("button", { name: "Add comment" }));
+			await waitFor(() => expect(reviewApi().addReviewComment).toHaveBeenCalled());
+			const { comment } = reviewApi().addReviewComment.mock.calls[0][0] as { comment: ReviewComment };
+			expect(comment.anchor).toEqual(expect.objectContaining({ points: [{ n: 1, x: 0.5, y: 0.5 }] }));
+			expect(comment.anchor).not.toHaveProperty("still");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(reviewApi().setReviewCommentStill).not.toHaveBeenCalled();
+		});
+
+		it("shows a stored comment's spots when its moment is paused on, and hides them while playing", async () => {
+			const stored = moment("m1", 12.5, "#1 flickers", { anchor: { ...moment("m1", 12.5, "").anchor, points: [{ n: 1, x: 0.5, y: 0.5 }, { n: 2, x: 0.1, y: 0.1 }] } });
+			const { video, at } = await renderClip([stored]);
+			at(30);
+			stageVideo(video);
+			expect(screen.queryByTestId("video-spots")).toBeNull();
+			await userEvent.click(await screen.findByTestId("video-marker"));
+			fireEvent(video, new Event("seeked"));
+			expect(screen.getAllByTestId("video-spot-saved")).toHaveLength(2);
+			Object.defineProperty(video, "paused", { configurable: true, get: () => false });
+			fireEvent(video, new Event("play"));
+			expect(screen.queryByTestId("video-spots")).toBeNull();
+		});
+
+		it("keeps M for the composer text instead of toggling the tool", async () => {
+			const user = userEvent.setup();
+			await renderClip();
+			fireEvent.keyDown(window, { key: "c", code: "KeyC" });
+			const box = await screen.findByPlaceholderText("Leave a comment on this line...");
+			await user.type(box, "mm");
+			expect(box).toHaveValue("mm");
+			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "false");
+		});
 	});
 
 	it("offers no comment action without a project to store it in", async () => {

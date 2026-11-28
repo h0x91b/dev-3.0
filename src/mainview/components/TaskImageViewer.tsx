@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isDeletableSharedMedia, isSharedAudio, isSharedClip, taskSharedMedia, type SharedImage, type Task } from "../../shared/types";
-import { clipReviewExcerpt, formatReviewMoment, videoMomentExcerpt, type ReviewComment, type ReviewImageRegionAnchor, type ReviewVideoTimeAnchor } from "../../shared/review";
+import { clipReviewExcerpt, formatReviewMoment, nextFramePointNumber, videoMomentExcerpt, type ReviewComment, type ReviewFramePoint, type ReviewImageRegionAnchor, type ReviewVideoTimeAnchor } from "../../shared/review";
 import { ReviewAside } from "../review/ReviewAside";
 import { ImageRegionOverlay, pictureContentRect, regionLabel, type Region } from "../review/ImageRegionOverlay";
 import { useReviewSend } from "../review/useReviewSend";
@@ -17,10 +17,12 @@ import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
 import Tooltip from "./Tooltip";
-import VideoFrameThumb from "./VideoFrameThumb";
+import VideoFrameThumb, { ClipPlayBadge } from "./VideoFrameThumb";
 import { primeFirstFrame } from "../utils/video-first-frame";
-import VideoReviewBar, { SEEK_STEP_SECONDS, jumpVideo, seekVideoBy, stepVideoFrame, stepVideoRate, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
-import { frameAt, frameSeekTime } from "../utils/video-playback";
+import VideoReviewBar, { SEEK_STEP_SECONDS, jumpVideo, seekVideoBy, seekVideoToEdge, stepVideoFrame, stepVideoRate, useFrameStepHold, useVideoFrameRate, type VideoMarker } from "./VideoReviewBar";
+import VideoFrameSpots, { containedPictureBox, type StageBox } from "./VideoFrameSpots";
+import { frameAt, frameSeekTime, isAtMoment } from "../utils/video-playback";
+import { captureFrameStill } from "../utils/frame-still";
 import { matchesShortcut } from "../keymap";
 import { confirmDeleteSharedMedia, useOlderClipsCleanup } from "../shared-media-delete";
 import { formatBytes } from "../utils/formatBytes";
@@ -50,20 +52,45 @@ function clipErrorKey(clip: "video" | "audio" | null, loadFailed: boolean) {
 	if (clip === "video") return loadFailed ? "imageViewer.videoLoadError" : "imageViewer.videoUnsupported";
 	return "imageViewer.loadError";
 }
-/** A clip's rail tile: a glyph on black, or a small play badge over the captured first frame. */
-function ClipThumbGlyph({ clip, title, overlay = false }: { clip: "video" | "audio"; title: string; overlay?: boolean }) {
+/** A clip's rail tile before (or without) a captured frame: its glyph on black. */
+function ClipThumbGlyph({ clip, title }: { clip: "video" | "audio"; title: string }) {
 	return (
 		<span
 			data-testid={`viewer-thumb-${clip}`}
 			title={title}
-			className={overlay
-				? "absolute inset-0 flex items-center justify-center text-white text-sm [text-shadow:0_1px_3px_rgb(0_0_0/0.8)]"
-				: "flex h-full w-full items-center justify-center bg-black/80 text-white text-lg"}
+			className="flex h-full w-full items-center justify-center bg-black/80 text-white text-lg"
 			style={{ fontFamily: ICON }}
 		>
 			{clip === "audio" ? AUDIO_GLYPH : "\uf04b"}
 		</span>
 	);
+}
+
+/** A PNG of the frame with its spots, saved where the agent can open it; null when the engine refuses. */
+async function saveFrameStill(projectId: string, clipName: string, url: string, time: number, spots: ReviewFramePoint[]): Promise<string | null> {
+	try {
+		const base64 = await captureFrameStill(url, time, spots);
+		if (!base64) return null;
+		const stem = clipName.replace(/\.[^.]+$/, "");
+		const saved = await api.request.uploadImageBase64({ projectId, base64, filename: `${stem}-${Math.round(time * 1000)}ms-spots.png`, mimeType: "image/png" });
+		return saved?.path ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/** The playhead while the clip is paused (a seek counts as paused there); null while playing. */
+function usePausedTime(video: HTMLVideoElement | null): number | null {
+	const [time, setTime] = useState<number | null>(null);
+	useEffect(() => {
+		if (!video) { setTime(null); return; }
+		const sync = () => setTime(video.paused ? video.currentTime : null);
+		const events = ["play", "pause", "seeking", "seeked", "loadedmetadata", "ended"];
+		for (const name of events) video.addEventListener(name, sync);
+		sync();
+		return () => { for (const name of events) video.removeEventListener(name, sync); };
+	}, [video]);
+	return time;
 }
 
 // Above this height/width ratio an image is "tall" (e.g. a full-page capture) —
@@ -139,6 +166,23 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	}, []);
 	// A moment picked for a video comment, waiting for its text.
 	const [pendingMoment, setPendingMoment] = useState<Pick<ReviewVideoTimeAnchor, "time" | "frame" | "fps"> | null>(null);
+	// Numbered spots of the comment being written, and the tool that places them.
+	const [draftSpots, setDraftSpots] = useState<ReviewFramePoint[]>([]);
+	const [spotTool, setSpotTool] = useState(false);
+	const [selectedSpot, setSelectedSpot] = useState<number | null>(null);
+	const clearSpots = useCallback(() => { setDraftSpots([]); setSpotTool(false); setSelectedSpot(null); }, []);
+	// Comments whose frame still is being captured and saved; nothing sends them meanwhile.
+	const [stillsInFlight, setStillsInFlight] = useState<string[]>([]);
+	// A short line over the stage: the lightbox sits above the app's toast layer.
+	// Each hint is a new object, so repeating the same text restarts its timer.
+	const [stageHint, setStageHint] = useState<{ text: string } | null>(null);
+	useEffect(() => {
+		if (!stageHint) return;
+		const timer = setTimeout(() => setStageHint(null), 3000);
+		return () => clearTimeout(timer);
+	}, [stageHint]);
+	// The drawn video element, relative to the stage; the spots sit on its picture.
+	const [videoBox, setVideoBox] = useState<StageBox | null>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
 	// Ids whose fetch has already been kicked off — dedupes the priority effect
 	// against the background loader so each image is read at most once.
@@ -178,6 +222,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		[current, clip, review.comments],
 	);
 	const fps = useVideoFrameRate(clip === "video" ? videoEl : null, current?.id ?? null);
+	const frameHold = useFrameStepHold(clip === "video" ? videoEl : null, fps);
+	const pausedTime = usePausedTime(clip === "video" ? videoEl : null);
 	const commentAtPlayhead = useCallback(() => {
 		const video = playerRef.current;
 		if (!canComment || clip !== "video" || !(video instanceof HTMLVideoElement)) return;
@@ -205,6 +251,77 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			done: Boolean(comment.sentAt || comment.resolvedAt),
 		};
 	}), [videoComments, t]);
+	// Spots belong to the draft's frame, which never moves. Off that frame the
+	// tool first brings the playhead back to it; a spot is placed only on it.
+	const returnToDraftFrame = useCallback((video: HTMLVideoElement): boolean => {
+		video.pause();
+		if (!pendingMoment || isAtMoment(video.currentTime, pendingMoment, fps)) return false;
+		video.currentTime = pendingMoment.frame !== null && pendingMoment.fps ? frameSeekTime(pendingMoment.frame, pendingMoment.fps, video.duration) : pendingMoment.time;
+		setStageHint({ text: t("imageViewer.spotsBackToDraft", { time: formatReviewMoment(pendingMoment) }) });
+		return true;
+	}, [pendingMoment, fps, t]);
+	const toggleSpotTool = useCallback(() => {
+		const video = playerRef.current;
+		if (!canComment || clip !== "video" || !(video instanceof HTMLVideoElement)) return;
+		if (spotTool) { setSpotTool(false); setSelectedSpot(null); return; }
+		if (pendingMoment) returnToDraftFrame(video);
+		else commentAtPlayhead();
+		setSpotTool(true);
+	}, [canComment, clip, spotTool, pendingMoment, commentAtPlayhead, returnToDraftFrame]);
+	// Set by the click that starts a draft, so spots left from an older one never join it.
+	const draftStartedRef = useRef(false);
+	useEffect(() => { if (!pendingMoment) draftStartedRef.current = false; }, [pendingMoment]);
+	const addSpot = useCallback((spot: { x: number; y: number }) => {
+		const video = playerRef.current;
+		if (!(video instanceof HTMLVideoElement)) return;
+		if (!pendingMoment) {
+			if (!draftStartedRef.current) setDraftSpots([]);
+			draftStartedRef.current = true;
+			const time = video.currentTime;
+			setPendingMoment({ time, frame: fps === null ? null : frameAt(time, fps), fps });
+			setActiveCommentId(null);
+			setCommentMode(true);
+		} else if (returnToDraftFrame(video)) return;
+		setDraftSpots((prev) => [...prev, { n: nextFramePointNumber(prev), ...spot }]);
+		setSelectedSpot(null);
+	}, [pendingMoment, fps, returnToDraftFrame]);
+	const removeSpot = useCallback((n: number) => {
+		setDraftSpots((prev) => prev.filter((point) => point.n !== n));
+		setSelectedSpot(null);
+	}, []);
+	const measureVideo = useCallback(() => {
+		const video = videoEl;
+		const stage = stageRef.current;
+		if (!video || !stage) { setVideoBox(null); return; }
+		const rect = video.getBoundingClientRect();
+		const host = stage.getBoundingClientRect();
+		const element = { left: rect.left - host.left + stage.scrollLeft, top: rect.top - host.top + stage.scrollTop, width: rect.width, height: rect.height };
+		setVideoBox(containedPictureBox(element, video.videoWidth > 0 ? { w: video.videoWidth, h: video.videoHeight } : null));
+	}, [videoEl]);
+	useEffect(() => {
+		measureVideo();
+		const stage = stageRef.current;
+		if (!videoEl || !stage) return;
+		videoEl.addEventListener("loadedmetadata", measureVideo);
+		const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measureVideo);
+		observer?.observe(stage);
+		observer?.observe(videoEl);
+		return () => {
+			observer?.disconnect();
+			videoEl.removeEventListener("loadedmetadata", measureVideo);
+		};
+	}, [measureVideo, videoEl, fullscreen, commentMode]);
+	const showDraftSpots = pausedTime !== null && draftSpots.length > 0 && pendingMoment !== null && isAtMoment(pausedTime, pendingMoment, fps);
+	const savedSpots = useMemo(() => {
+		if (pausedTime === null) return [];
+		return videoComments.flatMap((comment) => {
+			const anchor = comment.anchor as ReviewVideoTimeAnchor;
+			if (!anchor.points?.length || !isAtMoment(pausedTime, anchor, fps)) return [];
+			return [{ commentId: comment.id, points: anchor.points, active: comment.id === activeCommentId }];
+		});
+	}, [pausedTime, videoComments, fps, activeCommentId]);
+	const showSpots = clip === "video" && videoBox !== null && pausedTime !== null && (spotTool || showDraftSpots || savedSpots.length > 0);
+
 	const measurePicture = useCallback(() => {
 		const img = imgRef.current;
 		const stage = stageRef.current;
@@ -300,7 +417,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const dismissRef = useRef<() => void>(() => {});
 	dismissRef.current = () => {
 		if (menu) setMenu(null);
-		else if (commentMode) { setCommentMode(false); setPendingRegion(null); setPendingMoment(null); }
+		else if (commentMode) { setCommentMode(false); setPendingRegion(null); setPendingMoment(null); clearSpots(); }
 		else if (fullscreen) setFullscreen(false);
 		else onClose();
 	};
@@ -312,6 +429,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
+	const heldFrameKey = useRef<string | null>(null);
 	// Keyboard navigation + f = fullscreen. Capture phase + stopPropagation
 	// because this lightbox is a modal that owns the keyboard while open: the
 	// App-level Escape listener is registered first and would otherwise navigate
@@ -339,8 +457,18 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 				// The viewer is itself a dialog, which the matcher reads as "typing"; text
 				// fields already returned above, and the speed menu has no use for , . < > c j l.
 				const ctx = { typing: false };
-				if (matchesShortcut(e, "media-frame-back", ctx)) { consume(); stepVideoFrame(video, -1, fps); return; }
-				if (matchesShortcut(e, "media-frame-forward", ctx)) { consume(); stepVideoFrame(video, 1, fps); return; }
+				// A held key repeats at the hold's own rate, not the OS key-repeat rate.
+				const frameKey = matchesShortcut(e, "media-frame-back", ctx) ? -1 : matchesShortcut(e, "media-frame-forward", ctx) ? 1 : 0;
+				if (frameKey !== 0) {
+					consume();
+					if (e.repeat) return;
+					if (frameHold) { heldFrameKey.current = e.code; frameHold.press(frameKey); }
+					else stepVideoFrame(video, frameKey, fps);
+					return;
+				}
+				if (matchesShortcut(e, "media-seek-start", ctx)) { consume(); seekVideoToEdge(video, "start"); return; }
+				if (matchesShortcut(e, "media-seek-end", ctx)) { consume(); seekVideoToEdge(video, "end"); return; }
+				if (canComment && matchesShortcut(e, "media-mark-spots", ctx)) { consume(); toggleSpotTool(); return; }
 				if (matchesShortcut(e, "media-jump-back", ctx)) { consume(); jumpVideo(video, -1); return; }
 				if (matchesShortcut(e, "media-jump-forward", ctx)) { consume(); jumpVideo(video, 1); return; }
 				if (matchesShortcut(e, "media-speed-down", ctx)) { consume(); stepVideoRate(video, -1); return; }
@@ -357,9 +485,18 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			else if (e.key === "End") { consume(); setIndex(images.length - 1); }
 			else if (e.key === "f" || e.key === "F") { consume(); setFullscreen((v) => !v); }
 		}
+		function onKeyUp(e: KeyboardEvent) {
+			if (heldFrameKey.current !== e.code) return;
+			heldFrameKey.current = null;
+			frameHold?.release();
+		}
 		window.addEventListener("keydown", onKey, { capture: true });
-		return () => window.removeEventListener("keydown", onKey, { capture: true });
-	}, [go, onClose, images.length, fullscreen, fps, canComment, commentAtPlayhead]);
+		window.addEventListener("keyup", onKeyUp, { capture: true });
+		return () => {
+			window.removeEventListener("keydown", onKey, { capture: true });
+			window.removeEventListener("keyup", onKeyUp, { capture: true });
+		};
+	}, [go, onClose, images.length, fullscreen, fps, canComment, commentAtPlayhead, frameHold, toggleSpotTool]);
 
 	// Reset per-image derived state and scroll the active thumbnail into view.
 	useEffect(() => {
@@ -372,11 +509,12 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setFitOverride(null);
 		setPendingRegion(null);
 		setPendingMoment(null);
+		clearSpots();
 		setActiveCommentId(null);
 		setClipError(false);
 		zoom.reset();
 		if (stageRef.current) stageRef.current.scrollTop = 0;
-	}, [index, zoom.reset]);
+	}, [index, zoom.reset, clearSpots]);
 
 	if (!current) return null;
 
@@ -462,23 +600,50 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		setActiveCommentId(comment.id);
 		if (andSend) send.sendOne(comment);
 	};
-	const addMomentComment = (body: string, andSend: boolean) => {
+	const addMomentComment = async (body: string, andSend: boolean) => {
 		if (!pendingMoment || !current) return;
+		const moment = pendingMoment;
+		const spots = [...draftSpots].sort((a, b) => a.n - b.n);
+		const clipUrl = currentUrl;
+		setPendingMoment(null);
+		clearSpots();
 		const anchor: ReviewVideoTimeAnchor = {
 			kind: "video-time",
 			imageId: current.id,
 			name: current.name,
 			path: current.storedPath,
 			caption: current.caption ? clipReviewExcerpt(current.caption) : null,
-			...pendingMoment,
-			excerpt: videoMomentExcerpt(current.name, pendingMoment),
+			...moment,
+			excerpt: videoMomentExcerpt(current.name, moment),
+			...(spots.length > 0 ? { points: spots } : {}),
 		};
 		const comment: ReviewComment = { id: crypto.randomUUID(), body, createdAt: new Date().toISOString(), anchor };
-		review.add(comment);
-		setPendingMoment(null);
+		// The comment shows at once; the still (a decode, an encode and an upload) is patched in after.
+		const added = review.add(comment);
 		setActiveCommentId(comment.id);
-		if (andSend) send.sendOne(comment);
+		if (spots.length === 0 || !clipUrl || !projectId) {
+			if (andSend) send.sendOne(comment);
+			return;
+		}
+		setStillsInFlight((ids) => [...ids, comment.id]);
+		let still: string | null = null;
+		try {
+			const [stored, saved] = await Promise.all([added, saveFrameStill(projectId, current.name, clipUrl, moment.time, spots)]);
+			still = stored ? saved : null;
+			if (still) await review.setStill(comment.id, still);
+		} finally {
+			setStillsInFlight((ids) => ids.filter((id) => id !== comment.id));
+		}
+		// Send now waits for the still, so the agent gets the picture with the message.
+		if (andSend) send.sendOne(still ? { ...comment, anchor: { ...anchor, still } } : comment);
 	};
+	// While a still is on its way, its comment counts as sending and send-all waits,
+	// so no comment reaches the agent without the frame it points at.
+	const videoSend = useMemo(() => (stillsInFlight.length === 0 ? send : {
+		...send,
+		sendingCommentIds: { ...send.sendingCommentIds, ...Object.fromEntries(stillsInFlight.map((id) => [id, true])) },
+	}), [send, stillsInFlight]);
+	const stageStatus = stageHint?.text ?? (stillsInFlight.length > 0 ? t("imageViewer.savingFrame") : null);
 	const showOverlay = !isClip && canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
 	const copyLabel = t(clip === "audio" ? "imageViewer.copyAudioPath" : clip === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath");
 	const downloadLabel = t(clip === "audio" ? "imageViewer.downloadAudio" : clip === "video" ? "imageViewer.downloadVideo" : "imageViewer.download");
@@ -537,7 +702,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					{canComment && clip !== "audio" && (
 						<button
 							type="button"
-							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); setPendingMoment(null); }}
+							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); setPendingMoment(null); clearSpots(); }}
 							title={t(clip === "video" ? "imageViewer.videoCommentMode" : "imageViewer.commentMode")}
 							aria-label={t(clip === "video" ? "imageViewer.videoCommentMode" : "imageViewer.commentMode")}
 							aria-pressed={commentMode}
@@ -607,6 +772,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 				<div className="flex flex-1 min-h-0">
 				<div className="flex flex-1 min-w-0 min-h-0 flex-col bg-base">
 				<div className="relative flex-1 min-h-0">
+					{clip === "video" && stageStatus && (
+						<div role="status" data-testid="video-stage-status" className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-black/75 px-3 py-1.5 text-center text-xs text-white shadow-[0_1px_4px_rgb(0_0_0/0.4)]">
+							{stageStatus}
+						</div>
+					)}
 					<div
 						ref={setStage}
 						onContextMenu={openMenu}
@@ -683,6 +853,18 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 								onPick={setPendingRegion}
 							/>
 						)}
+						{showSpots && videoBox && (
+							<VideoFrameSpots
+								box={videoBox}
+								draft={showDraftSpots ? draftSpots : []}
+								saved={savedSpots}
+								placing={spotTool}
+								selected={selectedSpot}
+								onSelect={setSelectedSpot}
+								onAdd={addSpot}
+								onRemove={removeSpot}
+							/>
+						)}
 					</div>
 
 					{images.length > 1 && (
@@ -716,6 +898,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						activeMarkerId={activeCommentId}
 						onMarker={(id) => { seekToComment(id); setCommentMode(true); }}
 						onComment={canComment ? commentAtPlayhead : undefined}
+						hold={frameHold}
+						markerTool={canComment ? { active: spotTool, onToggle: toggleSpotTool } : undefined}
 					/>
 				)}
 				</div>
@@ -724,13 +908,14 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						testId="video-review"
 						comments={videoComments}
 						review={review}
-						send={send}
+						send={videoSend}
+						sendAllHeldLabel={stillsInFlight.length > 0 ? t("imageViewer.savingFrame") : null}
 						activeCommentId={activeCommentId}
 						onActivate={seekToComment}
 						labelFor={(comment, i) => `${i + 1} · ${formatReviewMoment(comment.anchor as ReviewVideoTimeAnchor)}`}
-						pendingLabel={pendingMoment ? `${current.name} · ${formatReviewMoment(pendingMoment)}` : null}
-						onSubmitPick={addMomentComment}
-						onCancelPick={() => setPendingMoment(null)}
+						pendingLabel={pendingMoment ? `${current.name} · ${formatReviewMoment(pendingMoment)}${draftSpots.length ? ` · ${t.plural("imageViewer.spotCount", draftSpots.length)}` : ""}` : null}
+						onSubmitPick={(body, andSend) => { void addMomentComment(body, andSend); }}
+						onCancelPick={() => { setPendingMoment(null); clearSpots(); }}
 						hint={t("imageViewer.videoCommentModeHint")}
 						empty={t("imageViewer.videoReviewEmpty")}
 					/>
@@ -795,7 +980,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 										<VideoFrameThumb
 											path={img.storedPath}
 											fallback={<ClipThumbGlyph clip="video" title={t("imageViewer.video")} />}
-											badge={<ClipThumbGlyph clip="video" title={t("imageViewer.video")} overlay />}
+											badge={<ClipPlayBadge testId="viewer-thumb-video" title={t("imageViewer.video")} />}
 										/>
 									) : thumbClip ? (
 										<ClipThumbGlyph clip="audio" title={t("imageViewer.audio")} />

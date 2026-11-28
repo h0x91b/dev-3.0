@@ -6,6 +6,7 @@ import {
 	reopenReviewComment as reopen,
 	replyToReviewComment,
 	resolveReviewComment as resolve,
+	setVideoCommentStill,
 	updateReviewCommentBody,
 	type ReviewComment,
 	type ReviewReplyAuthor,
@@ -43,6 +44,10 @@ async function updateReviewComment(params: { taskId: string; projectId: string; 
 	const body = params.body.trim();
 	if (!body) throw new Error("Review comment body is required");
 	return mutateReview(params, "updateReviewComment", (current) => updateReviewCommentBody(current, params.commentId, body));
+}
+
+async function setReviewCommentStill(params: { taskId: string; projectId: string; commentId: string; still: string }): Promise<Task> {
+	return mutateReview(params, "setReviewCommentStill", (current) => setVideoCommentStill(current, params.commentId, params.still));
 }
 
 async function deleteReviewComment(params: { taskId: string; projectId: string; commentId: string }): Promise<Task> {
@@ -86,6 +91,7 @@ async function importReviewComments(params: { taskId: string; projectId: string;
 export const reviewCommentHandlers = {
 	addReviewComment,
 	updateReviewComment,
+	setReviewCommentStill,
 	deleteReviewComment,
 	markReviewCommentsSent,
 	resolveReviewComment,

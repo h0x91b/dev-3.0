@@ -1484,6 +1484,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; commentId: string; body: string };
 				response: Task;
 			};
+			setReviewCommentStill: {
+				params: { taskId: string; projectId: string; commentId: string; still: string };
+				response: Task;
+			};
 			deleteReviewComment: {
 				params: { taskId: string; projectId: string; commentId: string };
 				response: Task;

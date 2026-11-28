@@ -32,6 +32,24 @@ function releaseVideo(video: HTMLVideoElement): void {
 	video.load();
 }
 
+/**
+ * The "this is a video" mark over a clip's first frame: a play glyph in a dark
+ * disc, readable on a white frame as well as a black one.
+ */
+export function ClipPlayBadge({ title, testId, size = "sm" }: { title: string; testId: string; size?: "sm" | "md" }) {
+	return (
+		<span data-testid={testId} title={title} className="pointer-events-none absolute inset-0 flex items-center justify-center">
+			<span
+				aria-hidden="true"
+				className={`flex items-center justify-center rounded-full bg-black/60 text-white ring-[1.5px] ring-white/85 shadow-[0_1px_4px_rgb(0_0_0/0.4)] backdrop-blur-[2px] ${size === "md" ? "h-9 w-9 text-sm" : "h-6 w-6 text-dense"}`}
+				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			>
+				<span className="translate-x-[1px]">{"\uf04b"}</span>
+			</span>
+		</span>
+	);
+}
+
 interface VideoFrameThumbProps {
 	/** Stored path of a shared clip, resolved to a streaming URL only once the tile is on screen. */
 	path: string;

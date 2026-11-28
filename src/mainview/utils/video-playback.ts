@@ -104,3 +104,10 @@ export function timelinePercent(time: number, duration: number): number {
 	if (!Number.isFinite(duration) || duration <= 0) return 0;
 	return Math.min(100, Math.max(0, (time / duration) * 100));
 }
+
+/** The playhead shows `moment`'s frame: same frame index at its rate, else within 20 ms. */
+export function isAtMoment(time: number, moment: { time: number; frame: number | null; fps: number | null }, fps: number | null): boolean {
+	const rate = moment.fps ?? fps;
+	if (rate) return frameAt(time, rate) === (moment.frame ?? frameAt(moment.time, rate));
+	return Math.abs(time - moment.time) < 0.02;
+}

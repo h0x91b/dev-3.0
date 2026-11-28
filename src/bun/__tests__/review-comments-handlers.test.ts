@@ -71,6 +71,19 @@ describe("review comment handlers", () => {
 		expect(task.review?.map((c) => c.id)).toEqual(["c1", "c2"]);
 	});
 
+	it("patches the frame still onto a video comment only, keeping its spots", async () => {
+		const video: ReviewComment = {
+			id: "v1", body: "#1 here", createdAt: "2026-11-28T10:00:00.000Z",
+			anchor: { kind: "video-time", imageId: "m", name: "demo.mp4", path: "/wt/demo.mp4", caption: null, time: 4.5, frame: 135, fps: 30, excerpt: "demo.mp4 @ 0:04.500, frame 135", points: [{ n: 1, x: 0.5, y: 0.5 }] },
+		};
+		await reviewCommentHandlers.addReviewComment({ taskId: "t1", projectId: "p1", comment });
+		await reviewCommentHandlers.addReviewComment({ taskId: "t1", projectId: "p1", comment: video });
+		let task = await reviewCommentHandlers.setReviewCommentStill({ taskId: "t1", projectId: "p1", commentId: "v1", still: "/up/still.png" });
+		expect(task.review?.[1].anchor).toMatchObject({ still: "/up/still.png", points: [{ n: 1, x: 0.5, y: 0.5 }] });
+		task = await reviewCommentHandlers.setReviewCommentStill({ taskId: "t1", projectId: "p1", commentId: "c1", still: "/up/x.png" });
+		expect(task.review?.[0].anchor).not.toHaveProperty("still");
+	});
+
 	it("marks sent and deletes", async () => {
 		await reviewCommentHandlers.addReviewComment({ taskId: "t1", projectId: "p1", comment });
 		let task = await reviewCommentHandlers.markReviewCommentsSent({ taskId: "t1", projectId: "p1", commentIds: ["c1"] });
