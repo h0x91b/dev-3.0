@@ -58,6 +58,7 @@ import type { SplitDirection } from "../shared/split-tree";
 import { matchesShortcut } from "./keymap";
 import { closeFocusedPane } from "./close-pane-shortcut";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
+import { dropEntriesToTerminalText, dropEntryError, paneShellDialect, placeDroppedFiles } from "./utils/droppedFiles";
 import { writeClipboardText } from "./utils/clipboard-write";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { imageFilesFromClipboard } from "./utils/clipboardImageFiles";
@@ -2773,19 +2774,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		const files = Array.from(e.dataTransfer.files);
 		if (files.length === 0) return;
 
-		const paths = await Promise.all(
-			files.map(async (f) => {
-				try {
-					const uploadedPath = await uploadDroppedFile(projectId, f);
-					return uploadedPath ? uploadedPath.replace(/ /g, "\\ ") : null;
-				} catch (err) {
-					console.error(`[TerminalView] file upload failed for "${f.name}":`, err);
-					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
-					return null;
-				}
-			}),
-		);
-		const text = paths.filter((path): path is string => Boolean(path)).join(" ");
+		const entries = await placeDroppedFiles(projectId, files);
+		for (const entry of entries) {
+			const error = dropEntryError(entry, t);
+			if (!error) continue;
+			console.error(`[TerminalView] dropped file not uploaded (${entry.kind})`);
+			toast.error(error, { taskId });
+		}
+		const text = dropEntriesToTerminalText(entries, paneShellDialect());
 
 		if (!text) {
 			try { termRef.current?.focus(); } catch { /* disposed */ }

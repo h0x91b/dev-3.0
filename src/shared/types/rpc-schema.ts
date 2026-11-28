@@ -1969,6 +1969,11 @@ export type AppRPCSchema = {
 				params: { projectId: string; base64: string; filename?: string; mimeType?: string };
 				response: { path: string } | null;
 			};
+			/** Host paths of files dropped into the webview, in order; null where none was proven. Always null off macOS. */
+			resolveDroppedFilePaths: {
+				params: { files: { name: string; size: number; lastModified: number }[] };
+				response: (string | null)[];
+			};
 			uploadImageBase64: {
 				params: { projectId: string; base64: string; filename?: string; mimeType?: string };
 				response: { path: string } | null;

@@ -305,6 +305,9 @@ const terminal = {
 	"quickShell.open": "Быстрая консоль",
 	"quickShell.tooltipWithShortcut": "Быстрая консоль — новый scratch в Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
+	"fileDrop.tooLargePathInserted": "{name} больше 100 МБ, поэтому не загружен. Вместо него вставлен исходный путь к файлу.",
+	"fileDrop.tooLargeNoPath": "{name} больше 100 МБ, поэтому не загружен, а исходный путь к нему определить не удалось.",
+	"fileDrop.tooLargeRemote": "{name} больше 100 МБ, поэтому не загружен. Файл лежит на этом устройстве, а не на хосте приложения, поэтому путь не вставлен.",
 	"imagePaste.failed": "Не удалось вставить картинку из буфера. Сохраните её в файл и перетащите сюда.",
 
 	// Touch composer (mobile input mode)
