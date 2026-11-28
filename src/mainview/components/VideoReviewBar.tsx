@@ -48,8 +48,9 @@ export function lastFrameIndex(duration: number, fps: number): number | null {
 /** Where `frames` frames from the intended playhead is, clamped to the clip; null when already at the edge. */
 function frameStepTarget(video: HTMLVideoElement, frames: number, fps: number | null): number | null {
 	const rate = fps ?? FALLBACK_FPS;
-	const from = frameAt(intendedTime(video), rate);
 	const last = lastFrameIndex(video.duration, rate) ?? Number.POSITIVE_INFINITY;
+	// At the clip's very end the playhead reads one past the last frame.
+	const from = Math.min(last, frameAt(intendedTime(video), rate));
 	const to = Math.min(last, Math.max(0, from + frames));
 	if (to === from && (frames < 0 ? from === 0 : from === last)) return null;
 	return frameSeekTime(to, rate, video.duration);

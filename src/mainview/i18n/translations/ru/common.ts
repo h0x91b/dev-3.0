@@ -693,6 +693,7 @@ const common = {
 	"imageViewer.markSpots": "Отметить точки на кадре",
 	"imageViewer.spot": "Точка {n}",
 	"imageViewer.removeSpot": "Убрать точку {n}",
+	"imageViewer.spotsBackToDraft": "Точки ставятся на кадр комментария, {time}: вернулись к нему.",
 	"imageViewer.spotCount_one": "{count} точка",
 	"imageViewer.spotCount_few": "{count} точки",
 	"imageViewer.spotCount_many": "{count} точек",

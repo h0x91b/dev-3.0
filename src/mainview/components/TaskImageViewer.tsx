@@ -241,28 +241,35 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			done: Boolean(comment.sentAt || comment.resolvedAt),
 		};
 	}), [videoComments, t]);
+	// Spots belong to the draft's frame, which never moves. Off that frame the
+	// tool first brings the playhead back to it; a spot is placed only on it.
+	const returnToDraftFrame = useCallback((video: HTMLVideoElement): boolean => {
+		video.pause();
+		if (!pendingMoment || isAtMoment(video.currentTime, pendingMoment, fps)) return false;
+		video.currentTime = pendingMoment.frame !== null && pendingMoment.fps ? frameSeekTime(pendingMoment.frame, pendingMoment.fps, video.duration) : pendingMoment.time;
+		toast.info(t("imageViewer.spotsBackToDraft", { time: formatReviewMoment(pendingMoment) }));
+		return true;
+	}, [pendingMoment, fps, t]);
 	const toggleSpotTool = useCallback(() => {
 		const video = playerRef.current;
 		if (!canComment || clip !== "video" || !(video instanceof HTMLVideoElement)) return;
 		if (spotTool) { setSpotTool(false); setSelectedSpot(null); return; }
-		if (pendingMoment) video.pause();
+		if (pendingMoment) returnToDraftFrame(video);
 		else commentAtPlayhead();
 		setSpotTool(true);
-	}, [canComment, clip, spotTool, pendingMoment, commentAtPlayhead]);
-	// A spot is always marked on the frame on screen: placing one off the draft's
-	// moment re-pins the draft there, keeping the spots already placed.
+	}, [canComment, clip, spotTool, pendingMoment, commentAtPlayhead, returnToDraftFrame]);
 	const addSpot = useCallback((spot: { x: number; y: number }) => {
 		const video = playerRef.current;
 		if (!(video instanceof HTMLVideoElement)) return;
-		const time = video.currentTime;
-		if (!pendingMoment || !isAtMoment(time, pendingMoment, fps)) {
+		if (!pendingMoment) {
+			const time = video.currentTime;
 			setPendingMoment({ time, frame: fps === null ? null : frameAt(time, fps), fps });
 			setActiveCommentId(null);
 			setCommentMode(true);
-		}
+		} else if (returnToDraftFrame(video)) return;
 		setDraftSpots((prev) => [...prev, { n: nextFramePointNumber(prev), ...spot }]);
 		setSelectedSpot(null);
-	}, [pendingMoment, fps]);
+	}, [pendingMoment, fps, returnToDraftFrame]);
 	const removeSpot = useCallback((n: number) => {
 		setDraftSpots((prev) => prev.filter((point) => point.n !== n));
 		setSelectedSpot(null);
@@ -289,7 +296,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			videoEl.removeEventListener("loadedmetadata", measureVideo);
 		};
 	}, [measureVideo, videoEl, fullscreen, commentMode]);
-	const showDraftSpots = pausedTime !== null && draftSpots.length > 0 && (spotTool || (pendingMoment !== null && isAtMoment(pausedTime, pendingMoment, fps)));
+	const showDraftSpots = pausedTime !== null && draftSpots.length > 0 && pendingMoment !== null && isAtMoment(pausedTime, pendingMoment, fps);
 	const savedSpots = useMemo(() => {
 		if (pausedTime === null) return [];
 		return videoComments.flatMap((comment) => {
@@ -585,7 +592,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		const clipUrl = currentUrl;
 		setPendingMoment(null);
 		clearSpots();
-		const still = spots.length > 0 && clipUrl && projectId ? await saveFrameStill(projectId, current.name, clipUrl, moment.time, spots) : null;
 		const anchor: ReviewVideoTimeAnchor = {
 			kind: "video-time",
 			imageId: current.id,
@@ -595,12 +601,19 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			...moment,
 			excerpt: videoMomentExcerpt(current.name, moment),
 			...(spots.length > 0 ? { points: spots } : {}),
-			...(still ? { still } : {}),
 		};
 		const comment: ReviewComment = { id: crypto.randomUUID(), body, createdAt: new Date().toISOString(), anchor };
-		review.add(comment);
+		// The comment shows at once; the still (a decode, an encode and an upload) is patched in after.
+		const added = review.add(comment);
 		setActiveCommentId(comment.id);
-		if (andSend) send.sendOne(comment);
+		if (spots.length === 0 || !clipUrl || !projectId) {
+			if (andSend) send.sendOne(comment);
+			return;
+		}
+		const [stored, still] = await Promise.all([added, saveFrameStill(projectId, current.name, clipUrl, moment.time, spots)]);
+		if (stored && still) await review.setStill(comment.id, still);
+		// Send now waits for the still, so the agent gets the picture with the message.
+		if (andSend) send.sendOne(still ? { ...comment, anchor: { ...anchor, still } } : comment);
 	};
 	const showOverlay = !isClip && canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
 	const copyLabel = t(clip === "audio" ? "imageViewer.copyAudioPath" : clip === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath");
@@ -809,7 +822,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						{showSpots && videoBox && (
 							<VideoFrameSpots
 								box={videoBox}
-								draft={showDraftSpots || spotTool ? draftSpots : []}
+								draft={showDraftSpots ? draftSpots : []}
 								saved={savedSpots}
 								placing={spotTool}
 								selected={selectedSpot}

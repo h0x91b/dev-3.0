@@ -3,6 +3,9 @@ import type { ReviewFramePoint } from "../../shared/review";
 /** Wider frames are scaled down: the still is for reading spots, not for pixel-peeping. */
 const MAX_STILL_WIDTH = 1920;
 const STILL_TIMEOUT_MS = 5000;
+/** How long to wait for a presented frame after the seek before drawing what is there. */
+const PRESENT_FALLBACK_MS = 300;
+const HAVE_CURRENT_DATA = 2;
 
 /**
  * Draws numbered crosshairs onto a frame. Fixed colours on purpose: the PNG goes
@@ -75,7 +78,8 @@ export function captureFrameStill(url: string, time: number, points: readonly Re
 		video.playsInline = true;
 		video.preload = "auto";
 		video.addEventListener("loadedmetadata", () => { video.currentTime = time; }, { once: true });
-		video.addEventListener("seeked", () => {
+		const draw = () => {
+			if (done) return;
 			const scale = Math.min(1, MAX_STILL_WIDTH / Math.max(1, video.videoWidth));
 			canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
 			canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
@@ -86,6 +90,19 @@ export function captureFrameStill(url: string, time: number, points: readonly Re
 			} catch {
 				finish(null);
 			}
+		};
+		// `seeked` alone is not enough: WebKit can still hold the previous (or no)
+		// frame then. Draw once the frame is decoded and, where the engine says so,
+		// presented; the timer covers an engine that presents nothing off-screen.
+		const drawWhenPresented = () => {
+			let drawn = false;
+			const once = () => { if (!drawn) { drawn = true; draw(); } };
+			if (typeof video.requestVideoFrameCallback === "function") video.requestVideoFrameCallback(() => once());
+			setTimeout(once, PRESENT_FALLBACK_MS);
+		};
+		video.addEventListener("seeked", () => {
+			if (video.readyState >= HAVE_CURRENT_DATA) drawWhenPresented();
+			else video.addEventListener("canplay", drawWhenPresented, { once: true });
 		}, { once: true });
 		video.addEventListener("error", () => finish(null), { once: true });
 		video.src = url;

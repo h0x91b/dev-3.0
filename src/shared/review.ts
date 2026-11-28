@@ -336,7 +336,7 @@ function anchorLines(entry: ReviewPromptEntry): string[] {
 		if (points.length === 0) return [`<video ${attrs.join(" ")}/>`];
 		return [
 			`<video ${attrs.join(" ")}>`,
-			...points.map((point) => `<point n="${point.n}" x="${formatFramePercent(point.x)}" y="${formatFramePercent(point.y)}"/>`),
+			...points.map((point) => `<point n="${Math.trunc(Number(point.n))}" x="${formatFramePercent(point.x)}" y="${formatFramePercent(point.y)}"/>`),
 			"</video>",
 		];
 	}
@@ -430,6 +430,13 @@ export function updateReviewCommentBody(comments: ReviewComment[] | undefined, i
 		comment.id === id
 			? { ...comment, body, sentAt: undefined, resolvedAt: undefined, resolvedBy: undefined }
 			: comment
+	));
+}
+
+/** Attaches the frame still to a video comment once it is saved; any other comment is left alone. */
+export function setVideoCommentStill(comments: ReviewComment[] | undefined, id: string, still: string): ReviewComment[] {
+	return (comments ?? []).map((comment) => (
+		comment.id === id && comment.anchor.kind === "video-time" ? { ...comment, anchor: { ...comment.anchor, still } } : comment
 	));
 }
 

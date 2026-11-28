@@ -7,6 +7,7 @@ import {
 	reopenReviewComment,
 	replyToReviewComment,
 	resolveReviewComment,
+	setVideoCommentStill,
 	updateReviewCommentBody,
 	type ReviewComment,
 	type ReviewReplyAuthor,
@@ -26,6 +27,8 @@ export interface TaskReviewApi {
 	comments: ReviewComment[];
 	add(comment: ReviewComment): ReviewMutation;
 	update(commentId: string, body: string): ReviewMutation;
+	/** Attaches a video comment's frame still, saved after the comment itself. */
+	setStill(commentId: string, still: string): ReviewMutation;
 	remove(commentId: string): ReviewMutation;
 	markSent(commentIds: Iterable<string>): ReviewMutation;
 	resolve(commentId: string, by: ReviewReplyAuthor, reply?: string): ReviewMutation;
@@ -71,6 +74,11 @@ export function useTaskReview(task: Pick<Task, "id" | "review">, projectId: stri
 		return run(api.request.updateReviewComment({ taskId, projectId, commentId, body }));
 	}, [projectId, run, taskId]);
 
+	const setStill = useCallback((commentId: string, still: string) => {
+		setComments((current) => setVideoCommentStill(current, commentId, still));
+		return run(api.request.setReviewCommentStill({ taskId, projectId, commentId, still }));
+	}, [run, taskId, projectId]);
+
 	const remove = useCallback((commentId: string) => {
 		setComments((current) => deleteReviewComment(current, commentId));
 		return run(api.request.deleteReviewComment({ taskId, projectId, commentId }));
@@ -112,5 +120,5 @@ export function useTaskReview(task: Pick<Task, "id" | "review">, projectId: stri
 		return run(api.request.importReviewComments({ taskId, projectId, comments: imported }));
 	}, [projectId, run, taskId]);
 
-	return { comments, add, update, remove, markSent, resolve, reopen, reply, clear, importMany };
+	return { comments, add, update, setStill, remove, markSent, resolve, reopen, reply, clear, importMany };
 }

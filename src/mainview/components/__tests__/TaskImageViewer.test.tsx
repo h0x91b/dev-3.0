@@ -317,7 +317,7 @@ describe("TaskImageViewer comment mode", () => {
 	const reviewApi = () => mockedApi.request as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 	beforeEach(() => {
-		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+		for (const name of ["addReviewComment", "setReviewCommentStill", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
 			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
 		}
 	});
@@ -746,7 +746,7 @@ describe("TaskImageViewer video review", () => {
 
 	beforeEach(() => {
 		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: "http://127.0.0.1:4242/shared-media/tok", path: "/shared-media/tok" });
-		for (const name of ["addReviewComment", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
+		for (const name of ["addReviewComment", "setReviewCommentStill", "updateReviewComment", "deleteReviewComment", "markReviewCommentsSent", "reopenReviewComment", "sendAgentMessageNow"]) {
 			reviewApi()[name] = vi.fn().mockResolvedValue({ spilledPath: null });
 		}
 	});
@@ -1186,7 +1186,9 @@ describe("TaskImageViewer video review", () => {
 			expect(spotNumbers()).toEqual([1, 2]);
 		});
 
-		it("stores the spots normalised with the moment and a still, and sends both to the agent", async () => {
+		it("stores the comment at once with its spots, patches the still in after, and sends both to the agent", async () => {
+			let resolveStill: (value: string | null) => void = () => {};
+			frameStill.captureFrameStill.mockImplementationOnce(() => new Promise((resolve) => { resolveStill = resolve; }));
 			const user = userEvent.setup();
 			const { at } = await renderClip();
 			at(70.25);
@@ -1198,13 +1200,18 @@ describe("TaskImageViewer video review", () => {
 			fireEvent.pointerDown(layer, { button: 0, clientX: 720, clientY: 405 });
 			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "#1 is cut off");
 			await user.click(screen.getByRole("button", { name: "Add comment" }));
-			await waitFor(() => expect(reviewApi().addReviewComment).toHaveBeenCalled());
 			const points = [{ n: 1, x: 0.25, y: 0.2 }, { n: 2, x: 0.5, y: 0.5 }, { n: 3, x: 0.9, y: 0.9 }];
-			expect(frameStill.captureFrameStill).toHaveBeenCalledWith("http://127.0.0.1:4242/shared-media/tok", 70.25, points);
-			expect(mockedApi.request.uploadImageBase64).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1", base64: "UE5H", mimeType: "image/png" }));
+			// Stored and drawn before the still exists.
+			await waitFor(() => expect(reviewApi().addReviewComment).toHaveBeenCalled());
 			const { comment } = reviewApi().addReviewComment.mock.calls[0][0] as { comment: ReviewComment };
-			expect(comment.anchor).toEqual(expect.objectContaining({ kind: "video-time", time: 70.25, points, still: "/up/demo-70250ms-spots.png" }));
-			// The tool and the draft spots are gone once the comment is stored.
+			expect(comment.anchor).toEqual(expect.objectContaining({ kind: "video-time", time: 70.25, points }));
+			expect(comment.anchor).not.toHaveProperty("still");
+			expect(await screen.findByTestId("video-marker")).toBeInTheDocument();
+			expect(reviewApi().setReviewCommentStill).not.toHaveBeenCalled();
+			expect(frameStill.captureFrameStill).toHaveBeenCalledWith("http://127.0.0.1:4242/shared-media/tok", 70.25, points);
+			resolveStill("UE5H");
+			await waitFor(() => expect(reviewApi().setReviewCommentStill).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: comment.id, still: "/up/demo-70250ms-spots.png" }));
+			expect(mockedApi.request.uploadImageBase64).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1", base64: "UE5H", mimeType: "image/png" }));
 			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "false");
 			expect(screen.queryAllByTestId("video-spot")).toHaveLength(0);
 
@@ -1214,6 +1221,43 @@ describe("TaskImageViewer video review", () => {
 			expect(text).toContain('<video src="/wt/shared-media/v.mp4" time="1:10.250" seconds="70.25" still="/up/demo-70250ms-spots.png">');
 			expect(text).toContain('<point n="1" x="25%" y="20%"/>\n<point n="2" x="50%" y="50%"/>\n<point n="3" x="90%" y="90%"/>');
 			expect(text).toContain("<comment>#1 is cut off</comment>");
+		});
+
+		it("keeps the draft on its frame: the tool off that frame seeks back instead of moving the spots", async () => {
+			const { video, at } = await renderClip();
+			at(70.25);
+			stageVideo(video);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 200, clientY: 90 });
+			expect(spotNumbers()).toEqual([1]);
+			at(80);
+			fireEvent(video, new Event("seeked"));
+			// Off the draft's frame its spots are not drawn over the wrong picture.
+			expect(spotNumbers()).toEqual([]);
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			expect(video.currentTime).toBe(70.25);
+			fireEvent(video, new Event("seeked"));
+			expect(spotNumbers()).toEqual([1]);
+			expect(screen.getByTestId("video-review-composer")).toHaveTextContent("1:10.250 · 1 spot");
+			// Toggling the tool off and on away from the frame also goes back first.
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			at(90);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			expect(video.currentTime).toBe(70.25);
+		});
+
+		it("waits for the still before Send now hands the comment to the agent", async () => {
+			const user = userEvent.setup();
+			const { at } = await renderClip();
+			at(5);
+			stageVideo(screen.getByTestId("viewer-main-video") as HTMLVideoElement);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "here");
+			await user.click(screen.getByRole("button", { name: "Send now" }));
+			await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
+			expect(reviewApi().setReviewCommentStill).toHaveBeenCalled();
+			expect((reviewApi().sendAgentMessageNow.mock.calls[0][0] as { text: string }).text).toContain('still="/up/demo-70250ms-spots.png"');
 		});
 
 		it("still stores the comment and its spots when no still can be made", async () => {
@@ -1230,6 +1274,8 @@ describe("TaskImageViewer video review", () => {
 			const { comment } = reviewApi().addReviewComment.mock.calls[0][0] as { comment: ReviewComment };
 			expect(comment.anchor).toEqual(expect.objectContaining({ points: [{ n: 1, x: 0.5, y: 0.5 }] }));
 			expect(comment.anchor).not.toHaveProperty("still");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(reviewApi().setReviewCommentStill).not.toHaveBeenCalled();
 		});
 
 		it("shows a stored comment's spots when its moment is paused on, and hides them while playing", async () => {
