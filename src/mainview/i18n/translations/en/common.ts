@@ -657,6 +657,7 @@ const common = {
 	"imageViewer.spot": "Spot {n}",
 	"imageViewer.removeSpot": "Remove spot {n}",
 	"imageViewer.spotsBackToDraft": "Spots go on the comment's frame, {time}: back there now.",
+	"imageViewer.savingFrame": "Saving the frame with its spots…",
 	"imageViewer.spotCount_one": "{count} spot",
 	"imageViewer.spotCount_other": "{count} spots",
 	"imageViewer.commentAtTime": "Comment at {time}",

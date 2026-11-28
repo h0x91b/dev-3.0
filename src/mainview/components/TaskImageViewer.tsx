@@ -171,6 +171,15 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	const [spotTool, setSpotTool] = useState(false);
 	const [selectedSpot, setSelectedSpot] = useState<number | null>(null);
 	const clearSpots = useCallback(() => { setDraftSpots([]); setSpotTool(false); setSelectedSpot(null); }, []);
+	// Comments whose frame still is being captured and saved; nothing sends them meanwhile.
+	const [stillsInFlight, setStillsInFlight] = useState<string[]>([]);
+	// A short line over the stage: the lightbox sits above the app's toast layer.
+	const [stageHint, setStageHint] = useState<string | null>(null);
+	useEffect(() => {
+		if (!stageHint) return;
+		const timer = setTimeout(() => setStageHint(null), 3000);
+		return () => clearTimeout(timer);
+	}, [stageHint]);
 	// The drawn video element, relative to the stage; the spots sit on its picture.
 	const [videoBox, setVideoBox] = useState<StageBox | null>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
@@ -247,7 +256,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		video.pause();
 		if (!pendingMoment || isAtMoment(video.currentTime, pendingMoment, fps)) return false;
 		video.currentTime = pendingMoment.frame !== null && pendingMoment.fps ? frameSeekTime(pendingMoment.frame, pendingMoment.fps, video.duration) : pendingMoment.time;
-		toast.info(t("imageViewer.spotsBackToDraft", { time: formatReviewMoment(pendingMoment) }));
+		setStageHint(t("imageViewer.spotsBackToDraft", { time: formatReviewMoment(pendingMoment) }));
 		return true;
 	}, [pendingMoment, fps, t]);
 	const toggleSpotTool = useCallback(() => {
@@ -610,11 +619,25 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 			if (andSend) send.sendOne(comment);
 			return;
 		}
-		const [stored, still] = await Promise.all([added, saveFrameStill(projectId, current.name, clipUrl, moment.time, spots)]);
-		if (stored && still) await review.setStill(comment.id, still);
+		setStillsInFlight((ids) => [...ids, comment.id]);
+		let still: string | null = null;
+		try {
+			const [stored, saved] = await Promise.all([added, saveFrameStill(projectId, current.name, clipUrl, moment.time, spots)]);
+			still = stored ? saved : null;
+			if (still) await review.setStill(comment.id, still);
+		} finally {
+			setStillsInFlight((ids) => ids.filter((id) => id !== comment.id));
+		}
 		// Send now waits for the still, so the agent gets the picture with the message.
 		if (andSend) send.sendOne(still ? { ...comment, anchor: { ...anchor, still } } : comment);
 	};
+	// While a still is on its way, its comment counts as sending and send-all waits,
+	// so no comment reaches the agent without the frame it points at.
+	const videoSend = useMemo(() => (stillsInFlight.length === 0 ? send : {
+		...send,
+		sendingCommentIds: { ...send.sendingCommentIds, ...Object.fromEntries(stillsInFlight.map((id) => [id, true])) },
+	}), [send, stillsInFlight]);
+	const stageStatus = stageHint ?? (stillsInFlight.length > 0 ? t("imageViewer.savingFrame") : null);
 	const showOverlay = !isClip && canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
 	const copyLabel = t(clip === "audio" ? "imageViewer.copyAudioPath" : clip === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath");
 	const downloadLabel = t(clip === "audio" ? "imageViewer.downloadAudio" : clip === "video" ? "imageViewer.downloadVideo" : "imageViewer.download");
@@ -743,6 +766,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 				<div className="flex flex-1 min-h-0">
 				<div className="flex flex-1 min-w-0 min-h-0 flex-col bg-base">
 				<div className="relative flex-1 min-h-0">
+					{clip === "video" && stageStatus && (
+						<div role="status" data-testid="video-stage-status" className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-black/75 px-3 py-1.5 text-center text-xs text-white shadow-[0_1px_4px_rgb(0_0_0/0.4)]">
+							{stageStatus}
+						</div>
+					)}
 					<div
 						ref={setStage}
 						onContextMenu={openMenu}
@@ -874,7 +902,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 						testId="video-review"
 						comments={videoComments}
 						review={review}
-						send={send}
+						send={videoSend}
+						sendAllHeldLabel={stillsInFlight.length > 0 ? t("imageViewer.savingFrame") : null}
 						activeCommentId={activeCommentId}
 						onActivate={seekToComment}
 						labelFor={(comment, i) => `${i + 1} · ${formatReviewMoment(comment.anchor as ReviewVideoTimeAnchor)}`}

@@ -657,6 +657,7 @@ const common = {
 	"imageViewer.spot": "Punto {n}",
 	"imageViewer.removeSpot": "Quitar el punto {n}",
 	"imageViewer.spotsBackToDraft": "Los puntos van en el fotograma del comentario, {time}: de vuelta ahí.",
+	"imageViewer.savingFrame": "Guardando el fotograma con sus puntos…",
 	"imageViewer.spotCount_one": "{count} punto",
 	"imageViewer.spotCount_many": "{count} puntos",
 	"imageViewer.spotCount_other": "{count} puntos",

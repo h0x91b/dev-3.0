@@ -1209,11 +1209,20 @@ describe("TaskImageViewer video review", () => {
 			expect(await screen.findByTestId("video-marker")).toBeInTheDocument();
 			expect(reviewApi().setReviewCommentStill).not.toHaveBeenCalled();
 			expect(frameStill.captureFrameStill).toHaveBeenCalledWith("http://127.0.0.1:4242/shared-media/tok", 70.25, points);
+			// Until the still lands nothing can send the comment without it.
+			expect(screen.getByTestId("video-stage-status")).toHaveTextContent("Saving the frame with its spots…");
+			const sendAll = screen.getByTestId("video-review-send-all");
+			expect(sendAll).toBeDisabled();
+			expect(sendAll).toHaveTextContent("Saving the frame with its spots…");
+			fireEvent.click(sendAll);
+			expect(reviewApi().sendAgentMessageNow).not.toHaveBeenCalled();
 			resolveStill("UE5H");
 			await waitFor(() => expect(reviewApi().setReviewCommentStill).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", commentId: comment.id, still: "/up/demo-70250ms-spots.png" }));
 			expect(mockedApi.request.uploadImageBase64).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1", base64: "UE5H", mimeType: "image/png" }));
 			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "false");
 			expect(screen.queryAllByTestId("video-spot")).toHaveLength(0);
+			await waitFor(() => expect(screen.getByTestId("video-review-send-all")).toBeEnabled());
+			expect(screen.queryByTestId("video-stage-status")).toBeNull();
 
 			await user.click(screen.getByTestId("video-review-send-all"));
 			await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
@@ -1236,6 +1245,8 @@ describe("TaskImageViewer video review", () => {
 			expect(spotNumbers()).toEqual([]);
 			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
 			expect(video.currentTime).toBe(70.25);
+			// Said inside the viewer: the app's toasts render under the lightbox.
+			expect(screen.getByTestId("video-stage-status")).toHaveTextContent("Spots go on the comment's frame, 1:10.250: back there now.");
 			fireEvent(video, new Event("seeked"));
 			expect(spotNumbers()).toEqual([1]);
 			expect(screen.getByTestId("video-review-composer")).toHaveTextContent("1:10.250 · 1 spot");
@@ -1246,7 +1257,9 @@ describe("TaskImageViewer video review", () => {
 			expect(video.currentTime).toBe(70.25);
 		});
 
-		it("waits for the still before Send now hands the comment to the agent", async () => {
+		it("waits for the still before Send now hands the comment to the agent, and says so", async () => {
+			let resolveStill: (value: string | null) => void = () => {};
+			frameStill.captureFrameStill.mockImplementationOnce(() => new Promise((resolve) => { resolveStill = resolve; }));
 			const user = userEvent.setup();
 			const { at } = await renderClip();
 			at(5);
@@ -1255,6 +1268,9 @@ describe("TaskImageViewer video review", () => {
 			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
 			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "here");
 			await user.click(screen.getByRole("button", { name: "Send now" }));
+			expect(await screen.findByTestId("video-stage-status")).toHaveTextContent("Saving the frame with its spots…");
+			expect(reviewApi().sendAgentMessageNow).not.toHaveBeenCalled();
+			resolveStill("UE5H");
 			await waitFor(() => expect(reviewApi().sendAgentMessageNow).toHaveBeenCalledTimes(1));
 			expect(reviewApi().setReviewCommentStill).toHaveBeenCalled();
 			expect((reviewApi().sendAgentMessageNow.mock.calls[0][0] as { text: string }).text).toContain('still="/up/demo-70250ms-spots.png"');

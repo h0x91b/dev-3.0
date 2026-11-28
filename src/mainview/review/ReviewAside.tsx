@@ -13,6 +13,8 @@ export interface ReviewAsideProps {
 	comments: ReviewComment[];
 	review: TaskReviewApi;
 	send: ReturnType<typeof useReviewSend>;
+	/** Holds the send-all button with this label, e.g. while a comment's attachment is still being saved. */
+	sendAllHeldLabel?: string | null;
 	/** One line per comment: where it points, worded for the surface. */
 	labelFor: (comment: ReviewComment, index: number) => string;
 	/** Ids the surface could not place any more (a republished artifact, a changed file). */
@@ -51,6 +53,7 @@ export function ReviewAside({
 	empty,
 	children,
 	testId = "review-aside",
+	sendAllHeldLabel = null,
 }: ReviewAsideProps) {
 	const t = useT();
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -71,12 +74,12 @@ export function ReviewAside({
 					<button
 						type="button"
 						data-testid={`${testId}-send-all`}
-						disabled={send.batchSending}
+						disabled={send.batchSending || sendAllHeldLabel !== null}
 						onClick={() => send.sendAll(unsent)}
 						className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-edge bg-base px-2 text-micro font-semibold text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
 					>
 						<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: ICON }}>{""}</span>
-						<span>{send.batchSending ? t("infoPanel.diffReviewExportSendSending") : t.plural("artifactViewer.reviewSendAll", unsent.length)}</span>
+						<span>{sendAllHeldLabel ?? (send.batchSending ? t("infoPanel.diffReviewExportSendSending") : t.plural("artifactViewer.reviewSendAll", unsent.length))}</span>
 					</button>
 				)}
 			</div>
