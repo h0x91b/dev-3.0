@@ -13,7 +13,10 @@
 
 // Writes the paths as NUL-terminated UTF-8 strings back to back into `buffer`.
 // Returns the byte count written, or -(bytes needed) when `capacity` is too small.
+// Runs on the Bun thread, not the AppKit main thread; an Objective-C exception
+// escaping here would abort the app, so any one reads as "no paths".
 int32_t dev3_drag_file_paths(char *buffer, int32_t capacity) {
+	@try {
 	@autoreleasepool {
 		NSPasteboard *pasteboard = [NSPasteboard pasteboardWithName:NSPasteboardNameDrag];
 		NSArray<NSURL *> *urls = [pasteboard readObjectsForClasses:@[ [NSURL class] ]
@@ -29,5 +32,8 @@ int32_t dev3_drag_file_paths(char *buffer, int32_t capacity) {
 		if (needed > capacity) return -needed;
 		if (needed > 0) memcpy(buffer, out.bytes, out.length);
 		return needed;
+	}
+	} @catch (NSException *exception) {
+		return 0;
 	}
 }

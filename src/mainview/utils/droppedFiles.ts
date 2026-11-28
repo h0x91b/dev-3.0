@@ -2,7 +2,7 @@ import { api } from "../rpc";
 import { FileTooLargeError, MAX_UPLOAD_FILE_SIZE, uploadDroppedFile } from "./uploadDroppedFile";
 import { isRemote, isWindows } from "./platform";
 
-export type ShellDialect = "posix" | "powershell" | "cmd";
+export type ShellDialect = "posix" | "powershell";
 
 /** The shell a task pane runs on this host: PowerShell on Windows, a POSIX shell elsewhere. */
 export function paneShellDialect(): ShellDialect {
@@ -10,15 +10,18 @@ export function paneShellDialect(): ShellDialect {
 }
 
 /**
- * Wraps a path in double quotes so it survives as one argument. POSIX escapes
- * `\ " $ \``; PowerShell escapes `` ` " $ `` with its backtick; cmd has no escape
- * inside quotes, and Windows file names cannot contain `"` anyway.
+ * Quotes a path so it survives as one argument. POSIX uses single quotes, where
+ * nothing expands (not even interactive `!` history), and spells `'` as `'\''`.
+ * PowerShell uses double quotes with backtick escapes, including the typographic
+ * quotes it treats as `"`.
  */
 export function quotePath(path: string, dialect: ShellDialect): string {
-	if (dialect === "posix") return `"${path.replace(/[\\"$`]/g, "\\$&")}"`;
-	if (dialect === "powershell") return `"${path.replace(/[`"$]/g, "`$&")}"`;
-	return `"${path.replace(/"/g, "")}"`;
+	if (dialect === "posix") return `'${path.replace(/'/g, "'\\''")}'`;
+	return `"${path.replace(/[`"$\u201c\u201d\u201e]/g, "`$&")}"`;
 }
+
+/** A path typed into a pty must not carry keys that edit the line (see drag-file-paths.ts). */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
 
 export type DropEntry =
 	| { kind: "uploaded"; path: string }
@@ -51,7 +54,7 @@ export async function placeDroppedFiles(projectId: string, files: File[]): Promi
 		const oversizedIndex = oversized.indexOf(file);
 		if (oversizedIndex >= 0) {
 			const path = hostPaths[oversizedIndex];
-			return path ? { kind: "host", path, name: file.name } : { kind: "tooLarge", name: file.name, remote };
+			return path && !CONTROL_CHARS.test(path) ? { kind: "host", path, name: file.name } : { kind: "tooLarge", name: file.name, remote };
 		}
 		try {
 			const path = await uploadDroppedFile(projectId, file);

@@ -16,20 +16,18 @@ function sizedFile(name: string, size: number): File {
 }
 
 describe("quotePath", () => {
-	it("keeps spaces and unicode inside plain double quotes", () => {
-		expect(quotePath("/Users/me/My Drive/Ашкелон. Без шлема (1080p).mp4", "posix")).toBe('"/Users/me/My Drive/Ашкелон. Без шлема (1080p).mp4"');
+	it("keeps spaces and unicode inside POSIX single quotes", () => {
+		expect(quotePath("/Users/me/My Drive/Ашкелон. Без шлема (1080p).mp4", "posix")).toBe("'/Users/me/My Drive/Ашкелон. Без шлема (1080p).mp4'");
 	});
 
-	it("escapes the characters a POSIX shell still expands inside double quotes", () => {
-		expect(quotePath('/a/say "hi" $HOME `id` back\\slash.mp4', "posix")).toBe('"/a/say \\"hi\\" \\$HOME \\`id\\` back\\\\slash.mp4"');
+	it("leaves $, backticks, backslashes, double quotes and ! literal, and spells ' as '\\''", () => {
+		expect(quotePath(`/a/say "hi" $HOME \`id\` back\\slash Wow!v2 it's.mp4`, "posix"))
+			.toBe(`'/a/say "hi" $HOME \`id\` back\\slash Wow!v2 it'\\''s.mp4'`);
 	});
 
-	it("uses PowerShell's backtick escape and leaves Windows backslashes alone", () => {
-		expect(quotePath("C:\\Users\\me\\$cash `tick` \"q\".mp4", "powershell")).toBe('"C:\\Users\\me\\`$cash ``tick`` `"q`".mp4"');
-	});
-
-	it("only wraps for cmd, which has no escape inside quotes", () => {
-		expect(quotePath("C:\\My Files\\video.mp4", "cmd")).toBe('"C:\\My Files\\video.mp4"');
+	it("uses PowerShell's backtick escape, typographic quotes included, and leaves Windows backslashes alone", () => {
+		expect(quotePath("C:\\Users\\me\\$cash `tick` \"q\" \u201csmart\u201d.mp4", "powershell"))
+			.toBe('"C:\\Users\\me\\`$cash ``tick`` `"q`" `\u201csmart`\u201d.mp4"');
 	});
 });
 
@@ -68,6 +66,12 @@ describe("placeDroppedFiles", () => {
 		expect(await placeDroppedFiles("p1", [sizedFile("big.mov", MAX_UPLOAD_FILE_SIZE + 1)])).toEqual([{ kind: "tooLarge", name: "big.mov", remote: false }]);
 	});
 
+	it("refuses a host path carrying control characters even if the host returned one", async () => {
+		(window as unknown as WithWebview).__electrobunWebviewId = 1;
+		request.resolveDroppedFilePaths.mockResolvedValue(["/tmp/x\";rm -rf ~\r.mov"]);
+		expect(await placeDroppedFiles("p1", [sizedFile("big.mov", MAX_UPLOAD_FILE_SIZE + 1)])).toEqual([{ kind: "tooLarge", name: "big.mov", remote: false }]);
+	});
+
 	it("never asks the host in remote mode: the file is on the viewer's device", async () => {
 		const entries = await placeDroppedFiles("p1", [sizedFile("big.mov", MAX_UPLOAD_FILE_SIZE + 1)]);
 		expect(request.resolveDroppedFilePaths).not.toHaveBeenCalled();
@@ -94,6 +98,6 @@ describe("dropEntriesToTerminalText", () => {
 			{ kind: "host", path: "/Users/me/My Drive/big \"cut\".mov", name: "big \"cut\".mov" },
 			{ kind: "tooLarge", name: "other.mov", remote: false },
 			{ kind: "host", path: "/Users/me/Видео.mp4", name: "Видео.mp4" },
-		], "posix")).toBe('/wt/uploads/my\\ notes.txt "/Users/me/My Drive/big \\"cut\\".mov" "/Users/me/Видео.mp4"');
+		], "posix")).toBe(`/wt/uploads/my\\ notes.txt '/Users/me/My Drive/big "cut".mov' '/Users/me/Видео.mp4'`);
 	});
 });

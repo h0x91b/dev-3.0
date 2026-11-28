@@ -8,6 +8,7 @@ import { basename, join } from "node:path";
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
+import { isRemoteRpcCall } from "./rpc-origin";
 
 const log = createLogger("drag-file-paths");
 
@@ -15,7 +16,7 @@ const log = createLogger("drag-file-paths");
 export interface DroppedFileDescriptor {
 	name: string;
 	size: number;
-	/** `File.lastModified` in ms; 0 when the webview did not report one. */
+	/** `File.lastModified` in ms; 0 when the webview did not report one, which refuses the match. */
 	lastModified: number;
 }
 
@@ -29,9 +30,16 @@ export interface FileFacts {
 const MTIME_TOLERANCE_MS = 1000;
 
 /**
+ * C0/C1 controls in a name are refused: the path is typed into the pty as raw
+ * keystrokes, where they act as line-editing keys and can break out of any quoting.
+ */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
  * Pairs each dropped file with the one pasteboard path that has the same name,
  * byte size and mtime. Zero or several candidates give null: a guessed path is
- * worse than none, because the agent would act on the wrong file.
+ * worse than none, because the agent would act on the wrong file. A file with no
+ * reported mtime, or a path with control characters, is never matched.
  */
 export function matchDroppedFiles(
 	files: DroppedFileDescriptor[],
@@ -43,13 +51,15 @@ export function matchDroppedFiles(
 		if (!facts.has(path)) facts.set(path, stat(path));
 		return facts.get(path) ?? null;
 	};
+	const safeCandidates = candidates.filter((path) => !CONTROL_CHARS.test(path));
 	return files.map((file) => {
+		if (!(file.lastModified > 0)) return null;
 		const name = file.name.normalize("NFC");
-		const matches = candidates.filter((path) => {
+		const matches = safeCandidates.filter((path) => {
 			if (basename(path).normalize("NFC") !== name) return false;
 			const f = factsFor(path);
 			if (!f || !f.isFile || f.size !== file.size) return false;
-			return file.lastModified <= 0 || Math.abs(f.mtimeMs - file.lastModified) < MTIME_TOLERANCE_MS;
+			return Math.abs(f.mtimeMs - file.lastModified) < MTIME_TOLERANCE_MS;
 		});
 		return matches.length === 1 ? matches[0] : null;
 	});
@@ -99,8 +109,12 @@ function loadReader(): ReadDragPaths | null {
 
 let reader: ReadDragPaths | null | undefined;
 
-/** Host paths for dropped files, in order; null where none could be proven. Always null off macOS. */
+/**
+ * Host paths for dropped files, in order; null where none could be proven. Always
+ * null off macOS, and for a remote viewer, whose files are on its own device.
+ */
 export function resolveDroppedFilePaths(files: DroppedFileDescriptor[]): (string | null)[] {
+	if (isRemoteRpcCall()) return files.map(() => null);
 	if (reader === undefined) reader = loadReader();
 	if (!reader || files.length === 0) return files.map(() => null);
 	try {

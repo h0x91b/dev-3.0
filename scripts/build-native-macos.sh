@@ -26,7 +26,7 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 
 if ! command -v clang >/dev/null 2>&1; then
-  echo "[build-native-macos] clang not found — skipping (no click callback, no native Window menu items, no swipe back/forward)"
+  echo "[build-native-macos] clang not found — skipping (no click callback, no native Window menu items, no swipe back/forward, no original path for oversized drops)"
   exit 0
 fi
 
