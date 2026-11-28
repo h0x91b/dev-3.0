@@ -174,7 +174,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 	// Comments whose frame still is being captured and saved; nothing sends them meanwhile.
 	const [stillsInFlight, setStillsInFlight] = useState<string[]>([]);
 	// A short line over the stage: the lightbox sits above the app's toast layer.
-	const [stageHint, setStageHint] = useState<string | null>(null);
+	// Each hint is a new object, so repeating the same text restarts its timer.
+	const [stageHint, setStageHint] = useState<{ text: string } | null>(null);
 	useEffect(() => {
 		if (!stageHint) return;
 		const timer = setTimeout(() => setStageHint(null), 3000);
@@ -256,7 +257,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		video.pause();
 		if (!pendingMoment || isAtMoment(video.currentTime, pendingMoment, fps)) return false;
 		video.currentTime = pendingMoment.frame !== null && pendingMoment.fps ? frameSeekTime(pendingMoment.frame, pendingMoment.fps, video.duration) : pendingMoment.time;
-		setStageHint(t("imageViewer.spotsBackToDraft", { time: formatReviewMoment(pendingMoment) }));
+		setStageHint({ text: t("imageViewer.spotsBackToDraft", { time: formatReviewMoment(pendingMoment) }) });
 		return true;
 	}, [pendingMoment, fps, t]);
 	const toggleSpotTool = useCallback(() => {
@@ -267,10 +268,15 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		else commentAtPlayhead();
 		setSpotTool(true);
 	}, [canComment, clip, spotTool, pendingMoment, commentAtPlayhead, returnToDraftFrame]);
+	// Set by the click that starts a draft, so spots left from an older one never join it.
+	const draftStartedRef = useRef(false);
+	useEffect(() => { if (!pendingMoment) draftStartedRef.current = false; }, [pendingMoment]);
 	const addSpot = useCallback((spot: { x: number; y: number }) => {
 		const video = playerRef.current;
 		if (!(video instanceof HTMLVideoElement)) return;
 		if (!pendingMoment) {
+			if (!draftStartedRef.current) setDraftSpots([]);
+			draftStartedRef.current = true;
 			const time = video.currentTime;
 			setPendingMoment({ time, frame: fps === null ? null : frameAt(time, fps), fps });
 			setActiveCommentId(null);
@@ -637,7 +643,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 		...send,
 		sendingCommentIds: { ...send.sendingCommentIds, ...Object.fromEntries(stillsInFlight.map((id) => [id, true])) },
 	}), [send, stillsInFlight]);
-	const stageStatus = stageHint ?? (stillsInFlight.length > 0 ? t("imageViewer.savingFrame") : null);
+	const stageStatus = stageHint?.text ?? (stillsInFlight.length > 0 ? t("imageViewer.savingFrame") : null);
 	const showOverlay = !isClip && canComment && pictureBox && currentUrl && !isError && (commentMode || imageComments.length > 0);
 	const copyLabel = t(clip === "audio" ? "imageViewer.copyAudioPath" : clip === "video" ? "imageViewer.copyVideoPath" : "imageViewer.copyPath");
 	const downloadLabel = t(clip === "audio" ? "imageViewer.downloadAudio" : clip === "video" ? "imageViewer.downloadVideo" : "imageViewer.download");
@@ -696,7 +702,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 					{canComment && clip !== "audio" && (
 						<button
 							type="button"
-							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); setPendingMoment(null); }}
+							onClick={() => { setCommentMode((on) => !on); setPendingRegion(null); setPendingMoment(null); clearSpots(); }}
 							title={t(clip === "video" ? "imageViewer.videoCommentMode" : "imageViewer.commentMode")}
 							aria-label={t(clip === "video" ? "imageViewer.videoCommentMode" : "imageViewer.commentMode")}
 							aria-pressed={commentMode}

@@ -1257,6 +1257,47 @@ describe("TaskImageViewer video review", () => {
 			expect(video.currentTime).toBe(70.25);
 		});
 
+		it("drops the draft's spots when the header Comments toggle leaves comment mode", async () => {
+			const { video, at } = await renderClip();
+			at(70.25);
+			stageVideo(video);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 200, clientY: 90 });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			expect(spotNumbers()).toEqual([1, 2]);
+			await userEvent.click(screen.getByTestId("image-viewer-comment"));
+			expect(screen.getByTestId("video-mark-spots")).toHaveAttribute("aria-pressed", "false");
+			at(80);
+			fireEvent(video, new Event("seeked"));
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 720, clientY: 405 });
+			// A new draft on the new frame, holding only the spot placed on it.
+			expect(spotNumbers()).toEqual([1]);
+			expect(screen.getByTestId("video-review-composer")).toHaveTextContent("1:20.000 · 1 spot");
+		});
+
+		it("restarts the stage hint's timer when the same hint comes up again", async () => {
+			const { video, at } = await renderClip();
+			at(70.25);
+			stageVideo(video);
+			fireEvent.keyDown(window, { key: "m", code: "KeyM" });
+			fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 200, clientY: 90 });
+			vi.useFakeTimers();
+			const clickOffFrame = () => {
+				at(80);
+				fireEvent(video, new Event("seeked"));
+				fireEvent.pointerDown(spotsLayer(), { button: 0, clientX: 400, clientY: 225 });
+			};
+			clickOffFrame();
+			act(() => { vi.advanceTimersByTime(2000); });
+			clickOffFrame();
+			act(() => { vi.advanceTimersByTime(2000); });
+			expect(screen.getByTestId("video-stage-status")).toHaveTextContent("Spots go on the comment's frame");
+			act(() => { vi.advanceTimersByTime(1100); });
+			vi.useRealTimers();
+			expect(screen.queryByTestId("video-stage-status")).toBeNull();
+		});
+
 		it("waits for the still before Send now hands the comment to the agent, and says so", async () => {
 			let resolveStill: (value: string | null) => void = () => {};
 			frameStill.captureFrameStill.mockImplementationOnce(() => new Promise((resolve) => { resolveStill = resolve; }));
